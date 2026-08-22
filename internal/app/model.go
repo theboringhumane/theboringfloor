@@ -311,6 +311,16 @@ type Model struct {
 	questionParked bool
 	parkedStatus   string // StatusLine saved at park, restored at unpark
 
+	// modelPick — the open /model picker card (bare /model when the
+	// backend lists models via the modelListBackend seam; nil = closed).
+	// APP-LEVEL float (model.go owns it outright, panels.ModelPickerFrame
+	// splices it over the composed frame): unlike the /session picker's
+	// chat-embedded card this one never touches the chat panel. While a
+	// permission/question float is up it yields keys and hides (a parked
+	// turn outranks browsing), resuming when the float clears. Pointer —
+	// the Model value copies share the component, like chat/social/gov.
+	modelPick *panels.ModelPicker
+
 	// activeThink — CallIDs with an OPEN boss EvThought stream (Done not
 	// yet seen). Model-owned (the reducer stays pure): the chat panel
 	// consults this set to render streaming blocks expanded/livecoded
@@ -952,6 +962,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.applySlash(msg.text); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+	case modelsListMsg:
+		// the /model picker's async listing landed — picker + state field,
+		// both invisible to the digest, so cover the frame cache like slashMsg.
+		m.frameNonce++
+		m.handleModelsList(msg)
+	case modelPickMsg:
+		// enter accepted a row: close the card and drive the EXISTING
+		// /model-set slash path (model_picker.go's acceptModelPick).
+		m.frameNonce++
+		m.acceptModelPick(msg.ref)
+	case modelPickCancelMsg:
+		// esc cancels with zero side effects: only the card closes.
+		m.frameNonce++
+		m.closeModelPicker()
 	case enqueueMsg:
 		if len(m.queue) >= queueCap {
 			m.noticeErr(fmt.Sprintf("backlog full (%d) — wait for the boss to catch up, or /queue clear", queueCap))
@@ -1183,6 +1207,14 @@ func (m Model) Frame() string {
 		bot = chrome.StatusBar(m.st, hint, len(m.queue), m.width)
 	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, top, mid, bot)
+	// The /model picker splices over the COMPOSED frame (app-level float —
+	// centered on the whole terminal, layout-neutral: floor/sidebar/zen/
+	// mobile all underlay the same). While a permission/question float is
+	// up the picker hides and waits (a parked turn's modal outranks
+	// browsing — it yields its keys in handleKey identically).
+	if m.modelPick != nil && m.permQ.front() == nil && m.question == nil {
+		frame = panels.ModelPickerFrame(m.modelPick, frame, m.width, m.height)
+	}
 	m.gov.frameKey, m.gov.frameCached = digest, frame
 	return frame
 }
@@ -1210,6 +1242,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		// nothing else this press
 		m.zen = false
 		return nil
+	}
+
+	// The open /model picker owns EVERY key (question-modal contract — the
+	// textarea is disabled; ↑/↓ walk its cursor, enter switches, esc
+	// cancels, the card swallows the rest). It claims BEFORE tab switches
+	// and the chat below, but AFTER ctrl+q/zen above, and it YIELDS while a
+	// permission/question float is up (a parked turn outranks browsing —
+	// the picker hides and waits, model_picker.go's contract).
+	if m.modelPick != nil && m.permQ.front() == nil && m.question == nil {
+		return m.modelPick.Key(msg)
 	}
 
 	// tab-switch keys work from EVERY tab, terminal included
@@ -1294,6 +1336,12 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	}
 	// the 2-cell chrome (topbar + statusbar) never reacts
 	if msg.Y <= 0 || msg.Y >= m.height-1 {
+		return nil
+	}
+	// The /model picker is keys-only (the /session picker's click-swallow
+	// contract one level up): while its card is up a click lands on NOTHING
+	// underneath — no floor selection, no thread toggle, no popover answer.
+	if m.modelPick != nil {
 		return nil
 	}
 	if m.mobile() {
@@ -2822,12 +2870,10 @@ func (m *Model) applySlash(input string) tea.Cmd {
 			mode, powerDescribe(mode), m.currentTick(), m.persistCfg()))
 	case "/model":
 		if len(fields) < 2 {
-			cur := string(m.cfg.Boss.Model)
-			if cur == "" {
-				cur = "server default"
-			}
-			m.notice(fmt.Sprintf("boss model: %s — set with /model provider/model (the backend honors it on the next send)", cur))
-			return nil
+			// bare /model: open the interactive picker when the backend
+			// lists models via the additive seam (model_picker.go); every
+			// seam-absent/failed-listing path lands the classic hint note.
+			return m.openModelPicker()
 		}
 		ref := fields[1]
 		if !strings.Contains(ref, "/") {

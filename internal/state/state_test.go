@@ -319,6 +319,39 @@ func TestQuestionItemJSON(t *testing.T) {
 	}
 }
 
+func TestModelInfoJSON(t *testing.T) {
+	in := ModelInfo{Provider: "anthropic", ID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5"}
+	out := roundTrip(t, in)
+	if out != in {
+		t.Errorf("round trip = %+v, want %+v", out, in)
+	}
+	// Name omitempty: provider/id always present, an unnamed model stays minimal.
+	data, _ := json.Marshal(ModelInfo{Provider: "openai", ID: "gpt-5"})
+	for _, key := range []string{`"provider"`, `"id"`} {
+		if !strings.Contains(string(data), key) {
+			t.Errorf("ModelInfo JSON missing key %s: %s", key, data)
+		}
+	}
+	if strings.Contains(string(data), `"name"`) {
+		t.Errorf("empty Name should be omitted: %s", data)
+	}
+}
+
+// The Models field (the /model picker's fetch-on-demand listing) rides the
+// office state additively: it round-trips when set, and a zero office
+// carries no "models" key.
+func TestOfficeStateModelsField(t *testing.T) {
+	in := OfficeState{Mode: ModeDemo, Models: []ModelInfo{{Provider: "google", ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro"}}}
+	out := roundTrip(t, in)
+	if len(out.Models) != 1 || out.Models[0] != in.Models[0] {
+		t.Errorf("Models round trip = %+v, want contained %+v", out.Models, in.Models[0])
+	}
+	data, _ := json.Marshal(OfficeState{Mode: ModeDemo})
+	if strings.Contains(string(data), `"models"`) {
+		t.Errorf("zero OfficeState JSON carries models: %s", data)
+	}
+}
+
 func TestMCPServerJSON(t *testing.T) {
 	in := MCPServer{Name: "agentmemory", Status: "connected", Detail: "12 tools"}
 	out := roundTrip(t, in)

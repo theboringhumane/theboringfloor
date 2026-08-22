@@ -175,6 +175,21 @@ type ChatMsg struct {
 	Meta string `json:"meta,omitempty"`
 }
 
+// ModelInfo — one switchable boss model of the /model picker (bare
+// /model). Provider + ID are the wire halves of the "provider/model"
+// ModelRef the free-form /model command already sets; Name is the
+// serve's optional display label ("Claude Sonnet 4.5") — empty means the
+// ID renders (the picker never blanks a row). Fed on demand by the
+// backend's ListModels seam (GET /provider on the live wire; fixed
+// fixtures in demo/harness stubs) — never by an event: listings answer
+// a click, they don't stream, so no EvModels kind exists (the same
+// call-and-render shape the /session picker's ListSessions uses).
+type ModelInfo struct {
+	Provider string `json:"provider"`
+	ID       string `json:"id"`
+	Name     string `json:"name,omitempty"`
+}
+
 // QuestionOption is one selectable answer of a boss question popover.
 type QuestionOption struct {
 	Label       string `json:"label"`
@@ -250,8 +265,16 @@ type OfficeState struct {
 	// INFORMATIONAL ONLY: CostUSD above already prices every cache token
 	// (writes at 1.25x, reads at 0.1x) — the fields exist so the member
 	// can SEE that prompt caching is actually happening, never to bill.
-	TokensCacheRead  int64 `json:"tokensCacheRead,omitempty"`
-	TokensCacheWrite int64 `json:"tokensCacheWrite,omitempty"`
+	TokensCacheRead  int64   `json:"tokensCacheRead,omitempty"`
+	TokensCacheWrite int64   `json:"tokensCacheWrite,omitempty"`
+	// Models — the most recent provider/model listing the /model picker
+	// fetched on demand (bare /model → the backend's ListModels seam).
+	// Fetch-on-demand ONLY: no event writes it and nothing polls — the
+	// reducer never touches the field, so the last listing simply rides
+	// the office state until the next picker open refetches. Additive:
+	// a fresh office starts empty, and (like the usage counters) the
+	// session snapshot never threads it.
+	Models []ModelInfo `json:"models,omitempty"`
 }
 
 // EventKind — Go has no tagged unions; one Event struct with a Kind + optional fields.

@@ -110,6 +110,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -122,6 +123,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theboringhumane/theboringoffice/internal/app"
+	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/office"
@@ -740,6 +742,15 @@ func (b *stubBackend) ReconnectMCP(name string) error {
 // AbortSessions is the /stop seam (the parallel backend contract: abort
 // the primary session AND every live child session). The stub only records
 // the call — the --stop frame proves the unwind.
+// ListModels — the /model picker's listing seam on the shot stub
+// (ADDITIVE, the app's modelListBackend type-assert): the SAME fixed
+// five-model gallery the demo backend serves (one fixture — the
+// --modelshot frame renders exactly what a demo member sees), so the
+// picker's fetch-hop resolves in-process within the 4s window.
+func (b *stubBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error) {
+	return backend.DemoModels(), nil
+}
+
 func (b *stubBackend) AbortSessions() error {
 	b.abortLog = append(b.abortLog, "AbortSessions()")
 	if b.trace != nil {
@@ -839,24 +850,30 @@ func diffsWorkload(p *tea.Program) {
 	p.Send(tea.KeyPressMsg(tea.Key{Code: 'd', Mod: tea.ModCtrl}))
 }
 
-// modelshotWorkload (--modelshot) leaves the slash popover open on the
-// /model row for the final frame — the "any model, any backend" shot.
-// The two stacked permission asks are answered first (y·y): the modal
-// floats over the same region and would bury the popover. The fragment
-// is typed AFTER the always-on queue typing (~3.5s) — its first space
-// would close the picker and its enter would send the fragment — and
-// WITHOUT enter: enter applies the row into the draft and the picker
-// closes with it (the preview only lives while the tail types).
+// modelshotWorkload (--modelshot) opens the /model PICKER for the final
+// frame — the "any model, any backend" gallery shot. The two stacked
+// permission asks are answered first (y·y — the modal floats over the
+// same region and would bury the card). The command is typed AFTER the
+// always-on queue typing (~3.6s), then the two-press dance run: the
+// first Enter only APPLIES the popover's "/model" row into the draft
+// (bare slash commands never auto-send — the same contract the stop/ask
+// proofs dance with), the second SENDS it; the stub's fixed five-model
+// listing answers in-process, so by the 4s frame the card shows every
+// row with the cursor clamped on the first.
 func modelshotWorkload(p *tea.Program) {
 	time.Sleep(2500 * time.Millisecond)
 	p.Send(tea.KeyPressMsg(tea.Key{Code: 'y', Text: "y"}))
 	time.Sleep(250 * time.Millisecond)
 	p.Send(tea.KeyPressMsg(tea.Key{Code: 'y', Text: "y"}))
-	time.Sleep(1000 * time.Millisecond)
+	time.Sleep(890 * time.Millisecond) // ~3.64s — the queue typing below has drained
 	for _, r := range "/model" {
 		p.Send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
 		time.Sleep(8 * time.Millisecond)
 	}
+	time.Sleep(80 * time.Millisecond)
+	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // apply the popover row into the draft
+	time.Sleep(90 * time.Millisecond)
+	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // send the bare command — the picker opens
 }
 
 // askTypeLine types a line into the open boss question modal rune by rune
@@ -3111,7 +3128,7 @@ func main() {
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
 	freesend := flag.Bool("freesend", false, "free-queuing proof: boss busy 200–3000ms; two prompts sent DURING the window must hit backend.Send IMMEDIATELY (both ([stub] Send lines precede the turn-completed marker in the ordering trace) — frame 1 (t=2.2s) shows \"busy · 2 queued (server)\" + the \"turn 2 · your message rides next\" placeholder; frame 2 (t=3.6s) shows the drained FIFO pins + restored status line")
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
-	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" rune-by-rune AFTER the queue typing and leaves the slash popover open on the boss-model row (enter is NEVER pressed) for the final frame")
+	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")
 	at := flag.Int("at", 0, "capture the standard-script frame at ms-from-start instead of the usual 4s — e.g. 2920 catches the permission queue modal OPEN (the always-on queue typing's enter keys answer it from ~3.06s on, so the 4s frame has already advanced past it)")
 	flag.Parse()
 

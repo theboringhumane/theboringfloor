@@ -714,3 +714,27 @@ func (b *demoBackend) doReturn(employeeID, taskID, subject, body string) {
 		b.fl.emit(ev)
 	}
 }
+
+// ListModels — the /model picker's listing seam on the DEMO backend
+// (ADDITIVE method, never part of state.Backend — the app type-asserts
+// it, exactly like the live seam in models_live.go): the scripted tour
+// serves the fixed five-model gallery so bare /model opens the picker in
+// demo mode too. ctx is unused (no hop to bound) — the seam keeps it for
+// interface parity.
+func (b *demoBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error) {
+	return DemoModels(), nil
+}
+
+// DemoModels — the ONE fixed demo listing, shared with harness stubs
+// (cmd/uishot's stubBackend answers the same five, so --modelshot renders
+// exactly what a demo member sees). No background refresh, no ordering
+// gimmicks — the app sorts rows itself.
+func DemoModels() []state.ModelInfo {
+	return []state.ModelInfo{
+		{Provider: "anthropic", ID: "claude-sonnet-4-5", Name: "Claude Sonnet 4.5"},
+		{Provider: "anthropic", ID: "claude-opus-4", Name: "Claude Opus 4"},
+		{Provider: "anthropic", ID: "claude-haiku-4-5", Name: "Claude Haiku 4.5"},
+		{Provider: "openai", ID: "gpt-5", Name: "GPT-5"},
+		{Provider: "google", ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro"},
+	}
+}
