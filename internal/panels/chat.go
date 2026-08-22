@@ -268,6 +268,18 @@ type Chat struct {
 	qText            string
 	questionWaiting  bool // question hold outstanding (open or deferred)
 
+	// Session picker (/session) — session_picker.go: an ADDITIVE floating
+	// card listing the server's root sessions (type to narrow, ↑/↓, enter
+	// re-anchors the office LIVE, esc cancels). Same float mechanics as
+	// the permission/question popovers; it OWNS every key while open
+	// (question-modal style — the textarea under it is disabled), but
+	// yields to a permission/question float popping over it (a parked
+	// turn outranks browsing). Open → loading state; the app's async
+	// ListSessions hop lands via SetSessionPickerRows.
+	sessPick        *sessionPickState
+	onSessionPick   func(id string) tea.Cmd
+	onSessionCancel func() tea.Cmd
+
 	// Double-esc interrupt (the panic-key): in the MAIN chat input — no
 	// modal or picker consumed the key — two esc presses inside
 	// dblEscWindow fire onStopEsc, the app's /stop abort path. A lone esc
@@ -642,6 +654,12 @@ func (c *Chat) ClickRow(x, y int) bool {
 		top, left, cardW, rows, _ := c.permCardGeom()
 		if y >= top && y < top+len(rows) && x >= left && x < left+cardW {
 			return true // the card swallows every click inside its frame
+		}
+	}
+	if c.sessPick != nil {
+		top, left, cardW, rows := c.sessCardGeom()
+		if y >= top && y < top+len(rows) && x >= left && x < left+cardW {
+			return true // the picker card swallows clicks (keys-only picker)
 		}
 	}
 	if y < 0 || y >= c.vp.Height() {
@@ -1173,6 +1191,15 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 				return nil
 			}
 		}
+		// The /session picker owns EVERY key while open (question-modal
+		// style — the textarea is disabled): typing narrows the session
+		// list, enter accepts the highlighted row, esc cancels. It claims
+		// AFTER the question/permission floats — a parked turn's modal
+		// outranks browsing; the picker waits underneath and resumes when
+		// the float clears.
+		if c.sessPick != nil && c.question == nil && c.perm == nil {
+			return c.sessKey(msg)
+		}
 		// The @ popover owns its nav/attach keys while open (the question-
 		// modal precedence pattern: claimed FIRST, nothing reaches the
 		// textarea); every other key still goes to the textarea below.
@@ -1478,12 +1505,17 @@ func (c *Chat) View() string {
 	}
 	b.WriteString(c.ta.View())
 	out := b.String()
-	if c.permVisible() || c.question != nil {
+	if c.permVisible() || c.question != nil || c.sessPick != nil {
 		// each open FLOAT splices its card rows over the assembled lines
 		// (textarea rows included): cells are replaced, never lines —
-		// the layout never jumps. Only one float renders at a time:
-		// permVisible is false while a question owns the slot.
+		// the layout never jumps. Only one alert float renders at a time:
+		// permVisible is false while a question owns the slot. The session
+		// picker splices FIRST (bottom) — a permission/question card
+		// popping over it wins the top while it waits underneath.
 		bg := strings.Split(out, "\n")
+		if c.sessPick != nil {
+			bg = c.sessOverlay(bg)
+		}
 		if c.permVisible() {
 			bg = c.permOverlay(bg)
 		}

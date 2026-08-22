@@ -747,6 +747,12 @@ func trimTo(s string, max int) string {
 // x-opencode-directory header on every request and, exactly like the SDK's
 // GET rewrite, a ?directory= query param on GET/HEAD.
 func (b *liveBackend) doJSON(method, path string, body []byte, out any) error {
+	return b.doJSONCtx(context.Background(), method, path, body, out)
+}
+
+// doJSONCtx is doJSON under a caller's context (the /session picker's
+// ListSessions bounds its listing + count fan-out with one deadline).
+func (b *liveBackend) doJSONCtx(ctx context.Context, method, path string, body []byte, out any) error {
 	b.mu.Lock()
 	base := b.baseURL
 	b.mu.Unlock()
@@ -761,7 +767,7 @@ func (b *liveBackend) doJSON(method, path string, body []byte, out any) error {
 	if body != nil {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequest(method, base+path+qs, rdr)
+	req, err := http.NewRequestWithContext(ctx, method, base+path+qs, rdr)
 	if err != nil {
 		return err
 	}
@@ -1004,6 +1010,96 @@ func (b *liveBackend) NewOffice() (string, error) {
 	}})
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] new office session fresh (" + primary.ID + ")"})
 	return primary.ID, nil
+}
+
+// ListSessions — the /session picker's listing seam: the server's ROOT
+// sessions (parentID == "") for this directory, each carrying its
+// GET /session/{id}/message row count. Counts fetch CONCURRENTLY
+// (bounded fan-out) under the caller's context so a humongous history
+// never serializes the picker; a failed count lands as Messages=-1 and
+// the row still renders (degrade open, like sessionMessageCount's -1).
+// Only the list call's own failure is an error — the app falls back to
+// the static /session summary on it. NOT part of state.Backend: the app
+// type-asserts this seam (the primarySeamBackend pattern; demo + harness
+// stubs never implement it).
+func (b *liveBackend) ListSessions(ctx context.Context) ([]state.SessionRow, error) {
+	var sessions []ocSession
+	if err := b.doJSONCtx(ctx, http.MethodGet, "/session", nil, &sessions); err != nil {
+		return nil, err
+	}
+	var rows []state.SessionRow
+	for _, s := range sessions {
+		if s.ParentID != "" {
+			continue // the picker lists roots only — children belong to their boss
+		}
+		rows = append(rows, state.SessionRow{
+			ID:       s.ID,
+			ParentID: s.ParentID,
+			Title:    s.Title,
+			Created:  s.Time.Created,
+			Updated:  s.Time.Updated,
+			Messages: -1, // filled by the count fan-out below
+		})
+	}
+	sem := make(chan struct{}, 8) // bounded fan-out: never stampede the serve
+	var wg sync.WaitGroup
+	for i := range rows {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			var msgs []json.RawMessage
+			if err := b.doJSONCtx(ctx, http.MethodGet, "/session/"+rows[i].ID+"/message", nil, &msgs); err == nil {
+				rows[i].Messages = len(msgs)
+			}
+		}(i)
+	}
+	wg.Wait()
+	return rows, nil
+}
+
+// ResumeOffice — the /session picker's accept seam: attach the office to
+// an EXISTING server session LIVE (NewOffice's twin, but no fresh session
+// is minted — the pinned one wins, exactly like the boot pin riding
+// PrimaryOverride→resolvePrimary). The id is verified server-side first:
+// a 404/fetch failure degrades open with a generalized status note and a
+// returned error (the current primary stays seated — never a silent
+// substitution, never a hard failure). On a hit the old boss row is
+// fired, the new one hired, the concierge dismissed with the swap, any
+// pending respawn latch consumed, and primaryOverride latched so the pin
+// survives for the session.json persist loop + a later Start re-resolve.
+// Requires a started backend. NOT part of state.Backend (additive seam).
+func (b *liveBackend) ResumeOffice(id string) error {
+	var s ocSession
+	if err := b.doJSON(http.MethodGet, "/session/"+id, nil, &s); err != nil || s.ID == "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+			"[theboringoffice] pinned session %s not found server-side — staying on the current office session", id)})
+		if err == nil {
+			err = errors.New("session " + id + " not found server-side")
+		}
+		return err
+	}
+	b.mu.Lock()
+	old := b.primaryID
+	b.primaryID = s.ID
+	b.primaryOverride = s.ID // the pin sticks — persist loop + next Start see it
+	b.respawnFresh = false   // a live re-anchor consumes any pending respawn latch
+	b.respawnOldID = ""
+	concID := b.forgetConciergeLocked() // the concierge goes with the office it served
+	b.mu.Unlock()
+	if concID != "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the session swap (" + concID + ") — next busy-boss message recreates it lazily"})
+	}
+	if old != "" && old != s.ID {
+		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
+	}
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: s.ID, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
+	}})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+		"[theboringoffice] primary session: resume %s (pinned)", s.ID)})
+	return nil
 }
 
 // postPrompt is promptAsync: POST /session/{id}/prompt_async (204 on ok).

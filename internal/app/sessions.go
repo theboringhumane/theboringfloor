@@ -25,6 +25,11 @@
 //	                      gate)
 //	PrimaryID()         — current primary, feeds the snapshot
 //	NewOffice()         — /new: mint a fresh "theboringoffice office" primary NOW
+//	ListSessions(ctx)   — /session picker: the server's ROOT sessions with
+//	                      message counts (session_picker.go; missing → the
+//	                      static summary + a dim unavailable note)
+//	ResumeOffice(id)    — /session picker accept: re-anchor the office to an
+//	                      EXISTING session LIVE (the boot pin's semantics)
 package app
 
 import (

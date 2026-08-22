@@ -55,20 +55,33 @@ theboringoffice --demo     # touring mode: simulated events, labeled DEMO
 theboringoffice --server http://127.0.0.1:4096   # attach to an existing server
 ```
 
-
 ## Resuming a session
 
-The office re-opens your last chat on launch. To boot into a *specific* past
-session instead, hand the app its id:
+The office normally re-opens your last chat on launch. To step back into a
+*specific* past session instead, hand it the ID:
 
 ```bash
-theboringoffice --session <session-id>   # short: -s <session-id>; env: THEBORINGOFFICE_SESSION
+theboringoffice --session <your-session-id>   # short form: -s <your-session-id>; env: THEBORINGOFFICE_SESSION
 ```
 
-An id the server doesn't know never blocks boot — the app warns, then
-starts normally with the usual find-or-create. In-app, `/session` prints the
-current session id and where its session.json lives on disk, so you can note
-one down for a later `--session` pin.
+A bad or forgotten ID never blocks the door — the app warns about the unknown
+session, then boots normally with a fresh find-or-create one. No flag, no
+change: the automatic last-chat restore still happens.
+
+In-app, `/session` opens a picker of the past sessions the server keeps for
+this directory — each row shows the title (or short ID), age, message count
+and short ID, with the session you're on marked. Same rules as every other
+picker: type to narrow, `↑`/`↓` move, `enter` accepts, `esc` cancels with no
+side effects. Accepting switches the office onto it live — nothing from the
+old transcript bleeds in — and a dim notice confirms: `resumed session <id>
+(explicit pin) · /new for a fresh office`. The choice sticks, so the next
+boot re-opens it. Picking the session you're already on is a harmless no-op;
+if the boss is mid-work the switch is refused with a notice telling you to
+`/stop` or wait — the picker never interrupts active work. And when there's
+no server list to show (demo mode, server down), `/session` falls back to
+printing the current session ID and where it lives on disk — note it down
+for later. Reach for the flag when the last-chat restore landed you in the
+wrong room, or when you're deliberately hopping between sessions.
 
 ![agents tab](docs/shots-go/agents.png)
 
@@ -232,7 +245,7 @@ clears the chips.
 | `/focus floor` | alias of `/zen` |
 | `/stop` | abort current work (boss + workers) |
 | `/new` | fresh office (transcript archived) |
-| `/session` | show the current primary session id + session.json path (`-s`/`--session` pins one at boot) |
+| `/session` | past-sessions picker — accept to switch the office live (sticks to the next boot); no server list → prints the current id + where it lives |
 | `/quit` | exit theboringoffice |
 
 ## What v2 (Go) changed

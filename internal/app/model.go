@@ -692,6 +692,17 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			return func() tea.Msg { return questionLaterMsg{} }
 		},
 	)
+	// /session picker seams: enter accepts a row (the model re-anchors
+	// the office onto its id), esc cancels (zero side effects) — both
+	// ferry over tea.Msgs so the model value copy stays the single writer.
+	chat.SetSessionPickerHandlers(
+		func(id string) tea.Cmd {
+			return func() tea.Msg { return sessionPickMsg{id: id} }
+		},
+		func() tea.Cmd {
+			return func() tea.Msg { return sessionPickCancelMsg{} }
+		},
+	)
 	// Double-esc seam: esc-esc in the main chat input aborts the running
 	// turn. The panel owns the key timing (500ms window, modal/picker esc's
 	// never count); the model owns stopWork — the same /stop path.
@@ -961,6 +972,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frameNonce++
 		if cmd := m.applySlash(msg.text); cmd != nil {
 			cmds = append(cmds, cmd)
+		}
+	case sessionListMsg:
+		// the /session picker's async listing landed — panel-only state
+		// the digest can't see, so cover the frame cache like slashMsg.
+		m.frameNonce++
+		m.handleSessionList(msg)
+	case sessionPickMsg:
+		m.frameNonce++
+		m.acceptSessionPick(msg.id)
+	case sessionPickCancelMsg:
+		// esc cancels with zero side effects: only the card closes.
+		m.frameNonce++
+		if m.chat != nil {
+			m.chat.CloseSessionPicker()
 		}
 	case modelsListMsg:
 		// the /model picker's async listing landed — picker + state field,
@@ -2780,8 +2805,8 @@ const slashHelp = `commands:
   /perm              re-open an esc'd permission prompt
   /question          re-open a deferred boss question
   /new               fresh office (previous transcript archived on disk)
-  /session           show the primary session id + session.json path
-                     (boot flag -s|--session <id> resumes one)
+  /session           pick a past session to resume live (fallback prints
+                     the id + path; boot flag -s|--session <id> pins one)
   /status            office status
   /mcp [reconnect x] show MCP servers; reconnect one by name
   /quit              exit theboringoffice`
@@ -3048,10 +3073,12 @@ func (m *Model) applySlash(input string) tea.Cmd {
 	case "/new":
 		m.newOffice() // sessions.go — clear surfaces + fresh "theboringoffice office"
 	case "/session":
-		// Discoverability for the -s/--session boot flag: the current
-		// primary id, where its session.json lives, and how to resume it
-		// next boot (see sessions.go sessionInfo).
-		m.notice(m.sessionInfo())
+		// Interactive picker of the server's ROOT sessions (accept
+		// re-anchors the office LIVE, esc cancels); a backend without the
+		// listing seam — or a failed listing — falls back to the static
+		// summary (current id + session.json path + the boot flag) with a
+		// dim picker-unavailable note. See session_picker.go.
+		return m.openSessionPicker()
 	case "/status":
 		var pend, doing, done int
 		for _, t := range m.st.Tasks {

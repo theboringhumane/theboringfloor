@@ -71,6 +71,7 @@ var slashCommands = []slashCommand{
 	{"/focus", "alias of /zen", "/focus floor"},
 	{"/stop", "abort current work (boss + workers)", ""},
 	{"/new", "fresh office (transcript archived)", ""},
+	{"/session", "past-sessions picker (enter resumes live)", ""},
 	{"/quit", "exit theboringoffice", ""},
 }
 
