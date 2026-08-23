@@ -61,7 +61,7 @@ The office normally re-opens your last chat on launch. To step back into a
 *specific* past session instead, hand it the ID:
 
 ```bash
-theboringoffice --session <your-session-id>   # short form: -s <your-session-id>; env: THEBORINGOFFICE_SESSION
+theboringoffice --session <your-session-id>   # short form: -s <your-session-id>
 ```
 
 A bad or forgotten ID never blocks the door — the app warns about the unknown
@@ -131,7 +131,12 @@ session and resends the batch.
 - **Ambient floor** — coffee steam off the tea machine, blinking server-rack
   LEDs, and an uplink ripple along the server-room wall — all tick-driven
   (no timers), so an idle office stays cheap.
-
+- **Transcript copy** — `y` in the chat yanks the focused transcript message
+  to the system clipboard (pbcopy on macOS, `xclip`/`xsel`/`wl-copy` on
+  Linux, via [atotto/clipboard](https://github.com/atotto/clipboard)); where
+  the terminal's mouse mode supports it, selecting transcript text copies
+  the selection too. A transient "Copied N chars" note rides the status bar
+  after each copy.
 - **Boot splash** — animated startup splash, hard-capped at ~4s; any key
   skips it.
 
@@ -208,6 +213,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+o` | release the embedded terminal's focus back to the panels |
 | `ctrl+q` | quit (works inside the embedded terminal too) |
+| `y` (chat, no permission prompt open) | yank the focused transcript message to the clipboard |
 | `y` `a` `n` `esc` | answer a permission prompt |
 | `q` / `ctrl+c` | quit |
 
