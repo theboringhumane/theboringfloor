@@ -40,16 +40,18 @@
 // shows for EVERY thread, live or done, collapsed or EXPANDED (there it
 // trails the tool list as the "current task" line).
 //
-// A per-agent click on the header row or the sneak row (the threadRows
-// hit-map registers exactly those two rows in BOTH states; expanded
-// tool rows and the closing summary are never clickable) or the ctrl+g
-// baseline expands the thread to list its merged rows — "[tool] <Verb>
-// <rest> <state mark>" in ToolStyle (the same display-side shaping, the
-// ✓/✗/✗ aborted/… running mark kept), think rows dim-italic with bodies
-// only on a FULL expand — all 2-cell indented under the header and
-// STILL wrapping with a 4-cell hanging continuation — followed by the
-// ↳ sneak and a dim closing summary line ("  · N tool calls[ · M think]
-// ✓ done", the same rollup wording as the settled collapsed header).
+// A per-agent click on the header row toggles the thread (the threadRows
+// hit-map is STATE-CONDITIONAL: collapsed registers header + sneak,
+// expanded registers header + closing summary — the whole bubble's frame
+// rows — while expanded tool rows and the mid-list sneak pass through);
+// the ctrl+g baseline expands the thread to list its merged rows —
+// "[tool] <Verb> <rest> <state mark>" in ToolStyle (the same
+// display-side shaping, the ✓/✗/✗ aborted/… running mark kept), think
+// rows dim-italic with bodies only on a FULL expand — all 2-cell
+// indented under the header and STILL wrapping with a 4-cell hanging
+// continuation — followed by the ↳ sneak and a dim closing summary line
+// ("  · N tool calls[ · M think] ✓ done", the same rollup wording as the
+// settled collapsed header).
 // While at least one RENDERED thread is live a dim-italic "ctrl+g ·
 // view subagents" hint row trails the last thread block of the
 // timeline.
@@ -258,7 +260,7 @@ func (c *Chat) threadHeaderRows(g workerGroup, live, stopped, collapsed bool) []
 	if collapsed && (stopped || !live) {
 		body += " (" + c.threadSummary(g, stopped) + ")"
 	}
-	body = clipPlain(body, c.w-2) // 2-cell glyph field eats the head
+	body = clipPlain(body, c.contentW()-2) // 2-cell glyph field eats the head
 	switch {
 	case stopped:
 		body = chrome.ErrText.Faint(true).Render(body)
@@ -297,9 +299,9 @@ func (c *Chat) threadSneakRows(g workerGroup) []string {
 	} else {
 		think := g.lines[len(g.lines)-1]
 		textStyle = chrome.DimText.Italic(true)
-		text = "thinking · " + countLines(foldStyledRows(think.Text, c.w-4, c.w-4)) + " lines"
+		text = "thinking · " + countLines(foldStyledRows(think.Text, c.contentW()-4, c.contentW()-4)) + " lines"
 	}
-	return []string{chrome.DimText.Render("  ↳ ") + textStyle.Render(clipPlain(text, c.w-4))}
+	return []string{chrome.DimText.Render("  ↳ ") + textStyle.Render(clipPlain(text, c.contentW()-4))}
 }
 
 // threadExpandedRows — the thread's merged tool/think rows, 2-cell
@@ -315,7 +317,7 @@ func (c *Chat) threadExpandedRows(g workerGroup, full bool) []string {
 			rows = append(rows, c.wthinkRows(m, full)...)
 			continue
 		}
-		for j, ln := range foldStyledRows(workerToolLine(m), c.w-2, c.w-4) {
+		for j, ln := range foldStyledRows(workerToolLine(m), c.contentW()-2, c.contentW()-4) {
 			prefix := "  "
 			if j > 0 {
 				prefix = "    "
@@ -336,7 +338,7 @@ func (c *Chat) threadClosingRows(g workerGroup, stopped bool) []string {
 	if stopped {
 		style = chrome.ErrText.Faint(true)
 	}
-	rows := foldStyledRows(c.threadSummary(g, stopped), c.w-2, c.w-4)
+	rows := foldStyledRows(c.threadSummary(g, stopped), c.contentW()-2, c.contentW()-4)
 	out := make([]string, 0, len(rows))
 	for i, r := range rows {
 		prefix := "  "
@@ -357,7 +359,7 @@ func (c *Chat) threadClosingRows(g workerGroup, stopped bool) []string {
 func (c *Chat) wthinkRows(m state.ChatMsg, full bool) []string {
 	think := chrome.DimText.Italic(true)
 	// fold at the FULL body budget ("    " is 4 cells) so no row clips
-	lines := foldStyledRows(m.Text, c.w-4, c.w-4)
+	lines := foldStyledRows(m.Text, c.contentW()-4, c.contentW()-4)
 	if !full {
 		return []string{chrome.DimText.Render("  ") + think.Render("thinking · "+countLines(lines)+" lines")}
 	}
@@ -380,11 +382,15 @@ func (c *Chat) wthinkRows(m state.ChatMsg, full bool) []string {
 // the merged tool/think rows + the ↳ "current task" sneak + the dim
 // closing summary while EXPANDED. A per-agent override wins the ctrl+g
 // baseline outright, and a /stop stopped thread force-collapses until an
-// explicit expand re-opens it. The threadRows hit-map registers the
-// ONE header row plus the ONE sneak row in BOTH states — clicking
-// either toggles the thread; expanded tool rows and the closing summary
-// never register. The block carries its OWN leading "\n\n" — the same
-// blank-row glue the render loop writes between message items.
+// explicit expand re-opens it. The threadRows hit-map is STATE-
+// CONDITIONAL (whole-bubble clicking): COLLAPSED registers the ONE
+// header row plus the ONE sneak row (clicking either expands); EXPANDED
+// registers the header row plus EVERY closing-summary row (the bubble's
+// head and tail bracket the content — clicking either collapses), while
+// the ↳ sneak (now the mid-list "current task" line, not a frame edge)
+// and the internal tool/think rows pass through unclaimed. The block
+// carries its OWN leading "\n\n" — the same blank-row glue the render
+// loop writes between message items.
 func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 	stopped := c.threadStop[g.name]
 	expanded := c.threadsExpanded
@@ -404,11 +410,15 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 	var rows []string
 	rows = append(rows, header...)
 	sneakAt := len(rows)
+	closingAt := -1
+	var closing []string
 	if expanded {
 		rows = append(rows, c.threadExpandedRows(g, full)...)
 		sneakAt = len(rows)
 		rows = append(rows, sneak...)
-		rows = append(rows, c.threadClosingRows(g, stopped)...)
+		closingAt = len(rows) // captured BEFORE the closing slice lands
+		closing = c.threadClosingRows(g, stopped)
+		rows = append(rows, closing...)
 	} else {
 		rows = append(rows, sneak...)
 	}
@@ -428,8 +438,17 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 		for i := range header {
 			c.threadRows[base+lead+i] = g.name
 		}
-		for i := range sneak {
-			c.threadRows[base+lead+sneakAt+i] = g.name
+		if expanded {
+			// the EXPANDED bubble's frame rows: head (above) + the
+			// closing summary's row(s) (tail) — a click anywhere on the
+			// frame folds the bubble back
+			for i := range closing {
+				c.threadRows[base+lead+closingAt+i] = g.name
+			}
+		} else {
+			for i := range sneak {
+				c.threadRows[base+lead+sneakAt+i] = g.name
+			}
 		}
 	}
 	b.WriteString("\n\n" + strings.Join(rows, "\n"))

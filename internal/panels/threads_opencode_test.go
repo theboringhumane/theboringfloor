@@ -103,13 +103,13 @@ func newOpencodeChatAtTick(t *testing.T, w, h, tick int) *Chat {
 }
 
 // staleChat re-feeds the fixture far past the staleness horizon with idle
-// sprites at 80 cols (every settled header's rollup fits ONE row — exact
-// pins, no clips): both threads go done, the hint row and the loading
-// row hide.
+// sprites at 84 cols (every settled header's rollup fits ONE row inside
+// the chatPadL/chatPadR-inset budget — exact pins, no clips): both
+// threads go done, the hint row and the loading row hide.
 func staleChat(t *testing.T) *Chat {
 	t.Helper()
 	c := NewChat(nil)
-	c.SetSize(80, 24)
+	c.SetSize(84, 24)
 	c.SetState(state.OfficeState{
 		Tick: 1000,
 		Employees: []state.Employee{
@@ -269,12 +269,15 @@ func TestThreadHintRowOnlyWhileLive(t *testing.T) {
 	}
 }
 
-// TestThreadClickToggleSemantics is proof (e): the ONE header row toggles
-// and the ONE ↳ sneak row toggles in BOTH states (both are single-row
-// under the clip contract) — while collapsed the sneak is the thread's
-// second line, while expanded it is the "current task" line under the
-// tool rows — but the expanded internal TOOL rows and the closing
-// summary are NEVER clickable: a click there falls through unclaimed.
+// TestThreadClickToggleSemantics is proof (e): the thread toggles from
+// its FRAME rows — whole-bubble clicking, state-conditional: while
+// COLLAPSED the ONE header row and the ONE ↳ sneak row toggle (both
+// single-row under the clip contract); while EXPANDED the header and the
+// CLOSING summary rows (the bubble's head and tail) toggle, and the
+// internal tool rows AND the mid-list ↳ sneak (the "current task" line
+// is content, not a frame edge) fall through UNCLAIMED. A closing-row
+// click collapses back to the collapsed 2-row registration, and a
+// multi-row closing summary registers EVERY one of its rows.
 func TestThreadClickToggleSemantics(t *testing.T) {
 	c := newOpencodeChat(t, 60, 24)
 	rows := func(agent string) []int {
@@ -286,6 +289,14 @@ func TestThreadClickToggleSemantics(t *testing.T) {
 		}
 		return lines
 	}
+	rowOf := func(needle string) int {
+		for i, ln := range strings.Split(ansi.Strip(c.renderConversation()), "\n") {
+			if strings.Contains(ln, needle) {
+				return i
+			}
+		}
+		return -1
+	}
 	// collapsed: ONE header row + ONE sneak row (single-row contract)
 	scout := rows("skopos-1")
 	if len(scout) != 2 {
@@ -296,23 +307,40 @@ func TestThreadClickToggleSemantics(t *testing.T) {
 		t.Fatal("click on the header row was not claimed")
 	}
 	tbAssertExpanded(t, c, "skopos-1", true, "after header click")
-	// expanded: header (1 row) + the sneak row under the tool list; the
-	// internal tool rows between them must NOT toggle
+	// expanded: the FRAME rows toggle — the header (top) + the CLOSING
+	// summary row (bottom); the second registered row must BE the
+	// closing row's visual line
 	scout = rows("skopos-1")
 	if len(scout) != 2 {
-		t.Fatalf("an expanded thread must register header + sneak (2 rows), got %v", scout)
+		t.Fatalf("an expanded thread must register header + closing (2 rows), got %v", scout)
 	}
+	closingRow := rowOf("  · 2 tool calls ✓ done")
+	if closingRow < 0 || scout[1] != closingRow {
+		t.Fatalf("the expanded thread's second registered row must BE the closing summary's visual row %d, got %v", closingRow, scout)
+	}
+	// the internal tool rows must NOT toggle
 	if c.ClickRow(3, scout[0]+1) {
 		t.Fatalf("click on an expanded internal tool row (line %d) must not be claimed", scout[0]+1)
 	}
 	tbAssertExpanded(t, c, "skopos-1", true, "after internal-row click (no-op)")
-	// the expanded sneak row toggles too (it represents the thread)
-	if !c.ClickRow(3, scout[1]) {
-		t.Fatal("click on the expanded sneak row was not claimed")
+	// the mid-list ↳ sneak (the "current task" line) is content while
+	// expanded: its click must pass through — the CLOSING rows own the
+	// bottom of the bubble now
+	sneakRow := rowOf("  ↳ Read internal/panels/chat.go")
+	if sneakRow <= scout[0] || sneakRow >= scout[1] {
+		t.Fatalf("the expanded sneak must sit between the frame rows %v, got %d", scout, sneakRow)
 	}
-	tbAssertExpanded(t, c, "skopos-1", false, "after expanded-sneak click")
-	// and collapsed again the sneak row is back to the second line —
-	// it toggles from there as well
+	if c.ClickRow(3, sneakRow) {
+		t.Fatalf("click on the expanded sneak row (line %d) must pass through unclaimed", sneakRow)
+	}
+	tbAssertExpanded(t, c, "skopos-1", true, "after expanded-sneak click (no-op)")
+	// the CLOSING summary row collapses the thread
+	if !c.ClickRow(3, scout[1]) {
+		t.Fatal("click on the closing summary row was not claimed")
+	}
+	tbAssertExpanded(t, c, "skopos-1", false, "after closing-row click")
+	// …restoring the collapsed set of exactly 2: header + sneak — and the
+	// sneak row toggles from there as well
 	scout = rows("skopos-1")
 	if len(scout) != 2 {
 		t.Fatalf("re-collapsed thread must register header + sneak again, got %v", scout)
@@ -321,6 +349,35 @@ func TestThreadClickToggleSemantics(t *testing.T) {
 		t.Fatal("click on the collapsed sneak row was not claimed")
 	}
 	tbAssertExpanded(t, c, "skopos-1", true, "after collapsed-sneak click")
+}
+
+// TestThreadClickExpandedMultiRowClosing — the closing summary folded
+// over MULTIPLE rows (narrow panel) registers EVERY one of its rows: a
+// folded summary row is part of the bubble's bottom frame edge, so each
+// of them toggles. The tool rows and the mid-list sneak between header
+// and closing stay unclaimed.
+func TestThreadClickExpandedMultiRowClosing(t *testing.T) {
+	c := newOpencodeChat(t, 26, 24) // narrow: the closing rollup folds to 2 rows
+	c.ToggleThread("skopos-1")
+	var scout []int
+	for i := 0; i < 50; i++ {
+		if c.threadRows[i] == "skopos-1" {
+			scout = append(scout, i)
+		}
+	}
+	if len(scout) != 3 {
+		t.Fatalf("expanded thread with a 2-row closing summary must register header + BOTH closing rows, got %v", scout)
+	}
+	// the registered rows are CONTIGUOUS around nothing: header, then
+	// the two closing rows at the very bottom of the block
+	if scout[2] != scout[1]+1 {
+		t.Fatalf("the multi-row closing must register contiguous rows, got %v", scout)
+	}
+	// the LAST closing row toggles too
+	if !c.ClickRow(3, scout[2]) {
+		t.Fatal("click on the final closing row was not claimed")
+	}
+	tbAssertExpanded(t, c, "skopos-1", false, "after final-closing-row click")
 }
 
 // TestPendingRowBlockBarOneRow is proof (f): the typing row is the

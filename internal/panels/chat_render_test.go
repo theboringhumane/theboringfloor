@@ -187,18 +187,19 @@ func TestChatConvoWrapsAtWidth(t *testing.T) {
 
 	// (3) the markdown hanging indent is the prefix CELL width (7 for
 	// "boss › ", not its 9 bytes) — the folded URL row hangs right under
-	// the bubble text start
-	if !strings.Contains(view, "\n       https://x.co/") {
-		t.Fatalf("the URL continuation must hang under the bubble text (7-cell indent):\n%s", view)
+	// the bubble text start (9 = the chatPadL-cell transcript inset + the
+	// 7-cell hanging indent)
+	if !strings.Contains(view, "\n         https://x.co/") {
+		t.Fatalf("the URL continuation must hang under the bubble text (2-cell inset + 7-cell indent):\n%s", view)
 	}
 
 	// (4) the boss tool one-liner keeps its first-line shape and its
-	// continuation hangs under "[tool] " (7 spaces)
+	// continuation hangs under "[tool] " (7 spaces + the 2-cell inset)
 	if !strings.Contains(view, "[tool] read ·") {
 		t.Fatalf("the tool one-liner lost its first-line prefix/symbol shape:\n%s", view)
 	}
-	if !strings.Contains(view, "\n       internal/panels/some") {
-		t.Fatalf("the tool continuation must hang 7 cells in:\n%s", view)
+	if !strings.Contains(view, "\n         internal/panels/") {
+		t.Fatalf("the tool continuation must hang 2+7 cells in:\n%s", view)
 	}
 
 	// (5) the workers thread WRAPS with a hanging indent instead of
@@ -208,8 +209,8 @@ func TestChatConvoWrapsAtWidth(t *testing.T) {
 	if !strings.Contains(view, "  [tool] Read") {
 		t.Fatalf("the workers-thread row lost its shaped first-line shape:\n%s", view)
 	}
-	if !strings.Contains(view, "\n    internal/components/very") {
-		t.Fatalf("a long workers-thread row must continue with a 4-cell hanging indent:\n%s", view)
+	if !strings.Contains(view, "\n      internal/components/") {
+		t.Fatalf("a long workers-thread row must continue with a 2+4-cell hanging indent:\n%s", view)
 	}
 }
 

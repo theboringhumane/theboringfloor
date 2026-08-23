@@ -42,10 +42,11 @@
 //	            think-ONLY thread sneaks "thinking · N lines"
 //	            instead); the raw "read · x" meta text is shaped
 //	            into "Read x" display-side inside
-//	            threads_opencode.go. A per-agent click on the
-//	            header row or the sneak row (the only rows the
-//	            threadRows hit-map registers) or the ctrl+g
-//	            baseline expands the thread to its merged
+//	            threads_opencode.go. A per-agent click toggles the
+//	            thread from its FRAME rows (the threadRows hit-map
+//	            is state-conditional — collapsed: header + sneak;
+//	            expanded: header + the closing rollup rows) or the
+//	            ctrl+g baseline expands the thread to its merged
 //	            "[tool] …"/think rows 2-cell indented (long CONTENT
 //	            rows wrap with hanging continuations), then the ↳
 //	            sneak again as the "current task" line and a dim
@@ -53,7 +54,17 @@
 //	            expands/collapses all threads at once, /stop
 //	            force-collapses to the "✗ … ✗ stopped" header, and
 //	            while ≥1 thread is live a dim-italic "ctrl+g · view
-//	            subagents" hint row trails the last thread block;
+//	            subagents" hint row trails the last thread block.
+//	            USER turns longer than userFoldVisible rendered rows
+//	            FOLD to their head rows + a dim-italic "… +N more
+//	            lines · click to expand" hint (the 📎 count moves
+//	            onto the hint); a click on the hint — y-only hit-map
+//	            userFoldRows — expands the full body + a "… collapse"
+//	            trailer. Every viewport content line rides a
+//	            chatPadL-cell left inset with the wrap budget shrunk
+//	            chatPadL+chatPadR (contentW) — the transcript keeps
+//	            a 2-cell margin off both panel edges while the
+//	            divider/spinner/textarea chrome stays full width;
 //	            Kind "office" entries (the concierge's EvChatOffice seam)
 //	            render as INFO-cyan "office ›" markdown bubbles — a real
 //	            turn, streamed replace-by-ID like the boss, with a dim
@@ -113,6 +124,7 @@
 package panels
 
 import (
+	"fmt"
 	"image/color"
 	"runtime"
 	"strings"
@@ -147,6 +159,25 @@ const (
 	defaultBossShort = "boss"
 
 	textareaH = 3 // rows of multiline input at the bottom of the tab
+
+	// userFoldVisible — a user bubble whose WRAPPED body exceeds this many
+	// rendered rows collapses to its first userFoldVisible rows plus a
+	// dim-italic "… +N more lines · click to expand" hint row (the hint
+	// toggles on click; the expanded bubble trails a "… collapse" row
+	// instead). The count is taken POST-fold (wrap + refold), i.e. over
+	// the rows the screen would actually draw.
+	userFoldVisible = 3
+
+	// chatPadL / chatPadR — the chat transcript's inside gutters: the
+	// viewport indents every content line chatPadL cells (applied
+	// viewport-locally by setConversation), and every transcript wrap/clip
+	// budget runs contentW() = w − chatPadL − chatPadR so bubbles keep a
+	// chatPadR-cell margin off the right edge too. Rows OUTSIDE the
+	// transcript viewport — the divider, the typing/loading rows, the
+	// chips, the @ picker, the slash popover and the textarea — keep the
+	// full panel width.
+	chatPadL = 2
+	chatPadR = 2
 )
 
 // thinkKind / toolKind / wtoolKind / questionKind / diffKind / officeFrom /
@@ -372,11 +403,10 @@ type Chat struct {
 	// agent on the floor / click a thread's header row — a set entry
 	// wins the ctrl+g default outright: every thread is COLLAPSED BY
 	// DEFAULT, live ones included); threadRows maps rendered content
-	// line → agent name for the header row + the ↳ sneak row (the
-	// mouse hit lookup, in BOTH collapsed and expanded states —
-	// each is a SINGLE clipPlain-elided row, never a wrapped block;
-	// expanded tool rows and the closing summary never register, so
-	// they can't toggle).
+	// line → agent name, STATE-CONDITIONALLY: collapsed registers the
+	// header row + the ↳ sneak row, expanded registers the header row +
+	// the closing summary row(s) — the whole bubble's frame rows toggle,
+	// the internal tool/think rows and the expanded sneak pass through.
 	// threadStop holds the /stop markers: a stopped thread force-collapses
 	// and its header reads "✗ … · stopped" until an explicit expand
 	// re-opens the rows. threadExpandOrder is the expansion-ORDER ledger
@@ -386,6 +416,18 @@ type Chat struct {
 	threadRows        map[int]string
 	threadStop        map[string]bool
 	threadExpandOrder []string
+
+	// userExpanded / userFoldRows — the user-bubble fold pair, twins of
+	// threadExpand/threadRows: a user bubble whose wrapped body exceeds
+	// userFoldVisible rows renders collapsed (head rows + a clickable
+	// "… +N more lines · click to expand" hint at the hanging indent);
+	// userExpanded holds the explicit per-bubble state (default folded),
+	// keyed by userFoldKey (message ID, timestamp fallback); userFoldRows
+	// is the mouse hit-map, rebuilt every render — the folded bubble's
+	// hint row and the expanded bubble's "… collapse" row ONLY (body
+	// rows never register), each mapping its content row → the fold key.
+	userExpanded map[string]bool
+	userFoldRows map[int]string
 
 	diffCache map[string]diffCacheEntry // parsed+hilighted diff rows by msg ID
 }
@@ -500,6 +542,31 @@ func (c *Chat) ExpandThread(agent string, expanded bool) {
 // (what renderWorkerGroup shows for it right now).
 func (c *Chat) ToggleThread(agent string) {
 	c.ExpandThread(agent, !c.threadExpandedNow(agent))
+}
+
+// userFoldKey — one user bubble's fold-state key: the message's stable ID
+// ("user-N" server-side), falling back to its send timestamp so an
+// empty-ID message still folds without sharing a key with every other
+// empty-ID message.
+func userFoldKey(m state.ChatMsg) string {
+	if m.ID != "" {
+		return m.ID
+	}
+	return fmt.Sprintf("at-%d", m.At)
+}
+
+// ToggleUserFold flips ONE user bubble between its folded shape (head
+// rows + the "… +N more lines · click to expand" hint) and its expanded
+// shape (the full body + a "… collapse" trailer) — the ToggleThread twin
+// for user turns: it mutates RENDER state only, so it rides forceRender
+// exactly like the thread toggle (the SetState revision gate compares
+// state, not expansion — without the force the click would look dead).
+func (c *Chat) ToggleUserFold(id string) {
+	if c.userExpanded == nil {
+		c.userExpanded = map[string]bool{}
+	}
+	c.userExpanded[id] = !c.userExpanded[id]
+	c.forceRender()
 }
 
 // threadExpandedNow — the thread's effective expansion under the same
@@ -640,10 +707,40 @@ func (c *Chat) collapseLastThread() bool {
 // via PermClick) so a click can never leak through to a thread
 // underneath. A hit on a worker thread's HEADER row (the spinner/✓/✗
 // title line — a single clipPlain-elided row, no wrapped continuations)
-// or its ↳ sneak row — collapsed or expanded, the rows threadRows
-// registers — toggles that agent's thread.
+// toggles that agent's thread — collapsed, the ↳ sneak row toggles too;
+// expanded, the CLOSING summary rows toggle instead (whole-bubble means
+// clicking any frame row of the bubble — its head or its tail — folds
+// it back). A hit on a user bubble's fold row ("… +N more lines · click
+// to expand" / "… collapse") toggles that bubble's fold. All lookups are
+// y-only: the row maps carry full rows, no x math.
 // Returns true when the click was claimed.
 func (c *Chat) ClickRow(x, y int) bool {
+	if c.cardClaims(x, y) {
+		return true // the floating card swallows every click in its frame
+	}
+	if y < 0 || y >= c.vp.Height() {
+		return false
+	}
+	line := y + c.vp.YOffset()
+	if name, ok := c.threadRows[line]; ok {
+		c.ToggleThread(name)
+		return true
+	}
+	// the user-bubble fold rows: a collapsed bubble's "… +N more lines"
+	// hint expands it, an expanded bubble's "… collapse" trailer folds it
+	// back — y-only lookup, same row-coordinate seam as the threads
+	if id, ok := c.userFoldRows[line]; ok {
+		c.ToggleUserFold(id)
+		return true
+	}
+	return false
+}
+
+// cardClaims reports whether the chat-content point (x, y) lands inside a
+// floating card's frame (question popover, permission popover, /session
+// picker) — those clicks belong to the card path, NOT to thread/fold
+// toggles and NOT to text selection.
+func (c *Chat) cardClaims(x, y int) bool {
 	if c.question != nil {
 		top, left, cardW, rows, _ := c.questCardGeom()
 		if y >= top && y < top+len(rows) && x >= left && x < left+cardW {
@@ -662,16 +759,7 @@ func (c *Chat) ClickRow(x, y int) bool {
 			return true // the picker card swallows clicks (keys-only picker)
 		}
 	}
-	if y < 0 || y >= c.vp.Height() {
-		return false
-	}
-	line := y + c.vp.YOffset()
-	name, ok := c.threadRows[line]
-	if !ok {
-		return false
-	}
-	c.ToggleThread(name)
-	return true
+	return false
 }
 
 // SetDiffsExpanded shows diffs expanded (on) or collapsed (off) —
@@ -907,10 +995,24 @@ func (c *Chat) SetShowTools(on bool) {
 // ShowTools reports whether tool one-liners render.
 func (c *Chat) ShowTools() bool { return c.showTools }
 
+// setConversation posts the rendered transcript into the viewport through
+// the chatPadL left inset: every content line rides the gutter (the right
+// gutter falls out of the contentW wrap budget, not padding), while rows
+// outside the viewport — divider, typing/loading rows, chips, pickers,
+// textarea — keep the full panel width.
+func (c *Chat) setConversation(content string) {
+	pad := strings.Repeat(" ", chatPadL)
+	lines := strings.Split(content, "\n")
+	for i := range lines {
+		lines[i] = pad + lines[i]
+	}
+	c.vp.SetContent(strings.Join(lines, "\n"))
+}
+
 // forceRender re-renders the conversation outside the SetState revision gate
 // (toggles change the pixels, not the state).
 func (c *Chat) forceRender() {
-	c.vp.SetContent(c.renderConversation())
+	c.setConversation(c.renderConversation())
 	if c.follow {
 		c.vp.GotoBottom()
 	}
@@ -988,8 +1090,10 @@ func (c *Chat) SetSize(w, h int) {
 	c.vp.SetHeight(vpH)
 	c.ta.SetWidth(w)
 	// cellWidth, not len: bossPrefix's "›" is 3 bytes but 1 cell — the
-	// byte count would rob the wrap of 2 columns.
-	c.mdWidth = w - cellWidth(bossPrefix) - 1
+	// byte count would rob the wrap of 2 columns. The budget runs off
+	// contentW(): the transcript pads chatPadL/chatPadR cells inside the
+	// viewport (setConversation), so bubbles wrap tighter by both.
+	c.mdWidth = c.contentW() - cellWidth(bossPrefix) - 1
 	if c.mdWidth < 10 {
 		c.mdWidth = 10
 	}
@@ -1000,6 +1104,13 @@ func (c *Chat) SetSize(w, h int) {
 // single-cell glyphs; lipgloss.Width on a styled/cursed string belongs to
 // the ansi-aware foldStyledLines instead).
 func cellWidth(s string) int { return len([]rune(s)) }
+
+// contentW — the transcript's text budget: the panel width minus the
+// chatPadL/chatPadR insets. Every transcript width source (markdown wrap,
+// tool one-liners, question bubbles, diff rows, thread header/sneak/
+// expanded/closing/wthink clips) wraps or clips to this so the padded
+// viewport keeps its right gutter.
+func (c *Chat) contentW() int { return c.w - chatPadL - chatPadR }
 
 // SetState implements Tab: keeps the latest chat slice, re-renders the
 // conversation when it changed, and keeps scroll pinned to the bottom.
@@ -1111,7 +1222,7 @@ func (c *Chat) SetState(st state.OfficeState) {
 		c.SetSize(c.w, c.h) // typing row appears/disappears
 	}
 
-	c.vp.SetContent(c.renderConversation())
+	c.setConversation(c.renderConversation())
 	if c.follow {
 		c.vp.GotoBottom()
 	}
@@ -1537,7 +1648,8 @@ func (c *Chat) renderConversation() string {
 	visible := make([]state.ChatMsg, 0, len(c.chat))
 	var workers []workerGroup
 	workerIdx := map[string]int{}
-	c.threadRows = map[int]string{} // mouse hit-map, rebuilt every render
+	c.threadRows = map[int]string{}   // mouse hit-map, rebuilt every render
+	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
 	for _, m := range c.chat {
 		if m.Kind == wtoolKind || m.Kind == wthinkKind {
 			// /tools off hides the whole workers region; /thinking off
@@ -1594,6 +1706,16 @@ func (c *Chat) renderConversation() string {
 			break
 		}
 	}
+	// topShift — the row-count delta the final TrimLeft eats when a thread
+	// block TOPS the timeline: its "\n\n" lead survives into b here (so a
+	// strings.Count on b rides 2 high) but never reaches the screen.
+	// renderWorkerGroup's b.Len()==0 lead covers the topping block itself;
+	// row registrations of LATER items (the user-bubble fold map) correct
+	// by the same 2.
+	topShift := 0
+	if len(items) > 0 && items[0].Group >= 0 {
+		topShift = 2
+	}
 	for i, item := range items {
 		if item.Group >= 0 {
 			// a subagent thread joins the flow HERE, at its timeline
@@ -1622,7 +1744,7 @@ func (c *Chat) renderConversation() string {
 			// never burst mid-glyph by the vp soft-wrap: the first row
 			// flows tight against the bubble above (no leading indent),
 			// continuations hang under the tool text start.
-			toolW := c.w - 1
+			toolW := c.contentW() - 1
 			indent := strings.Repeat(" ", cellWidth(toolWrapPrefix))
 			lines := foldStyledRows(renderTool(m), toolW, toolW-cellWidth(toolWrapPrefix))
 			b.WriteString(lines[0])
@@ -1642,12 +1764,40 @@ func (c *Chat) renderConversation() string {
 		case m.From == "user":
 			prefix := chrome.Fg(chrome.Info, userPrefix)
 			lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
+			attachSuffix := ""
 			if names, ok := state.ParseAttachMeta(m.Meta); ok && len(names) > 0 {
 				// the backend's chat-user echo carries the attachment
 				// names in Meta — history shows the dim " · 📎 N" suffix
-				lines[len(lines)-1] += chrome.DimText.Render(" · 📎 " + itoa(len(names)))
+				attachSuffix = chrome.DimText.Render(" · 📎 " + itoa(len(names)))
+				lines[len(lines)-1] += attachSuffix
 			}
 			lines = foldStyledLines(lines, c.mdWidth+1)
+			if len(lines) > userFoldVisible {
+				// a LONG user turn folds to its head rows + a one-row
+				// dim-italic hint (a click there expands it — the
+				// userFoldRows hit-map carries exactly that row, body
+				// rows never); expanded, the bubble keeps every row and
+				// trails a clickable "… collapse" instead. The 📎 suffix
+				// leaves the body for the hint row while folded (the
+				// expanded shape keeps the pre-fold rendering: suffix on
+				// the last body row). Hint/trailer are SINGLE clipped
+				// rows (the thread header's contract): an overflowing
+				// row would burst mid-word in the vp soft-wrap and break
+				// every content-row click map.
+				key := userFoldKey(m)
+				startRow := strings.Count(b.String(), "\n") - topShift
+				hintW := c.contentW() - cellWidth(userPrefix) // the hanging indent eats the head
+				if c.userExpanded[key] {
+					c.userFoldRows[startRow+len(lines)] = key
+					lines = append(lines, chrome.DimText.Italic(true).Render(clipPlain("… collapse", hintW)))
+				} else {
+					hint := chrome.DimText.Italic(true).Render(clipPlain(
+						"… +"+itoa(len(lines)-userFoldVisible)+" more lines · click to expand",
+						hintW-cellWidth(ansi.Strip(attachSuffix)))) + attachSuffix
+					c.userFoldRows[startRow+userFoldVisible] = key
+					lines = append(lines[:userFoldVisible], hint)
+				}
+			}
 			writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(userPrefix)), lines)
 		default:
 			prefix := chrome.Fg(chrome.Accent, bossPrefix)
@@ -1815,7 +1965,7 @@ func (c *Chat) renderQuestion(b *strings.Builder, m state.ChatMsg) {
 	indent := strings.Repeat(" ", cellWidth(qPrefix))
 	// cellWidth, not len — "›" is 3 bytes but 1 cell; the byte count would
 	// shave 2 columns off the wrap budget and misalign the hanging indent
-	wrapW := c.w - cellWidth(qPrefix) - 1 // prefix + panel padding
+	wrapW := c.contentW() - cellWidth(qPrefix) - 1 // prefix + transcript insets
 	lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, wrapW), "\n"), "\n")
 	for i := range lines {
 		lines[i] = chrome.QuestionText.Render(lines[i])
@@ -1869,7 +2019,7 @@ func (c *Chat) renderDiff(b *strings.Builder, m state.ChatMsg) {
 	case diffOpDel:
 		opWord = "Delete"
 	}
-	b.WriteString(clipStyled(chrome.DimText.Bold(true), "← "+opWord+" "+path, c.w))
+	b.WriteString(clipStyled(chrome.DimText.Bold(true), "← "+opWord+" "+path, c.contentW()))
 
 	maxNum := 0
 	for _, r := range rows {
@@ -1889,7 +2039,7 @@ func (c *Chat) renderDiff(b *strings.Builder, m state.ChatMsg) {
 	}
 	for i := range shown {
 		b.WriteString("\n")
-		b.WriteString(renderDiffRow(shown[i], gutterW, c.w))
+		b.WriteString(renderDiffRow(shown[i], gutterW, c.contentW()))
 	}
 	if more > 0 {
 		b.WriteString("\n" + strings.Repeat(" ", gutterW+3) +

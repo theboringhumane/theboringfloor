@@ -83,7 +83,7 @@ func newBackTestChat(t *testing.T, bossTurns, w, h int) *Chat {
 
 // tbAssertTwoCollapsed pins BOTH completed threads collapsed at the state
 // seam AND in the render: both "✓ Developer Task — <task>" headers with
-// the dim trailing rollup (single row — Y's fits whole at 60 cols, X's
+// the dim trailing rollup (single row — Y's fits whole at 64 cols, X's
 // longer one clips inside its own row) + their shaped BARE ↳ sneaks on
 // screen, no expanded ("[tool] ") row anywhere. Use only on the SHORT
 // fixture — a padded (scrollable) conversation keeps the early thread
@@ -95,7 +95,7 @@ func tbAssertTwoCollapsed(t *testing.T, c *Chat, walk string) {
 	view := ansi.Strip(c.View())
 	for _, want := range []string{
 		"✓ Developer Task — Fix Portuguese proof",
-		"✓ Developer Task — Wire the tests (· 2 tool calls ✓ done)", // Y's rollup fits the single row at 60 cols
+		"✓ Developer Task — Wire the tests (· 2 tool calls ✓ done)", // Y's rollup fits the single row at 64 cols
 		"  ↳ Edit proof.go", // the reducer's "edit · proof.go", shaped
 		"  ↳ Bash go test",  // the reducer's "bash · go test", shaped
 	} {
@@ -113,7 +113,7 @@ func tbAssertTwoCollapsed(t *testing.T, c *Chat, walk string) {
 // collapses Y and leaves X expanded (state + render); the SECOND esc
 // collapses X — both threads back to their collapsed summaries.
 func TestThreadBackEscCollapsesMostRecentFirst(t *testing.T) {
-	c := newBackTestChat(t, 4, 60, 30)
+	c := newBackTestChat(t, 4, 64, 30)
 	tbAssertTwoCollapsed(t, c, "[]")
 
 	// expand X, then Y — Y is the most recently expanded
@@ -128,7 +128,7 @@ func TestThreadBackEscCollapsesMostRecentFirst(t *testing.T) {
 	tbAssertExpanded(t, c, "tekton-2", false, "[X,Y] --esc--> [X]")
 	tbAssertExpanded(t, c, "tekton-1", true, "[X,Y] --esc--> [X]")
 	view := ansi.Strip(c.View())
-	fmt.Println("---- CHAT PANEL (60 cols, after esc #1: X expanded, Y collapsed) ----")
+	fmt.Println("---- CHAT PANEL (64 cols, after esc #1: X expanded, Y collapsed) ----")
 	fmt.Print(view)
 	fmt.Println("---- END PANEL ----")
 	if !strings.Contains(view, "  [tool] Read proof.go ✓") {
@@ -150,7 +150,7 @@ func TestThreadBackEscCollapsesMostRecentFirst(t *testing.T) {
 // TestThreadBackUpCollapsesMostRecentFirst: the same backstack walk with
 // the up-arrow — the FIRST ↑ collapses Y only, the SECOND ↑ collapses X.
 func TestThreadBackUpCollapsesMostRecentFirst(t *testing.T) {
-	c := newBackTestChat(t, 4, 60, 30)
+	c := newBackTestChat(t, 4, 64, 30)
 	tbAssertTwoCollapsed(t, c, "[]")
 
 	// expand X, then Y — Y is the most recently expanded
@@ -188,7 +188,7 @@ func TestThreadBackFallThroughWhenNoExpandedThreads(t *testing.T) {
 	// offset to move — collapse claims are made at the state seam here,
 	// since the early thread's summary legitimately lives above the
 	// viewport window.)
-	c := newBackTestChat(t, 16, 60, 24)
+	c := newBackTestChat(t, 16, 64, 24)
 	tbAssertExpanded(t, c, "tekton-1", false, "[]")
 	tbAssertExpanded(t, c, "tekton-2", false, "[]")
 	if !c.follow {
@@ -217,7 +217,7 @@ func TestThreadBackFallThroughWhenNoExpandedThreads(t *testing.T) {
 	}
 
 	// ---- esc: falls through, panel-state consistent ----
-	c2 := newBackTestChat(t, 4, 60, 30)
+	c2 := newBackTestChat(t, 4, 64, 30)
 	tbAssertTwoCollapsed(t, c2, "[]")
 	before := ansi.Strip(c2.View())
 	follow0 := c2.follow
