@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronDown, Menu, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -21,13 +21,36 @@ const solutions = [
   { name: 'Late Nights', description: 'The lights stay on so you do not have to' },
 ]
 
-export function SiteHeader() {
+export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
   const [productsOpen, setProductsOpen] = useState(false)
   const [solutionsOpen, setSolutionsOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [pastHero, setPastHero] = useState(false)
+
+  useEffect(() => {
+    if (!seamless) return
+    const hero = document.getElementById('hero')
+    if (!hero) return
+    const io = new IntersectionObserver(
+      ([e]) => setPastHero(!e.isIntersecting),
+      { threshold: 0 },
+    )
+    io.observe(hero)
+    return () => io.disconnect()
+  }, [seamless])
+
+  const solid = !seamless || pastHero || mobileOpen
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+    <>
+    <header
+      className={cn(
+        'fixed top-0 z-50 w-full transition-[background-color,border-color,backdrop-filter] duration-300',
+        solid
+          ? 'border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70'
+          : 'border-b border-transparent bg-transparent',
+      )}
+    >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
         <div className="flex items-center gap-2 lg:gap-4">
           <img src="/imgs/logo.jpg" alt="theboringoffice" className="h-8 w-8" />
@@ -135,6 +158,7 @@ export function SiteHeader() {
         className={cn(
           'overflow-hidden border-t border-border lg:hidden',
           mobileOpen ? 'max-h-96' : 'max-h-0 border-t-0',
+          !solid && 'border-transparent',
         )}
       >
         <nav className="flex flex-col gap-1 px-6 py-4 font-mono text-sm uppercase tracking-wider text-muted-foreground">
@@ -166,5 +190,7 @@ export function SiteHeader() {
         </nav>
       </div>
     </header>
+    {!seamless && <div className="h-16" aria-hidden />}
+    </>
   )
 }

@@ -10,7 +10,7 @@ import { AgentsNeedAction } from '@/components/home/agents-need-action'
 export default function Page() {
   return (
     <>
-      <SiteHeader />
+      <SiteHeader seamless />
       <main>
         <Hero />
         <AgentsNeedAction />

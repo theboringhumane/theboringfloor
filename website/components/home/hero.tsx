@@ -7,11 +7,12 @@ export function Hero() {
 
   return (
     <section
+      id="hero"
       className="relative min-h-[70svh] overflow-hidden bg-[#0b0b0b] text-white"
     >
       <ShaderBackground className="absolute inset-0 opacity-95" />
       <div className="absolute inset-0 bg-[#0b0b0b]/35" />
-      <div className="relative mx-auto flex min-h-[70svh] max-w-7xl flex-col items-center justify-center px-6 pb-16 pt-20 text-center">
+      <div className="relative mx-auto flex min-h-[70svh] max-w-7xl flex-col items-center justify-center px-6 pb-16 pt-24 text-center">
         <h1 className="max-w-3xl font-sans text-3xl font-medium leading-[1.05] tracking-[-0.04em] sm:text-4xl md:text-5xl lg:text-5xl">
           Ship more with agents,
           <br />
