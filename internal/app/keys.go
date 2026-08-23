@@ -1,9 +1,10 @@
 // keys.go — the app's keymap, in one place so the statusbar's hint segment
-// and the actual key handling can never drift apart. ctrl+q quits from
-// EVERYWHERE (q/ctrl+c quit only outside the chat textarea and the terminal
-// tab — inside the terminal they go to the shell; ctrl+c is a real SIGINT
-// there). tab/shift+tab cycle panels, 1..6 jump, ↑↓/pgup/pgdn/wheel scroll,
-// enter sends chat.
+// and the actual key handling can never drift apart. ctrl+q QUIT-ARMS from
+// EVERYWHERE — the first press toasts the hint bar, the second press inside
+// quitArmWindow quits (q/ctrl+c stay single-press, and only outside the
+// chat textarea and the terminal tab — inside the terminal they go to the
+// shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle panels, 1..6
+// jump, ↑↓/pgup/pgdn/wheel scroll, enter sends chat.
 package app
 
 import (
@@ -17,6 +18,12 @@ import (
 // typing goes to the REAL shell; the only app-kept keys are the tab
 // switches, ctrl+o (release the focus badge back to chat) and ctrl+q.
 const termHint = "typing → shell · 1-6/tab panels · ctrl+o release · ctrl+q quit"
+
+// quitArmToast — the high-visibility statusbar line swapped in while a
+// ctrl+q arm is live (the FIRST press arms instead of quitting; the
+// second press inside quitArmWindow quits). Frozen copy — pinned by
+// quit_arm_test.go.
+const quitArmToast = "ctrl+q again: quit the office"
 
 // KeyMap — global app bindings.
 type KeyMap struct {

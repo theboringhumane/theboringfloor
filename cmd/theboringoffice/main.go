@@ -9,6 +9,11 @@
 //	                                /session in-app prints the id)
 //	theboringoffice --autokill 6s   exit after duration (CI / screenshot runs)
 //	theboringoffice --version       print version and exit
+//
+// In-app, a /session picker accept swaps sessions by QUIT + EXEC-REPLACE:
+// the app quits cleanly (terminal reaped, session persisted, serve child
+// stopped) and this process syscall.Exec's the same binary as
+// `theboringoffice -s <id>` (see the post-Run block below).
 package main
 
 import (
@@ -16,6 +21,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"syscall"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -146,12 +153,53 @@ func main() {
 	if _, err := p.Run(); err != nil {
 		model.CloseTerminal() // external p.Quit() bypasses Update — reap the PTY
 		model.PersistSession()
+		_ = b.Stop() // the serve child dies with us — never leaked on fatal
 		fmt.Fprintf(os.Stderr, "[theboringoffice] fatal: %v\n", err)
 		os.Exit(1)
 	}
+	// Clean-exit order is BINDING: terminal reaped → session persisted →
+	// serve child killed (BEFORE any exec below — an exec'd process can
+	// never run a deferred Stop).
 	model.CloseTerminal()
 	model.PersistSession()
 	_ = b.Stop()
+
+	// /session picker accept = quit + exec-replace (the app recorded the
+	// intent via ExecRequest): relaunch the same binary pinned to the
+	// accepted session — the swap rides the boot's resolvePrimary instead
+	// of an in-app re-anchor.
+	if id := model.ExecRequest(); id != "" {
+		binary, err := os.Executable()
+		if err != nil {
+			binary, err = exec.LookPath(os.Args[0]) // os.Executable miss → PATH twin
+		}
+		if err == nil {
+			argv := []string{"theboringoffice", "-s", id}
+			// Carry ONLY the attach target (+ the RESOLVED theme) forward;
+			// --autokill and --demo are NEVER carried (the picker is
+			// live-only).
+			if *server != "" {
+				argv = append(argv, "--server", *server)
+			}
+			if name := chrome.CurrentTheme().Name; name != "" {
+				argv = append(argv, "--theme", name)
+			}
+			err = syscall.Exec(binary, argv, os.Environ())
+		}
+		// syscall.Exec only returns on failure (a failed lookup lands here
+		// too): leave the member the exact resume command, exit 0 normally.
+		if err != nil {
+			fmt.Printf("session %s — resume: theboringoffice -s %s\n", id, id)
+		}
+		return
+	}
+
+	// Normal clean exit (every quit way): hand the member the exact resume
+	// line for THIS office's primary. Empty (demo, unresolved, attach-mode
+	// with none) prints NOTHING — an id is never invented.
+	if id := model.PrimarySessionID(); id != "" {
+		fmt.Printf("session %s — resume: theboringoffice -s %s\n", id, id)
+	}
 }
 
 func mustGetwd() string {

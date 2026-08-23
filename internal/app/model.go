@@ -239,6 +239,13 @@ type Model struct {
 	// stays, statusbar minimal; any key exits. Never persisted (the ruling:
 	// /zen is a focus session, not a preference).
 	zen bool
+
+	// quitArmAt — the ctrl+q double-press arm (quitArmWindow): set by the
+	// first press, cleared by its own expiry tick (armClearMsg), by ANY
+	// other key press, or by the quitting second press itself. While set,
+	// the statusbar hint (and the zen bar's right segment) swap to the
+	// warn-class quitArmToast — see hintLine.
+	quitArmAt time.Time
 	// compactLive — the /compact session override: 0 = inherit
 	// brain.json ui.compact, 1 = compact on, 2 = normal on. /mode
 	// normal|compact writes cfg.UI.Compact (persisted) and clears this.
@@ -346,6 +353,12 @@ type Model struct {
 	// freshness gate (deliberate resume semantics); "" = the normal
 	// restore path.
 	resumePin string
+
+	// execSession — the /session picker accept's exec-replace intent:
+	// accept = quit + relaunch as `theboringoffice -s <id>` (recorded by
+	// acceptSessionPick in session_picker.go, read by cmd's post-Run path
+	// via ExecRequest). "" = a normal quit, no relaunch.
+	execSession string
 
 	// proj — cached project/git-branch info feeding the top bar right
 	// segment (internal/projinfo; TTL-bounded, exec at most once per TTL).
@@ -577,6 +590,10 @@ type questionLaterMsg struct{}
 // panel's stop seam; handled exactly like /stop (abort + clean unwind).
 // The ferry keeps the model value copy in Update the single writer.
 type stopWorkMsg struct{}
+
+// armClearMsg — the ctrl+q quit arm's own expiry tick landed (scheduled
+// with quitArmWindow by the arming press): retires the arm + its toast.
+type armClearMsg struct{}
 
 // Option — a functional New option (additive: existing New(b, cfg)
 // callers compile untouched).
@@ -980,7 +997,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.handleSessionList(msg)
 	case sessionPickMsg:
 		m.frameNonce++
-		m.acceptSessionPick(msg.id)
+		if cmd := m.acceptSessionPick(msg.id); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	case sessionPickCancelMsg:
 		// esc cancels with zero side effects: only the card closes.
 		m.frameNonce++
@@ -1139,6 +1158,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// idle-safe: nothing runs → the abort seam no-ops, the unwind is
 		// empty and only the status line reports like /stop would.
 		m.stopWork()
+	case armClearMsg:
+		// the quit arm's expiry tick landed: a still-live arm old enough
+		// retires (a YOUNGER re-arm survives — its own tick owns its
+		// expiry, this landing just no-ops).
+		if !m.quitArmAt.IsZero() && time.Since(m.quitArmAt) >= quitArmWindow {
+			m.quitArmAt = time.Time{}
+			m.frameNonce++ // the toast retires — the hint bar repaints
+		}
 	case state.Event:
 		cmds = append(cmds, m.applyEvent(msg))
 	default:
@@ -1203,6 +1230,12 @@ func (m Model) Frame() string {
 		mid = lipgloss.NewStyle().Width(m.width).Height(m.middleH).
 			Render(office.CachedStyled(m.st, m.width, m.middleH))
 		bot = chrome.StatusBarZen(m.st, m.width)
+		if !m.quitArmAt.IsZero() {
+			// the ctrl+q arm's toast is the zen bar's right segment too —
+			// a double-press quit needs its visible affordance under /zen.
+			bot = chrome.StatusBarZenHint(m.st, m.width,
+				chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" "))
+		}
 	} else if m.mobile() {
 		// mobile (auto, width < mobileMaxCols): the middle stacks
 		// VERTICALLY — a compact floor band on top, the active panel
@@ -1214,22 +1247,14 @@ func (m Model) Frame() string {
 		side := lipgloss.NewStyle().Width(m.width).Height(m.middleH - bandH).
 			Render(m.tabs.View())
 		mid = lipgloss.JoinVertical(lipgloss.Left, floor, side)
-		hint := m.keys.HintLine()
-		if m.terminalActive() {
-			hint = termHint
-		}
-		bot = chrome.StatusBar(m.st, hint, len(m.queue), m.width)
+		bot = chrome.StatusBar(m.st, m.hintLine(), len(m.queue), m.width)
 	} else {
 		floor := lipgloss.NewStyle().Width(m.floorW).Height(m.middleH).
 			Render(office.CachedStyled(m.st, m.floorW, m.middleH))
 		side := lipgloss.NewStyle().Width(m.sidebar).Height(m.middleH).
 			Render(m.tabs.View())
 		mid = lipgloss.JoinHorizontal(lipgloss.Top, floor, side)
-		hint := m.keys.HintLine()
-		if m.terminalActive() {
-			hint = termHint
-		}
-		bot = chrome.StatusBar(m.st, hint, len(m.queue), m.width)
+		bot = chrome.StatusBar(m.st, m.hintLine(), len(m.queue), m.width)
 	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, top, mid, bot)
 	// The /model picker splices over the COMPOSED frame (app-level float —
@@ -1244,24 +1269,63 @@ func (m Model) Frame() string {
 	return frame
 }
 
+// hintLine — the statusbar's hint segment for THIS frame: the ctrl+q
+// arm's HIGH-VISIBILITY toast while an arm is live (chrome's warn class
+// on the bar background), the terminal hint while the shell tab is
+// focused, else the static keymap line. keys.HintLine is a free function
+// with a frozen signature — the armed/terminal swap happens HERE, so the
+// hint and the key handling still can't drift apart.
+func (m Model) hintLine() string {
+	if !m.quitArmAt.IsZero() {
+		return chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" ")
+	}
+	if m.terminalActive() {
+		return termHint
+	}
+	return m.keys.HintLine()
+}
+
+// quitArmWindow — the ctrl+q double-press window (the chat panel's
+// dblEscWindow pattern applied to the quit path): the FIRST press only
+// arms — the hint bar swaps to the warn-class quitArmToast — and the
+// second press inside the window quits via the existing persist + reap +
+// tea.Quit path. A stale first press can't pair: it re-opens a fresh arm.
+const quitArmWindow = 1500 * time.Millisecond
+
 // handleKey implements the global keymap; unclaimed keys go to the tabs.
 //
 // The terminal tab has the tightest claim: when it is focused the ONLY keys
 // the app keeps are the tab switches (1..6/tab/shift+tab), ctrl+o (the
-// release-the-focus badge back to chat) and ctrl+q — every other key, q and
-// ctrl+c included, forwards to the REAL shell (term maps ctrl+c to 0x03 →
-// SIGINT of the shell's foreground process, not an app quit).
+// release-the-focus badge back to chat) and ctrl+q (double-press to quit)
+// — every other key, q and ctrl+c included, forwards to the REAL shell
+// (term maps ctrl+c to 0x03 → SIGINT of the shell's foreground process,
+// not an app quit).
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	chatActive := m.tabs.ActiveIndex() == 0
 	termActive := m.terminalActive()
 
+	// ANY other key press clears a pending ctrl+q arm (its toast retires
+	// on the next render via the keypress frameNonce bump).
+	if key != "ctrl+q" && !m.quitArmAt.IsZero() {
+		m.quitArmAt = time.Time{}
+	}
+
 	switch {
 	case key == "ctrl+q":
-		// app quit works EVERYWHERE — terminal focus included
-		m.persistOfficeSession(true) // final SYNC snapshot (live only)
-		m.closeTerminal()
-		return tea.Quit
+		// Double-press to quit (quitArmWindow), works EVERYWHERE — terminal
+		// focus included: the first press arms + toasts the hint bar and
+		// schedules its own expiry tick; the second press inside the window
+		// runs the existing quit path untouched.
+		now := time.Now()
+		if !m.quitArmAt.IsZero() && now.Sub(m.quitArmAt) <= quitArmWindow {
+			m.quitArmAt = time.Time{}
+			m.persistOfficeSession(true) // final SYNC snapshot (live only)
+			m.closeTerminal()
+			return tea.Quit
+		}
+		m.quitArmAt = now
+		return tea.Tick(quitArmWindow, func(time.Time) tea.Msg { return armClearMsg{} })
 	case m.zen:
 		// any key exits zen (transient fullscreen floor); the key does
 		// nothing else this press
@@ -1463,6 +1527,12 @@ func (m *Model) closeTerminal() {
 // intercepts tea.QuitMsg before Update, so an external p.Quit skips
 // handleKey — call CloseTerminal alongside to never leak a shell process).
 func (m *Model) CloseTerminal() { m.closeTerminal() }
+
+// ExecRequest — the /session picker accept's exec-replace intent: the
+// session id cmd/theboringoffice's post-Run path relaunches the binary with
+// (`theboringoffice -s <id>`). "" when the picker never accepted this run
+// (every other quit way leaves it empty).
+func (m Model) ExecRequest() string { return m.execSession }
 
 // LayoutInfo reports the computed frame geometry (uisshot --layout asserts).
 func (m Model) LayoutInfo() (width, height, sidebar, floor int) {

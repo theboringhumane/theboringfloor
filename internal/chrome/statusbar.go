@@ -40,8 +40,16 @@ func statusLineColor(line string) (c color.Color, dim bool) {
 // just the zen marker, the office clock and the exit hint (any key leaves
 // zen; ctrl+q quits the app).
 func StatusBarZen(st state.OfficeState, width int) string {
+	return StatusBarZenHint(st, width, OnBar(Dim, "any key exits · ctrl+q quits "))
+}
+
+// StatusBarZenHint — StatusBarZen with a caller-supplied right segment:
+// the ONE swap today is the ctrl+q arm's high-visibility toast (a
+// double-press quit needs its affordance under /zen too). The default
+// copy above is byte-identical to before — plain StatusBarZen is this
+// with it, verbatim.
+func StatusBarZenHint(st state.OfficeState, width int, right string) string {
 	left := OnBar(Dim, " zen · "+OfficeClock(st.Tick)+" ")
-	right := OnBar(Dim, "any key exits · ctrl+q quits ")
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1

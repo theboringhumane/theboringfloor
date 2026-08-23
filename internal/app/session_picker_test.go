@@ -4,11 +4,13 @@
 //	(b) buildSessionRows: ROOT sessions only, sorted by Updated desc,
 //	    the current session marked, blank titles fallen back to the
 //	    short id; relAge / shortSessionID tables;
-//	(c) ACCEPT: opening /session lists the rows, enter on another
-//	    session re-anchors the office LIVE (resume seam called with the
-//	    id), the surfaces clear NewOffice-style, the dim explicit-pin
-//	    notice lands, and the pin is persisted into session.json
-//	    IMMEDIATELY (next boot auto-restores);
+//	(c) ACCEPT = QUIT + EXEC-REPLACE: opening /session lists the rows,
+//	    enter on another session records the exec intent on the model
+//	    (ExecRequest), lands ONE dim "closing — relaunching …" transcript
+//	    row, persists the pin into session.json IMMEDIATELY (stamped with
+//	    the ACCEPTED id — next boot auto-restores) and returns a quit
+//	    cmd. ResumeOffice is NEVER called and the transcript is NOT
+//	    wiped;
 //	(d) ACCEPT-CURRENT: a no-op — "already on session <id>", no wipe,
 //	    no seam call;
 //	(e) BUSY BLOCK: with a boss turn in flight, accepting a DIFFERENT
@@ -154,7 +156,11 @@ func TestRelAgeAndShortID(t *testing.T) {
 	}
 }
 
-// (c) ACCEPT: resume seam hit, surfaces cleared, notice, immediate persist.
+// (c) ACCEPT = QUIT + EXEC-REPLACE: enter on another session captures the
+// exec intent, lands the frozen closing row, persists the ACCEPTED pin
+// NOW and returns a quit cmd — the resume seam is the capability gate
+// only (never CALLED), the live primary stays put (the relaunched
+// `-s <id>` boot swaps it), and the transcript is NOT wiped.
 func TestSessionPickerAcceptResumesLive(t *testing.T) {
 	scratchHome(t)
 	cwd, err := os.Getwd()
@@ -172,38 +178,46 @@ func TestSessionPickerAcceptResumesLive(t *testing.T) {
 	if m.chat == nil || !m.chat.SessionPickerOpen() {
 		t.Fatalf("the picker must be open after the listing lands")
 	}
+	// a pre-existing row proves "no wipe" across the accept.
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser,
+		Msg: state.ChatMsg{ID: "u1", From: "user", Kind: "user", Text: "keep me", At: 1}})
 
 	// down + enter: accept the OLDER session (the current one sits at sel 0).
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 
-	if len(b.resumed) != 1 || b.resumed[0] != "ses-beta-older" {
-		t.Fatalf("the accept must re-anchor via the resume seam, got %v", b.resumed)
+	if got := m.ExecRequest(); got != "ses-beta-older" {
+		t.Fatalf("the accept must record the exec intent for main's post-Run relaunch, got %q", got)
 	}
-	if b.primary != "ses-beta-older" {
-		t.Fatalf("the primary must swap live, got %q", b.primary)
+	if len(b.resumed) != 0 {
+		t.Fatalf("ResumeOffice is NEVER called under the exec-replace contract: %v", b.resumed)
+	}
+	if b.primary != "ses-alpha-new" {
+		t.Fatalf("the live primary must NOT move in-app (the relaunch swaps it), got %q", b.primary)
 	}
 	if m.chat.SessionPickerOpen() {
 		t.Fatalf("every accept path closes the picker")
 	}
-	// surfaces cleared + exactly ONE dim explicit-pin notice.
-	if len(m.st.Chat) != 1 {
-		t.Fatalf("the surfaces must clear to exactly the notice row, got %d entries", len(m.st.Chat))
+	if !chatHas(m, "keep me") {
+		t.Fatalf("the transcript is NOT wiped — quitting is the swap: %v", chatTexts(m))
 	}
+	// exactly ONE dim closing row — real history, persisted with the pin.
 	last := lastChat(t, m)
 	if last.From != "office" || last.Meta == "error" {
-		t.Fatalf("the accept notice must be a clean dim office notice: from=%q meta=%q", last.From, last.Meta)
+		t.Fatalf("the closing row must be a clean dim office notice: from=%q meta=%q", last.From, last.Meta)
 	}
-	if last.Text != "resumed session ses-beta-older (explicit pin) · /new for a fresh office" {
-		t.Fatalf("the notice text is frozen, got %q", last.Text)
+	if last.Text != "closing — relaunching as `theboringoffice -s ses-beta-older`" {
+		t.Fatalf("the closing row text is frozen, got %q", last.Text)
 	}
-	// the pin must be persisted NOW (the throttled loop would lag a quit).
+	// the pin must be persisted NOW, stamped with the ACCEPTED id (the
+	// throttled loop would lag the exec; stored id == boot pin is what
+	// lets the relaunched process hydrate right through the swap).
 	sf, ok := LoadSession(cwd)
 	if !ok {
 		t.Fatalf("the accept must persist session.json immediately")
 	}
 	if sf.PrimaryID != "ses-beta-older" {
-		t.Fatalf("session.json must carry the new pin (next boot auto-restores), got %q", sf.PrimaryID)
+		t.Fatalf("session.json must carry the ACCEPTED pin (next boot auto-restores), got %q", sf.PrimaryID)
 	}
 }
 
@@ -316,7 +330,12 @@ func TestSessionSlashFallbackListingError(t *testing.T) {
 	}
 }
 
-// (f-3) a resume-seam failure surfaces the error and wipes NOTHING.
+// (f-3) a resume-seam ERROR no longer gates the accept: under the
+// exec-replace contract the picker never CALLS ResumeOffice, so a
+// scripted failure on it changes nothing — the exec intent is captured,
+// the pin persisted, the quit cmd returned all the same. The server-side
+// verify rides the RELAUNCHED boot's resolvePrimary (it degrades open to
+// find-or-create on a miss — no hard failure, no fake resume).
 func TestSessionPickerResumeError(t *testing.T) {
 	scratchHome(t)
 	b := &sessBackend{
@@ -330,15 +349,18 @@ func TestSessionPickerResumeError(t *testing.T) {
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyDown}))
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 
-	last := lastChat(t, m)
-	if last.Meta != "error" || !strings.Contains(last.Text, "/session: could not resume ses-beta-older") {
-		t.Fatalf("a seam failure must be the red error line: meta=%q text=%q", last.Meta, last.Text)
+	if len(b.resumed) != 0 {
+		t.Fatalf("the seam is never consulted on accept: %v", b.resumed)
+	}
+	if got := m.ExecRequest(); got != "ses-beta-older" {
+		t.Fatalf("a stale resume error must not block the exec intent, got %q", got)
 	}
 	if !chatHas(m, "keep me") {
-		t.Fatalf("a failed accept must not wipe the transcript")
+		t.Fatalf("the transcript is NOT wiped — quitting is the swap")
 	}
-	if len(b.resumed) != 0 {
-		t.Fatalf("the failing call returns the error before the primary moves: %v", b.resumed)
+	last := lastChat(t, m)
+	if last.Meta == "error" || !strings.Contains(last.Text, "closing — relaunching as `theboringoffice -s ses-beta-older`") {
+		t.Fatalf("the accept lands the closing row (never a resume error): meta=%q text=%q", last.Meta, last.Text)
 	}
 }
 

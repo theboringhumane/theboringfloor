@@ -28,8 +28,10 @@
 //	ListSessions(ctx)   — /session picker: the server's ROOT sessions with
 //	                      message counts (session_picker.go; missing → the
 //	                      static summary + a dim unavailable note)
-//	ResumeOffice(id)    — /session picker accept: re-anchor the office to an
-//	                      EXISTING session LIVE (the boot pin's semantics)
+//	ResumeOffice(id)    — /session picker accept's CAPABILITY GATE (a
+//	                      with-it backend can be re-pinned by a boot). Kept
+//	                      as backend API; the picker itself swaps by QUIT +
+//	                      EXEC-REPLACE (session_picker.go).
 package app
 
 import (
@@ -320,6 +322,35 @@ func (m *Model) persistOfficeSession(force bool) {
 // path (cmd/theboringoffice calls it after p.Run() alongside b.Stop; harnesses may
 // call it directly). No-op in demo mode.
 func (m *Model) PersistSession() { m.persistOfficeSession(true) }
+
+// persistOfficePin — the /session accept's final write (the exec-replace
+// contract): persistOfficeSession's quit-path twin but stamped with the
+// ACCEPTED id as the primary. The plain call would stamp the backend's
+// STILL-current id (nothing moves server-side here — the swap is the
+// relaunched `-s <id>` boot's job); stored id == boot pin is exactly
+// what lets the new process hydrate the transcript (the closing notice
+// row included) straight through the swap. Same guarantees: live-only,
+// sessDir-guarded, synchronous + bounded.
+func (m *Model) persistOfficePin(primaryID string) {
+	if m.st.Mode != state.ModeLive || m.sessDir == "" {
+		return
+	}
+	m.sessLast = time.Now()
+	_ = SaveSession(m.sessDir, Snapshot(m.sessDir, primaryID, m.st)) // quit path — best effort, bounded + sync
+}
+
+// PrimarySessionID — the office's current primary ("boss") session id,
+// read off the primarySeamBackend seam exactly like sessionInfo does.
+// "" in demo mode, before the backend resolves one, or on seam-less
+// harness stubs — callers that PRINT a resume line must say nothing
+// then (an id is never invented). cmd/theboringoffice's clean-exit path
+// reads it.
+func (m *Model) PrimarySessionID() string {
+	if ps, ok := m.backend.(primarySeamBackend); ok {
+		return ps.PrimaryID()
+	}
+	return ""
+}
 
 // newOffice — the /new slash handler: clear the local surfaces, reset the
 // primary hold (ResetPrimary(true) semantics), then mint a BRAND-NEW

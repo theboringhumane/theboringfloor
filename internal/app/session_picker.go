@@ -6,12 +6,15 @@
 //     stalls. Rows = the server's ROOT sessions (parentID == ""), sorted
 //     by Updated desc, each showing title (fallback: short id), relative
 //     age, message count and short id, the attached one marked.
-//   - ACCEPT re-anchors the office LIVE: the resume seam swaps the
-//     primary server-side, the chat surfaces clear NewOffice-style,
-//     hydration is SKIPPED (the stored transcript belongs to another
-//     session — the boot pin's hydrate-skip guard, live), one dim
-//     "resumed session … (explicit pin)" notice lands, and the pin is
-//     persisted into session.json NOW so the next boot auto-restores it.
+//   - ACCEPT = QUIT + EXEC-REPLACE: the swap is NOT re-anchored in-app.
+//     The accept quits exactly like ctrl+q's own path (pin persisted
+//     NOW — stamped with the ACCEPTED id — terminal reaped, transcript
+//     row "closing — relaunching as `theboringoffice -s <id>`" recorded)
+//     and returns a quit cmd, so cmd's post-Run path can syscall.Exec
+//     the same binary as `theboringoffice -s <id>`. The RELAUNCHED
+//     boot's resolvePrimary verifies the id server-side (degrades open
+//     on a miss) and, stored id == boot pin, hydrates the transcript
+//     straight through the swap.
 //   - accepting the CURRENT session is a no-op ("already on session …");
 //     accepting a DIFFERENT one while the boss has ANY work in flight
 //     (pending placeholder/stream, delegation quiet state, parked
@@ -51,12 +54,13 @@ type sessionListBackend interface {
 	ListSessions(ctx context.Context) ([]state.SessionRow, error)
 }
 
-// officeResumeBackend — the picker's accept seam: attach the office to
-// an EXISTING server session LIVE (officeSpawnBackend's twin: no fresh
-// session minted — the pinned one wins, the boot pin's PrimaryOverride→
-// resolvePrimary semantics live). The id is verified server-side first;
-// a miss degrades open (the current primary stays seated) and returns
-// the error for the chat notice.
+// officeResumeBackend — the picker's accept CAPABILITY GATE: a backend
+// WITH it is a real live backend that the exec-replaced boot can pin a
+// session on; a backend WITHOUT it (demo, harness stubs) gets the static
+// summary fallback. The resume call itself is kept as backend API (its
+// own backend tests intact) but the picker no longer drives it — the
+// accept swaps by QUIT + EXEC-REPLACE, and the RELAUNCHED boot's
+// resolvePrimary does the server-side verify instead.
 type officeResumeBackend interface {
 	ResumeOffice(id string) error
 }
@@ -135,7 +139,18 @@ func (m *Model) handleSessionList(msg sessionListMsg) {
 
 // acceptSessionPick — the picker accepted a session id (the picker is
 // closed HERE — every accept path ends it, per the frozen contract).
-func (m *Model) acceptSessionPick(id string) {
+//
+// ACCEPT = QUIT + EXEC-REPLACE: the office swaps sessions by QUITTING,
+// not by re-anchoring in-app — the accept records the relaunch intent on
+// the model (execSession; cmd's post-Run path syscall.Exec's the binary
+// as `theboringoffice -s <id>`), persists the pin into session.json NOW
+// (sync, stamped with the ACCEPTED id), reaps the terminal and returns
+// the quit cmd. The resume seam is only the capability gate (a backend
+// without it can't be re-pinned by a boot — static summary fallback);
+// the accepted id is verified server-side by the RELAUNCHED boot's
+// resolvePrimary, which degrades open on a miss. The no-op / refusal /
+// fallback paths return nil — nothing to quit for.
+func (m *Model) acceptSessionPick(id string) tea.Cmd {
 	if m.chat != nil {
 		m.chat.CloseSessionPicker()
 	}
@@ -143,10 +158,10 @@ func (m *Model) acceptSessionPick(id string) {
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		current = ps.PrimaryID()
 	}
-	// accepting the CURRENT session is a harmless no-op (no wipe).
+	// accepting the CURRENT session is a harmless no-op (no quit).
 	if id == current {
 		m.notice("already on session " + id)
-		return
+		return nil
 	}
 	// BUSY BLOCK: a boss turn in flight — pending placeholder/stream, the
 	// delegation quiet state, or a parked question turn — must never lose
@@ -154,38 +169,27 @@ func (m *Model) acceptSessionPick(id string) {
 	// picker already closed, nothing else changes.
 	if hasPendingBoss(m.st) || m.st.BossDelegating || m.questionParked {
 		m.notice("boss is busy — /stop or wait, then /session again")
-		return
+		return nil
 	}
 	// a backend that can list but not re-anchor: the static fallback —
 	// same graceful-degradation rule as the missing list seam.
-	rb, ok := m.backend.(officeResumeBackend)
-	if !ok {
+	if _, ok := m.backend.(officeResumeBackend); !ok {
 		m.notice(sessionUnavailableNote(m.sessionInfo(), "this backend cannot re-anchor live"))
-		return
+		return nil
 	}
-	if err := rb.ResumeOffice(id); err != nil {
-		m.noticeErr("/session: could not resume " + id + ": " + err.Error())
-		return
-	}
-	// Re-anchored LIVE: clear the surfaces NewOffice-style (chat, board,
-	// mail, bubbles, the boss thinking/delegating latches, staged chips)
-	// but SKIP hydration — the stored transcript belongs to another
-	// session and must never mask the pinned one (the boot pin's guard).
-	m.st.Chat = nil
-	m.st.Tasks = nil
-	m.st.Mails = nil
-	m.st.Bubbles = nil
-	m.st.BossThinking = false
-	m.st.BossDelegating = false
-	if m.chat != nil {
-		m.chat.ClearAttachments()
-	}
-	m.tabs.SetState(m.st)
-	m.notice(fmt.Sprintf("resumed session %s (explicit pin) · /new for a fresh office", id))
+	// record the exec intent for main's post-Run relaunch (id + nothing
+	// else — binary lookup + flag carry-forward are cmd's business).
+	m.execSession = id
+	// the relaunch rides the transcript as REAL history — persisted with
+	// the pin below, the new boot hydrates right through the swap.
+	m.notice(fmt.Sprintf("closing — relaunching as `theboringoffice -s %s`", id))
 	// the pin must land in session.json NOW (next boot auto-restores):
-	// the 5s cheap-write loop would lag a quit right after the swap, so
-	// the forced sync write goes explicitly (small + bounded).
-	m.persistOfficeSession(true)
+	// the 5s cheap-write loop would lag the exec, so the forced sync
+	// write goes explicitly (small + bounded) with the ACCEPTED id as the
+	// primary — persistOfficeSession would stamp the still-current one.
+	m.persistOfficePin(id)
+	m.closeTerminal()
+	return tea.Quit
 }
 
 // --- row building (pure — fake-driven unit tests pin it) ---------------------
