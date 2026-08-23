@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "preview:cf": "wrangler pages dev out",
+    "deploy": "wrangler pages deploy",
+    "deploy:prod": "wrangler pages deploy --branch=main"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -32,7 +35,8 @@
     "@types/react-dom": "^19",
     "postcss": "^8.5",
     "tailwindcss": "^4.3.3",
-    "typescript": "5.7.3"
+    "typescript": "5.7.3",
+    "wrangler": "^4"
   },
   "overrides": {
     "hono": "4.12.25"

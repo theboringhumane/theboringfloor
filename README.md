@@ -131,6 +131,7 @@ session and resends the batch.
 - **Ambient floor** — coffee steam off the tea machine, blinking server-rack
   LEDs, and an uplink ripple along the server-room wall — all tick-driven
   (no timers), so an idle office stays cheap.
+
 - **Boot splash** — animated startup splash, hard-capped at ~4s; any key
   skips it.
 

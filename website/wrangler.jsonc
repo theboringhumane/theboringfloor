@@ -1,0 +1,7 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  // Cloudflare Pages project for the marketing site. Static export (next.config.mjs
+  // sets output:'export') — no Worker code, no bindings, no compat date needed.
+  "name": "theboringoffice",
+  "pages_build_output_dir": "./out"
+}
