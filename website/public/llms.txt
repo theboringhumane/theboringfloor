@@ -28,5 +28,7 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 
 ## Recent posts
 
+- [Start with a workflow. Agents come later.](https://theboringoffice.pages.dev/blog/start-with-a-workflow)
+- [A permission is not a question](https://theboringoffice.pages.dev/blog/a-permission-is-not-a-question)
 - [Running more than one coding agent at a time](https://theboringoffice.pages.dev/blog/running-multiple-coding-agents)
 - [You launched the subagents. Now you have to watch them.](https://theboringoffice.pages.dev/blog/watching-subagent-work)

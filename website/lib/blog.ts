@@ -12,7 +12,7 @@ function getSlugs(): string[] {
   if (!fs.existsSync(BLOG_DIR)) return []
   return fs
     .readdirSync(BLOG_DIR)
-    .filter((file) => file.endsWith('.md'))
+    .filter((file) => file.endsWith('.md') && file !== 'WRITING.md')
     .map((file) => file.replace(/\.md$/, ''))
 }
 

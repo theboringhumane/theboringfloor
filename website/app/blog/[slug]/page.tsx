@@ -4,8 +4,6 @@ import type { Metadata } from 'next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowLeft } from 'lucide-react'
-import { SiteHeader } from '@/components/site-header'
-import { SiteFooter } from '@/components/site-footer'
 import { getAllPosts, getPostBySlug, formatDate, categoryColors } from '@/lib/blog'
 import { SITE_NAME, SITE_URL } from '@/lib/site'
 
@@ -91,51 +89,54 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <SiteHeader />
       <main>
-        <article className="mx-auto max-w-5xl px-6 py-16" itemScope itemType="https://schema.org/BlogPosting">
-          <Link
-            href="/blog"
-            className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+        <article itemScope itemType="https://schema.org/BlogPosting">
+          <header className="border-b border-border px-6 pb-10 pt-14 md:px-10 md:pb-12 md:pt-16 lg:px-14">
+            <Link
+              href="/blog"
+              className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-3" />
+              Back to blog
+            </Link>
+
+            <div className="mt-8 flex flex-wrap gap-2">
+              {post.categories.map((c) => (
+                <span
+                  key={c}
+                  className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${categoryColors[c]}`}
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+
+            <h1
+              className="mt-6 max-w-[18ch] text-balance font-sans text-[clamp(2rem,6vw,3.75rem)] font-medium leading-[0.95] tracking-[-0.04em]"
+              itemProp="headline"
+            >
+              {post.title}
+            </h1>
+
+            <div className="mt-8 flex items-center gap-3 font-mono text-xs text-muted-foreground">
+              <span itemProp="author">{post.author}</span>
+              <span>·</span>
+              <time dateTime={post.date} itemProp="datePublished">
+                {formatDate(post.date)}
+              </time>
+            </div>
+
+            <meta itemProp="description" content={post.description} />
+          </header>
+
+          <div
+            className="prose-blog border-b border-border px-6 py-12 md:px-10 md:py-14 lg:px-14"
+            itemProp="articleBody"
           >
-            <ArrowLeft className="size-3" />
-            Back to blog
-          </Link>
-
-          <div className="mt-8 flex gap-2">
-            {post.categories.map((c) => (
-              <span
-                key={c}
-                className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${categoryColors[c]}`}
-              >
-                {c}
-              </span>
-            ))}
-          </div>
-
-          <h1
-            className="mt-4 text-balance text-4xl font-bold leading-tight tracking-tight md:text-5xl"
-            itemProp="headline"
-          >
-            {post.title}
-          </h1>
-
-          <div className="mt-6 flex items-center gap-3 border-b border-border pb-8 font-mono text-xs text-muted-foreground">
-            <span itemProp="author">{post.author}</span>
-            <span>·</span>
-            <time dateTime={post.date} itemProp="datePublished">
-              {formatDate(post.date)}
-            </time>
-          </div>
-
-          <meta itemProp="description" content={post.description} />
-
-          <div className="prose-blog mt-10" itemProp="articleBody">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{post.content}</ReactMarkdown>
           </div>
         </article>
       </main>
-      <SiteFooter />
     </>
   )
 }
