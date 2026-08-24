@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import { SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
 import './globals.css'
 
 const geistSans = Geist({
@@ -16,27 +17,52 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://theboringoffice.pages.dev'),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'theboringoffice — a virtual office where your agents clock in',
-    template: '%s · theboringoffice',
+    default: `${SITE_NAME} — ${SITE_TAGLINE}`,
+    template: `%s · ${SITE_NAME}`,
   },
   description:
     'A virtual office for AI agents. theboringoffice is a terminal UI for coding agents — an opencode TUI where sub-agents clock in as coworkers on a living floor, with an agent task board, work threads, and mail in one ChatOps terminal office.',
+  keywords: [
+    'AI coding agents',
+    'opencode',
+    'Claude Code',
+    'subagents',
+    'terminal UI',
+    'agent orchestration',
+    'virtual office',
+    'ChatOps',
+  ],
   alternates: {
     canonical: '/',
+    types: {
+      'application/rss+xml': `${SITE_URL}/rss.xml`,
+    },
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
   },
   openGraph: {
-    siteName: 'theboringoffice',
-    title: 'theboringoffice — a virtual office where your agents clock in',
+    siteName: SITE_NAME,
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
       'Watch your opencode sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
-    url: 'https://theboringoffice.pages.dev/',
+    url: SITE_URL,
     type: 'website',
+    locale: 'en_US',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'theboringoffice — a virtual office where your agents clock in',
+    title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
       'Watch your opencode sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
   },

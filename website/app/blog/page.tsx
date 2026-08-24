@@ -1,12 +1,28 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { getAllPosts, formatDate, categoryColors } from '@/lib/blog'
 import { BlogFilterList } from '@/components/blog/blog-filter-list'
+import { SITE_URL } from '@/lib/site'
 
-export const metadata = {
-  title: 'Blog | theboringoffice',
-  description: 'Product updates, engineering deep dives, and news from the theboringoffice team.',
+export const metadata: Metadata = {
+  title: 'Blog',
+  description:
+    'Product updates and engineering notes on AI coding agents, opencode subagents, and running a virtual office in the terminal.',
+  alternates: {
+    canonical: '/blog',
+    types: {
+      'application/rss+xml': `${SITE_URL}/rss.xml`,
+    },
+  },
+  openGraph: {
+    title: 'Blog · theboringoffice',
+    description:
+      'Product updates and engineering notes on AI coding agents, opencode subagents, and running a virtual office in the terminal.',
+    url: `${SITE_URL}/blog`,
+    type: 'website',
+  },
 }
 
 export default function BlogPage() {
