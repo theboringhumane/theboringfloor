@@ -67,6 +67,20 @@ func StatusBarZenHint(st state.OfficeState, width int, right string) string {
 // queueN > 0 appends an amber queue badge ("· qN") — messages enqueued
 // while the boss reply is pending.
 func StatusBar(st state.OfficeState, hint string, queueN, width int) string {
+	return statusBar(st, hint, queueN, "", width)
+}
+
+// StatusBarAgent is StatusBar with the plan/build agent-mode badge riding
+// immediately right of the live/demo mode segment ("live [plan]"). The
+// badge arrives pre-rendered by the caller ("[plan]" in plan mode, "" in
+// build) so the default office stays byte-identical to plain StatusBar.
+func StatusBarAgent(st state.OfficeState, hint string, queueN int, agentBadge string, width int) string {
+	return statusBar(st, hint, queueN, agentBadge, width)
+}
+
+// statusBar is the shared body; agentBadge == "" renders exactly the
+// pre-plan-mode bar (the badge is additive chrome, never a default cost).
+func statusBar(st state.OfficeState, hint string, queueN int, agentBadge string, width int) string {
 	var pending, doing, done int
 	for _, t := range st.Tasks {
 		switch t.Status {
@@ -105,8 +119,14 @@ func StatusBar(st state.OfficeState, hint string, queueN, width int) string {
 		counts += OnBar(White, " | ") + OnBar(Dim, tag)
 	}
 	counts += OnBar(White, " | ") +
-		OnBar(ModeColor(st.Mode), string(st.Mode)) +
-		OnBar(White, " ")
+		OnBar(ModeColor(st.Mode), string(st.Mode))
+	// The plan/build badge sits directly on the mode segment (Accent class
+	// — the same highlight family ModeColor draws from), only ever present
+	// while an agent-mode session is active.
+	if agentBadge != "" {
+		counts += OnBar(White, " ") + OnBarBold(Accent, agentBadge)
+	}
+	counts += OnBar(White, " ")
 
 	segs := []string{counts}
 	if queueN > 0 {

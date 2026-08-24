@@ -48,6 +48,7 @@ type demoBackend struct {
 	pendingPerm     map[string]permHold // permission request id -> hold
 	pendingQuestion map[string]permHold // question request id -> hold
 	review          reviewLatch         // the CTO's once-per-drained-board latch
+	lastAgent       string              // recorded plan/build tag (SendAgent) — the tour acks normally
 	pulseIdx        int
 	ambientBeat     int
 	adHocSeq        int
@@ -346,6 +347,17 @@ func (b *demoBackend) Start(emit func(state.Event)) error {
 // Send: plain-text state.Backend contract — delegates to the attachment
 // seam SendWith, mirroring the live backend.
 func (b *demoBackend) Send(text string) error {
+	return b.SendWith(text, nil)
+}
+
+// SendAgent — the demo twin of the live plan/build routing seam: the tag
+// is accepted and recorded (lastAgent, for tests), then the prompt rides
+// the normal scripted ack. The demo is a tour, not a wire, so the agent
+// field changes nothing the member sees — the tour is unaffected.
+func (b *demoBackend) SendAgent(text, agent string) error {
+	b.mu.Lock()
+	b.lastAgent = agent
+	b.mu.Unlock()
 	return b.SendWith(text, nil)
 }
 

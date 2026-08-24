@@ -229,6 +229,17 @@ type Model struct {
 	termTab       *termTabWrap // tab 2: the real OS-shell (lazy PTY, terminal.go)
 	keys          KeyMap
 
+	// plan/build agent mode (plan_mode.go), MODEL-side on purpose —
+	// state.Mode already means live/demo and stays untouched. agentMode
+	// is "plan"|"build"; plan is the colleague's contract-frozen floor-slot
+	// plan editor (panels.PlanEditor, asserted against planEditorPane);
+	// planTemplate is the pane's untouched starter buffer, captured at
+	// build time — approve refuses it and persistence drops it, so a
+	// pristine editor never fakes a signed-off plan.
+	plan         *panels.PlanEditor
+	planTemplate string
+	agentMode    string
+
 	// floor-click bookkeeping (bubbletea v2 mouse): lastClickAgent/At
 	// detect a DOUBLE-click on the same sprite (double-click = toggle
 	// that agent's chat thread).
@@ -639,6 +650,15 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	}
 
 	termTab := newTermTabWrap()
+	// The plan editor is built BEFORE the chat callback: the closure is a
+	// one-time capture, so the CURRENT plan/build mode at send time
+	// reaches it only through the shared pane pointer (see paneAgent).
+	plan := panels.NewPlanEditor()
+	// The office owns the agent mode; the pane's badge MIRRORS it. Its
+	// constructor rests at "plan" (it is a plan editor) — normalize to the
+	// office's build-mode rest state so paneAgent never misroutes a
+	// build-mode prompt onto the "plan" wire tag.
+	plan.SetMode(agentModeBuild)
 	chat := panels.NewChat(func(text string, atts []state.Attachment) tea.Cmd {
 		return func() tea.Msg {
 			// Slash commands dispatch locally, never touch the backend, and
@@ -647,7 +667,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 				return slashMsg{text: text}
 			}
 			if b != nil {
-				if err := sendChat(b, text, atts); err != nil {
+				if err := sendChatMode(b, text, atts, paneAgent(plan)); err != nil {
 					cleanupAttachments(atts) // nobody will retry this prompt
 					return sendErrMsg{err: err}
 				}
@@ -671,6 +691,9 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 		agents:           agents,
 		activity:         activity,
 		termTab:          termTab,
+		plan:             plan,
+		planTemplate:     plan.Value(),
+		agentMode:        agentModeBuild,
 		activeThink:      map[string]bool{},
 		social:           newSocialClock(),
 		lastDispatchTick: -1,
@@ -1288,17 +1311,31 @@ func (m Model) Frame() string {
 		bandH := m.floorBandH()
 		floor := lipgloss.NewStyle().Width(m.width).Height(bandH).
 			Render(office.CachedStyled(m.st, m.width, bandH))
-		side := lipgloss.NewStyle().Width(m.width).Height(m.middleH - bandH).
-			Render(m.tabs.View())
+		var side string
+		if m.agentMode == agentModePlan && m.plan != nil {
+			// plan mode swaps the PANEL slot (the big lower region) for
+			// the plan editor; the floor band stays on top.
+			m.plan.SetSize(m.width, m.middleH-bandH)
+			side = m.plan.View()
+		} else {
+			side = lipgloss.NewStyle().Width(m.width).Height(m.middleH - bandH).
+				Render(m.tabs.View())
+		}
 		mid = lipgloss.JoinVertical(lipgloss.Left, floor, side)
-		bot = chrome.StatusBar(m.st, m.hintLine(), len(m.queue), m.width)
+		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	} else {
-		floor := lipgloss.NewStyle().Width(m.floorW).Height(m.middleH).
-			Render(office.CachedStyled(m.st, m.floorW, m.middleH))
 		side := lipgloss.NewStyle().Width(m.sidebar).Height(m.middleH).
 			Render(m.tabs.View())
-		mid = lipgloss.JoinHorizontal(lipgloss.Top, floor, side)
-		bot = chrome.StatusBar(m.st, m.hintLine(), len(m.queue), m.width)
+		if m.agentMode == agentModePlan && m.plan != nil {
+			// plan mode: the plan editor owns the floor slot.
+			m.plan.SetSize(m.floorW, m.middleH)
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.plan.View(), side)
+		} else {
+			floor := lipgloss.NewStyle().Width(m.floorW).Height(m.middleH).
+				Render(office.CachedStyled(m.st, m.floorW, m.middleH))
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, floor, side)
+		}
+		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, top, mid, bot)
 	// The /model picker splices over the COMPOSED frame (app-level float —
@@ -1332,6 +1369,9 @@ func (m Model) hintLine() string {
 	}
 	if m.terminalActive() {
 		return termHint
+	}
+	if m.agentMode == agentModePlan {
+		return planHint
 	}
 	return m.keys.HintLine()
 }
@@ -1420,8 +1460,43 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	}
 
 	if termActive {
-		// everything else belongs to the shell
+		// everything else belongs to the shell — ctrl+p INCLUDED (shell
+		// readline's previous-history key); the plan/build toggle below
+		// never fires while the terminal tab is focused.
 		return m.tabs.Update(msg)
+	}
+
+	// ctrl+p — the plan/build toggle, claimable from EVERY non-terminal
+	// surface. The open /model picker already owns every key above (and
+	// yields to floats, mirrored here): the permission/question/model
+	// floats keep their keys — a parked turn outranks a mode switch.
+	if key == "ctrl+p" && m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+		return m.togglePlanMode()
+	}
+
+	// The plan editor, while focused, owns every remaining key — the
+	// terminal tab's tight claim, mirrored for the plan surface. The
+	// excepted keys ride the claims AROUND this block: ctrl+q (the quit
+	// arm) and the tab switches above; ctrl+c (quit) via its fall-through
+	// case inside; ctrl+x (approve→build) and esc (blur back to the chat
+	// input) handled here. While a perm/question float is up the pane
+	// yields entirely — the float's chat-modal keys keep working (the
+	// model-picker contract, one level down).
+	if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
+		m.permQ.front() == nil && m.question == nil {
+		switch key {
+		case "ctrl+x":
+			return m.approvePlan()
+		case "esc":
+			// done editing for now — typing lands in the chat input again
+			// (the plan buffer keeps; the editor just blurs).
+			m.plan.Blur()
+			return nil
+		case "ctrl+c":
+			// the quit path below keeps its claim
+		default:
+			return m.plan.Update(msg)
+		}
 	}
 
 	switch key {
@@ -1486,6 +1561,24 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	// underneath — no floor selection, no thread toggle, no popover answer.
 	if m.modelPick != nil {
 		return nil
+	}
+	// Plan mode's floor-slot pane owns its region: a click INSIDE it
+	// focuses the editor (and is swallowed — no sprite hit-testing;
+	// textarea cursor placement is out of v1). A click anywhere else
+	// (chat region, floor band on mobile) hands typing back to the chat
+	// input — the editor blurs and the permanently-focused chat textarea
+	// simply resumes the keys on the existing routing.
+	if m.agentMode == agentModePlan && m.plan != nil {
+		if m.mobile() {
+			if msg.Y >= 1+m.floorBandH() {
+				m.plan.Focus()
+				return nil
+			}
+		} else if msg.X < m.floorW {
+			m.plan.Focus()
+			return nil
+		}
+		m.plan.Blur()
 	}
 	if m.mobile() {
 		// mobile stack: the floor band owns rows 1..floorBandH (hit-tested
@@ -1888,7 +1981,7 @@ func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 	b := m.backend
 	return func() tea.Msg {
 		if b != nil {
-			if err := sendChat(b, text, atts); err != nil {
+			if err := sendChatMode(b, text, atts, m.planAgent()); err != nil {
 				cleanupAttachments(atts) // nobody will retry this prompt
 				return sendErrMsg{err: err}
 			}
@@ -2076,7 +2169,7 @@ func (m *Model) dispatchQueued(manual bool) tea.Cmd {
 			return slashMsg{text: texts[0]}
 		}
 		if b != nil {
-			if err := sendChat(b, sendText, batchAtts); err != nil {
+			if err := sendChatMode(b, sendText, batchAtts, m.planAgent()); err != nil {
 				// no cleanup: a respawn retry (queueSendErrMsg) may still
 				// need the files; IT owns the cleanup on terminal failure.
 				return queueSendErrMsg{err: err, items: items, batch: batch, retry: false}
@@ -2107,7 +2200,7 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 			}
 		}
 		if b != nil {
-			if err := sendChat(b, text, atts); err != nil {
+			if err := sendChatMode(b, text, atts, m.planAgent()); err != nil {
 				return queueSendErrMsg{err: err, items: items, batch: true, retry: true}
 			}
 			cleanupEntries(items)

@@ -70,7 +70,13 @@ type SessionFile struct {
 	Tasks     []state.BoardTask `json:"tasks"`
 	Mails     []state.MailItem  `json:"mails"`
 	Chat      []state.ChatMsg   `json:"chat"`
-	SavedAt   int64             `json:"savedAt"` // unix millis
+	// PlanText — the plan editor's drafted-but-unapproved buffer
+	// (live-only; see plan_mode.go). A drafted plan survives quit and
+	// relaunch; an empty or never-edited starter template writes nothing
+	// (omitempty), and /new + successful approvals clear the field by
+	// resetting the buffer itself.
+	PlanText string `json:"planText,omitempty"`
+	SavedAt  int64  `json:"savedAt"` // unix millis
 }
 
 // sessionsBase — <THEBORINGOFFICE_HOME|HOME>/.theboringoffice/sessions (the
@@ -283,6 +289,11 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 	}
 	m.st.Tasks = append([]state.BoardTask(nil), sf.Tasks...)
 	m.st.Mails = append([]state.MailItem(nil), sf.Mails...)
+	// The plan editor's drafted-but-unapproved buffer comes back too —
+	// the MODE does not (a boot always lands in build; ctrl+p re-enters).
+	if m.plan != nil && sf.PlanText != "" {
+		m.plan.SetValue(sf.PlanText)
+	}
 	m.tabs.SetState(m.st)
 	m.notice(RestoreNotice(sf))
 }
@@ -311,6 +322,7 @@ func (m *Model) persistOfficeSession(force bool) {
 	}
 	dir := m.sessDir
 	sf := Snapshot(dir, primaryID, m.st)
+	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
 	if force {
 		_ = SaveSession(dir, sf) // quit path — best effort, bounded + sync
 		return
@@ -336,7 +348,9 @@ func (m *Model) persistOfficePin(primaryID string) {
 		return
 	}
 	m.sessLast = time.Now()
-	_ = SaveSession(m.sessDir, Snapshot(m.sessDir, primaryID, m.st)) // quit path — best effort, bounded + sync
+	sf := Snapshot(m.sessDir, primaryID, m.st)
+	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	_ = SaveSession(m.sessDir, sf) // quit path — best effort, bounded + sync
 }
 
 // PrimarySessionID — the office's current primary ("boss") session id,
@@ -368,6 +382,9 @@ func (m *Model) newOffice() {
 	m.st.BossDelegating = false
 	if m.chat != nil {
 		m.chat.ClearAttachments() // staged chips die with the office
+	}
+	if m.plan != nil {
+		m.plan.SetValue(m.planTemplate) // the new office drafts from a fresh canvas
 	}
 	if tb, ok := m.team(); ok {
 		// Hold is cleared first: NewOffice resolves the fresh session

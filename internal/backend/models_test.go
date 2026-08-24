@@ -127,7 +127,7 @@ func TestModelOverrideAdditiveByDefault(t *testing.T) {
 	}
 	payloadModel(t, body, false)
 
-	if err := b.postPrompt("ses-boss", "hello boss", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "hello boss", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, ok = stub.lastPost("POST /session/ses-boss/prompt_async")
@@ -151,7 +151,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 	log := &eventLog{}
 	b.fl.setEmit(log.emit)
 
-	if err := b.postPrompt("ses-boss", "hello boss", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "hello boss", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := stub.lastPost("POST /session/ses-boss/prompt_async")
@@ -163,7 +163,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 
 	// Precedence: backend.bossModel wins over the legacy boss.model.
 	cfg.Boss.Model = "anthropic/claude-opus-4-1"
-	if err := b.postPrompt("ses-boss", "again", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "again", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	// NOTE: the 2s echo dedupe doesn't apply — postPrompt is the wire leg.
@@ -174,7 +174,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 	}
 	// Legacy alone still works (existing brain.json keeps functioning).
 	cfg.Backend.BossModel = ""
-	if err := b.postPrompt("ses-boss", "legacy", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "legacy", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = stub.lastPost("POST /session/ses-boss/prompt_async")
@@ -209,7 +209,7 @@ func TestMalformedModelSkippedOnWire(t *testing.T) {
 	log := &eventLog{}
 	b.fl.setEmit(log.emit)
 
-	if err := b.postPrompt("ses-boss", "hello", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "hello", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := stub.lastPost("POST /session/ses-boss/prompt_async")
@@ -250,7 +250,7 @@ func TestCTORoutedDispatchUsesCTOModel(t *testing.T) {
 	}
 
 	// The CTO dispatch carries ctoModel…
-	if err := b.postPrompt("ses-cto", "review the batch", nil); err != nil {
+	if err := b.postPrompt("ses-cto", "review the batch", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ := stub.lastPost("POST /session/ses-cto/prompt_async")
@@ -262,12 +262,12 @@ func TestCTORoutedDispatchUsesCTOModel(t *testing.T) {
 
 	// …while the plain dev dispatch and the boss carry nothing (boss
 	// override unset — additive).
-	if err := b.postPrompt("ses-dev", "write it", nil); err != nil {
+	if err := b.postPrompt("ses-dev", "write it", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = stub.lastPost("POST /session/ses-dev/prompt_async")
 	payloadModel(t, body, false)
-	if err := b.postPrompt("ses-boss", "boss turn", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "boss turn", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = stub.lastPost("POST /session/ses-boss/prompt_async")
@@ -275,7 +275,7 @@ func TestCTORoutedDispatchUsesCTOModel(t *testing.T) {
 
 	// Both knobs set: each session gets its OWN model.
 	cfg.Backend.BossModel = "anthropic/claude-sonnet-4"
-	if err := b.postPrompt("ses-cto", "review again", nil); err != nil {
+	if err := b.postPrompt("ses-cto", "review again", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = stub.lastPost("POST /session/ses-cto/prompt_async")
@@ -283,7 +283,7 @@ func TestCTORoutedDispatchUsesCTOModel(t *testing.T) {
 	if m != "claude-haiku-4-5" {
 		t.Fatalf("boss knob set must not leak into a CTO dispatch: got %q", m)
 	}
-	if err := b.postPrompt("ses-boss", "boss again", nil); err != nil {
+	if err := b.postPrompt("ses-boss", "boss again", nil, ""); err != nil {
 		t.Fatal(err)
 	}
 	body, _ = stub.lastPost("POST /session/ses-boss/prompt_async")

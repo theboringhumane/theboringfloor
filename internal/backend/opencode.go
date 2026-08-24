@@ -120,6 +120,12 @@ type liveBackend struct {
 	// field). From then on prompts go out without the override — degrade
 	// open, never fake success.
 	promptModelRejected bool
+	// promptAgentRejected latches when a serve rejects the per-prompt agent
+	// field (the plan/build routing tag on SendAgent prompts) with a 400 —
+	// the SAME degrade-open contract as promptModelRejected: one status
+	// note, one bare retry, then the field stays off and prompts ride bare
+	// for the rest of the run.
+	promptAgentRejected bool
 	// sseNoteSig is the SSE status-note dedupe latch (D1): the last failure
 	// class reported by pump, "" when the stream is healthy/recovered. See
 	// sseNote/sseRecovered.
@@ -336,6 +342,37 @@ func (b *liveBackend) Send(text string) error {
 // ones append. A prompt error re-emits the SAME pending id with the
 // failure note instead.
 func (b *liveBackend) SendWith(text string, atts []state.Attachment) error {
+	return b.sendWithAgent(text, atts, "")
+}
+
+// SendAgent is the plan/build routing seam the app type-asserts
+// (agentBackend, internal/app model.go — the same additive pattern as the
+// attachment seam; harness stubs without it degrade to the plain send).
+// Semantics of the plain Send otherwise, with one addition: the agent tag
+// rides the prompt payload (see postPrompt). Text-only on purpose — a
+// prompt carrying chat-input attachments keeps riding SendWith (files win
+// over the tag: full fidelity beats metadata). Build mode never calls
+// this at all: it stays on plain Send, so no serve ever sees an "agent"
+// key for a normal office prompt.
+func (b *liveBackend) SendAgent(text, agent string) error {
+	return b.sendWithAgent(text, nil, agent)
+}
+
+// agentSender pins the app's agentBackend seam shape at compile time —
+// this package CANNOT import the app (dependency direction), so the
+// contract is asserted here against a local twin: a drift fails the
+// build, not a runtime type-assert.
+type agentSender interface{ SendAgent(text, agent string) error }
+
+var (
+	_ agentSender = (*liveBackend)(nil)
+	_ agentSender = (*demoBackend)(nil)
+)
+
+// sendWithAgent is the ONE send pipeline behind Send/SendWith/SendAgent;
+// agent == "" ships the yesterday-shaped payload (no "agent" key — the
+// field is additive on the wire).
+func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent string) error {
 	trimmed := strings.TrimSpace(text)
 	if (trimmed == "" && len(atts) == 0) || b.fl.isStopped() {
 		return nil
@@ -428,7 +465,7 @@ func (b *liveBackend) SendWith(text string, atts []state.Attachment) error {
 		ID: pendingID, From: "boss", Text: "", At: nowMs(), Pending: true,
 	}})
 
-	err := b.postPrompt(primaryID, trimmed, atts)
+	err := b.postPrompt(primaryID, trimmed, atts, agent)
 	if err != nil {
 		b.mu.Lock()
 		for i, id := range b.pendingBoss {
@@ -561,7 +598,7 @@ func (b *liveBackend) SendConcierge(text string) error {
 	if !booted {
 		prompt = conciergePreamble + "\n\n" + trimmed
 	}
-	err := b.postPrompt(conciergeID, prompt, nil)
+	err := b.postPrompt(conciergeID, prompt, nil, "")
 	if err != nil {
 		b.mu.Lock()
 		for i, id := range b.pendingOffice {
@@ -1122,7 +1159,15 @@ func (b *liveBackend) ResumeOffice(id string) error {
 // ignored with a status note. If a serve ever rejects the model field with
 // 400 (an older/foreign server), the override latches off and the prompt
 // retries bare — degrade open, never fake it.
-func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment) error {
+//
+// The plan/build agent tag (SendAgent's one addition) rides as
+// {"agent":"plan"|"build"} alongside, ONLY when the app passes one —
+// plain sends ship no "agent" key at all (additive, exactly like the
+// model override). If a serve rejects the agent field with a 400, the
+// promptAgentRejected latch flips, the member hears ONE status note, the
+// prompt retries once without the field, and every later prompt ships
+// bare — degrade open, never fake it.
+func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment, agent string) error {
 	parts, skipped := payloadParts(text, atts)
 	if len(skipped) > 0 {
 		// The prompt still goes out with whatever parts survived — the
@@ -1134,13 +1179,29 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 	provider, model := splitModelRef(b.promptModelOverride(sessionID))
 	b.mu.Lock()
 	rejected := b.promptModelRejected
+	agentRejected := b.promptAgentRejected
 	b.mu.Unlock()
 	withModel := provider != "" && model != "" && !rejected
 	if withModel {
 		payload["model"] = map[string]any{"providerID": provider, "modelID": model}
 	}
+	withAgent := agent != "" && !agentRejected
+	if withAgent {
+		payload["agent"] = agent
+	}
 	body, _ := json.Marshal(payload)
 	err := b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
+	if err != nil && withAgent && strings.Contains(strings.ToLower(err.Error()), "agent") {
+		b.mu.Lock()
+		b.promptAgentRejected = true
+		b.mu.Unlock()
+		// One note, exactly once: the latch means no future prompt ever
+		// retries the field (the member is not re-told per send).
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"})
+		delete(payload, "agent")
+		body, _ = json.Marshal(payload)
+		err = b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
+	}
 	if err != nil && withModel && strings.Contains(strings.ToLower(err.Error()), "model") {
 		b.mu.Lock()
 		b.promptModelRejected = true
