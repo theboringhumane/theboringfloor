@@ -121,6 +121,11 @@
 // per press); with nothing expanded, ↑ walks its old scroll path untouched
 // and esc-esc in the main input (two UNCONSUMED presses inside 500ms)
 // aborts the running turn — the same path as /stop.
+//
+// Selection: a left-drag over the transcript selects its VISIBLE text
+// (reverse-video overlay, extraction to plain text, OSC52 copy rises
+// app-side) — chat_selection.go owns the five-method seam the app calls;
+// esc clears a finished highlight before anything else (app routing).
 package panels
 
 import (
@@ -430,6 +435,17 @@ type Chat struct {
 	userFoldRows map[int]string
 
 	diffCache map[string]diffCacheEntry // parsed+hilighted diff rows by msg ID
+
+	// Transcript mouse selection (chat_selection.go): a left-press over
+	// the transcript viewport arms a pending selection, drag-motion moves
+	// its head, a dragged release extracts the visible plain text (the
+	// app rides it into OSC52 + the "Copied N chars" toast). sel holds
+	// the endpoints in CONTENT-LINE space (scroll-independent); selLines
+	// caches the padded lines as posted to the viewport — the highlight
+	// overlay's row space and the (clean, pre-highlight) extraction
+	// source — refreshed on EVERY setConversation.
+	sel      selState
+	selLines []string
 }
 
 // NewChat builds the panel; onSend is invoked on Enter with a non-empty
@@ -999,12 +1015,21 @@ func (c *Chat) ShowTools() bool { return c.showTools }
 // the chatPadL left inset: every content line rides the gutter (the right
 // gutter falls out of the contentW wrap budget, not padding), while rows
 // outside the viewport — divider, typing/loading rows, chips, pickers,
-// textarea — keep the full panel width.
+// textarea — keep the full panel width. The padded lines are ALSO the
+// mouse-selection's coordinate space (selLines cache) and hijack-free
+// extraction source: while a selection is live the reverse-video overlay
+// splices over them HERE (the one seam every render path flows through),
+// so the highlight survives SetState rebuilds, fold/thread toggles and
+// scroll alike (see chat_selection.go).
 func (c *Chat) setConversation(content string) {
 	pad := strings.Repeat(" ", chatPadL)
 	lines := strings.Split(content, "\n")
 	for i := range lines {
 		lines[i] = pad + lines[i]
+	}
+	c.selLines = lines
+	if c.sel.active || c.sel.finalized {
+		c.selOverlay(lines)
 	}
 	c.vp.SetContent(strings.Join(lines, "\n"))
 }

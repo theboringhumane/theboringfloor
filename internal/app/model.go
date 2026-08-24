@@ -251,6 +251,17 @@ type Model struct {
 	// normal|compact writes cfg.UI.Compact (persisted) and clears this.
 	compactLive int
 
+	// mouse transcript selection (selection.go): a left-press over chat
+	// text ARMS a pending selection (selPress pins the original press for
+	// the motionless-release click replay; selDragged flips on the first
+	// drag-motion); copyNote/copyNoteAt ride the status bar for
+	// copyNoteWindow after a successful copy.
+	sel        int
+	selPress   tea.Mouse
+	selDragged bool
+	copyNote   string
+	copyNoteAt time.Time
+
 	// frameNonce — bumped on every message that can mutate panel ephemera
 	// the state digest can't see (textarea draft, scroll, spinner, theme
 	// toggles). Part of the frame cache key (digest.go).
@@ -918,6 +929,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// keys can mutate panel ephemera (textarea, scroll) the state
 		// digest can't see — invalidate the frame cache conservatively.
 		m.frameNonce++
+		// esc clears a live transcript selection FIRST (webpage rule):
+		// while a highlight is up on the chat tab the key belongs to it
+		// (it never reaches the textarea/dbl-esc and never unfolds a thread).
+		if msg.String() == "esc" && m.tabs.ActiveIndex() == 0 && m.chat != nil && m.chat.SelectionActive() {
+			m.chat.ClearSelection()
+			m.sel = mselIdle
+			break
+		}
 		if cmd := m.handleKey(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
@@ -925,8 +944,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// clicks mutate the same panel ephemera (thread toggles, tab
 		// switches, roster highlight) — same cache invalidation as keys.
 		m.frameNonce++
-		if cmd := m.handleClick(msg); cmd != nil {
+		if cmd := m.handlePress(msg); cmd != nil {
 			cmds = append(cmds, cmd)
+		}
+	case tea.MouseReleaseMsg:
+		// only an armed selection drag cares about releases — anything
+		// else drops release events silently (no repaint, no forward).
+		if m.sel == mselArmed {
+			m.frameNonce++
+			if cmd := m.handleRelease(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	case tea.MouseMotionMsg:
+		// CellMotion reports motion ONLY while a button is pressed — that
+		// is the selection drag's lifeblood. Battery rule: without an
+		// armed drag the event is dropped with zero repaint cost.
+		if m.sel == mselArmed {
+			m.frameNonce++
+			m.handleMotion(msg)
 		}
 	case chatSentMsg:
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
@@ -1166,6 +1202,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitArmAt = time.Time{}
 			m.frameNonce++ // the toast retires — the hint bar repaints
 		}
+	case copyNoteClearMsg:
+		// the copy toast's own expiry tick landed (armClearMsg's twin):
+		// retire a note old enough — a FRESHER re-arm's own tick owns its
+		// expiry (a stale landing here just no-ops).
+		if m.copyNote != "" && time.Since(m.copyNoteAt) >= copyNoteWindow {
+			m.copyNote = ""
+			m.frameNonce++ // the toast retires — the hint bar repaints
+		}
 	case state.Event:
 		cmds = append(cmds, m.applyEvent(msg))
 	default:
@@ -1271,13 +1315,20 @@ func (m Model) Frame() string {
 
 // hintLine — the statusbar's hint segment for THIS frame: the ctrl+q
 // arm's HIGH-VISIBILITY toast while an arm is live (chrome's warn class
-// on the bar background), the terminal hint while the shell tab is
-// focused, else the static keymap line. keys.HintLine is a free function
-// with a frozen signature — the armed/terminal swap happens HERE, so the
-// hint and the key handling still can't drift apart.
+// on the bar background), the "Copied N chars" copy note while fresh
+// (chrome's OK class), the terminal hint while the shell tab is focused,
+// else the static keymap line. PRECEDENCE: the quit-arm toast OUTRANKS
+// the copy toast — safety first (the armed-quit affordance never hides
+// behind a clipboard note; the note simply resumes once the arm retires,
+// its own 2s window untouched). keys.HintLine is a free function
+// with a frozen signature — the armed/terminal/copied swaps happen HERE,
+// so the hint and the key handling still can't drift apart.
 func (m Model) hintLine() string {
 	if !m.quitArmAt.IsZero() {
 		return chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" ")
+	}
+	if m.copyNote != "" {
+		return chrome.OnBarBold(chrome.OK, " "+m.copyNote+" ")
 	}
 	if m.terminalActive() {
 		return termHint
@@ -1407,9 +1458,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 // count as a double-click (thread toggle), not two selections.
 const clickDblWindow = 400 * time.Millisecond
 
-// handleClick routes bubbletea v2 mouse clicks (motion reporting stays
-// OFF — the view keeps MouseModeCellMotion, which emits clicks/wheel only,
-// no move events: battery rule). FLOOR: a click on an employee's 3-cell
+// handleClick routes bubbletea v2 mouse click PRESSES — reached DIRECTLY
+// for off-transcript presses (handlePress falls through) or REPLAYED on a
+// motionless release after a transcript press (the selection seam pins
+// its fate until release, so single-click semantics survive verbatim;
+// the view's MouseModeCellMotion emits press / release / drag-motion,
+// which is what the drag needs). FLOOR: a click on an employee's 3-cell
 // sprite (office.HitAgent) selects the agent — activity tab opens, agents
 // tab pins a ▸ marker on its row, and an office notice names it; a second
 // click on the SAME sprite inside clickDblWindow instead toggles that

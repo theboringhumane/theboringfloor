@@ -2956,6 +2956,17 @@ func runThreadsProof() error {
 // past it between the select phase and the double-click phase.
 const clickPairGap = 400 * time.Millisecond
 
+// clickAt sends ONE physical click as press + release — exactly what a real
+// terminal emits under CellMotion for each click. The transcript selection
+// seam (press arms, a MOTIONLESS release replays the click through the
+// legacy path) needs the release, or a chat-region click would hang armed
+// forever. One clickAt is still ONE click — the proof's behavior contract
+// (one click acts, not two) is untouched.
+func clickAt(d *focusDriver, x, y int) {
+	d.send(tea.MouseClickMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+	d.send(tea.MouseReleaseMsg(tea.Mouse{X: x, Y: y, Button: tea.MouseLeft}))
+}
+
 func runClickProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
@@ -2987,7 +2998,7 @@ func runClickProof() error {
 			return
 		}
 		// screen coords: floor X is absolute, +1 row for the topbar
-		d.send(tea.MouseClickMsg(tea.Mouse{X: p.X + 1, Y: p.Y + 1, Button: tea.MouseLeft}))
+		clickAt(d, p.X+1, p.Y+1)
 	}
 
 	// (S) single click on tekton-1's sprite → selection
@@ -3020,8 +3031,8 @@ func runClickProof() error {
 	fmt.Println("--- agents tab (▸ marker) + chat notice verified ---")
 
 	// frame chrome: clicks on the topbar/statusbar rows do NOTHING
-	d.send(tea.MouseClickMsg(tea.Mouse{X: 40, Y: 0, Button: tea.MouseLeft}))
-	d.send(tea.MouseClickMsg(tea.Mouse{X: 40, Y: shotRows - 1, Button: tea.MouseLeft}))
+	clickAt(d, 40, 0)
+	clickAt(d, 40, shotRows-1)
 	if strings.Contains(d.m.Frame(), "boss selected") || strings.Contains(d.m.Frame(), "▸ boss") {
 		return fail("click chrome: a topbar/statusbar click leaked into a selection")
 	}
@@ -3065,7 +3076,7 @@ func runClickProof() error {
 	if headerY < 0 {
 		return fail("click H setup: skopos-1 header row not found in the frame")
 	}
-	d.send(tea.MouseClickMsg(tea.Mouse{X: floorW + 5, Y: headerY, Button: tea.MouseLeft}))
+	clickAt(d, floorW+5, headerY)
 	fmt.Println("===== UI SHOT · CLICK H — chat click on the skopos-1 header: its thread collapses =====")
 	frameH := d.m.Frame()
 	fmt.Println(frameH)
@@ -3085,7 +3096,7 @@ func runClickProof() error {
 	if headerY2 < 0 {
 		return fail("click H: expanded header row not found in the frame")
 	}
-	d.send(tea.MouseClickMsg(tea.Mouse{X: floorW + 5, Y: headerY2, Button: tea.MouseLeft}))
+	clickAt(d, floorW+5, headerY2)
 	frameH2 := d.m.Frame()
 	// skopos-1 is still LIVE here, so its re-collapsed header carries NO
 	// rollup (only settled threads trail "(· N tool calls ✓ done)") — the
