@@ -1,11 +1,17 @@
 // stuck_test.go — the boss-stuck-busy edge cases, app leg (fakes only,
 // never a real server):
 //
-//	W1 — the wedge watchdog: a pending boss turn (or parked question hold)
-//	     with NO wall-clock boss traffic for bossWedgeAfter fires exactly
-//	     ONCE (one red transcript row + the hint-seam swap), keeps quiet on
-//	     activity, re-arms after a completion, and never measures silence
-//	     in ticks (the governor cadence varies 180ms–3s — wall clock only);
+//	W1 — the wedge watchdog: a pending boss turn with NO wall-clock
+//	     SERVER-SIDE traffic for bossWedgeAfter fires exactly ONCE (one
+//	     red transcript row + the hint-seam swap). The send-side typing
+//	     placeholder ("boss-N", Pending, empty text) is the UI's own
+//	     staging, so it NEITHER arms the clock NOR re-arms the latch —
+//	     only real server-side traffic (stream deltas, thoughts, tools,
+//	     completions) does; a wedged turn can therefore never print one
+//	     red row per send again. A parked question hold NEVER fires (the
+//	     boss is waiting on the USER's answer — user-owned silence is
+//	     not a wedge). Silence is wall clock only, never st.Tick (the
+//	     governor cadence varies 180ms–3s);
 //	W2 (G1) — /stop with a FAILING AbortSessions must NOT strand the
 //	     office: one dim note + the exact same clean unwind as success
 //	     (placeholder collapse, statusline, watchdog re-armed);
@@ -43,17 +49,21 @@ func (a *abortStubBackend) AbortSessions() error {
 }
 
 // wedgeFixture boots a model with ONE outstanding boss typing placeholder
-// (the send-sequenced "boss-1" — isBossActivity refreshes the watchdog's
-// wall clock as it lands, so the fixture itself is fresh/quiet).
+// (the send-sequenced "boss-1") and the watchdog clock ARMED to now. Under
+// the W1 contract the placeholder is client-side staging and must NOT
+// touch the wall clock — the fixture asserts that, then stamps the clock
+// directly (the same white-box seam stale() uses; real-traffic arming
+// THROUGH the event path is proven by TestWedgePlaceholderNeverArms).
 func wedgeFixture(t *testing.T) (Model, *abortStubBackend) {
 	t.Helper()
 	b := &abortStubBackend{}
 	m := New(b, config.Default())
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
 		Msg: state.ChatMsg{ID: "boss-1", From: "boss", Pending: true}})
-	if m.lastBossActivityAt.IsZero() {
-		t.Fatal("fixture: staging the placeholder must refresh the watchdog wall clock")
+	if !m.lastBossActivityAt.IsZero() {
+		t.Fatal("fixture: the send-side placeholder must never arm the watchdog wall clock")
 	}
+	m.lastBossActivityAt = time.Now() // stands in for real server-side traffic
 	return m, b
 }
 
@@ -113,7 +123,7 @@ func TestWedgeWatchdogFiresOnce(t *testing.T) {
 
 // W1(b) — quiet on activity: a fresh wall clock keeps the watchdog silent.
 func TestWedgeWatchdogQuietOnActivity(t *testing.T) {
-	m, _ := wedgeFixture(t) // the fixture's own placeholder refreshed the clock
+	m, _ := wedgeFixture(t) // the fixture's arming stamp is fresh
 	m = pumpTicks(m, 3)
 	if m.wedgeNoted {
 		t.Fatal("fresh boss activity must keep the watchdog quiet")
@@ -191,17 +201,101 @@ func TestWedgeLatchRearmsAfterCompletion(t *testing.T) {
 	}
 }
 
-// W1(e) — a parked question hold (no placeholder in the chat — park drops
-// it) ALSO arms the watchdog: the turn is outstanding, just WAITING.
-func TestWedgeQuestionParkedArms(t *testing.T) {
+// W1(e) — a parked question hold NEVER fires the watchdog: the boss is
+// WAITING on the user's answer, and that user-owned silence is not a
+// wedge — the latch stays clear and no row prints, however stale the turn.
+// (Answering resumes real traffic, which re-stamps the clock then.)
+func TestWedgeQuestionParkedSilent(t *testing.T) {
 	m, _ := wedgeFixture(t)
 	m.questionParked = true
 	// park semantics: the placeholder is dropped from the chat.
 	m.st.Chat = nil
 	stale(&m, bossWedgeAfter+time.Second)
+	m = pumpTicks(m, 3)
+	if m.wedgeNoted {
+		t.Fatal("a parked question hold must never latch the wedge note")
+	}
+	if n := countWedgeRows(m); n != 0 {
+		t.Fatalf("a boss waiting on the user's answer is not wedged — got %d rows", n)
+	}
+	if hint := m.hintLine(); strings.Contains(hint, wedgeHint) {
+		t.Fatalf("the hint seam must stay quiet on a parked question, got %q", hint)
+	}
+}
+
+// W1(f) — a send-side placeholder ALONE never arms the watchdog clock (it
+// proves only that a prompt left the client): a turn with zero server-side
+// life stays silent instead of crying wolf. Real traffic THROUGH the event
+// path then arms the clock — the first stale stretch after it fires once.
+func TestWedgePlaceholderNeverArms(t *testing.T) {
+	b := &abortStubBackend{}
+	m := New(b, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "boss-1", From: "boss", Pending: true}})
+	if !m.lastBossActivityAt.IsZero() {
+		t.Fatal("the send-side placeholder must not stamp the watchdog wall clock")
+	}
+	m = pumpTicks(m, 3)
+	if m.wedgeNoted || countWedgeRows(m) != 0 {
+		t.Fatal("no real traffic ever → the watchdog stays silent (notice-only beats false-positive)")
+	}
+
+	// the first REAL server-side beat (a stream delta — pending WITH text)
+	// arms the clock through the normal reducer path; stale it and the
+	// first tick fires exactly once.
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "bossmsg-m1", From: "boss", Text: "working on it —", Pending: true}})
+	if m.lastBossActivityAt.IsZero() {
+		t.Fatal("a real stream delta must arm the watchdog wall clock")
+	}
+	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
 	if !m.wedgeNoted || countWedgeRows(m) != 1 {
-		t.Fatal("a parked question hold past 2m of silence must fire the watchdog")
+		t.Fatal("once armed by real traffic, past-threshold silence must fire exactly once")
+	}
+}
+
+// W1(g) — placeholders mid-wedge never RE-ARM: fire once, re-emit the
+// placeholder family (the every-send/queue-flush staging) and the latch
+// holds, the clock does not move, the row stays exactly one — identical
+// repeated rows from placeholder emissions are impossible. REAL traffic
+// then re-opens a fresh episode: one further row, no more.
+func TestWedgePlaceholderNeverReArms(t *testing.T) {
+	m, _ := wedgeFixture(t)
+	stale(&m, bossWedgeAfter+time.Second)
+	m = pumpTicks(m, 1)
+	if !m.wedgeNoted || countWedgeRows(m) != 1 {
+		t.Fatal("setup: the first wedge must latch with exactly one row")
+	}
+
+	armedAt := m.lastBossActivityAt
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "boss-2", From: "boss", Pending: true}})
+	if !m.lastBossActivityAt.Equal(armedAt) {
+		t.Fatal("a mid-wedge placeholder must NOT move the watchdog clock")
+	}
+	if !m.wedgeNoted {
+		t.Fatal("a mid-wedge placeholder must NOT clear the wedge latch")
+	}
+	m = pumpTicks(m, 3)
+	if n := countWedgeRows(m); n != 1 {
+		t.Fatalf("placeholders must never reprint the wedge row, got %d rows", n)
+	}
+
+	// real traffic (a stream delta) re-arms the episode; a fresh silence
+	// notes ONE more row — one per episode, never per placeholder.
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "bossmsg-m2", From: "boss", Text: "half an answer…", Pending: true}})
+	if m.wedgeNoted {
+		t.Fatal("real boss traffic must re-arm the latch for the next episode")
+	}
+	if m.lastBossActivityAt.Equal(armedAt) {
+		t.Fatal("real boss traffic must re-stamp the watchdog clock")
+	}
+	stale(&m, bossWedgeAfter+time.Second)
+	m = pumpTicks(m, 2)
+	if n := countWedgeRows(m); n != 2 {
+		t.Fatalf("the re-armed watchdog notes the second episode exactly once, got %d rows", n)
 	}
 }
 
