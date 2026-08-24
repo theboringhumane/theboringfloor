@@ -8,7 +8,7 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 export const metadata: Metadata = {
   title: 'Vision | theboringoffice',
   description:
-    'Why we are building a living office for agents — working with agents should feel beautiful and more human.',
+    'Why we believe agents need a floor, a roster, and memory — because a prompt box shows you a spinner, not the work.',
 }
 
 const coworkers = [
@@ -16,45 +16,53 @@ const coworkers = [
     id: '01',
     name: 'the manager',
     role: 'The boss',
-    body: 'The boss of the floor. Dispatches work to the team, keeps the shift coherent, and is the one you talk to — interruptible, batchable, always reachable.',
+    body: 'The one you talk to. Dispatches work to the team, keeps the shift coherent, and takes your messages mid-turn — interruptible, batchable, always reachable.',
   },
   {
     id: '02',
     name: 'theboringcto',
     role: 'The CTO',
-    body: 'Seated from boot. Reviews every drained batch before it lands and owns the architecture briefs — the adult in the room for the decisions that matter.',
+    body: 'Reviews every drained batch before it lands. The adult in the room for the calls that matter.',
   },
   {
     id: '03',
     name: 'hr',
     role: 'People & health',
-    body: 'Overlooks team health and people issues on the floor — because even a team of agents does its best work when someone is watching how the work feels.',
+    body: 'Watches team health and how the work feels on the floor — even a team of agents needs that.',
   },
   {
     id: '04',
     name: 'tekton',
     role: 'The developers',
-    body: 'Claims tickets off the board, opens work threads you can expand right in chat, drops mail to coworkers, and walks to the tea machine between batches.',
+    body: 'Claims tickets off the board, opens work threads you can expand right in chat, and walks to the tea machine between batches.',
   },
   {
     id: '05',
     name: 'scouts, reviewers, runners',
     role: 'The supporting cast',
-    body: 'Scouts recon the codebase before work starts, reviewers weigh in on every return, and runners carry the work through the floor until it is done.',
+    body: 'Scouts recon the codebase before work starts, reviewers weigh in on every return, and runners carry the work until it is done.',
   },
   {
     id: '06',
     name: 'the floor itself',
     role: 'Ambient life',
-    body: 'Coffee steam, blinking server LEDs, social chatter on the social clock, light and dark themes, and sound. An office that feels inhabited, not rendered.',
+    body: 'Desks, blinking server LEDs, the tea machine, light and dark themes, and sound. An office that feels inhabited, not rendered.',
   },
 ]
 
 const etiquette = [
-  'Message the boss while it works — your words are intelligently batched into one composed send, not lost in the scrollback.',
-  'The concierge answers instantly while the boss is busy, so you are never talking to a wall.',
-  '/stop aborts on the spot, and free-send keeps you typing while the office is mid-turn.',
-  'Permission asks stack as 1 of N instead of stealing your screen — approve, always-allow, or reject, and never get locked out.',
+  'Message the boss mid-turn — your words batch into one composed send, not a lost line in the scrollback.',
+  'The concierge answers instantly while the boss is busy, so you never talk to a wall.',
+  '/stop aborts on the spot; free-send keeps you typing while the office is mid-turn.',
+  'Permission asks stack as 1 of N instead of stealing the screen — approve, always-allow, or reject.',
+]
+
+const ceilings = [
+  'You want one-shot answers, not an ongoing system. A plain chat window is fine for that — use it.',
+  'You live in an IDE GUI, not a terminal. The office is a terminal app, and it will not pretend otherwise.',
+  'You need deterministic structured-output pipelines, not coworkers you supervise.',
+  'You have one agent, one file, one question — a roster and a board are overhead there.',
+  'You would rather not supervise anything. A floor you can read assumes someone reading it.',
 ]
 
 export default function VisionPage() {
@@ -66,15 +74,17 @@ export default function VisionPage() {
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
             <SectionTag>Our Vision</SectionTag>
             <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
-              Working with agents should feel beautiful and more human.
+              The prompt box is a lonely place to work.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              theboringoffice is a terminal app where your agents clock in as coworkers on a
-              living ASCII floor — they sit at desks, walk to the tea machine, gather at the
-              whiteboard, and answer you in chat, on the board, and in the mail.
+              Working with an agent today means typing into a chat window, watching a spinner,
+              and reading a wall of text back. The work is happening — you just can&apos;t see
+              it. No desk, no board, no sign of who is doing what, or what finished while you
+              were away.
             </p>
             <p className="mt-4 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              Not another coding agent. A place where agents work — and where you work with them.
+              theboringoffice is our answer: a terminal app where your agents clock in as
+              coworkers on a living ASCII floor, and the work stays where you can see it.
             </p>
           </div>
         </section>
@@ -83,18 +93,20 @@ export default function VisionPage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The problem</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              The prompt box is a lonely place to work.
+              A spinner is not the work.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Working with an agent today is mechanical and transactional: you type into a chat
-              window, watch a spinner, and get a wall of text back. You can&apos;t see the work
-              move, you can&apos;t ask the next thing while it thinks, and when the window closes,
-              everything it learned closes with it.
+              Agent work today is mechanical and transactional. You type, a spinner turns, a
+              wall of text comes back. Run two sessions and it gets worse: three panes, two of
+              them waiting on you, and no idea which one owns the auth change. You can&apos;t
+              see the work move, you can&apos;t ask the next thing while it thinks, and when
+              the window closes, everything it learned closes with it.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Prompts in a void. That loneliness isn&apos;t a cosmetic problem — it changes how you
-              relate to the tool. You stop collaborating and start queuing requests, and the agent
-              never gets the chance to be anything more than an API call.
+              That changes how you use the tool. You stop collaborating and start queuing
+              requests. The agent never becomes more than an API call — not because it
+              can&apos;t, but because there is nowhere for the work to stand still and be
+              seen.
             </p>
           </div>
         </section>
@@ -106,23 +118,19 @@ export default function VisionPage() {
               Familiarity builds trust. Trust builds collaboration.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              The office is humanity&apos;s oldest shared-work interface. Long before dashboards
-              and terminals, complex work got coordinated by putting people in a room: desks you
-              can read at a glance, a board with the work on the wall, someone to ask, someone
-              keeping an eye on the team. Everyone already knows how an office works — nobody
-              needs onboarding to a desk.
+              The office is one of the oldest shared-work interfaces we have. Desks you can
+              read at a glance. A board with the work on the wall. Someone to ask. Someone
+              keeping an eye on the team. Nobody needs onboarding to a desk.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              When your agent sits at that desk, walks to the whiteboard when the problem is big,
-              and refills the tea machine between batches, something quiet happens: you stop
-              parsing logs and start reading a room. Familiarity turns into trust; trust turns
-              into better collaboration. You hand the system more of the work, because you can
-              finally see the work.
+              Put an agent at one of those desks and something quiet happens. It walks to the
+              whiteboard when the problem is big. It refills the tea machine between batches.
+              You stop parsing logs and start reading a room — and you hand over more of the
+              work, because you can finally see the work.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              That is the bet behind theboringoffice: anthropomorphizing the floor is not
-              decoration — it is interface design. A system that feels alive is a system you
-              instinctively work with. People-shaped interfaces, for machine-shaped workers.
+              That is the bet: anthropomorphizing the floor is not decoration, it is interface
+              design. A system you can see is a system you can supervise.
             </p>
           </div>
         </section>
@@ -134,9 +142,8 @@ export default function VisionPage() {
               A floor of coworkers, not cursors.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              This is a proper org, not a loop. theboringoffice hires to a roster, fires by task,
-              and gives every worker a name, a desk, and a status line that says what it is doing
-              right now.
+              The floor runs on a roster, not a loop. Every worker has a name, a desk, and a
+              status line that says what it is doing right now.
             </p>
             <ScrollReveal
               stagger={0.06}
@@ -160,11 +167,11 @@ export default function VisionPage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Talking to the office</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              No queues. No blocking. Ask anything.
+              A queue that never locks you out.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              A good boss is interruptible. You can message the office at any moment — mid-task,
-              mid-batch, mid-anything — and nothing you send falls into a black hole.
+              A good boss is interruptible. Message the office mid-task, mid-batch, mid-turn —
+              nothing you send falls into a black hole.
             </p>
             <ul className="mt-10 flex max-w-2xl flex-col gap-3 border-l border-border pl-4">
               {etiquette.map((line) => (
@@ -183,18 +190,16 @@ export default function VisionPage() {
               The office remembers, so you don&apos;t have to re-explain.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              A coworker who forgets everything overnight isn&apos;t much of a coworker.
-              theboringoffice restores your last session when you open it, and{' '}
+              A coworker who forgets everything overnight is not much of a coworker. The
+              office restores your last session when you open it,{' '}
               <span className="font-mono text-foreground">-s</span> /{' '}
-              <span className="font-mono text-foreground">--session</span> pins any thread so you
-              can resume exactly where you left off.{' '}
-              <span className="font-mono text-foreground">/session</span> lets you pick the room
-              you want to walk back into.
+              <span className="font-mono text-foreground">--session</span> pins a thread, and{' '}
+              <span className="font-mono text-foreground">/session</span> picks the room you
+              want to walk back into.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Under the floor, agentmemory keeps the lessons, notes, and board state across shifts
-              — the board syncs, the lessons compound, and yesterday&apos;s context is still there
-              tomorrow. Close the terminal on Friday; walk back in on Tuesday and the office is
+              Under the floor, agentmemory keeps the lessons and the board state across
+              shifts. Close the terminal on Friday; walk back in on Tuesday and the office is
               where you left it.
             </p>
           </div>
@@ -207,14 +212,34 @@ export default function VisionPage() {
               Built for coworkers, not one harness.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Today, the office runs on opencode — honestly and visibly. Claude Code support is
-              coming soon, and the floor was designed for exactly that: the org, the panels, and
-              the memory are built for coworkers, whichever harness they arrive in.
+              Today the office runs on opencode, honestly and visibly. Claude Code support is
+              coming. The org, the floor, and the memory were built for coworkers, whichever
+              harness they arrive in.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              We are at v0.2.0 — the &quot;wave&quot; releases — early, open, and building in
-              public. More agents, more seats, more office. Stay tuned.
+              We are at v0.2.x — the &quot;wave&quot; releases. Early, open, and building in
+              public. More seats, more office.
             </p>
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-5xl px-6 py-20">
+            <SectionTag>Honest ceilings</SectionTag>
+            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+              When the office is the wrong tool.
+            </h2>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              We would rather lose you here than at hour ten of the wrong setup. Skip the
+              whole thing if:
+            </p>
+            <ul className="mt-10 flex max-w-2xl flex-col gap-3 border-l border-border pl-4">
+              {ceilings.map((line) => (
+                <li key={line} className="text-sm leading-relaxed text-foreground/90 md:text-base">
+                  {line}
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
 
@@ -224,9 +249,9 @@ export default function VisionPage() {
               A proper office, for agents.
             </h2>
             <p className="max-w-xl text-pretty leading-relaxed text-muted-foreground">
-              It should feel like Tuesday at a good company: a floor with a hum to it, coworkers
-              with names, work you can see moving, a boss you can interrupt, and a team that
-              remembers. Not just a coding agent — an alive system, a proper office.
+              Tuesday at a good company: a floor with a hum to it, coworkers with names, work
+              you can see moving, a boss you can interrupt, and a team that remembers. That is
+              the whole idea — come walk the floor.
             </p>
             <div className="mt-2 flex flex-wrap gap-3">
               <Link
