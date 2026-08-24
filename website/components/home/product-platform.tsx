@@ -62,8 +62,8 @@ export function ProductPlatform() {
             {forYouActions.map((a, i) => (
               <div
                 key={a.label}
-                style={{ marginLeft: `${Math.min(i * 8, 40)}%` }}
-                className="flex w-fit items-center gap-2 border border-border bg-card px-4 py-2.5 shadow-sm"
+                style={{ '--stair-offset': `${Math.min(i * 8, 40)}%` }}
+                className="stair-offset-item flex w-fit items-center gap-2 border border-border bg-card px-4 py-2.5 shadow-sm"
               >
                 <a.icon className="size-4 text-accent" />
                 <span className="whitespace-nowrap text-sm">{a.label}</span>

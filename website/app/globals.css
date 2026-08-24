@@ -189,3 +189,11 @@
   padding-left: 1rem;
   color: var(--muted-foreground);
 }
+
+/* Staircase action cards: diagonal offset only on md+ — on narrow screens the
+   progressive margin-left pushes cards off-canvas, so they stack straight. */
+@media (min-width: 768px) {
+  .stair-offset-item {
+    margin-left: var(--stair-offset);
+  }
+}
