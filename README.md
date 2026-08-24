@@ -128,13 +128,21 @@ session and resends the batch.
 - **`/stop` + free-send** — `enter` while the boss works never blocks: the
   prompt free-sends into the backlog and the status line reads "busy · N
   queued". `/stop` aborts current work (boss + workers).
-- **Plan/build modes** — `ctrl+p` toggles between **build** (default) and
-  **plan** (`[plan]` on the statusbar): plan-mode sends ride the read-only
-  plan agent, and the floor becomes a markdown plan editor — starter template
-  with a `mermaid` block (captioned `╭─ mermaid diagram ─╮`), glamour view
-  when unfocused, `esc` back to chat. `ctrl+x` approves an edited plan → the
-  boss gets it as build and the mode flips; an untouched template is refused.
-  The buffer persists across boots.
+- **Plan/build modes** — `ctrl+p` flips between **build** (default) and
+  **plan** (`[plan]` on the statusbar): a mode toggle only — prompts ride
+  the read-only plan agent, chat keeps focus, and the plan pane stays
+  hidden until it has content. Status line: `plan · boss plans read-only ·
+  ctrl+p exits · ctrl+x approves a presented plan`. A completed boss reply
+  mirrors into the floor slot passively (you keep typing; the hint swaps to
+  `plan · click to edit · ctrl+x approve → build · ctrl+p exits`), or click
+  the pane region to scratch one from the starter template (`mermaid` block
+  inside — captioned `╭─ mermaid diagram ─╮` in the read-only glamour
+  render, `esc` back to chat). Edits latch the pane as yours — a fresh boss
+  reply leaves it untouched (dim note: `boss replied — your edited plan
+  kept`). `ctrl+x` approves → `Approved plan — implement it exactly as
+  specified:` plus the plan body goes to the build agent and the mode flips
+  back to build; an empty buffer or the untouched starter is refused with a
+  notice. A non-empty, non-starter plan persists across boots.
 - **Ambient floor** — coffee steam off the tea machine, blinking server-rack
   LEDs, and an uplink ripple along the server-room wall — all tick-driven
   (no timers), so an idle office stays cheap.
@@ -216,8 +224,8 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `backspace` on an empty input | drop the newest attachment chip |
 | `ctrl+t` | expand/collapse completed thinking blocks |
 | `ctrl+d` | expand/collapse diff blocks |
-| `ctrl+p` | toggle plan/build mode (not with terminal focus or an open float) |
-| `ctrl+x` | plan editor: approve the plan → send to the boss as build |
+| `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not with terminal focus or an open float) |
+| `ctrl+x` | plan mode: approve the presented/edited plan → sent to the build agent, mode flips back to build |
 | `ctrl+o` | release the embedded terminal's focus back to the panels |
 | `ctrl+q` | quit (works inside the embedded terminal too) |
 | `y` `a` `n` `esc` | answer a permission prompt |

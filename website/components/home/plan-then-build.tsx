@@ -17,10 +17,13 @@ export function PlanThenBuild() {
             The office drafts the plan. You approve it. Then the crew builds.
           </h2>
           <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
-            Hit ctrl+p and the floor opens a real markdown plan editor — mermaid
-            diagrams welcome. Edit until it reads like your plan, not the
-            office&apos;s guess, then ctrl+x approves and the crew builds it. The
-            [plan] badge in the status bar keeps the mode honest.
+            Hit ctrl+p and keep talking — plan mode is conversation-first. The
+            boss&apos;s finished reply mirrors into a markdown plan pane in the
+            floor slot while you type, mermaid diagrams welcome. Click in and
+            edit until it reads like your plan, not the office&apos;s guess — a
+            fresh reply never clobbers your edits — then ctrl+x approves and
+            the crew builds it. The [plan] badge in the status bar keeps the
+            mode honest.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {keys.map((k) => (
