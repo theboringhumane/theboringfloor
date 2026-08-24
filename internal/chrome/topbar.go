@@ -1,6 +1,6 @@
 // topbar.go — one-line app bar, full width (port of node-legacy topbar.tsx):
 //
-//	left:  theboringoffice v0.1.0 | MODE | agents <n>
+//	left:  theboringoffice <version> | MODE | agents <n>
 //	right: <office clock> | <project> (<branch>)   — with a projinfo.Info
 //	       <office clock> | <cwd basename>         — zero-arg fallback (unchanged)
 //
@@ -20,10 +20,25 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/projinfo"
 	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringoffice/internal/version"
 )
 
-// AppVersion is shown in the topbar (theboringoffice v0.1.0).
-const AppVersion = "v0.1.0"
+// AppVersion is shown in the topbar (theboringoffice v0.2.1, or "dev" for a
+// tree build). One source of truth: version.Version — releases stamp it via
+// ldflags -X (see .goreleaser.yaml), so the bar can never drift stale against
+// the tag the binary was cut from.
+var AppVersion = shortVersion()
+
+// shortVersion — the tag-shaped form the bar wants: "v0.2.1" stamped, "dev"
+// in-tree. Accepts both "0.2.1" and "v0.2.1" stamps, mirroring
+// version.String's normalization.
+func shortVersion() string {
+	v := strings.TrimPrefix(version.Version, "v")
+	if v == "" || v == "dev" {
+		return "dev"
+	}
+	return "v" + v
+}
 
 // OfficeClock — port of topbar.tsx officeClock: starts 09:00,
 // +1 minute per ~30 ticks. Kept here on purpose: chrome does NOT import
