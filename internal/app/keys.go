@@ -3,7 +3,7 @@
 // EVERYWHERE — the first press toasts the hint bar, the second press inside
 // quitArmWindow quits (q/ctrl+c stay single-press, and only outside the
 // chat textarea and the terminal tab — inside the terminal they go to the
-// shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle panels, 1..6
+// shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle panels, 1..7
 // jump, ↑↓/pgup/pgdn/wheel scroll, enter sends chat.
 package app
 
@@ -15,9 +15,10 @@ import (
 )
 
 // termHint is the statusline hint shown while the terminal tab is active:
-// typing goes to the REAL shell; the only app-kept keys are the tab
-// switches, ctrl+o (release the focus badge back to chat) and ctrl+q.
-const termHint = "typing → shell · 1-6/tab panels · ctrl+o release · ctrl+q quit"
+// typing — tab/shift+tab and the digit keys INCLUDED — goes to the REAL
+// shell; the only app-kept keys are ctrl+o (release the focus badge back
+// to chat) and ctrl+q.
+const termHint = "typing → shell · ctrl+o release · ctrl+q quit"
 
 // quitArmToast — the high-visibility statusbar line swapped in while a
 // ctrl+q arm is live (the FIRST press arms instead of quitting; the
@@ -38,6 +39,7 @@ type KeyMap struct {
 	Tab4   key.Binding
 	Tab5   key.Binding
 	Tab6   key.Binding
+	Tab7   key.Binding
 }
 
 // NewKeyMap returns the default bindings.
@@ -54,6 +56,7 @@ func NewKeyMap() KeyMap {
 		Tab4:   key.NewBinding(key.WithKeys("4"), key.WithHelp("4", "board")),
 		Tab5:   key.NewBinding(key.WithKeys("5"), key.WithHelp("5", "mail")),
 		Tab6:   key.NewBinding(key.WithKeys("6"), key.WithHelp("6", "activity")),
+		Tab7:   key.NewBinding(key.WithKeys("7"), key.WithHelp("7", "git")),
 	}
 }
 
@@ -81,7 +84,7 @@ func (k KeyMap) ShortHelpView() string {
 	return h.ShortHelpView(k.ShortHelp())
 }
 
-// TabJump maps a 1..6 keypress to a tab index, or -1.
+// TabJump maps a 1..7 keypress to a tab index, or -1.
 func (k KeyMap) TabJump(s string) int {
 	switch s {
 	case "1":
@@ -96,6 +99,8 @@ func (k KeyMap) TabJump(s string) int {
 		return 4
 	case "6":
 		return 5
+	case "7":
+		return 6
 	}
 	return -1
 }

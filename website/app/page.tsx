@@ -1,6 +1,7 @@
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { Hero } from '@/components/home/hero'
+import { StatsStrip } from '@/components/home/stats-strip'
 import { FeatureGrid } from '@/components/home/feature-grid'
 import { PlanThenBuild } from '@/components/home/plan-then-build'
 import { ShoulderTap } from '@/components/home/shoulder-tap'
@@ -13,21 +14,24 @@ import { AgentsNeedAction } from '@/components/home/agents-need-action'
 
 export default function Page() {
   return (
-    <>
-      <SiteHeader seamless />
-      <main>
-        <Hero />
-        <AgentsNeedAction />
-        <FeatureGrid />
-        <PlanThenBuild />
-        <ShoulderTap />
-        <ContextModel />
-        <UnderTheHood />
-        <WhyComposio />
-        <OpenSource />
-        <ProductPlatform />
-      </main>
-      <SiteFooter />
-    </>
+    <div className="page-grid">
+      <div className="page-frame">
+        <SiteHeader framed />
+        <main>
+          <Hero />
+          <StatsStrip />
+          <AgentsNeedAction />
+          <FeatureGrid />
+          <PlanThenBuild />
+          <ShoulderTap />
+          <ContextModel />
+          <UnderTheHood />
+          <WhyComposio />
+          <OpenSource />
+          <ProductPlatform />
+        </main>
+        <SiteFooter />
+      </div>
+    </div>
   )
 }

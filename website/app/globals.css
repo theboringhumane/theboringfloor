@@ -197,3 +197,21 @@
     margin-left: var(--stair-offset);
   }
 }
+
+/* Herdr-style page frame: faint square grid in gutters, hard L/R rules on content. */
+.page-grid {
+  min-height: 100svh;
+  background-color: #0a0a0a;
+  background-image:
+    linear-gradient(to right, oklch(1 0 0 / 4%) 1px, transparent 1px),
+    linear-gradient(to bottom, oklch(1 0 0 / 4%) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  background-position: center top;
+}
+
+.page-frame {
+  margin-inline: auto;
+  max-width: 80rem;
+  border-inline: 1px solid oklch(1 0 0 / 12%);
+  background-color: color-mix(in oklch, #0a0a0a 88%, transparent);
+}

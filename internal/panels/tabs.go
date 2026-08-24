@@ -1,10 +1,11 @@
-// Package panels — the right-hand sidebar tab strip and its six tab
-// panels: chat, terminal, agents, board, mail, activity.
+// Package panels — the right-hand sidebar tab strip and its seven tab
+// panels: chat, terminal, agents, board, mail, activity, git (git LAST —
+// the activity index 5 is hardcoded app-side, so git must append).
 //
 // tabs.go — the strip itself: a one-row tab bar (active tab accent bg,
 // others gray) above a rounded-border panel holding the active tab's
 // content. Keys (handled by the app via the keymap): tab/shift+tab cycles,
-// 1..6 jumps straight to a tab. A compact display mode shortens the tab
+// 1..7 jumps straight to a tab. A compact display mode shortens the tab
 // labels to single letters (/compact — the canonical Title() is untouched,
 // so SetActiveByTitle keeps matching the full names).
 package panels
@@ -55,6 +56,7 @@ var compactLabels = map[string]string{
 	"board":    "b",
 	"mail":     "m",
 	"activity": "x",
+	"git":      "g",
 }
 
 // SetCompact switches the tab-bar label density (the app re-calls it on
@@ -134,11 +136,14 @@ func (t *Tabs) View() string {
 	}
 
 	// tab bar: " 1 chat " segments; active accent bg, others gray. Fall back
-	// in three tiers so all six tabs stay readable before we ever clip:
-	// numbered " 1 chat " → padded bare " chat " → tight "chat terminal …"
-	// (41 cells at six tabs — fits the default 44-col sidebar).
+	// in four tiers so all seven tabs stay readable before we ever clip:
+	// numbered " 1 chat " (72 cells at seven tabs) → padded bare " chat "
+	// (58) → tight "chat terminal …" (45) → single letters " c t a b m x g "
+	// (14). The tight tier is one cell over the default 44-col sidebar at
+	// seven tabs, so the letters tier keeps "git" alive instead of letting
+	// the hard clip truncate it to "gi". (Six tabs were fine: tight = 41.)
 	var barFinal string
-	for _, barKind := range []barPad{padNumbered, padBare, padTight} {
+	for _, barKind := range []barPad{padNumbered, padBare, padTight, padLetters} {
 		if bar := t.tabBar(barKind); lipgloss.Width(bar) <= t.w {
 			barFinal = bar
 			break
@@ -146,7 +151,7 @@ func (t *Tabs) View() string {
 	}
 	if barFinal == "" {
 		// narrower still: hard ansi-aware clip (never overflow the strip)
-		barFinal = ansi.Truncate(t.tabBar(padTight), t.w, "")
+		barFinal = ansi.Truncate(t.tabBar(padLetters), t.w, "")
 	}
 	bar := barFinal
 
@@ -166,7 +171,8 @@ type barPad int
 const (
 	padNumbered barPad = iota // " 1 chat " — full labels + jump numbers
 	padBare                   // " chat "   — padded bare titles
-	padTight                  // "chat"     — single-space separators (last resort)
+	padTight                  // "chat"     — single-space separators
+	padLetters                // " g "      — compactLabels letters (last resort)
 )
 
 // tabBar composes the strip row at the given label density.
@@ -174,7 +180,9 @@ func (t *Tabs) tabBar(pad barPad) string {
 	var segs []string
 	for i, tb := range t.tabs {
 		title := tb.Title()
-		if t.compact {
+		// padLetters forces single-letter labels even outside /compact —
+		// the never-truncate fallback once full titles no longer fit.
+		if t.compact || pad == padLetters {
 			if short, ok := compactLabels[title]; ok {
 				title = short
 			}
@@ -195,7 +203,7 @@ func (t *Tabs) tabBar(pad barPad) string {
 		}
 	}
 	bar := strings.Join(segs, " ")
-	if pad == padTight {
+	if pad >= padTight {
 		bar = " " + bar // one leading cell keeps the box border readable
 	}
 	return bar

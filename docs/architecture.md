@@ -12,7 +12,7 @@ by a real system; nothing on screen is fake except the coffee.
 |  topbar: theboringoffice <ver> | MODE | agents <n>   <clock> | <cwd> |
 |  OFFICE FLOOR (left, flex)  |  SIDEBAR (right, cfg width 26..100)    |
 |  sprites animated           <- tabs: chat | terminal | agents |      |
-|  by live events                 board | mail | activity              |
+|  by live events                 board | mail | activity | git        |
 |                             <- chat: you prompt the real boss        |
 |                                terminal: a REAL PTY shell            |
 |  statusbar: status | key hints | board p/i/d | mode                  |
@@ -43,13 +43,13 @@ Floor physics (event -> sprite):
 | `internal/app` | root bubbletea model: the state reducer, layout + key routing, boot splash, power governor, digest render cache, ambient social life, terminal-tab adapter |
 | `internal/state` | the ONE contract backend and UI speak: `OfficeState`, `Event`, the `Backend` interface (incl. `MCPServers` / `ReconnectMCP`) |
 | `internal/backend` | the two `state.Backend`s — scripted `demo.go`, live `opencode.go` (SSE client) — plus pure SSE normalization (`events.go`), the agentmemory adapter, MCP status/connect, question kinds |
-| `internal/panels` | the sidebar: tab strip + chat, terminal, agents, board, mail, activity; slash/@ popover, question + permission modals, MCP status block, subagent threads |
+| `internal/panels` | the sidebar: tab strip + chat, terminal, agents, board, mail, activity, git (live status + diff viewer); slash/@ popover, question + permission modals, MCP status block, subagent threads |
 | `internal/office` | the floor: props-driven floorplan, roster seats, sprite glyphs + walker physics, the pure frame renderer, tick-pure ambient fixtures |
 | `internal/chrome` | topbar, statusbar, shared lipgloss styles + themes |
 | `internal/config` | one file to run the office: `~/.theboringoffice/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults) |
 | `internal/charter` | the oikonomos manager protocol as an embedded asset, copied into `<dir>/.opencode/` for the spawned server |
 | `internal/sound` | terminal-native office audio: eight pure-Go PCM chimes into `~/.theboringoffice/sounds/`, platform player / bell / off |
-| `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback |
+| `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback; grabs the keyboard while its tab is active — `tab`/`shift+tab`/digits go to the shell, only `ctrl+o` (release) and `ctrl+q` (quit-arm) stay with the app |
 | `internal/version` | build-time stamp, one source of truth: `dev` in-tree, releases rewrite the vars via ldflags `-X`; drives `theboringoffice --version` and the topbar (`internal/chrome.AppVersion`) |
 
 ## Data flow

@@ -10,6 +10,7 @@
 //	enter                → "\r"
 //	backspace            → 0x7f  (DEL — what real terminals send)
 //	tab                  → 0x09  (completion)
+//	shift+tab            → "\x1b[Z"  (reverse completion)
 //	esc                  → 0x1b
 //	up/down/right/left   → "\x1b[A" … "\x1b[D"  (vt100 cursor keys)
 //	home/end             → "\x1b[H" / "\x1b[F"
@@ -17,8 +18,8 @@
 //	delete               → "\x1b[3~"
 //	space                → " "
 //	ctrl+c/d/x (all ctrl+<letter>) → 0x01..0x1a pass-through
-//	ctrl+o               → RESERVED by the panel (releases terminal focus);
-//	                       never reaches the shell
+//	ctrl+o               → RESERVED by the app (releases the terminal's
+//	                       keyboard grab); never reaches the shell
 //	bracketed paste / F-keys / kitty modifiers → NOT forwarded in v1
 //
 // Process-group discipline: creack/pty's StartWithSize configures

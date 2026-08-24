@@ -19,7 +19,7 @@ const features = [
 export function FeatureGrid() {
   return (
     <section id="products" className="border-b border-border">
-      <div className="mx-auto grid max-w-7xl grid-cols-1 md:grid-cols-2">
+      <div className="grid grid-cols-1 md:grid-cols-2">
         {features.map((f, i) => (
           <ScrollReveal
             key={f.title}
@@ -31,7 +31,7 @@ export function FeatureGrid() {
                 : 'flex flex-col-reverse border-b border-border md:border-b-0 md:flex-row'
             }
           >
-            <div className="flex flex-1 flex-col justify-center gap-4 px-6 py-10 md:px-10">
+            <div className="flex flex-1 flex-col justify-center gap-4 px-6 py-10 md:px-10 lg:px-14">
               <h3 className="text-2xl font-semibold tracking-tight">{f.title}</h3>
               <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
                 {f.description}

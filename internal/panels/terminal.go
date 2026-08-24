@@ -238,6 +238,8 @@ func keyToBytes(msg tea.KeyPressMsg) ([]byte, bool) {
 		return []byte{0x7f}, true
 	case "tab":
 		return []byte{0x09}, true
+	case "shift+tab":
+		return []byte("\x1b[Z"), true // reverse tab (back-completion)
 	case "esc":
 		return []byte{0x1b}, true
 	case "space":

@@ -20,10 +20,11 @@
 //   - quit: Close() runs on every app quit path (closeTerminal).
 //
 // Key contract (from internal/term's keyboard doc): while the terminal tab
-// is focused the ONLY keys the app keeps are 1..6/tab/shift+tab (tab
-// switch), ctrl+o (release badge) and ctrl+q (app quit) — everything else,
-// q and ctrl+c included, forwards to the shell (term maps ctrl+c to the
-// 0x03 byte, i.e. SIGINT to the foreground process).
+// is focused the terminal GRABS the keyboard — the ONLY keys the app keeps
+// are ctrl+o (release → back to the chat tab) and ctrl+q (app quit-arm).
+// Everything else forwards to the shell: tab (0x09 completion), shift+tab
+// (\x1b[Z reverse completion), digits, q and ctrl+c included (term maps
+// ctrl+c to the 0x03 byte, i.e. SIGINT to the foreground process).
 package app
 
 import (
@@ -37,8 +38,12 @@ import (
 )
 
 // terminalIndex is the terminal tab's position in the sidebar strip
-// (chat | terminal | agents | board | mail | activity).
+// (chat | terminal | agents | board | mail | activity | git).
 const terminalIndex = 1
+
+// gitIndex is the git tab's position in the sidebar strip. It MUST stay
+// last: the floor click pins the activity tab at index 5 (model.go).
+const gitIndex = 6
 
 // TerminalTab — the seam panels.TermPanel must satisfy. Same shape as the
 // other panels (Tab + Interactive) plus the lifecycle pair Close/Alive.

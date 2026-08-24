@@ -23,14 +23,20 @@ const solutions = [
   { name: 'Late Nights', description: 'The lights stay on so you do not have to' },
 ]
 
-export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
+export function SiteHeader({
+  seamless = false,
+  framed = false,
+}: {
+  seamless?: boolean
+  framed?: boolean
+}) {
   const [productsOpen, setProductsOpen] = useState(false)
   const [solutionsOpen, setSolutionsOpen] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pastHero, setPastHero] = useState(false)
 
   useEffect(() => {
-    if (!seamless) return
+    if (!seamless || framed) return
     const hero = document.getElementById('hero')
     if (!hero) return
     const io = new IntersectionObserver(
@@ -39,21 +45,30 @@ export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
     )
     io.observe(hero)
     return () => io.disconnect()
-  }, [seamless])
+  }, [seamless, framed])
 
-  const solid = !seamless || pastHero || mobileOpen
+  const solid = framed || !seamless || pastHero || mobileOpen
 
   return (
     <>
     <header
       className={cn(
-        'fixed top-0 z-50 w-full transition-[background-color,border-color,backdrop-filter] duration-300',
-        solid
-          ? 'border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70'
-          : 'border-b border-transparent bg-transparent',
+        'z-50 w-full transition-[background-color,border-color,backdrop-filter] duration-300',
+        framed
+          ? 'sticky top-0 border-b border-border bg-[#0a0a0a]/90 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0a]/80'
+          : 'fixed top-0',
+        !framed &&
+          (solid
+            ? 'border-b border-border bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/70'
+            : 'border-b border-transparent bg-transparent'),
       )}
     >
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      <div
+        className={cn(
+          'flex h-14 items-center justify-between px-6 md:h-16 md:px-10 lg:px-14',
+          !framed && 'mx-auto max-w-7xl',
+        )}
+      >
         <div className="flex items-center gap-2 lg:gap-4">
           <img src="/imgs/logo.jpg" alt="theboringoffice" className="h-8 w-8" />
           <Link href="/" className="flex items-center gap-2">
@@ -211,7 +226,7 @@ export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
         </nav>
       </div>
     </header>
-    {!seamless && <div className="h-16" aria-hidden />}
+{!seamless && !framed && <div className="h-16" aria-hidden />}
     </>
   )
 }

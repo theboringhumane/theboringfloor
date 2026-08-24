@@ -4,7 +4,7 @@
 
 Chat with the boss. Watch the floor — employees get up, walk to the manager,
 take the task, type it out, drop the mail, hit the tea machine. The right panel
-is yours: chat, agents, board, mail, activity — switch with `tab`.
+is yours: chat, agents, board, mail, activity, git — switch with `tab`.
 
 Underneath the wallpaper, it's all real: the manager is
 **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, the employees
@@ -191,14 +191,25 @@ quiet syncs (cap 4×, reset on change). The office goes cheap when nothing moves
 
 ## The sidebar is a cockpit
 
-Six tabs with a real terminal in the middle:
+Seven tabs with a real terminal in the middle:
 
 - **terminal** — an OS shell (`$SHELL`) on a real PTY, by `creack/pty`:
   lazily spawned on first visit, resizes with the panel, mouse scrolls the
-  scrollback, `r` respawns when dead, `ctrl+o` releases focus, `ctrl+q` still
-  quits everything.
+  scrollback, `r` respawns when dead. While the terminal tab is active it
+  grabs the keyboard: `tab` goes to the shell (completion), `shift+tab`
+  sends `\x1b[Z`, and number keys plus every other office shortcut are NOT
+  intercepted — the only app-kept keys are `ctrl+o` (release → back to the
+  chat tab) and `ctrl+q` (arms quit, works everywhere). The status bar reads
+  `typing → shell · ctrl+o release · ctrl+q quit`.
 - **chat** — the boss conversation; **agents** / **board** / **mail** /
   **activity** — office telemetry.
+- **git** — live repo status: a header summary (modified / added /
+  untracked / deleted counts, plus a +/- lines line) and a scrollable file
+  list with status glyphs (`M` modified, `A` added, `??` untracked,
+  `D` deleted, `R` renamed; a `*` suffix means staged). `enter` or a mouse
+  click on a file opens a colored unified diff (`+` green, `−` red, `@@`
+  hunk headers); `b` or `esc` returns to the list, `r` refreshes. A clean
+  tree shows "working tree clean".
 
 Layout lives in the config *and* in the app:
 
@@ -215,7 +226,8 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 
 | key | does |
 |---|---|
-| `tab` / `shift+tab` / `1..6` | switch panel: chat · **terminal** · agents · board · mail · activity |
+| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git — while **terminal** is active these are NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type) |
+| `enter` / click a file (git tab) | open its colored unified diff — `b` / `esc` back to the list, `r` refresh |
 | `↑` `↓` `pgup` `pgdn` / wheel | scroll the active panel |
 | `enter` | send to the boss (chat) |
 | `shift+enter` | newline |
@@ -226,8 +238,8 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not with terminal focus or an open float) |
 | `ctrl+x` | plan mode: approve the presented/edited plan → sent to the build agent, mode flips back to build |
-| `ctrl+o` | release the embedded terminal's focus back to the panels |
-| `ctrl+q` | quit (works inside the embedded terminal too) |
+| `ctrl+o` | release the embedded terminal's keyboard grab → back to the chat tab |
+| `ctrl+q` | arm quit (works everywhere, embedded terminal included) |
 | `y` `a` `n` `esc` | answer a permission prompt |
 | `q` / `ctrl+c` | quit |
 

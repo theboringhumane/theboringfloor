@@ -3,8 +3,8 @@
 // layout, key routing, the power governor, and the backend event seam.
 //
 // Layout: topbar (1) | middle (floor left flex | right sidebar) | statusbar (1).
-// The sidebar holds six tabs — chat | terminal | agents | board | mail |
-// activity — and its width is configurable (brain.json ui.sidebarWidth,
+// The sidebar holds seven tabs — chat | terminal | agents | board | mail |
+// activity | git — and its width is configurable (brain.json ui.sidebarWidth,
 // 26..100 clamp, 0 = default 80; /compact mode narrows it to 30). /zen is a
 // transient fullscreen-floor mode (sidebar hidden, any key exits).
 // Events arrive as state.Event tea.Msgs (backend goroutine → tea.Program.Send);
@@ -28,6 +28,7 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/office"
 	"github.com/theboringhumane/theboringoffice/internal/panels"
 	"github.com/theboringhumane/theboringoffice/internal/projinfo"
@@ -791,6 +792,9 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			panels.NewBoard(),
 			panels.NewMail(),
 			activity,
+			// git stays LAST (index 6): the floor click pins activity at 5.
+			// Empty root → the panel renders its "git unavailable" line.
+			panels.NewGit(func() gitx.Repo { r, _ := gitx.Root(""); return r }()),
 		),
 		keys: NewKeyMap(),
 		boot: NewBoot(0, 0),
@@ -1574,11 +1578,12 @@ const quitArmWindow = 1500 * time.Millisecond
 // handleKey implements the global keymap; unclaimed keys go to the tabs.
 //
 // The terminal tab has the tightest claim: when it is focused the ONLY keys
-// the app keeps are the tab switches (1..6/tab/shift+tab), ctrl+o (the
-// release-the-focus badge back to chat) and ctrl+q (double-press to quit)
-// — every other key, q and ctrl+c included, forwards to the REAL shell
-// (term maps ctrl+c to 0x03 → SIGINT of the shell's foreground process,
-// not an app quit).
+// the app keeps are ctrl+o (the release-the-focus badge back to chat) and
+// ctrl+q (double-press to quit — claimed above). Every other key, tab,
+// shift+tab, the digit jumps, q and ctrl+c INCLUDED, forwards to the REAL
+// shell (term maps ctrl+c to 0x03 → SIGINT of the shell's foreground
+// process, not an app quit; tab to 0x09 → the shell's completion;
+// shift+tab to "\x1b[Z" → reverse completion).
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	chatActive := m.tabs.ActiveIndex() == 0
@@ -1627,13 +1632,23 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.modelPick.Key(msg)
 	}
 
-	// tab-switch keys work from EVERY tab, terminal included
+	// tab-switch keys work from every tab EXCEPT the terminal — while the
+	// shell owns the keyboard, tab/shift+tab are the shell's completion
+	// keys and the digit keys its ordinary input: they break out of this
+	// switch and fall through to the terminal forward below. ctrl+o stays
+	// app-kept from anywhere (the release badge back to chat).
 	switch key {
 	case "tab":
+		if termActive {
+			break // the shell's completion key — forwarded below
+		}
 		m.tabs.Next()
 		m.maybeSpawnTerminal()
 		return nil
 	case "shift+tab":
+		if termActive {
+			break // the shell's reverse completion — forwarded below
+		}
 		m.tabs.Prev()
 		m.maybeSpawnTerminal()
 		return nil
@@ -1644,7 +1659,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
-	if !chatActive {
+	if !chatActive && !termActive {
 		if idx := m.keys.TabJump(key); idx >= 0 {
 			m.tabs.SetActive(idx)
 			m.maybeSpawnTerminal()
@@ -1806,6 +1821,13 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		// whose chat tab claims clicks exactly like the sidebar does —
 		// content coords just shift down past the band.
 		if msg.Y >= 1+m.floorBandH() {
+			// git tab claims clicks in its panel region (same adjusted
+			// coords contract as the sidebar branch).
+			if m.tabs.ActiveIndex() == gitIndex {
+				adj := msg
+				adj.Y -= 1 + m.floorBandH()
+				return m.tabs.Update(adj)
+			}
 			if m.tabs.ActiveIndex() != 0 || m.chat == nil {
 				return nil
 			}
@@ -1818,7 +1840,16 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			return nil
 		}
 	} else if msg.X >= m.floorW {
-		// sidebar: only the chat tab claims clicks (the permission
+		// sidebar. The git tab claims clicks: row hit → open the file's
+		// diff. Coords land in sidebar-box space (topbar stripped only) —
+		// the panel subtracts Tabs.ContentOffset itself.
+		if m.tabs.ActiveIndex() == gitIndex {
+			adj := msg
+			adj.X -= m.floorW
+			adj.Y--
+			return m.tabs.Update(adj)
+		}
+		// otherwise only the chat tab claims clicks (the permission
 		// popover's card, then worker thread header rows). Content
 		// coords = screen minus the box chrome (floor border col +
 		// sidebar top row + tab bar & border — Tabs.ContentOffset).
