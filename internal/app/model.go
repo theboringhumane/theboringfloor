@@ -434,14 +434,17 @@ type Model struct {
 
 	// Boss-wedge watchdog (W1): lastBossActivityAt is the WALL-CLOCK twin
 	// of the tick counter above, refreshed by the same isBossActivity set
-	// in applyDelegation. NEVER derived from st.Tick — the governor
-	// re-arms ticks at 180ms–3s depending on posture (power.go), so tick
-	// deltas cannot measure real silence. wedgeNoted is the one-shot
-	// latch: the "boss turn wedged" red row + hint-swap fire ONCE per
-	// wedge and ride until any boss activity re-arms it (mirror of
-	// conciergeNoted) or resetServerTurn//stop closes the turn. wedgeAfter
-	// is the threshold override (0 = bossWedgeAfter); the uishot/test
-	// harness seams it via SetWedgeAfterForShot.
+	// in applyDelegation — MINUS the send-side typing placeholder
+	// (isSendSidePlaceholder), which the UI stages itself and which
+	// therefore proves nothing about the server. NEVER derived from
+	// st.Tick — the governor re-arms ticks at 180ms–3s depending on
+	// posture (power.go), so tick deltas cannot measure real silence.
+	// wedgeNoted is the one-shot latch: the "boss turn wedged" red row +
+	// hint-swap fire ONCE per wedge and ride until REAL boss traffic
+	// re-arms it (mirror of conciergeNoted) or resetServerTurn//stop
+	// closes the turn. wedgeAfter is the threshold override (0 =
+	// bossWedgeAfter); the uishot/test harness seams it via
+	// SetWedgeAfterForShot.
 	lastBossActivityAt time.Time
 	wedgeNoted         bool
 	wedgeAfter         time.Duration
@@ -909,7 +912,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 					// the one session.json describes (or no file exists) —
 					// hydrating that stale, unrelated transcript would mask
 					// the pinned one.
-					m.notice(fmt.Sprintf("resumed session %s (explicit pin) · /new for a fresh office", m.resumePin))
+					m.appendNotice(fmt.Sprintf("resumed session %s (explicit pin) · /new for a fresh office", m.resumePin), "boot")
 				}
 			} else if sf, ok := LoadSession(dir); ok && sf.Fresh() {
 				if sf.PrimaryID != "" {
@@ -1787,6 +1790,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
+	if termActive {
+		// Terminal active but RELEASED: every unclaimed key (typed letters,
+		// enter, esc, arrows) is consumed — never the PTY, never the chat
+		// textarea. Only a dead shell still receives input: "r" respawns.
+		if m.termTab != nil && !m.termTab.alive() {
+			return m.tabs.Update(msg)
+		}
+		return nil
+	}
 	return m.tabs.Update(msg)
 }
 
@@ -2214,11 +2226,18 @@ func (m *Model) applyDelegation(ev state.Event) {
 	if isBossActivity(ev) {
 		m.lastBossActivity = m.st.Tick
 		// W1 — the wall-clock twin: real silence is measured against this.
-		// Any boss traffic is ALSO the wedge watchdog's re-arm: a wedged
-		// turn that finally moves clears the latch (and its hint/row)
-		// the same reduce, so the note can never lag a recovered turn.
-		m.lastBossActivityAt = time.Now()
-		m.wedgeNoted = false
+		// Only REAL server-side boss traffic re-arms the wedge watchdog —
+		// the send-side typing placeholder is the UI's own optimistic
+		// staging (opencode.go emits one on EVERY send/queue-flush), not
+		// proof of life. Letting it stamp the clock restarted the 2m
+		// window per send, so a wedged turn printed one red row per turn
+		// forever. Real traffic on a wedged turn that finally moves still
+		// clears the latch (and its hint/row) the same reduce, so the note
+		// can never lag a recovered turn.
+		if !isSendSidePlaceholder(ev) {
+			m.lastBossActivityAt = time.Now()
+			m.wedgeNoted = false
+		}
 	}
 	busy := 0
 	for _, e := range m.st.Employees {
@@ -2236,7 +2255,9 @@ func (m *Model) applyDelegation(ev state.Event) {
 
 // isBossActivity — the boss-side event set that resets the delegation
 // quiet clock: any boss chat event (stream delta, placeholder, pinned or
-// error bubble), a boss EvThought, a primary-session EvTool.
+// error bubble), a boss EvThought, a primary-session EvTool. NB: the
+// wedge watchdog's WALL clock takes a stricter subset of this — the
+// send-side placeholder above is excluded there (isSendSidePlaceholder).
 func isBossActivity(ev state.Event) bool {
 	switch ev.Kind {
 	case state.EvChatBoss:
@@ -2249,13 +2270,26 @@ func isBossActivity(ev state.Event) bool {
 	return false
 }
 
+// isSendSidePlaceholder — the optimistic typing bubble the backend stages
+// synchronously on EVERY Send ("boss-"+chatSeq, Pending:true, Text:"" —
+// opencode.go's pendingID). It proves only that a prompt left the client,
+// never that the server is alive, so it must NOT stamp or clear the wedge
+// watchdog's wall clock: each send/queue-flush used to restart the 2m
+// silence window, printing one red "boss turn wedged" row per turn
+// forever. Stream deltas (Pending with TEXT) and every pinned/completed
+// boss bubble remain real traffic.
+func isSendSidePlaceholder(ev state.Event) bool {
+	return ev.Kind == state.EvChatBoss && ev.Msg.Pending && ev.Msg.Text == ""
+}
+
 // --- boss-wedge watchdog (W1) ------------------------------------------------
 
 // bossWedgeAfter — the silence threshold: a pending boss turn (typing
-// placeholder) or a parked question hold with ZERO boss-side traffic for
-// this long counts as wedged. Wall clock only — the tick governor's
-// cadence varies 180ms–3s, so the threshold measures
-// m.lastBossActivityAt, never st.Tick.
+// placeholder) with ZERO server-side boss traffic for this long counts as
+// wedged. A parked question hold NEVER does — the boss is waiting on the
+// USER's answer then, so silence is user-owned, not a wedge. Wall clock
+// only — the tick governor's cadence varies 180ms–3s, so the threshold
+// measures m.lastBossActivityAt, never st.Tick.
 const bossWedgeAfter = 120 * time.Second
 
 // wedgeHint — the statusline swap while the wedge latch is set (rides the
@@ -2267,13 +2301,15 @@ const wedgeHint = "boss looks wedged — no reply for 2m · /stop to abort · en
 // NOTICE-ONLY by design: NEVER auto-kill, NEVER auto-respawn the turn — a
 // slow model round or a long delegation quiet spell is indistinguishable
 // from a dead one, and firing either would destroy real work. Armed when a
-// boss placeholder is outstanding or a question hold is parked; fires ONCE
-// per wedge (wedgeNoted, re-armed by any isBossActivity refresh in
-// applyDelegation and by resetServerTurn//stop): one red transcript row
-// plus the hint swap, then silence until recovery.
+// boss placeholder is outstanding; a parked question hold is NEVER armed
+// (waiting on the user's answer is not a wedge). Fires ONCE per wedge
+// (wedgeNoted, re-armed only by REAL server-side boss traffic in
+// applyDelegation — the send-side placeholder is isSendSidePlaceholder and
+// cannot re-arm — or by resetServerTurn//stop closing the turn): one red
+// transcript row plus the hint swap, then silence until recovery.
 func (m *Model) checkBossWedge() {
-	if m.wedgeNoted || (!hasPendingBoss(m.st) && !m.questionParked) {
-		return // nothing outstanding, or already said
+	if m.wedgeNoted || m.questionParked || !hasPendingBoss(m.st) {
+		return // already said, waiting on the user's question answer, or nothing outstanding
 	}
 	if m.lastBossActivityAt.IsZero() {
 		return // no boss traffic this run — nothing to age out
@@ -2506,14 +2542,16 @@ func (m *Model) unwindStoppedWork() {
 
 // composeBatch builds the ONE batch-dispatch prompt the boss session
 // decomposes per its manager discipline: numbered independent work items,
-// parallel sub-agents for the non-trivial ones, a closing status table.
+// as many parallel sub-agents as the items decompose into for the
+// non-trivial ones, a closing status table.
 // Attachment-carrying items get a machine " 📎N" suffix on their numbered
 // line; the actual file parts ride the same send (dispatchQueued).
 func composeBatch(items []queueEntry) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "[BATCH DISPATCH — %d requests arrived while you were busy. "+
 		"Treat each as an independent numbered work item: do trivial ones inline; "+
-		"for non-trivial independent items DISPATCH PARALLEL SUB-AGENTS per your "+
+		"for non-trivial independent items DISPATCH AS MANY PARALLEL SUB-AGENTS "+
+		"AS THE ITEMS DECOMPOSE INTO (never 1 or 2 for real work) per your "+
 		"manager discipline; then finalize with a one-line-per-item status table.]\n",
 		len(items))
 	for i, it := range items {
