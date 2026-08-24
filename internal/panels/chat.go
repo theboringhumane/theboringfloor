@@ -481,6 +481,27 @@ type Chat struct {
 	// source — refreshed on EVERY setConversation.
 	sel      selState
 	selLines []string
+
+	// Transcript virtualization (chat_window.go):
+	//   — blockCache/blocks: buildBlocks renders each timeline item ONCE
+	//     per (identity × width/theme generation × its toggles × content)
+	//     and caches the finished PADDED lines + LOCAL click hit-map;
+	//     assembly splices cached rows (an append / stream update
+	//     re-renders only the touched tail blocks).
+	//   — win: the viewport's posted content is the same LINE COUNT as
+	//     selLines but materialized only around the scroll offset
+	//     (+overscan) — the blank-height model. Scroll/page-in, follow,
+	//     ClickRow and TranscriptRows() are unchanged: the posted row
+	//     space is one-to-one with selLines.
+	//   — themeGen: RefreshTheme's bump — styles bake into cached
+	//     fragments, so a /theme switch must miss every block.
+	//   — convWide: widest PADDED line of the last assembly — the
+	//     rogue-row guard's skip-scan signal.
+	blockCache map[string]*chatBlock
+	blocks     []*chatBlock
+	win        vpWindow
+	themeGen   uint64
+	convWide   int
 }
 
 // NewChat builds the panel; onSend is invoked on Enter with a non-empty
@@ -489,7 +510,14 @@ type Chat struct {
 // a plain text send).
 func NewChat(onSend func(text string, atts []state.Attachment) tea.Cmd) *Chat {
 	vp := viewport.New(viewport.WithWidth(10), viewport.WithHeight(5))
-	vp.SoftWrap = true
+	// SoftWrap OFF, on purpose (chat_window.go): the transcript renderers
+	// pre-fold every row to the viewport width (foldStyledLines /
+	// foldStyledRows / clipPlain budgets + the rogue-row rescue), so
+	// wrapping was already a no-op for this content — with it off the
+	// viewport's per-scroll/per-paint walks drop from O(total rows) to
+	// O(1) and the window's blank-height model stays exact (every posted
+	// row is exactly 1 cell tall).
+	vp.SoftWrap = false
 	vp.MouseWheelEnabled = true
 
 	ta := textarea.New()
@@ -516,7 +544,7 @@ func NewChat(onSend func(text string, atts []state.Attachment) tea.Cmd) *Chat {
 
 	c := &Chat{vp: vp, ta: ta, sp: sp, onSend: onSend, follow: true,
 		showThinking: true, showTools: true, diffCache: map[string]diffCacheEntry{},
-		workerTasks: map[string]string{}}
+		workerTasks: map[string]string{}, blockCache: map[string]*chatBlock{}}
 	c.SetSize(30, 10)
 	return c
 }
@@ -541,6 +569,10 @@ func (c *Chat) RefreshTheme() {
 	c.sp.Style = threadSpinnerStyle() // the magenta braille thread glyph
 	c.md = nil
 	c.diffCache = map[string]diffCacheEntry{} // syntax colours are theme-bound
+	// styles bake into every cached transcript fragment — bump the
+	// generation so the next render re-renders every block at the new
+	// palette (the same miss a width flip forces).
+	c.themeGen++
 	c.forceRender()
 }
 
@@ -1065,33 +1097,52 @@ func (c *Chat) SetShowTools(on bool) {
 // ShowTools reports whether tool one-liners render.
 func (c *Chat) ShowTools() bool { return c.showTools }
 
-// setConversation posts the rendered transcript into the viewport through
-// the chatPadL left inset: every content line rides the gutter (the right
-// gutter falls out of the contentW wrap budget, not padding), while rows
-// outside the viewport — divider, typing/loading rows, chips, pickers,
-// textarea — keep the full panel width. The padded lines are ALSO the
-// mouse-selection's coordinate space (selLines cache) and hijack-free
-// extraction source: while a selection is live the reverse-video overlay
-// splices over them HERE (the one seam every render path flows through),
-// so the highlight survives SetState rebuilds, fold/thread toggles and
-// scroll alike (see chat_selection.go).
-func (c *Chat) setConversation(content string) {
-	pad := strings.Repeat(" ", chatPadL)
-	lines := strings.Split(content, "\n")
-	for i := range lines {
-		lines[i] = pad + lines[i]
+// setConversationLines posts the rendered transcript into the viewport:
+// every content line rides the chatPadL left gutter (the right gutter
+// falls out of the contentW wrap budget, not padding — the block cache
+// carries the lines pre-padded), while rows outside the viewport —
+// divider, typing/loading rows, chips, pickers, textarea — keep the full
+// panel width. The padded lines are ALSO the mouse-selection's coordinate
+// space (selLines cache) and hijack-free extraction source: while a
+// selection is live the reverse-video overlay splices over them HERE (the
+// one seam every render path flows through), so the highlight survives
+// SetState rebuilds, fold/thread toggles and scroll alike (see
+// chat_selection.go).
+func (c *Chat) setConversationLines(lines []string) {
+	// ROGUE-ROW RESCUE: vp.SoftWrap is off (chat_window.go), so a padded
+	// line wider than the viewport would clip at the terminal edge —
+	// where the old SoftWrap viewport hard-cut it into wrapped rows.
+	// Renderers never produce one (they fold at contentW ≤ w-chatPadR);
+	// the empty-state placeholder at a hairline width can. When the
+	// assembly's convWide even REACHES the viewport width, cut the
+	// offenders into SoftWrap's exact chunks (expandLines) so the posted
+	// rows stay ≤ width — the blank-height model then holds (every posted
+	// row is 1 cell tall) AND the pixels match the old behavior. The
+	// guard skips the scan entirely when nothing can overflow (free).
+	if vpW := c.vp.Width(); vpW > 0 && c.convWide > vpW {
+		out := make([]string, 0, len(lines))
+		for _, ln := range lines {
+			out = append(out, expandLines(ln, vpW)...)
+		}
+		lines = out
 	}
 	c.selLines = lines
 	if c.sel.active || c.sel.finalized {
 		c.selOverlay(lines)
 	}
-	c.vp.SetContent(strings.Join(lines, "\n"))
+	// the windowed projection: post the SAME row count as selLines (the
+	// blank-height model — scroll space, ClickRow rows, TranscriptRows()
+	// all unchanged) with real content only around the scroll anchor
+	// (chat_window.go). The caller's follow-latch GotoBottom lands inside
+	// the freshly materialized window by construction (rebuildWindow aims
+	// at maxYOffset when following).
+	c.rebuildWindow()
 }
 
 // forceRender re-renders the conversation outside the SetState revision gate
 // (toggles change the pixels, not the state).
 func (c *Chat) forceRender() {
-	c.setConversation(c.renderConversation())
+	c.setConversationLines(c.renderConversationLines())
 	if c.follow {
 		c.vp.GotoBottom()
 	}
@@ -1148,6 +1199,7 @@ func (c *Chat) SetSize(w, h int) {
 	if w < 4 {
 		w = 4
 	}
+	wChanged := w != c.w
 	c.w, c.h = w, h
 	spH := 0
 	if c.pendingSpin {
@@ -1177,6 +1229,18 @@ func (c *Chat) SetSize(w, h int) {
 		c.mdWidth = 10
 	}
 	c.md = nil // rebuilt lazily at the new wrap width
+	// A width CHANGE re-plans the posted transcript NOW (not only at the
+	// next SetState): the window re-posts at the current scroll offset
+	// and rogue-wide rows re-cut (the same rows the old SoftWrap viewport
+	// served pre-render). Rendering stays lazy — the cached blocks are
+	// re-JOINED, never re-rendered, here (the next SetState's generation
+	// flip misses them all anyway).
+	if wChanged && len(c.blocks) > 0 {
+		c.setConversationLines(c.assembleConversationLines())
+		if c.follow {
+			c.vp.GotoBottom()
+		}
+	}
 }
 
 // cellWidth is the display-cell count of s (runes here — prefixes are all
@@ -1307,7 +1371,7 @@ func (c *Chat) SetState(st state.OfficeState) {
 		// re-render lands at the latest state when the focus closes.
 		return
 	}
-	c.setConversation(c.renderConversation())
+	c.setConversationLines(c.renderConversationLines())
 	if c.follow {
 		c.vp.GotoBottom()
 	}
@@ -1329,7 +1393,7 @@ func (c *Chat) RenderCalls() int { return c.renderCalls }
 // the conversation byte-identical to where they left it.
 func (c *Chat) ResumeFromFocus() {
 	c.deferRender = false
-	c.setConversation(c.renderConversation())
+	c.setConversationLines(c.renderConversationLines())
 	if c.follow {
 		c.vp.GotoBottom()
 	}
@@ -1584,6 +1648,7 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 			} else {
 				c.follow = false
 			}
+			c.syncWindow() // page the projection across the scrolled boundary
 			return cmd
 		default:
 			// "@" at a word boundary opens the attach picker AFTER the
@@ -1620,6 +1685,7 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		c.vp, cmd = c.vp.Update(msg)
 		c.follow = c.vp.AtBottom()
+		c.syncWindow() // page the projection across the scrolled boundary
 		return cmd
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -1680,6 +1746,11 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 // the permission popover (permVisible) — it owns the float slot and
 // every key; its textarea underneath keeps rendering but is disabled.
 func (c *Chat) View() string {
+	// the catch-all window sync: scroll seams the panel does not own
+	// (threads_opencode.go's PreserveAnchor bump, app-level Goto*)
+	// must paint on materialized rows even though no key came through
+	// Update. O(1) when the viewport sits inside the overscan window.
+	c.syncWindow()
 	var b strings.Builder
 	b.WriteString(c.vp.View())
 	b.WriteString("\n")
@@ -1745,20 +1816,20 @@ func (c *Chat) View() string {
 	return out
 }
 
-// renderConversation rebuilds the full glamour-rendered transcript as ONE
-// timeline. Employee tool entries (wtoolKind) collect into per-agent
-// worker threads, but the threads are NOT a docked bottom region any
-// more — mergeChatTimeline interleaves them with the visible entries by
+// buildBlocks collects the timeline (messages + per-agent worker threads)
+// and renders every item through the per-block CACHE (chat_window.go): an
+// unchanged block is borrowed, so a steady-state append/stream re-renders
+// only the touched tail blocks. Populates c.blocks (+ prunes the cache).
+// Employee tool entries (wtoolKind) collect into per-agent worker threads,
+// but the threads are NOT a docked bottom region any more —
+// mergeChatTimeline interleaves them with the visible entries by
 // timestamp (a thread anchors at its creation time), so every entry —
 // chat message or subagent thread — scrolls in chronological order.
-func (c *Chat) renderConversation() string {
+func (c *Chat) buildBlocks() {
 	c.renderCalls++ // the focus deferral's probe (RenderCalls)
 	visible := make([]state.ChatMsg, 0, len(c.chat))
 	var workers []workerGroup
 	workerIdx := map[string]int{}
-	c.threadRows = map[int]string{}   // mouse hit-map, rebuilt every render
-	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
-	c.toolDiffRows = map[int]string{} // ↳ diff sub-row hit-map, same rebuild
 	for _, m := range c.chat {
 		if m.Kind == wtoolKind || m.Kind == wthinkKind || m.Kind == wdiffKind {
 			// /tools off hides the whole workers region; /thinking off
@@ -1815,14 +1886,17 @@ func (c *Chat) renderConversation() string {
 		c.segTitles = alive
 	}
 	if len(visible) == 0 && len(workers) == 0 {
-		return chrome.DimText.Render("  no messages yet — ask the boss for something.")
+		content := chrome.DimText.Render("  no messages yet — ask the boss for something.")
+		c.blocks = []*chatBlock{c.noteBlock(content, "chat-empty")}
+		c.pruneBlockCache()
+		return
 	}
-	var b strings.Builder
-	first := true
 	items := mergeChatTimeline(visible, workers)
 	// the opencode hint row trails the LAST thread block of the timeline
 	// while ≥1 RENDERED thread is live (visibility-aware: /tools off
-	// builds no tool threads, so none can be live on screen)
+	// builds no tool threads, so none can be live on screen) — it rides
+	// INSIDE that group's block (the same adjacency as ever: group rows,
+	// one blank row, hint row).
 	lastGroup := -1
 	for i, item := range items {
 		if item.Group >= 0 {
@@ -1836,112 +1910,315 @@ func (c *Chat) renderConversation() string {
 			break
 		}
 	}
-	// topShift — the row-count delta the final TrimLeft eats when a thread
-	// block TOPS the timeline: its "\n\n" lead survives into b here (so a
-	// strings.Count on b rides 2 high) but never reaches the screen.
-	// renderWorkerGroup's b.Len()==0 lead covers the topping block itself;
-	// row registrations of LATER items (the user-bubble fold map) correct
-	// by the same 2.
-	topShift := 0
-	if len(items) > 0 && items[0].Group >= 0 {
-		topShift = 2
-	}
+	// assemble from the per-block cache (chat_window.go): each item
+	// renders ONCE per (identity × width/theme generation × its toggles ×
+	// its content); unchanged spans are borrowed, so a steady-state
+	// stream/append only re-renders its own tail blocks.
+	gen := c.renderGen()
+	blocks := make([]*chatBlock, 0, len(items))
 	for i, item := range items {
 		if item.Group >= 0 {
-			// a subagent thread joins the flow HERE, at its timeline
-			// slot — its block carries the same leading "\n\n" glue as
-			// every other item pair: the loop owns ALL separation, so
-			// item bodies never write an edge newline
-			c.renderWorkerGroup(&b, workers[item.Group])
-			if i == lastGroup && anyLive {
-				b.WriteString("\n\n" + chrome.DimText.Italic(true).Render(threadHintText))
-			}
-			first = false
-			continue
-		}
-		if !first {
-			// the ONE separator between timeline items: exactly one
-			// blank row, owned here and by the thread block's lead
-			b.WriteString("\n\n")
-		}
-		first = false
-		m := item.Msg
-		switch {
-		case m.Kind == thinkKind:
-			c.renderThink(&b, m)
-		case m.Kind == toolKind:
-			// boss inline tool one-liner — WRAPPED, never clipped and
-			// never burst mid-glyph by the vp soft-wrap: the first row
-			// flows tight against the bubble above (no leading indent),
-			// continuations hang under the tool text start.
-			toolW := c.contentW() - 1
-			indent := strings.Repeat(" ", cellWidth(toolWrapPrefix))
-			lines := foldStyledRows(renderTool(m), toolW, toolW-cellWidth(toolWrapPrefix))
-			b.WriteString(lines[0])
-			for _, ln := range lines[1:] {
-				b.WriteString("\n" + indent + ln)
-			}
-		case m.Kind == questionKind:
-			c.renderQuestion(&b, m)
-		case m.Kind == diffKind:
-			c.renderDiff(&b, m)
-		case m.Kind == officeKind:
-			// concierge (EvChatOffice) — a real turn, not a notice: the
-			// INFO "office ›" case above renderNotice's dim-office line
-			c.renderOffice(&b, m)
-		case m.From == officeFrom:
-			c.renderNotice(&b, m)
-		case m.From == "user":
-			prefix := chrome.Fg(chrome.Info, userPrefix)
-			lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
-			attachSuffix := ""
-			if names, ok := state.ParseAttachMeta(m.Meta); ok && len(names) > 0 {
-				// the backend's chat-user echo carries the attachment
-				// names in Meta — history shows the dim " · 📎 N" suffix
-				attachSuffix = chrome.DimText.Render(" · 📎 " + itoa(len(names)))
-				lines[len(lines)-1] += attachSuffix
-			}
-			lines = foldStyledLines(lines, c.mdWidth+1)
-			if len(lines) > userFoldVisible {
-				// a LONG user turn folds to its head rows + a one-row
-				// dim-italic hint (a click there expands it — the
-				// userFoldRows hit-map carries exactly that row, body
-				// rows never); expanded, the bubble keeps every row and
-				// trails a clickable "… collapse" instead. The 📎 suffix
-				// leaves the body for the hint row while folded (the
-				// expanded shape keeps the pre-fold rendering: suffix on
-				// the last body row). Hint/trailer are SINGLE clipped
-				// rows (the thread header's contract): an overflowing
-				// row would burst mid-word in the vp soft-wrap and break
-				// every content-row click map.
-				key := userFoldKey(m)
-				startRow := strings.Count(b.String(), "\n") - topShift
-				hintW := c.contentW() - cellWidth(userPrefix) // the hanging indent eats the head
-				if c.userExpanded[key] {
-					c.userFoldRows[startRow+len(lines)] = key
-					lines = append(lines, chrome.DimText.Italic(true).Render(clipPlain("… collapse", hintW)))
-				} else {
-					hint := chrome.DimText.Italic(true).Render(clipPlain(
-						"… +"+itoa(len(lines)-userFoldVisible)+" more lines · click to expand",
-						hintW-cellWidth(ansi.Strip(attachSuffix)))) + attachSuffix
-					c.userFoldRows[startRow+userFoldVisible] = key
-					lines = append(lines[:userFoldVisible], hint)
-				}
-			}
-			writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(userPrefix)), lines)
-		default:
-			prefix := chrome.Fg(chrome.Accent, bossPrefix)
-			lines := cleanMarkdown(c.renderMarkdown(m.Text))
-			// a streaming reply is just the bubble itself growing — no
-			// caret, no extra row: the typing row below the divider is the
-			// liveness signal for the whole pending period.
-			lines = foldStyledLines(lines, c.mdWidth)
-			writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(bossPrefix)), lines)
+			blocks = append(blocks, c.renderGroupBlock(workers[item.Group], i == lastGroup && anyLive, gen))
+		} else {
+			blocks = append(blocks, c.renderMsgBlock(item.Msg, gen))
 		}
 	}
-	// a thread as the very first entry would otherwise leave its leading
-	// "\n" behind as a blank top row
-	return strings.TrimRight(strings.TrimLeft(b.String(), "\n"), "\n")
+	c.blocks = blocks
+	c.pruneBlockCache()
+}
+
+// renderConversation rebuilds the transcript as TEXT — the test-facing
+// seam (the fold/thread/epoch suites split + strip it): byte-identical to
+// what the pre-block monolithic builder produced. The panel itself renders
+// through renderConversationLines (no join/split/pad round-trip per
+// frame).
+func (c *Chat) renderConversation() string {
+	c.buildBlocks()
+	c.mergeBlockHits()
+	var b strings.Builder
+	for i, blk := range c.blocks {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		b.WriteString(blk.text)
+	}
+	// a fragment trailing "\n" would otherwise end the transcript on a
+	// blank row (the old TrimRight contract — kept verbatim)
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// renderConversationLines is the PANEL's render pipeline: the same block
+// assembly, delivered as the PADDED row slice (selLines' exact content).
+func (c *Chat) renderConversationLines() []string {
+	c.buildBlocks()
+	return c.assembleConversationLines()
+}
+
+// noteBlock renders a STATIC one-off fragment (the empty-transcript
+// placeholder) through the block pipeline so the whole panel always has a
+// coherent c.blocks.
+func (c *Chat) noteBlock(content, id string) *chatBlock {
+	if old := c.borrowStaticBlock(id, c.renderGen()); old != nil {
+		return old
+	}
+	blk := &chatBlock{id: id, key: c.renderGen(), text: content}
+	blk.finish()
+	c.blockCache[id] = blk
+	return blk
+}
+
+// mergeBlockHits stacks every block's LOCAL hit-maps into the absolute
+// ClickRow maps (row arithmetic = blocks + one blank separator row each —
+// the same plan the padded lines follow).
+func (c *Chat) mergeBlockHits() {
+	c.threadRows = map[int]string{}   // mouse hit-map, rebuilt every render
+	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
+	c.toolDiffRows = map[int]string{} // ↳ diff sub-row hit-map, same rebuild
+	row := 0                          // absolute start row of the CURRENT block
+	for i, blk := range c.blocks {
+		if i > 0 {
+			row++ // the ONE separator row between timeline items
+		}
+		mergeSpanInto(c.threadRows, blk.hits.thread, row)
+		mergeSpanInto(c.toolDiffRows, blk.hits.toolDiff, row)
+		mergeSpanInto(c.userFoldRows, blk.hits.userFold, row)
+		row += blk.rows
+	}
+}
+
+// assembleConversationLines stacks c.blocks into the PADDED transcript row
+// slice — the exact lines the old (join → split → per-line pad) pipeline
+// produced: block rows in order with ONE padded-blank separator between
+// blocks, trailing blank rows trimmed (the old TrimRight contract in line
+// form). Also refreshes convWide (the widest PADDED line over all blocks —
+// setConversationLines's rogue-row guard) and merges the click hit-maps.
+func (c *Chat) assembleConversationLines() []string {
+	c.mergeBlockHits()
+	total := 0
+	for i := range c.blocks {
+		total += c.blocks[i].rows + 1 // +1 swallows the separator at i>0
+	}
+	lines := make([]string, 0, total)
+	wide := 0
+	for i, blk := range c.blocks {
+		if i > 0 {
+			// the ONE separator between timeline items: exactly one blank
+			// row, padded like the old pad loop's empty lines
+			lines = append(lines, chatPadStr)
+		}
+		lines = append(lines, blk.plines...)
+		if blk.wide > wide {
+			wide = blk.wide
+		}
+	}
+	// trailing pad-only rows die at the transcript's tail — TrimRight's
+	// line-form ("…\n\n" never leaves a dangling blank row).
+	for len(lines) > 0 && lines[len(lines)-1] == chatPadStr {
+		lines = lines[:len(lines)-1]
+	}
+	c.convWide = wide
+	return lines
+}
+
+// renderMsgBlock renders ONE non-group timeline item (any chat message) as
+// a cached block: the fragment text byte-identical to what the old
+// item-loop body wrote into the shared builder, hit registrations in
+// BLOCK-LOCAL row space.
+func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
+	// the invalidation key: the generation + every toggle that re-shapes
+	// this kind's pixels (the CONTENT rides the borrow's src==m compare).
+	// showThinking/showTools do NOT reach here — they filter the timeline
+	// upstream.
+	streaming := m.Kind == thinkKind && m.Meta != "" && c.streamingThink[m.Meta]
+	var fl blockFlags
+	switch {
+	case m.Kind == thinkKind:
+		if c.thinkExpanded {
+			fl |= bfExpandA
+		}
+		if streaming {
+			fl |= bfExpandB
+		}
+	case m.Kind == diffKind:
+		if c.diffExpanded {
+			fl |= bfExpandA
+		}
+	case m.From == "user":
+		if c.userExpanded[userFoldKey(m)] {
+			fl |= bfExpandB
+		}
+	}
+	k := newKeyMixer().num(gen).num(uint64(fl))
+	if streaming {
+		// the streaming header's spinner frame rides the office tick —
+		// fold it in so each tick's frame re-renders (the old per-tick
+		// rebuild for exactly this block kind)
+		k.num(uint64(uint32(c.tick)))
+	}
+	key := k.done()
+	if old := c.borrowMsgBlock(m, key); old != nil {
+		return old
+	}
+	var b strings.Builder
+	hits := blockHits{}
+	switch {
+	case m.Kind == thinkKind:
+		c.renderThink(&b, m)
+	case m.Kind == toolKind:
+		// boss inline tool one-liner — WRAPPED, never clipped and
+		// never burst mid-glyph: the first row flows tight against the
+		// bubble above (no leading indent), continuations hang under
+		// the tool text start.
+		toolW := c.contentW() - 1
+		indent := strings.Repeat(" ", cellWidth(toolWrapPrefix))
+		lines := foldStyledRows(renderTool(m), toolW, toolW-cellWidth(toolWrapPrefix))
+		b.WriteString(lines[0])
+		for _, ln := range lines[1:] {
+			b.WriteString("\n" + indent + ln)
+		}
+	case m.Kind == questionKind:
+		c.renderQuestion(&b, m)
+	case m.Kind == diffKind:
+		c.renderDiff(&b, m)
+	case m.Kind == officeKind:
+		// concierge (EvChatOffice) — a real turn, not a notice: the
+		// INFO "office ›" case above renderNotice's dim-office line
+		c.renderOffice(&b, m)
+	case m.From == officeFrom:
+		c.renderNotice(&b, m)
+	case m.From == "user":
+		prefix := chrome.Fg(chrome.Info, userPrefix)
+		lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
+		attachSuffix := ""
+		if names, ok := state.ParseAttachMeta(m.Meta); ok && len(names) > 0 {
+			// the backend's chat-user echo carries the attachment
+			// names in Meta — history shows the dim " · 📎 N" suffix
+			attachSuffix = chrome.DimText.Render(" · 📎 " + itoa(len(names)))
+			lines[len(lines)-1] += attachSuffix
+		}
+		lines = foldStyledLines(lines, c.mdWidth+1)
+		if len(lines) > userFoldVisible {
+			// a LONG user turn folds to its head rows + a one-row
+			// dim-italic hint (a click there expands it — the
+			// userFoldRows hit-map carries exactly that row, body
+			// rows never); expanded, the bubble keeps every row and
+			// trails a clickable "… collapse" instead. The 📎 suffix
+			// leaves the body for the hint row while folded (the
+			// expanded shape keeps the pre-fold rendering: suffix on
+			// the last body row). Hint/trailer are SINGLE clipped
+			// rows (the thread header's contract): an overflowing
+			// row would burst mid-word and break every content-row
+			// click map. The LOCAL hit row is the block's OWN 0-based
+			// line index (nothing precedes writePrefixed inside this
+			// block) — mergeBlockHits offsets it into absolute rows.
+			key := userFoldKey(m)
+			hintW := c.contentW() - cellWidth(userPrefix) // the hanging indent eats the head
+			if c.userExpanded[key] {
+				hits.userFold = map[int]string{len(lines): key}
+				lines = append(lines, chrome.DimText.Italic(true).Render(clipPlain("… collapse", hintW)))
+			} else {
+				hint := chrome.DimText.Italic(true).Render(clipPlain(
+					"… +"+itoa(len(lines)-userFoldVisible)+" more lines · click to expand",
+					hintW-cellWidth(ansi.Strip(attachSuffix)))) + attachSuffix
+				hits.userFold = map[int]string{userFoldVisible: key}
+				lines = append(lines[:userFoldVisible], hint)
+			}
+		}
+		writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(userPrefix)), lines)
+	default:
+		prefix := chrome.Fg(chrome.Accent, bossPrefix)
+		lines := cleanMarkdown(c.renderMarkdown(m.Text))
+		// a streaming reply is just the bubble itself growing — no
+		// caret, no extra row: the typing row below the divider is the
+		// liveness signal for the whole pending period.
+		lines = foldStyledLines(lines, c.mdWidth)
+		writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(bossPrefix)), lines)
+	}
+	blk := &chatBlock{id: m.ID, key: key, text: b.String(), hits: hits, src: m, unstable: streaming}
+	blk.finish()
+	if m.ID != "" {
+		c.blockCache[m.ID] = blk
+	}
+	return blk
+}
+
+// renderGroupBlock renders ONE worker-thread segment as a cached block.
+// renderWorkerGroup (threads_opencode.go) registers its frame rows by
+// reading the buffer's CURRENT row count + writing directly into
+// c.threadRows/c.toolDiffRows — so the block capture swaps in PRIVATE maps
+// and a PRIVATE (empty) builder: the registrations come out in block-local
+// space (its b.Len()==0 top-edge path IS the block-local convention), then
+// mergeBlockHits offsets them like every other block's. The trailing
+// live-hint row stays glued to the last live group.
+func (c *Chat) renderGroupBlock(g workerGroup, hint bool, gen uint64) *chatBlock {
+	// resolve the toggle state EXACTLY as renderWorkerGroup does (the key
+	// must miss on every input that re-paints the thread)…
+	live := c.threadLive(g)
+	stopped := c.threadStop[g.name]
+	expanded := c.threadsExpanded
+	full := c.threadsExpanded
+	if v, ok := c.threadExpand[g.name]; ok {
+		expanded = v
+		full = v
+	}
+	if stopped {
+		if _, ok := c.threadExpand[g.name]; !ok {
+			expanded = false
+		}
+	}
+	// …then fingerprint every NON-LINE input (the lines themselves ride
+	// the borrow's header compare): the sticky title resolution + roster
+	// rollup the header reads, the resolved toggles, the per-call diff
+	// opens, the hint tail, and the tick while LIVE (the glyph animates).
+	id := "g:" + g.lines[0].ID
+	k := newKeyMixer().num(gen).str(g.name).str(g.title)
+	k.str(c.threadTitle(g.name)) // the LIVE sticky resolution (≠ g.title while running)
+	if av, ok := c.agents[g.name]; ok {
+		k.str(av.task).str(string(av.role)).boo(av.active)
+	}
+	for _, m := range g.lines {
+		if m.Kind == wdiffKind && c.threadDiffOpen[m.ID] {
+			k.str("diff-open:" + m.ID)
+		}
+	}
+	var fl blockFlags
+	if expanded {
+		fl |= bfExpandA
+	}
+	if live {
+		fl |= bfExpandB
+	}
+	if full {
+		fl |= bfExpandC
+	}
+	if stopped {
+		fl |= bfStopped
+	}
+	if hint {
+		fl |= bfThreadHint
+	}
+	k.num(uint64(fl))
+	if live {
+		k.num(uint64(uint32(c.tick)))
+	}
+	key := k.done()
+	if old := c.borrowGroupBlock(id, g.lines, key); old != nil {
+		return old
+	}
+	savedThread, savedDiff := c.threadRows, c.toolDiffRows
+	c.threadRows, c.toolDiffRows = map[int]string{}, map[int]string{}
+	var b strings.Builder
+	c.renderWorkerGroup(&b, g)
+	hits := blockHits{thread: c.threadRows, toolDiff: c.toolDiffRows}
+	c.threadRows, c.toolDiffRows = savedThread, savedDiff
+	text := strings.TrimPrefix(b.String(), "\n\n") // the block's own lead becomes the assembly's separator
+	if hint {
+		text += "\n\n" + chrome.DimText.Italic(true).Render(threadHintText)
+	}
+	blk := &chatBlock{id: id, key: key, text: text, hits: hits, lines: g.lines, unstable: live}
+	blk.finish()
+	c.blockCache[id] = blk
+	return blk
 }
 
 // agentView — a roster rollup entry for the workers-thread decoration:

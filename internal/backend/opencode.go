@@ -387,7 +387,9 @@ func (b *liveBackend) AgentDegraded() bool {
 // this package CANNOT import the app (dependency direction), so the
 // contract is asserted here against a local twin: a drift fails the
 // build, not a runtime type-assert.
-type agentSender interface{ SendAgent(text, agent string) error }
+type agentSender interface {
+	SendAgent(text, agent string) error
+}
 
 // agentDegradeSignal pins the app's agentDegradeSeam shape the same way.
 type agentDegradeSignal interface{ AgentDegraded() bool }
@@ -2639,4 +2641,133 @@ func (b *liveBackend) syncBoard() bool {
 		}
 	}
 	return changed
+}
+
+// ---------------------------------------------------------------- older-history pagination (ADDITIVE)
+
+// sessionPagerShape pins the state.SessionPager seam at compile time on
+// both real backends (the same agentSender-style assert above: a drift
+// fails the build, never a runtime type-assert).
+var (
+	_ state.SessionPager = (*liveBackend)(nil)
+	_ state.SessionPager = (*demoBackend)(nil)
+)
+
+// MessagesPage — the live state.SessionPager seam (ADDITIVE; the app
+// type-asserts it — deliberately NOT on state.Backend).
+//
+// Wire: GET /session/{id}/message?limit=N[&before=cursor], verified
+// 2026-08-24 against serve 1.18.19 (GET /doc session.messages): rows
+// come back oldest→newest as [{info, parts}] (the same cell shape
+// latestAssistantText/messageText already decode), and the walk
+// continuation rides the X-Next-Cursor RESPONSE header — ABSENT on the
+// OLDEST page, so "" there reads HasMore=false. before == "" asks the
+// NEWEST page (no cursor rides the request); each answer's NextCursor
+// walks one page OLDER. limit < 1 clamps to 1 — a zero-limit page is a
+// protocol bug, never a request worth shipping.
+func (b *liveBackend) MessagesPage(ctx context.Context, sessionID, before string, limit int) (state.SessionMessagesPage, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	path := "/session/" + sessionID + "/message?limit=" + itoa(limit)
+	if before != "" {
+		path += "&before=" + url.QueryEscape(before)
+	}
+	var rows []struct {
+		Info  ocMessage `json:"info"`
+		Parts []ocPart  `json:"parts"`
+	}
+	next, err := b.doJSONCtxPage(ctx, http.MethodGet, path, nil, &rows)
+	if err != nil {
+		return state.SessionMessagesPage{}, err
+	}
+	page := state.SessionMessagesPage{
+		Rows:       make([]state.SessionMessageRow, 0, len(rows)),
+		NextCursor: next,
+		HasMore:    next != "",
+	}
+	for _, r := range rows {
+		page.Rows = append(page.Rows, sessionMessageRow(r.Info, r.Parts))
+	}
+	return page, nil
+}
+
+// sessionMessageRow maps ONE wire history cell (info + parts, GET
+// /session/{id}/message's row shape) into the transcript's splice unit:
+// id/role + created/completed off info.time, and the parts reduced
+// pair-wise — text/reasoning keep their bodies, tool parts keep only
+// their TYPE (the splice renders history for reading; it never replays
+// calls, so payloads stay out).
+func sessionMessageRow(info ocMessage, parts []ocPart) state.SessionMessageRow {
+	row := state.SessionMessageRow{
+		ID:        info.ID,
+		Role:      info.Role,
+		Created:   info.Time.Created,
+		Completed: info.Time.Completed,
+	}
+	for _, p := range parts {
+		switch p.Type {
+		case "text", "reasoning":
+			row.Parts = append(row.Parts, state.SessionMessagePart{Type: p.Type, Text: p.Text})
+		case "tool":
+			row.Parts = append(row.Parts, state.SessionMessagePart{Type: p.Type})
+		}
+	}
+	return row
+}
+
+// doJSONCtxPage is doJSONCtx's pagination variant: IDENTICAL directory
+// conventions (the x-opencode-directory header on every call, plus the
+// SDK-style ?directory= mirror on GET/HEAD — "&directory=" when the path
+// already carries its own query, the only delta a query-bearing page
+// path needs) and identical error text, but it ALSO lifts the
+// X-Next-Cursor response header (serve 1.18.19 emits it on GET
+// /session/{id}/message while an OLDER page remains; absent at the
+// top). Kept a sibling (not a doJSONCtx edit): the hot control path
+// stays byte-verbatim.
+func (b *liveBackend) doJSONCtxPage(ctx context.Context, method, path string, body []byte, out any) (string, error) {
+	b.mu.Lock()
+	base := b.baseURL
+	b.mu.Unlock()
+	if base == "" {
+		return "", errors.New("backend not started")
+	}
+	qs := ""
+	if method == http.MethodGet || method == http.MethodHead {
+		sep := "?"
+		if strings.Contains(path, "?") {
+			sep = "&"
+		}
+		qs = sep + "directory=" + url.QueryEscape(b.directory)
+	}
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, base+path+qs, rdr)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("x-opencode-directory", url.QueryEscape(b.directory))
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	res, err := b.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer res.Body.Close()
+	data, err := io.ReadAll(res.Body)
+	if err != nil {
+		return "", err
+	}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return "", errors.New(httpErrorText(res.StatusCode, data))
+	}
+	if out != nil && len(bytes.TrimSpace(data)) > 0 {
+		if err := json.Unmarshal(data, out); err != nil {
+			return "", err
+		}
+	}
+	return res.Header.Get("X-Next-Cursor"), nil
 }

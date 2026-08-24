@@ -633,3 +633,236 @@ func pendingBlockBar(tick int) string {
 	}
 	return b.String()
 }
+
+// ----------------------------------------------------------------------------- older-history pagination
+//
+// The transcript's TOP-OF-SCROLL walk into a session's stored history
+// (the state.SessionPager fetch seam lives on the backend; the app's
+// wiring — internal/app — drives these seams; threads_opencode_test.go
+// pins them proof-by-proof). Four pieces, each one pure of the others:
+//
+//   - ThreadPager — the WALK CONTROLLER: a per-session state machine
+//     (seeded / single-flight / failure-backoff / top-latched) that
+//     remembers where the walk rides so the same page never fetches
+//     twice, a dead serve backs off instead of hammering, and "no more"
+//     is sticky. It never fetches and never renders.
+//   - PrependOlder — the SPLICE: one fetched page (oldest→newest, the
+//     serve's ascending order) lands BEFORE the current transcript head,
+//     in order, skipping any row id already present (a resumed boot page
+//     overlapping the walk can never duplicate). It re-renders the
+//     posted rows but NEVER moves the scroll offset and NEVER consults
+//     the pager — content-only.
+//   - TranscriptRows / PreserveAnchor — the RULER + the ANCHOR:
+//     TranscriptRows() reads len(selLines) verbatim (the selection row
+//     cache stays FULL under the windowed viewport's blank-height model
+//     — chat_window.go — so it is the transcript's true rendered
+//     height); the caller snapshots it BEFORE the splice, and
+//     PreserveAnchor(before) bumps the viewport offset by EXACTLY the
+//     rendered growth, so the reader's top row keeps its screen cell
+//     across a head splice (mechanism pinned by
+//     TestWindowPaginationSeams).
+//   - AtTranscriptTop — the GESTURE PROBE: true while the viewport's
+//     scroll offset sits at the transcript's first row. It answers
+//     position only; the WALK decision (is there more? single-flight?
+//     backoff?) is the pager's.
+//
+// The walk is PAGE-IN at the gesture only — nothing pre-fetches, nothing
+// threads events through the office state; a landing page rides these
+// seams. The thread-focus view owns NO history walk (its closure's ONE
+// re-render absorbs whatever the main transcript spliced meanwhile).
+//
+// ThreadOlderPageSize — the page size one top gesture fetches (the
+// state.SessionPager limit): one screenful of history per hop — big
+// enough that a long scroll-up drains in a handful of fetches, small
+// enough that a hop never janks the render.
+const ThreadOlderPageSize = 50
+
+// threadPagerMaxFailures — the consecutive failure tally that backs the
+// walk off (StartOlder refuses) until ResetFailures re-arms: three
+// straight misses reads as a dead serve, not a flaky hop, and the walk
+// keeps its cursor so the retry continues where it stopped — history
+// doesn't move, so it never rescans.
+const threadPagerMaxFailures = 3
+
+// ThreadPager — the older-history walk controller ONE transcript owns.
+// PURE STATE: no fetch (the backend answers those), no pixels (the chat
+// renders those). Its contract is the guard contract: Seed latches the
+// walk anchor once, StartOlder single-flights one hop and hands out its
+// cursor, FinishOlder lands it (advancing the cursor, latching the top),
+// FailOlder strikes a failure, ResetFailures re-arms the backoff.
+type ThreadPager struct {
+	sessionID string // the session this walk reads (the boot's pin)
+	cursor    string // the NEXT hop's `before` (the last page's NextCursor)
+	top       bool   // FinishOlder(hasMore=false) latched: the oldest page is in
+	inFlight  bool   // a hop is outstanding (StartOlder's single-flight mark)
+	failures  int    // consecutive FailOlders since the last FinishOlder
+	seeded    bool   // Seed ran — the walk has an anchor
+}
+
+// NewThreadPager binds a walk controller to a session id (the office's
+// primary at boot; a session swap builds a fresh pager).
+func NewThreadPager(sessionID string) *ThreadPager {
+	return &ThreadPager{sessionID: sessionID}
+}
+
+// Seed latches the walk anchor from the BOOT page's continuation: the
+// cursor the first top-gesture hop rides and whether any older page
+// exists at all (hasMore=false latches the top at once — a boot page
+// that finishes the history arms nothing). IDEMPOTENT: a re-seed is a
+// no-op — the walk never moves backwards; a session swap starts a new
+// pager instead.
+func (p *ThreadPager) Seed(cursor string, hasMore bool) {
+	if p.seeded {
+		return
+	}
+	p.seeded = true
+	p.cursor = cursor
+	p.top = !hasMore
+}
+
+// StartOlder guards ONE older hop: false when the walk never seeded
+// (nothing fetched yet), sits at the transcript's top (FinishOlder
+// latched it), has a hop outstanding (single-flight), or has struck
+// threadPagerMaxFailures consecutive failures (ResetFailures re-arms).
+// True latches the in-flight mark and hands out the cursor the hop
+// rides; the caller MUST land it with exactly one FinishOlder/FailOlder
+// — the mark holds until then.
+func (p *ThreadPager) StartOlder() (cursor string, ok bool) {
+	if !p.seeded || p.top || p.inFlight || p.failures >= threadPagerMaxFailures {
+		return "", false
+	}
+	p.inFlight = true
+	return p.cursor, true
+}
+
+// FinishOlder lands a successful hop: the single-flight mark clears, the
+// failure tally resets, the NEXT hop rides the page's NextCursor, and a
+// hasMore=false page latches the top PERMANENTLY (history only grows at
+// the tail; once the oldest page is in, there is never more).
+func (p *ThreadPager) FinishOlder(nextCursor string, hasMore bool) {
+	p.inFlight = false
+	p.failures = 0
+	p.cursor = nextCursor
+	if !hasMore {
+		p.top = true
+	}
+}
+
+// FailOlder abandons a failed hop: the single-flight mark clears (the
+// gesture can retry — the cursor NEVER moved, history doesn't drift) and
+// the consecutive-failure tally bumps; at threadPagerMaxFailures
+// StartOlder backs off until ResetFailures.
+func (p *ThreadPager) FailOlder() {
+	p.inFlight = false
+	p.failures++
+}
+
+// ResetFailures re-arms a backed-off walk (a fresh explicit top gesture
+// after a quiet spell is a retry, not spam): the tally zeroes, the
+// cursor stays — the next hop asks exactly where the walk stopped.
+func (p *ThreadPager) ResetFailures() {
+	p.failures = 0
+}
+
+// TranscriptRows — the transcript's FULL rendered row count: len(selLines)
+// verbatim. The blank-height window (chat_window.go) leaves selLines
+// whole — it is the selection row-space cache AND the scroll offset
+// space — so an older-page splice grows this by exactly the page's
+// rendered rows, and PreserveAnchor's compensation is the delta of two
+// reads around the splice.
+func (c *Chat) TranscriptRows() int { return len(c.selLines) }
+
+// PreserveAnchor — the prepend-compensation seam: the caller reads
+// TranscriptRows() BEFORE the splice and hands that snapshot over after
+// PrependOlder landed; the viewport offset bumps by exactly the rendered
+// growth so the reader's current top row keeps its screen cell. A stale
+// snapshot (growth <= 0 — a double-bump guard, a no-op re-render) moves
+// nothing. The compensated rows materialize lazily at the next paint:
+// the windowed viewport's View seam (syncWindow) catches the bump — the
+// exact mechanism TestWindowPaginationSeams pins verbatim.
+func (c *Chat) PreserveAnchor(beforeRows int) {
+	growth := c.TranscriptRows() - beforeRows
+	if growth <= 0 {
+		return
+	}
+	c.vp.SetYOffset(c.vp.YOffset() + growth)
+}
+
+// AtTranscriptTop — the top-gesture probe: true while the transcript
+// viewport's scroll offset sits at the FIRST row (the blank-height model
+// keeps the offset space byte-identical — YOffset 0 IS the transcript's
+// head, blanks or not). Position-pure: a transcript shorter than the
+// viewport reads at-top too — arming an actual hop needs the pager's
+// guards (hasMore, single-flight, backoff), never this alone.
+func (c *Chat) AtTranscriptTop() bool { return c.vp.YOffset() == 0 }
+
+// PrependOlder splices ONE fetched older page into the transcript HEAD:
+// the page's rows (oldest→newest — the serve's ascending order, exactly
+// what state.SessionPager walks) map to chat entries and land BEFORE the
+// current first entry, in page order. Idempotent per message id: a row
+// whose id is ALREADY in the transcript is skipped (a resumed boot page
+// overlapping the walk, a double-arriving landing — neither duplicates;
+// the result count returns FRESH rows only). Re-renders the posted rows
+// (a splice grows TranscriptRows immediately) but NEVER touches the
+// scroll offset, the follow latch, or any pager — the anchor is
+// PreserveAnchor's, the walk is ThreadPager's: content-only. Returns the
+// number of rows ADDED after dedupe.
+//
+// The splice is panel-local: the app pairs it with its own ledger (a
+// fetched page must also ride INTO the reducer's slice or the next
+// office SetState re-bases the transcript — model.go owns that wiring);
+// this seam keeps the splice mechanics provable in isolation.
+func (c *Chat) PrependOlder(rows []state.SessionMessageRow) int {
+	if len(rows) == 0 {
+		return 0
+	}
+	seen := make(map[string]bool, len(c.chat)+len(rows))
+	for _, m := range c.chat {
+		seen[m.ID] = true
+	}
+	fresh := make([]state.ChatMsg, 0, len(rows))
+	for _, r := range rows {
+		if r.ID != "" && seen[r.ID] {
+			continue // already in the transcript — a duplicate never lands
+		}
+		seen[r.ID] = true // and a page never duplicates ITSELF
+		fresh = append(fresh, sessionRowToChat(r))
+	}
+	if len(fresh) == 0 {
+		return 0
+	}
+	merged := make([]state.ChatMsg, 0, len(fresh)+len(c.chat))
+	merged = append(merged, fresh...)
+	merged = append(merged, c.chat...)
+	c.chat = merged
+	// Re-render the posted rows NOW (the walk's ruler reads the growth)
+	// but respect the reader: no offset move (PreserveAnchor's lane), no
+	// bottom snap (a head splice while parked must never yank).
+	c.setConversationLines(c.renderConversationLines())
+	return len(fresh)
+}
+
+// sessionRowToChat maps ONE fetched history row to its transcript entry:
+// a user wire role renders as a user turn, an assistant role as a boss
+// turn, anything else as an office note. Text-bearing parts join with
+// "\n\n"; tool/reasoning-typed parts without bodies leave no row (the
+// splice renders history for reading — it never replays calls). At rides
+// Created, so the merged timeline keeps the page's ascending order.
+func sessionRowToChat(r state.SessionMessageRow) state.ChatMsg {
+	var texts []string
+	for _, p := range r.Parts {
+		if p.Text != "" {
+			texts = append(texts, p.Text)
+		}
+	}
+	m := state.ChatMsg{ID: r.ID, Text: strings.Join(texts, "\n\n"), At: r.Created}
+	switch r.Role {
+	case "user":
+		m.From, m.Kind = "user", "user"
+	case "assistant":
+		m.From, m.Kind = "boss", "boss"
+	default:
+		m.From = officeFrom
+	}
+	return m
+}

@@ -47,6 +47,26 @@
 //	(m) the ↳ diff sub-row owns the toolDiffRows hit-map: ClickRow there
 //	    opens/closes the parsed body (diffClip machinery verbatim) without
 //	    touching the thread's own toggle; body rows never register.
+//	(n)–(s) the older-history pagination seams (the section at the bottom
+//	    of threads_opencode.go): the ThreadPager walk controller
+//	    (Seed/StartOlder/FinishOlder/FailOlder/ResetFailures),
+//	    PrependOlder, AtTranscriptTop, TranscriptRows and PreserveAnchor —
+//	(n) a prepend splices a fetched page ahead of the transcript head in
+//	    exact page order, skips ids already present (no dupes, a page
+//	    never duplicates itself), returns fresh-count only, and stays
+//	    PURE of offset / follow latch / pager state;
+//	(o) the hasMore walk: 500 canned rows at ThreadOlderPageSize pages —
+//	    the boot page + exactly 9 older hops, page heads his-451…his-001,
+//	    then the top latch refuses further hops;
+//	(p) the in-flight + failure guards: unseeded refuses, one hop at a
+//	    time, three straight failures back off (the cursor NEVER moves),
+//	    ResetFailures re-arms, the top latch outranks a reset;
+//	(q) AtTranscriptTop probes the first viewport row and nothing else;
+//	(r) PreserveAnchor keeps the reading row BYTE-IDENTICAL across a
+//	    head splice (growth exactly 2 rows per spliced message);
+//	(s) the 500-message worked example end to end: 50 boot rows + 9
+//	    walked pages, 999 rendered rows, the reading row surviving all
+//	    nine compensations byte-for-byte.
 //
 // No clocks, no sleeps: every office tick and wtool meta-tick is a
 // literal (Meta carries "state␟tick" like the reducer writes —
@@ -54,6 +74,7 @@
 package panels
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -846,5 +867,492 @@ func TestThreadOpencodeFrame(t *testing.T) {
 	convo := ansi.Strip(c.renderConversation())
 	if !strings.Contains(convo, "⠿ Explore Task — Scout question kinds recon\n  ↳ Read internal/panels/chat.go") {
 		t.Fatalf("the locked collapsed-live frame is not on screen:\n%s", convo)
+	}
+}
+
+// ----------------------------------------------------------------------------- older-history pagination proofs
+
+// walkHistory — the (n)/(o)/(q)/(r)/(s) proofs' canned server: N rows
+// oldest→newest ("his-001"…) answering state.SessionPager with the
+// serve's exact walk semantics (the demoHistoryRows twin in demo.go):
+// before == "" answers the NEWEST page; the cursor is the previous
+// answer's OWN oldest row id (the X-Next-Cursor twin); NextCursor +
+// HasMore ride while older rows remain, the oldest slice drops both.
+// Rows are user-role with 1-line texts so the RENDERED growth is exactly
+// 2 rows per spliced message (body + separator) — cell-exact anchors.
+type walkHistory struct{ rows []state.SessionMessageRow }
+
+var _ state.SessionPager = (*walkHistory)(nil) // the proofs drive the REAL seam shape
+
+func newWalkHistory(n int) *walkHistory {
+	rows := make([]state.SessionMessageRow, 0, n)
+	for i := 1; i <= n; i++ {
+		rows = append(rows, state.SessionMessageRow{
+			ID:      fmt.Sprintf("his-%03d", i),
+			Role:    "user",
+			Created: int64(1000 + i*10),
+			Parts:   []state.SessionMessagePart{{Type: "text", Text: fmt.Sprintf("note %03d", i)}},
+		})
+	}
+	return &walkHistory{rows: rows}
+}
+
+func (w *walkHistory) MessagesPage(_ context.Context, _ string, before string, limit int) (state.SessionMessagesPage, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	end := len(w.rows)
+	if before != "" {
+		end = -1
+		for i, r := range w.rows {
+			if r.ID == before {
+				end = i
+				break
+			}
+		}
+		if end < 0 {
+			return state.SessionMessagesPage{}, fmt.Errorf("unknown before cursor %q", before)
+		}
+	}
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	page := state.SessionMessagesPage{
+		Rows:    append([]state.SessionMessageRow(nil), w.rows[start:end]...),
+		HasMore: start > 0,
+	}
+	if page.HasMore {
+		page.NextCursor = w.rows[start].ID
+	}
+	return page, nil
+}
+
+// seedTranscript drops a fetched page's rows into the chat as USER
+// entries (the walk's boot page shape: SetState is the reducer's own
+// ingress, so the splice tests start from a real rendered transcript).
+// The reader is parked up in history: follow stays OFF for the whole
+// walk so the bottom snap never fights it.
+func seedTranscript(t *testing.T, c *Chat, rows []state.SessionMessageRow) {
+	t.Helper()
+	chat := make([]state.ChatMsg, 0, len(rows))
+	for _, r := range rows {
+		chat = append(chat, state.ChatMsg{ID: r.ID, From: "user", Kind: "user", Text: r.Parts[0].Text, At: r.Created})
+	}
+	c.follow = false // BEFORE SetState: the parked reader never snaps to the tail
+	c.SetState(state.OfficeState{Tick: 1, Chat: chat})
+}
+
+// TestPrependOlderOrderDedupePurity is proof (n): the splice lands the
+// fetched page ahead of the head IN PAGE ORDER (oldest→newest), reports
+// fresh rows only, ignores ids already present AND duplicate ids inside
+// one page, and is PURE — no offset move, no follow flip, no pager
+// touch (those are PreserveAnchor's/ThreadPager's lanes).
+func TestPrependOlderOrderDedupePurity(t *testing.T) {
+	ctx := context.Background()
+	src := newWalkHistory(500)
+	boot, err := src.MessagesPage(ctx, "ses-1", "", ThreadOlderPageSize)
+	if err != nil || len(boot.Rows) != ThreadOlderPageSize {
+		t.Fatalf("boot page: %v (%d rows)", err, len(boot.Rows))
+	}
+	c := NewChat(nil)
+	c.SetSize(60, 24)
+	seedTranscript(t, c, boot.Rows) // his-451..his-500 on screen
+	pager := NewThreadPager("ses-1")
+	pager.Seed(boot.NextCursor, boot.HasMore) // untouched below: purity of the splice
+	c.vp.SetYOffset(4)
+
+	page, err := src.MessagesPage(ctx, "ses-1", boot.NextCursor, ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("older page: %v", err)
+	}
+	if added := c.PrependOlder(page.Rows); added != ThreadOlderPageSize {
+		t.Fatalf("a full page must splice %d fresh rows, got %d", ThreadOlderPageSize, added)
+	}
+	// ORDER: the page lands ahead of the previous head, oldest→newest
+	for idx, want := range map[int]string{0: "his-401", 49: "his-450", 50: "his-451"} {
+		if c.chat[idx].ID != want {
+			t.Fatalf("head splice order: chat[%d] must be %q, got %q", idx, want, c.chat[idx].ID)
+		}
+	}
+	// PURITY: offset, follow latch and pager state are someone else's lane
+	if off := c.vp.YOffset(); off != 4 {
+		t.Fatalf("PrependOlder must never move the scroll offset, got %d", off)
+	}
+	if c.follow {
+		t.Fatal("PrependOlder must never flip the follow latch")
+	}
+	if pager.inFlight || pager.top || pager.cursor != boot.NextCursor || !pager.seeded {
+		t.Fatalf("PrependOlder must never consult the pager, got %+v", pager)
+	}
+	// NO-DUPES, same page twice: 0 fresh, transcript untouched
+	if again := c.PrependOlder(page.Rows); again != 0 || len(c.chat) != 100 {
+		t.Fatalf("a re-spliced page must add 0 rows and keep 100 entries, got %d added / %d entries", again, len(c.chat))
+	}
+	// the resumed-boot OVERLAP: his-396..his-405 — 5 fresh older rows
+	// ahead of the head, 5 already in the transcript
+	overlap := src.rows[395:405]
+	if added := c.PrependOlder(overlap); added != 5 {
+		t.Fatalf("the overlap page must add ONLY its 5 fresh rows, got %d", added)
+	}
+	one := 0
+	for _, m := range c.chat {
+		if m.ID == "his-401" {
+			one++
+		}
+	}
+	if one != 1 {
+		t.Fatalf("his-401 must appear EXACTLY once after the overlap splice, got %d", one)
+	}
+	for i, want := range []string{"his-396", "his-397", "his-398", "his-399", "his-400", "his-401"} {
+		if c.chat[i].ID != want {
+			t.Fatalf("head row %d must be %q after the overlap splice, got %q", i, want, c.chat[i].ID)
+		}
+	}
+	// a page never duplicates ITSELF: one row id repeated in a fresh page
+	selfDupe := append(append([]state.SessionMessageRow{}, src.rows[189:194]...), src.rows[189])
+	if added := c.PrependOlder(selfDupe); added != 5 {
+		t.Fatalf("a self-duplicated page must splice each row ONCE (5), got %d", added)
+	}
+	if len(c.chat) != 110 {
+		t.Fatalf("the four splices must total 110 transcript entries, got %d", len(c.chat))
+	}
+}
+
+// TestThreadPagerOlderHistoryHasMoreWalk is proof (o): the walk drains a
+// 500-row history in EXACTLY 10 pages of ThreadOlderPageSize (the boot
+// page + 9 older hops), each page opening 50 rows below the previous's,
+// and the oldest page closing the walk (hasMore=false / cursor "") with
+// the top latch refusing anything further.
+func TestThreadPagerOlderHistoryHasMoreWalk(t *testing.T) {
+	ctx := context.Background()
+	src := newWalkHistory(500)
+	pager := NewThreadPager("ses-1")
+
+	boot, err := src.MessagesPage(ctx, "ses-1", "", ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("boot page: %v", err)
+	}
+	// the boot page is the NEWEST slice, and 450 older rows keep the
+	// walk open on the page's OWN oldest id
+	if got := boot.Rows[0].ID; got != "his-451" {
+		t.Fatalf("the newest page must open at his-451, got %q", got)
+	}
+	if !boot.HasMore || boot.NextCursor != "his-451" {
+		t.Fatalf("older rows must keep the walk open, got hasMore=%v cursor=%q", boot.HasMore, boot.NextCursor)
+	}
+	pager.Seed(boot.NextCursor, boot.HasMore)
+
+	var heads []string // each fetched page's oldest row id, in fetch order
+	var all []string   // every row id ever fetched
+	pages := 1         // the boot page itself
+	addPage := func(p state.SessionMessagesPage) {
+		if len(p.Rows) != ThreadOlderPageSize {
+			t.Fatalf("every page must carry %d rows, got %d", ThreadOlderPageSize, len(p.Rows))
+		}
+		heads = append(heads, p.Rows[0].ID)
+		for _, r := range p.Rows {
+			all = append(all, r.ID)
+		}
+	}
+	addPage(boot)
+	var last state.SessionMessagesPage
+	for {
+		cursor, ok := pager.StartOlder()
+		if !ok {
+			break
+		}
+		page, err := src.MessagesPage(ctx, "ses-1", cursor, ThreadOlderPageSize)
+		if err != nil {
+			pager.FailOlder()
+			continue
+		}
+		pager.FinishOlder(page.NextCursor, page.HasMore)
+		last = page
+		addPage(page)
+		pages++
+	}
+	if pages != 10 {
+		t.Fatalf("500 rows at %d/page must drain in 10 pages, got %d", ThreadOlderPageSize, pages)
+	}
+	wantHeads := []string{"his-451", "his-401", "his-351", "his-301", "his-251", "his-201", "his-151", "his-101", "his-051", "his-001"}
+	for i, want := range wantHeads {
+		if heads[i] != want {
+			t.Fatalf("page %d must open at %q, got %q", i, want, heads[i])
+		}
+	}
+	if last.HasMore || last.NextCursor != "" {
+		t.Fatalf("the oldest page must close the walk (hasMore=false, cursor \"\"), got %v/%q", last.HasMore, last.NextCursor)
+	}
+	if !pager.top {
+		t.Fatal("FinishOlder(hasMore=false) must latch the top PERMANENTLY")
+	}
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("a topped walk must refuse further hops")
+	}
+	uniq := map[string]bool{}
+	for i, id := range all {
+		if uniq[id] {
+			t.Fatalf("row %d: id %q fetched twice — a walk never duplicates", i, id)
+		}
+		uniq[id] = true
+	}
+	if len(uniq) != 500 {
+		t.Fatalf("the walk must fetch all 500 rows exactly once, got %d", len(uniq))
+	}
+}
+
+// TestThreadPagerInFlightAndFailureGuards is proof (p): the controller's
+// guard contract — unseeded refuses, Seed is idempotent (a re-seed never
+// moves the anchor), one hop in flight at a time, three straight
+// failures back the walk off WITHOUT moving the cursor, ResetFailures
+// re-arms, a success clears the tally AND advances, and the top latch
+// outranks even a reset.
+func TestThreadPagerInFlightAndFailureGuards(t *testing.T) {
+	// UNSEEDED: nothing fetched yet → nothing to walk
+	pager := NewThreadPager("ses-1")
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("an unseeded pager must refuse older hops")
+	}
+	// Seed is idempotent — a re-seed NEVER moves the walk backwards
+	pager.Seed("cur-450", true)
+	pager.Seed("cur-999", false)
+	if pager.cursor != "cur-450" || pager.top {
+		t.Fatalf("a re-seed must be a no-op, got cursor=%q top=%v", pager.cursor, pager.top)
+	}
+	// a boot page that ends the history (hasMore=false) arms nothing
+	dry := NewThreadPager("ses-2")
+	dry.Seed("", false)
+	if _, ok := dry.StartOlder(); ok {
+		t.Fatal("a boot-closed walk must never arm a hop")
+	}
+	// SINGLE-FLIGHT: one hop at a time…
+	cursor, ok := pager.StartOlder()
+	if !ok || cursor != "cur-450" {
+		t.Fatalf("the first seeded hop must ride the boot cursor, got %q/%v", cursor, ok)
+	}
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("a second hop must refuse while the first is in flight")
+	}
+	// …and a failure re-opens the guard on the SAME cursor (no rescan)
+	pager.FailOlder()
+	if cursor, ok = pager.StartOlder(); !ok || cursor != "cur-450" {
+		t.Fatalf("a failed hop retries the SAME cursor, got %q/%v", cursor, ok)
+	}
+	// BACKOFF: strikes 2 and 3 still re-open the guard once each…
+	pager.FailOlder()
+	if _, ok := pager.StartOlder(); !ok {
+		t.Fatal("the 2nd failure must not back the walk off yet")
+	}
+	pager.FailOlder()
+	// …but strike 3 latches the backoff
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("3 straight failures must back the walk off")
+	}
+	// ResetFailures re-arms — the cursor STAYS (history doesn't move)
+	pager.ResetFailures()
+	if cursor, ok = pager.StartOlder(); !ok || cursor != "cur-450" {
+		t.Fatalf("a re-armed walk retries where it stopped, got %q/%v", cursor, ok)
+	}
+	// a success clears the tally AND advances the cursor
+	pager.FinishOlder("cur-400", true)
+	if pager.failures != 0 || pager.cursor != "cur-400" || pager.top {
+		t.Fatalf("FinishOlder must reset strikes and advance, got failures=%d cursor=%q top=%v",
+			pager.failures, pager.cursor, pager.top)
+	}
+	if _, ok := pager.StartOlder(); !ok {
+		t.Fatal("a fresh success must re-arm the next hop immediately")
+	}
+	// the top latch is permanent — failures, a reset, nothing beats it
+	pager.FailOlder()
+	pager.ResetFailures()
+	if _, ok := pager.StartOlder(); !ok {
+		t.Fatal("the reset walk must hop once more")
+	}
+	pager.FinishOlder("", false)
+	if !pager.top {
+		t.Fatal("hasMore=false must latch the top")
+	}
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("the top latch outranks everything")
+	}
+	pager.ResetFailures()
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("even a re-armed walk never moves past the top")
+	}
+}
+
+// TestAtTranscriptTopProbe is proof (q): the gesture probe is EXACTLY
+// "the viewport's offset is the transcript's first row" — true at the
+// head, false one row down, and false again after a landed page +
+// anchor bump parks the reader mid-transcript. Arming an actual hop is
+// the pager's contract, never this probe's.
+func TestAtTranscriptTopProbe(t *testing.T) {
+	ctx := context.Background()
+	src := newWalkHistory(500)
+	boot, err := src.MessagesPage(ctx, "ses-1", "", ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("boot page: %v", err)
+	}
+	c := NewChat(nil)
+	c.SetSize(60, 24)
+	seedTranscript(t, c, boot.Rows)
+	if !c.AtTranscriptTop() {
+		t.Fatal("a fresh top-parked transcript must probe at-top (offset 0)")
+	}
+	c.vp.SetYOffset(1)
+	if c.AtTranscriptTop() {
+		t.Fatal("one row below the head is not the top")
+	}
+	c.vp.SetYOffset(4)
+	page, err := src.MessagesPage(ctx, "ses-1", boot.NextCursor, ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("older page: %v", err)
+	}
+	before := c.TranscriptRows()
+	c.PrependOlder(page.Rows)
+	c.PreserveAnchor(before)
+	if c.AtTranscriptTop() {
+		t.Fatal("an anchor-compensated reader is mid-transcript, not at the top")
+	}
+}
+
+// TestPreserveAnchorCompensatesPrepend is proof (r): across a 50-message
+// head splice the reader's top row keeps its screen cell BYTE-IDENTICAL
+// — TranscriptRows grows by exactly 2 rows per spliced message (body +
+// separator), PreserveAnchor(before) bumps the offset by that growth,
+// the window materializes the compensated rows at paint time, and a
+// stale zero-growth snapshot moves nothing.
+func TestPreserveAnchorCompensatesPrepend(t *testing.T) {
+	ctx := context.Background()
+	src := newWalkHistory(500)
+	boot, err := src.MessagesPage(ctx, "ses-1", "", ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("boot page: %v", err)
+	}
+	c := NewChat(nil)
+	c.SetSize(60, 24)
+	seedTranscript(t, c, boot.Rows) // 50 one-row user bubbles → 99 rendered rows
+	if rows := c.TranscriptRows(); rows != 99 {
+		t.Fatalf("50 messages + separators must render 2·50-1=99 rows, got %d", rows)
+	}
+	c.vp.SetYOffset(4)
+	topRow := c.selLines[4]
+	before := c.TranscriptRows()
+
+	page, err := src.MessagesPage(ctx, "ses-1", boot.NextCursor, ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("older page: %v", err)
+	}
+	added := c.PrependOlder(page.Rows)
+	if added != ThreadOlderPageSize {
+		t.Fatalf("the page must add %d messages, got %d", ThreadOlderPageSize, added)
+	}
+	if rows := c.TranscriptRows(); rows != before+2*added {
+		t.Fatalf("the splice must grow exactly %d rendered rows, got %d→%d", 2*added, before, rows)
+	}
+	c.PreserveAnchor(before)
+	if off := c.vp.YOffset(); off != 4+2*added {
+		t.Fatalf("the anchor bump must land at %d, got %d", 4+2*added, off)
+	}
+	// the reading row keeps its cell — and the window materializes the
+	// compensated rows at paint time (the View seam catches the bump)
+	_ = c.View()
+	if got := c.selLines[c.vp.YOffset()]; got != topRow {
+		t.Fatalf("the compensated top row must be byte-identical:\n got  %q\nwant %q", got, topRow)
+	}
+	if y := c.vp.YOffset(); y < c.win.lo || y+c.vp.Height() > c.win.hi {
+		t.Fatalf("the compensated viewport must be materialized: off %d, window [%d,%d)", y, c.win.lo, c.win.hi)
+	}
+	// the stale-snapshot guard: zero growth moves nothing (no double-bump)
+	c.PreserveAnchor(c.TranscriptRows())
+	if off := c.vp.YOffset(); off != 4+2*added {
+		t.Fatalf("a zero-growth snapshot must move nothing, got %d", off)
+	}
+}
+
+// TestOlderHistory500MessageWalk is proof (s), the 500-message worked
+// example END TO END: the boot page seeds 50 rows, nine pager-guarded
+// hops walk the rest, every hop prepends exactly 50 messages / +100
+// rendered rows, PreserveAnchor re-parks the same reading row after
+// every compensation, and the walk closes at the top with all 500
+// entries in order and 999 rendered rows on screen.
+func TestOlderHistory500MessageWalk(t *testing.T) {
+	ctx := context.Background()
+	src := newWalkHistory(500)
+	pager := NewThreadPager("ses-1")
+	c := NewChat(nil)
+	c.SetSize(60, 24)
+
+	boot, err := src.MessagesPage(ctx, "ses-1", "", ThreadOlderPageSize)
+	if err != nil {
+		t.Fatalf("boot page: %v", err)
+	}
+	pager.Seed(boot.NextCursor, boot.HasMore)
+	if added := c.PrependOlder(boot.Rows); added != ThreadOlderPageSize {
+		t.Fatalf("the boot page must seed %d transcript entries, got %d", ThreadOlderPageSize, added)
+	}
+	c.vp.SetYOffset(10)
+	anchorRow := c.selLines[10] // the reading row watched across every splice
+	if !strings.Contains(anchorRow, "note 456") {
+		t.Fatalf("sanity: selLines[10] must be the his-456 bubble row, got %q", anchorRow)
+	}
+
+	t.Log("hop | messages | rendered rows | Δrows | yOffset after PreserveAnchor")
+	hops := 0
+	for {
+		before := c.TranscriptRows()
+		cursor, ok := pager.StartOlder()
+		if !ok {
+			break
+		}
+		page, err := src.MessagesPage(ctx, "ses-1", cursor, ThreadOlderPageSize)
+		if err != nil {
+			pager.FailOlder()
+			continue
+		}
+		added := c.PrependOlder(page.Rows)
+		pager.FinishOlder(page.NextCursor, page.HasMore)
+		c.PreserveAnchor(before)
+		hops++
+		growth := c.TranscriptRows() - before
+		t.Logf("  %d | %3d (+ %2d) | %5d | +%3d | %d", hops, len(c.chat), added, c.TranscriptRows(), growth, c.vp.YOffset())
+		if added != ThreadOlderPageSize {
+			t.Fatalf("hop %d: a mid-walk page must add %d messages, got %d", hops, ThreadOlderPageSize, added)
+		}
+		if growth != 100 {
+			t.Fatalf("hop %d: the rendered growth must be exactly 100 rows, got %d", hops, growth)
+		}
+		if page.HasMore && page.NextCursor == "" {
+			t.Fatalf("hop %d: an open walk must carry its cursor", hops)
+		}
+	}
+	if hops != 9 {
+		t.Fatalf("450 older rows at %d/hop must drain in 9 hops, got %d", ThreadOlderPageSize, hops)
+	}
+	if !pager.top {
+		t.Fatal("the 10th page (his-001..his-050) closes the walk — the top must latch")
+	}
+	// the full history: 500 entries, in order, 999 rendered rows
+	if len(c.chat) != 500 {
+		t.Fatalf("the full history must be 500 transcript entries, got %d", len(c.chat))
+	}
+	for i, m := range c.chat {
+		if want := fmt.Sprintf("his-%03d", i+1); m.ID != want {
+			t.Fatalf("transcript entry %d must be %q, got %q", i, want, m.ID)
+		}
+	}
+	if rows := c.TranscriptRows(); rows != 999 {
+		t.Fatalf("500 one-row bubbles + separators must render 2·500-1=999 rows, got %d", rows)
+	}
+	if off := c.vp.YOffset(); off != 10+9*100 {
+		t.Fatalf("9 × 100-row compensation must land the reader at %d, got %d", 910, off)
+	}
+	_ = c.View()
+	if got := c.selLines[c.vp.YOffset()]; got != anchorRow {
+		t.Fatalf("after 9 splices the anchor row must still be byte-identical:\n got  %q\nwant %q", got, anchorRow)
+	}
+	if _, ok := pager.StartOlder(); ok {
+		t.Fatal("a topped walk refuses further hops")
 	}
 }

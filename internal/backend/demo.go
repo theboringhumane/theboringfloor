@@ -769,3 +769,79 @@ func DemoModels() []state.ModelInfo {
 		{Provider: "google", ID: "gemini-2.5-pro", Name: "Gemini 2.5 Pro"},
 	}
 }
+
+// ---------------------------------------------------------------- older-history pagination (demo twin)
+
+// demoHistoryLen — the canned transcript depth the demo office paginates:
+// 500 rows, exactly ten ThreadOlderPageSize pages.
+const demoHistoryLen = 500
+
+// demoHistoryRows builds the demo pager's fixed transcript: 500 rows
+// oldest→newest, ids "his-001"…"his-500" (deterministic — the SAME id
+// doubles as the walk's before-cursor), alternating user/assistant roles,
+// At spaced 10ms apart so the merged timeline's order IS the slice's
+// order. Constructed per call: a walk shares no backing with the caller's
+// page, so a splice can never alias into the next hop's answer.
+func demoHistoryRows() []state.SessionMessageRow {
+	rows := make([]state.SessionMessageRow, 0, demoHistoryLen)
+	for i := 1; i <= demoHistoryLen; i++ {
+		role := "user"
+		if i%2 == 0 {
+			role = "assistant"
+		}
+		rows = append(rows, state.SessionMessageRow{
+			ID:      "his-" + fmt.Sprintf("%03d", i),
+			Role:    role,
+			Created: int64(1000 + i*10),
+			Parts: []state.SessionMessagePart{{
+				Type: "text",
+				Text: fmt.Sprintf("history note %03d", i),
+			}},
+		})
+	}
+	return rows
+}
+
+// MessagesPage — the DEMO twin of the live state.SessionPager seam
+// (ADDITIVE; the app type-asserts it, compile-pinned beside the live one
+// in opencode.go): walks the canned demoHistoryRows transcript with the
+// live serve's cursor semantics BYTE-IDENTICALLY — before == "" answers
+// the NEWEST page; a before cursor (the previous page's OWN oldest row
+// id — the X-Next-Cursor twin) answers the `limit` rows immediately
+// OLDER than it; NextCursor + HasMore = true ride while an even-older
+// row remains, and the OLDEST slice answers NextCursor "" / HasMore
+// false exactly like the serve dropping the header at the top. limit < 1
+// clamps to 1. ctx and sessionID ride for interface parity and stay
+// unused — the demo owns ONE canned transcript, there is no hop to
+// bound.
+func (b *demoBackend) MessagesPage(ctx context.Context, sessionID, before string, limit int) (state.SessionMessagesPage, error) {
+	if limit < 1 {
+		limit = 1
+	}
+	rows := demoHistoryRows()
+	end := len(rows)
+	if before != "" {
+		end = -1
+		for i, r := range rows {
+			if r.ID == before {
+				end = i
+				break
+			}
+		}
+		if end < 0 {
+			return state.SessionMessagesPage{}, fmt.Errorf("demo history: unknown before cursor %q", before)
+		}
+	}
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	page := state.SessionMessagesPage{
+		Rows:    append([]state.SessionMessageRow(nil), rows[start:end]...),
+		HasMore: start > 0,
+	}
+	if page.HasMore {
+		page.NextCursor = rows[start].ID
+	}
+	return page, nil
+}

@@ -3,7 +3,10 @@
 // backend never renders.
 package state
 
-import "strings"
+import (
+	"context"
+	"strings"
+)
 
 // Attachment — one chat-input attachment riding the outgoing boss prompt
 // as an opencode prompt_async file part ({type:"file", mime, filename,
@@ -265,8 +268,8 @@ type OfficeState struct {
 	// INFORMATIONAL ONLY: CostUSD above already prices every cache token
 	// (writes at 1.25x, reads at 0.1x) — the fields exist so the member
 	// can SEE that prompt caching is actually happening, never to bill.
-	TokensCacheRead  int64   `json:"tokensCacheRead,omitempty"`
-	TokensCacheWrite int64   `json:"tokensCacheWrite,omitempty"`
+	TokensCacheRead  int64 `json:"tokensCacheRead,omitempty"`
+	TokensCacheWrite int64 `json:"tokensCacheWrite,omitempty"`
 	// Models — the most recent provider/model listing the /model picker
 	// fetched on demand (bare /model → the backend's ListModels seam).
 	// Fetch-on-demand ONLY: no event writes it and nothing polls — the
@@ -473,4 +476,57 @@ type SessionRow struct {
 // and the demo backend emits "[demo] abort ok".
 type SessionAborter interface {
 	AbortSessions() error
+}
+
+// ---------------------------------------------------------------- older-history pagination (ADDITIVE)
+
+// SessionMessagePart — one part of a fetched history row, reduced to what
+// a transcript splice needs: the part TYPE ("text", "reasoning", "tool",
+// …) and its text body. Tool parts keep their type with an empty body —
+// pagination splices history for READING, it never replays calls.
+type SessionMessagePart struct {
+	Type string `json:"type"`
+	Text string `json:"text,omitempty"`
+}
+
+// SessionMessageRow — ONE message of a fetched history page: the
+// transcript's splice unit. Created/Completed are unix millis off the
+// wire's info.time; Parts ride oldest-first exactly as the message was
+// authored.
+type SessionMessageRow struct {
+	ID        string               `json:"id"`
+	Role      string               `json:"role"` // "user" | "assistant" | …
+	Created   int64                `json:"created"`
+	Completed int64                `json:"completed,omitempty"`
+	Parts     []SessionMessagePart `json:"parts,omitempty"`
+}
+
+// SessionMessagesPage — ONE page of a session's message history. Rows
+// run oldest→newest WITHIN the page (the serve's ascending order, the
+// transcript splice's input order); NextCursor is the OPAQUE walk
+// continuation — feed it back as `before` to fetch the NEXT OLDER page —
+// and HasMore is the boolean read on it: the serve omits its
+// X-Next-Cursor header on the OLDEST page, so NextCursor "" == the
+// transcript's top (HasMore false).
+type SessionMessagesPage struct {
+	Rows       []SessionMessageRow `json:"rows"`
+	NextCursor string              `json:"nextCursor,omitempty"`
+	HasMore    bool                `json:"hasMore"`
+}
+
+// SessionPager — the older-history pagination seam (ADDITIVE;
+// deliberately NOT folded into Backend, the same convention as
+// SessionAborter/ConciergeCapable above — harness stubs stay untouched,
+// the app type-asserts it).
+//
+// MessagesPage fetches ONE page of a session's message history: the
+// NEWEST page when before == "" , the page immediately OLDER than the
+// opaque cursor otherwise; limit < 1 clamps to 1. The live backend rides
+// GET /session/{id}/message?limit=N[&before=cursor] against serve
+// 1.18.19 and reads the continuation off the X-Next-Cursor RESPONSE
+// header (absent at the top); the demo twin walks a fixed in-memory
+// fixture with byte-identical walk semantics so the top-of-transcript
+// gesture is dogfoodable without a server.
+type SessionPager interface {
+	MessagesPage(ctx context.Context, sessionID, before string, limit int) (SessionMessagesPage, error)
 }
