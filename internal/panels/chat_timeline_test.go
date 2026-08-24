@@ -131,6 +131,39 @@ func TestMergeChatTimeline_StableOnEqualTimestamps(t *testing.T) {
 	}
 }
 
+// TestMergeChatTimeline_LeadingZeroDoesNotPin pins the positive-At key:
+// a thread whose FIRST line is stamp-less (At==0 — a legacy row or a
+// pre-stamp stream placeholder) must key by the earliest POSITIVE stamp
+// among its lines, not the leading zero — otherwise the zero drags the
+// whole thread above every stamped entry. A thread whose lines are ALL
+// zero still keys to 0 (the stamp-less fallback keeps input order).
+func TestMergeChatTimeline_LeadingZeroDoesNotPin(t *testing.T) {
+	chat := []state.ChatMsg{
+		{ID: "chat-1", From: "user", Kind: "user", At: 1_000},
+		{ID: "chat-2", From: "boss", Kind: "boss", At: 3_000},
+	}
+	threads := []workerGroup{
+		{name: "lead-zero", lines: []state.ChatMsg{
+			{ID: "w0", From: "tekton-18", Kind: wtoolKind, At: 0},     // stamp-less lead — must NOT key the group
+			{ID: "w1", From: "tekton-18", Kind: wtoolKind, At: 2_000}, // earliest positive = the birth slot
+		}},
+		{name: "all-zero", lines: []state.ChatMsg{
+			{ID: "w2", From: "tekton-19", Kind: wtoolKind, At: 0},
+			{ID: "w3", From: "tekton-19", Kind: wtoolKind, At: 0},
+		}},
+	}
+
+	got := mergeChatTimeline(chat, threads)
+	// all-zero keys 0 (lands first, stamp-less fallback); lead-zero keys
+	// 2000 — BETWEEN the two chat entries, not above them.
+	want := strings.Join([]string{
+		"grp:all-zero", "msg:chat-1", "grp:lead-zero", "msg:chat-2",
+	}, ",")
+	if gotIDs := strings.Join(timelineIDs(got, threads), ","); gotIDs != want {
+		t.Fatalf("a stamp-less lead must not pin the group to slot 0 = [%s], want [%s]", gotIDs, want)
+	}
+}
+
 // TestMergeChatTimeline_ThreadKeepsBirthSlot pins the thread sort key: a
 // thread interleaves by its EARLIEST line's At (its birth), not its
 // latest activity — otherwise a long-running thread would glide down the

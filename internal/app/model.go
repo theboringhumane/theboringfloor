@@ -3249,22 +3249,29 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 					Meta: toolState + "\x1f" + strconv.Itoa(st.Tick),
 					At:   time.Now().UnixMilli(),
 				}
-				next := append([]state.ChatMsg(nil), st.Chat...)
-				merged := false
-				for i, msg := range next {
-					if msg.Kind == entry.Kind && msg.ID == entry.ID {
-						next[i] = entry
-						merged = true
-						break
+			next := append([]state.ChatMsg(nil), st.Chat...)
+			merged := false
+			for i, msg := range next {
+				if msg.Kind == entry.Kind && msg.ID == entry.ID {
+					// birth stamp wins: a stream update replaces text/meta
+					// in place but NEVER re-stamps At — the first-seen
+					// stamp pins the entry's timeline slot (the merged
+					// thread sorts by it; re-stamping would swim it).
+					if msg.At != 0 {
+						entry.At = msg.At
 					}
+					next[i] = entry
+					merged = true
+					break
 				}
-				if !merged {
-					next = append(next, entry)
-				}
-				st.Chat = capChat(next)
-				return st
 			}
-			st.BossThinking = !ev.Done
+			if !merged {
+				next = append(next, entry)
+			}
+			st.Chat = capChat(next)
+			return st
+		}
+		st.BossThinking = !ev.Done
 			id := "think-" + ev.CallID
 			if ev.CallID == "" {
 				// no id to key on — legacy emitters stay append-only
@@ -3278,21 +3285,25 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				Meta: ev.CallID, // renderer reads the CallID back from Meta
 				At:   time.Now().UnixMilli(),
 			}
-			next := append([]state.ChatMsg(nil), st.Chat...)
-			merged := false
-			for i, msg := range next {
-				if msg.Kind == "think" && msg.ID == entry.ID {
-					next[i] = entry
-					merged = true
-					break
+		next := append([]state.ChatMsg(nil), st.Chat...)
+		merged := false
+		for i, msg := range next {
+			if msg.Kind == "think" && msg.ID == entry.ID {
+				// birth stamp wins (see the wthink merge above).
+				if msg.At != 0 {
+					entry.At = msg.At
 				}
+				next[i] = entry
+				merged = true
+				break
 			}
-			if !merged {
-				next = append(next, entry)
-			}
-			st.Chat = capChat(next)
-			return st
 		}
+		if !merged {
+			next = append(next, entry)
+		}
+		st.Chat = capChat(next)
+		return st
+	}
 
 	case state.EvTool:
 		{
@@ -3328,15 +3339,19 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				Meta: meta,
 				At:   time.Now().UnixMilli(),
 			}
-			merged := false
-			next := append([]state.ChatMsg(nil), st.Chat...)
-			for i, msg := range next {
-				if msg.Kind == line.Kind && msg.ID == line.ID {
-					next[i] = line
-					merged = true
-					break
+		merged := false
+		next := append([]state.ChatMsg(nil), st.Chat...)
+		for i, msg := range next {
+			if msg.Kind == line.Kind && msg.ID == line.ID {
+				// birth stamp wins (see the wthink merge above).
+				if msg.At != 0 {
+					line.At = msg.At
 				}
+				next[i] = line
+				merged = true
+				break
 			}
+		}
 			if !merged {
 				next = append(next, line)
 			}

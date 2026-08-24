@@ -352,6 +352,12 @@ type Chat struct {
 	// EvReturned reducer CLEARS Employee.Task, but a collapsed thread's
 	// summary must still read "tekton-1 · Wire… (· N tool calls ✓ done)".
 	workerTasks map[string]string
+	// segTitles — per-SEGMENT dispatch titles, memoized by the segment's
+	// first chat line id. renderConversation rebuilds the worker groups
+	// from scratch every render; without the memo, an earlier epoch of a
+	// recycled desk name would re-capture the CURRENT sticky task on every
+	// rebuild and both epochs would wear today's title.
+	segTitles map[string]string
 
 	// delegating/delegatingN — P3: BossDelegating flips the pending-spin
 	// row from the typing spinner to a settled " <boss>: delegating ·
@@ -1689,7 +1695,16 @@ func (c *Chat) renderConversation() string {
 			if !ok {
 				idx = len(workers)
 				workerIdx[m.From] = idx
-				workers = append(workers, workerGroup{name: m.From})
+				workers = append(workers, workerGroup{name: m.From, title: c.segmentTitle(m)})
+			} else if pl := workers[idx].lines[len(workers[idx].lines)-1]; m.At > 0 && pl.At > 0 &&
+				m.At-pl.At > workforceGap.Milliseconds() {
+				// epoch boundary: the desk name was recycled (restart) or
+				// re-tasked after a long silence — split a NEW segment
+				// that captures its OWN dispatch title and birth slot
+				// instead of welding into the old wave's thread.
+				idx = len(workers)
+				workerIdx[m.From] = idx
+				workers = append(workers, workerGroup{name: m.From, title: c.segmentTitle(m)})
 			}
 			workers[idx].lines = append(workers[idx].lines, m)
 			if _, tk := parseWtoolMeta(m.Meta); tk > workers[idx].lastTick {
@@ -1708,6 +1723,18 @@ func (c *Chat) renderConversation() string {
 			continue
 		}
 		visible = append(visible, m)
+	}
+	// prune stale segment-title memos: keep only the titles of segments
+	// alive in THIS rebuild (a long session's capChat fuse drops old
+	// lines; their first-line ids must not accumulate in segTitles).
+	if len(c.segTitles) > 0 {
+		alive := make(map[string]string, len(workers))
+		for _, g := range workers {
+			if len(g.lines) > 0 {
+				alive[g.lines[0].ID] = g.title
+			}
+		}
+		c.segTitles = alive
 	}
 	if len(visible) == 0 && len(workers) == 0 {
 		return chrome.DimText.Render("  no messages yet — ask the boss for something.")
@@ -1849,12 +1876,48 @@ type agentView struct {
 	role   state.EmployeeRole
 }
 
-// workerGroup — one agent's merged wtool entries (chat order) plus the
-// latest activity tick, rendered as one work thread.
+// workforceGap — the epoch boundary for same-name worker threads. Desk
+// names are recycled across restarts (a re-hired "tekton-18" is a NEW
+// wave of work, not the old one continuing), and a long-running
+// continuous session can still re-task the same agent after a quiet
+// stretch: a same-name line arriving more than workforceGap after the
+// name's PREVIOUS line opens a NEW thread segment (its own timeline
+// birth slot, its own captured dispatch title) instead of welding into
+// the old group. Inside the gap lines merge as today — a quickly
+// re-tasked agent reads as one work session (the guard for continuous
+// sessions). Stamp-less (At==0) lines never force a split.
+const workforceGap = 10 * time.Minute
+
+// workerGroup — one agent SEGMENT's merged wtool/wthink entries (chat
+// order) plus the latest activity tick, rendered as one work thread. A
+// recycled desk name yields one group per epoch (see workforceGap);
+// title is the segment's OWN dispatch title, captured at the segment's
+// birth (segmentTitle) — never re-read from the sticky per-name map on
+// later renders, so two epochs of one name keep their own titles.
 type workerGroup struct {
 	name     string
+	title    string
 	lines    []state.ChatMsg
 	lastTick int
+}
+
+// segmentTitle resolves a worker-thread segment's header title AT THE
+// SEGMENT'S BIRTH (m = its first chat line) and memoizes it by that
+// line's id: the group rebuild every render then re-uses the birth
+// capture for settled epochs while the latest, still-running epoch's
+// title follows the live sticky resolution. A memo miss (first sight of
+// the segment — live birth, or the first render after a boot restore)
+// falls back to threadTitle's live sticky-map resolution.
+func (c *Chat) segmentTitle(m state.ChatMsg) string {
+	if c.segTitles == nil {
+		c.segTitles = map[string]string{}
+	}
+	if t, ok := c.segTitles[m.ID]; ok {
+		return t
+	}
+	t := c.threadTitle(m.From)
+	c.segTitles[m.ID] = t
+	return t
 }
 
 // workerSpriteActive — the sprite states that count as "the agent is still

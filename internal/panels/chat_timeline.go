@@ -32,13 +32,14 @@ type timelineItem struct {
 // ascending (oldest first), stable for equal timestamps. Sort keys:
 //
 //   - a chat entry sorts by its At;
-//   - a thread sorts by the EARLIEST At found among its entries — its
-//     creation time — so a live thread keeps its birth slot instead of
-//     swimming down the conversation with every new tool call (a merged
-//     update rewrites the entry's At; the earliest one still available is
-//     the closest thing to the thread's enqueue time). A thread with no
-//     usable timestamp keys to 0 — it lands before stamped entries but
-//     keeps input order among the stamp-less default-rendered history.
+//   - a thread sorts by the EARLIEST POSITIVE At found among its entries
+//     — its creation time — so a live thread keeps its birth slot
+//     instead of swimming down the conversation with every new tool call.
+//     Stamp-less (At==0) lines NEVER seed the key: a legacy unstamped
+//     first line must not pin the whole thread to slot 0 above every
+//     stamped entry. A thread whose lines are ALL stamp-less keys to 0
+//     as a fallback — it lands before stamped entries but keeps input
+//     order among the stamp-less default-rendered history.
 //
 // Pure: the inputs are never mutated (the sort runs over an index array).
 func mergeChatTimeline(chat []state.ChatMsg, threads []workerGroup) []timelineItem {
@@ -51,8 +52,11 @@ func mergeChatTimeline(chat []state.ChatMsg, threads []workerGroup) []timelineIt
 	for i, g := range threads {
 		items = append(items, timelineItem{Group: i})
 		at := int64(0)
-		for j, m := range g.lines {
-			if j == 0 || m.At < at {
+		for _, m := range g.lines {
+			// earliest POSITIVE stamp wins; At==0 lines are skipped so a
+			// stamp-less lead row can't pin the group to slot 0 (all-zero
+			// falls back to key 0 — the stamp-less legacy behavior).
+			if m.At > 0 && (at == 0 || m.At < at) {
 				at = m.At
 			}
 		}

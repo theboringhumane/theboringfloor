@@ -247,7 +247,14 @@ func workerToolLine(m state.ChatMsg) string {
 // head trails the dim rollup "(· N tool calls[ · M think] ✓ done)" —
 // clipped along with the title when the panel is narrow.
 func (c *Chat) threadHeaderRows(g workerGroup, live, stopped, collapsed bool) []string {
-	body := c.threadTitle(g.name)
+	// the segment's OWN birth-captured title wins (chat.go's workforceGap
+	// epoch split): two epochs of a recycled desk name keep their own
+	// task titles. Synthetic groups without a capture (tests, legacy)
+	// resolve the live sticky map as before.
+	body := g.title
+	if body == "" {
+		body = c.threadTitle(g.name)
+	}
 	var glyph string
 	switch {
 	case stopped:

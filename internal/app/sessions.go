@@ -41,6 +41,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/config"
@@ -60,6 +61,16 @@ const (
 	// sessionWriteMinGap — the cheap-write loop cadence (every EvTick
 	// checks; at most one write per window).
 	sessionWriteMinGap = 5 * time.Second
+	// bootNoticeMeta — Meta marker for boot-scoped notices (the restore
+	// line): rendered in the live chat but NEVER persisted — Snapshot
+	// strips it, so each boot shows exactly ONE restore line on screen
+	// and the file carries ZERO on subsequent cycles.
+	bootNoticeMeta = "boot"
+	// restoreNoticePrefix — the legacy self-clean marker: session.json
+	// files written before the boot-notice dedupe carry restore lines as
+	// PLAIN office notices (no Meta marker); hydrateSession drops them by
+	// prefix so an already-polluted file cleans itself on the next boot.
+	restoreNoticePrefix = "restored office session from "
 )
 
 // SessionFile — the on-disk office session for ONE working directory.
@@ -154,15 +165,24 @@ func (sf *SessionFile) Fresh() bool {
 // on-disk caps (chat last 200 / tasks + mails last 50 — machine trims, not
 // NL). Pending placeholder bubbles ride along when present; the RESTORE
 // side drops them (a restored "typing…" would pin the busy affordance
-// forever).
+// forever). Boot-scoped notices (Meta bootNoticeMeta — the restore line)
+// NEVER persist: each boot announces its own restore exactly once instead
+// of accumulating one stale line per past boot.
 func Snapshot(dir, primaryID string, st state.OfficeState) SessionFile {
+	chat := make([]state.ChatMsg, 0, len(st.Chat))
+	for _, c := range st.Chat {
+		if c.Meta == bootNoticeMeta {
+			continue
+		}
+		chat = append(chat, c)
+	}
 	sf := SessionFile{
 		Dir:       dir,
 		PrimaryID: primaryID,
 		Agents:    append([]state.Employee(nil), st.Employees...),
 		Tasks:     append([]state.BoardTask(nil), st.Tasks...),
 		Mails:     append([]state.MailItem(nil), st.Mails...),
-		Chat:      append([]state.ChatMsg(nil), st.Chat...),
+		Chat:      chat,
 	}
 	if len(sf.Chat) > sessionChatCap {
 		sf.Chat = sf.Chat[len(sf.Chat)-sessionChatCap:]
@@ -260,10 +280,18 @@ type officeSpawnBackend interface {
 func (m *Model) hydrateSession(sf *SessionFile) {
 	// Transcript: drop Pending:true entries — they are bubbles of a turn
 	// the previous process died inside; restoring one would show a stuck
-	// "typing…" placeholder that nothing will ever complete.
+	// "typing…" placeholder that nothing will ever complete. Drop legacy
+	// restore notices too (From office + the restore prefix): files
+	// written before the boot-notice dedupe carry one plain row per past
+	// boot — hydrating them would stack a stale "restored …" pile above
+	// this boot's own single line, so the file self-cleans here (the
+	// fixed Snapshot never writes them back).
 	chat := make([]state.ChatMsg, 0, len(sf.Chat))
 	for _, c := range sf.Chat {
 		if c.Pending {
+			continue
+		}
+		if c.From == "office" && strings.HasPrefix(c.Text, restoreNoticePrefix) {
 			continue
 		}
 		chat = append(chat, c)
@@ -298,7 +326,10 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 		m.restoredPlan = true
 	}
 	m.tabs.SetState(m.st)
-	m.notice(RestoreNotice(sf))
+	// the restore line is BOOT-SCOPED (Meta bootNoticeMeta): it renders
+	// now but Snapshot strips it on every persist — exactly one restore
+	// line per boot on screen, zero in the file on subsequent cycles.
+	m.appendNotice(RestoreNotice(sf), bootNoticeMeta)
 }
 
 // persistOfficeSession snapshots the office (LIVE mode ONLY — the demo
