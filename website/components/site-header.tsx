@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ChevronDown, Github, Menu, X } from 'lucide-react'
+import { ChevronDown, FolderGit2 as Github, Menu, X } from 'lucide-react'
 
 const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
 import { cn } from '@/lib/utils'
