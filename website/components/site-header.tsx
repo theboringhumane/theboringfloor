@@ -2,7 +2,9 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ChevronDown, Menu, X } from 'lucide-react'
+import { ChevronDown, Github, Menu, X } from 'lucide-react'
+
+const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
 import { cn } from '@/lib/utils'
 
 const products = [
@@ -137,6 +139,15 @@ export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <a
+            href={GITHUB_REPO}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 py-2 font-mono text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Github className="size-3.5" aria-hidden />
+            GitHub
+          </a>
           <Link
             href="/get-started"
             className="rounded-sm bg-foreground px-4 py-2 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
@@ -180,6 +191,16 @@ export function SiteHeader({ seamless = false }: { seamless?: boolean }) {
           <Link href="/docs" className="py-2" onClick={() => setMobileOpen(false)}>
             Docs
           </Link>
+          <a
+            href={GITHUB_REPO}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 py-2"
+            onClick={() => setMobileOpen(false)}
+          >
+            <Github className="size-4" aria-hidden />
+            GitHub
+          </a>
           <Link
             href="/get-started"
             className="mt-2 rounded-sm bg-foreground px-4 py-2.5 text-center text-background"
