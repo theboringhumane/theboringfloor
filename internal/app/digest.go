@@ -65,7 +65,8 @@ func (m *Model) frameDigest() uint64 {
 	// the pixel signature: focusOpen + the focused agent's name.
 	fmt.Fprintf(h, "|%t|%s", m.threadFocus != nil, m.focusThread)
 	// Top bar's project+branch segment: a `git checkout` must repaint the
-	// bar even when no office term above moved (TTL-bounded by projinfo).
+	// bar even when no office term above moved (TTL-bounded by projinfo;
+	// the refresh lands on whichever frame follows the async re-probe).
 	if pj := m.projInfo(); pj != (projinfo.Info{}) {
 		fmt.Fprintf(h, "|%s|%s", pj.Project, pj.Branch)
 	}

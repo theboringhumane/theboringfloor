@@ -484,7 +484,9 @@ type Model struct {
 	execSession string
 
 	// proj — cached project/git-branch info feeding the top bar right
-	// segment (internal/projinfo; TTL-bounded, exec at most once per TTL).
+	// segment (internal/projinfo; TTL-bounded, exec at most once per TTL
+	// and ALWAYS off-frame: past the TTL the stale value is served while
+	// a background goroutine re-probes git).
 	proj *projinfo.Cache
 
 	// boot — the animated ASCII splash shown while the backend warms up.
@@ -3148,10 +3150,17 @@ func capList[T any](list []T, maxN int) []T {
 	return list
 }
 
-// appendChat clones-and-appends one message (chat is never aliased with the
-// previous state).
+// appendChat appends one message, reusing the backing array when capacity
+// allows instead of cloning the whole transcript per message. This is safe
+// for the model-owned chat slice: the write always lands at index len(chat)
+// — PAST the len of every previously returned header — so no earlier state
+// snapshot's contents can change through the shared capacity (growth itself
+// falls out of Go's natural doubling; a full-capacity append allocates).
+// Only an APPEND rides the shared backing: the replace/merge arms still
+// clone before mutating an element in place, which is what keeps swap
+// semantics disjoint from the previous state.
 func appendChat(chat []state.ChatMsg, msg state.ChatMsg) []state.ChatMsg {
-	return append(append([]state.ChatMsg(nil), chat...), msg)
+	return append(chat, msg)
 }
 
 // capChat enforces the global chat fuse AND the per-kind fuses (all 10k —
@@ -3361,6 +3370,21 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 		// Pending=false; a duplicated completed event is idempotent. The
 		// swap is one atomic slice — the chat count never inflates mid-stream.
 		if msg.ID != "" {
+			// stream deltas always land on the TAIL of the transcript, so
+			// sweep backwards first — the hot path is one probe instead of
+			// a full-transcript walk. The head sweep below stays as the
+			// fallback so the replace/no-replace edge can't change
+			// silently; whichever direction finds the ID pins the swap
+			// index (IDs are unique by construction — the merge arms keep
+			// them so).
+			for i := len(st.Chat) - 1; i >= 0; i-- {
+				if st.Chat[i].ID == msg.ID {
+					next := append([]state.ChatMsg(nil), st.Chat...)
+					next[i] = msg
+					st.Chat = capChat(next)
+					return st
+				}
+			}
 			for i, m := range st.Chat {
 				if m.ID == msg.ID {
 					next := append([]state.ChatMsg(nil), st.Chat...)
@@ -3379,14 +3403,17 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 		}
 
 		// (c) a new real boss bubble: strip every remaining "boss-N" typing
-		// placeholder of the send cycle, then append.
-		rest := make([]state.ChatMsg, 0, len(st.Chat)+1)
+		// placeholder of the send cycle, then append. The rebuilt slice
+		// keeps the transcript's growth curve as capacity (+1 for the new
+		// bubble) — an exact-fit make here would force the NEXT appendChat
+		// to re-copy the whole transcript on every single bubble.
+		rest := make([]state.ChatMsg, 0, cap(st.Chat)+1)
 		for _, mgr := range st.Chat {
 			if !isPlaceholder(mgr) {
 				rest = append(rest, mgr)
 			}
 		}
-		st.Chat = capChat(append(rest, msg))
+		st.Chat = capChat(appendChat(rest, msg))
 		return st
 
 	case state.EvChatOffice:
@@ -3399,6 +3426,17 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 		// and never touches boss typing/delegation state.
 		msg := ev.Msg
 		if msg.ID != "" {
+			// tail-first sweep (boss/arm-a mechanics — see EvChatBoss):
+			// concierge stream growth also lands on the tail; head sweep
+			// kept as the fallback so no match edge can change silently.
+			for i := len(st.Chat) - 1; i >= 0; i-- {
+				if st.Chat[i].ID == msg.ID {
+					next := append([]state.ChatMsg(nil), st.Chat...)
+					next[i] = msg
+					st.Chat = capChat(next)
+					return st
+				}
+			}
 			for i, c := range st.Chat {
 				if c.ID == msg.ID {
 					next := append([]state.ChatMsg(nil), st.Chat...)
@@ -3453,18 +3491,35 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				}
 				next := append([]state.ChatMsg(nil), st.Chat...)
 				merged := false
-				for i, msg := range next {
-					if msg.Kind == entry.Kind && msg.ID == entry.ID {
-						// birth stamp wins: a stream update replaces text/meta
-						// in place but NEVER re-stamps At — the first-seen
-						// stamp pins the entry's timeline slot (the merged
-						// thread sorts by it; re-stamping would swim it).
-						if msg.At != 0 {
-							entry.At = msg.At
+				// tail-first: the merge target is almost always the most recent
+				// entry (the stream updates what it just appended). On a miss
+				// the head sweep below runs unchanged, so the merged/no-merge
+				// boolean edge is byte-for-byte preserved.
+				for i := len(next) - 1; i >= 0; i-- {
+					if next[i].Kind == entry.Kind && next[i].ID == entry.ID {
+						// birth stamp wins (see below).
+						if next[i].At != 0 {
+							entry.At = next[i].At
 						}
 						next[i] = entry
 						merged = true
 						break
+					}
+				}
+				if !merged {
+					for i, msg := range next {
+						if msg.Kind == entry.Kind && msg.ID == entry.ID {
+							// birth stamp wins: a stream update replaces text/meta
+							// in place but NEVER re-stamps At — the first-seen
+							// stamp pins the entry's timeline slot (the merged
+							// thread sorts by it; re-stamping would swim it).
+							if msg.At != 0 {
+								entry.At = msg.At
+							}
+							next[i] = entry
+							merged = true
+							break
+						}
 					}
 				}
 				if !merged {
@@ -3489,15 +3544,31 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 			}
 			next := append([]state.ChatMsg(nil), st.Chat...)
 			merged := false
-			for i, msg := range next {
-				if msg.Kind == "think" && msg.ID == entry.ID {
+			// tail-first: boss think deltas merge onto the entry the stream
+			// just appended; head sweep below kept as the fallback, so the
+			// merged/no-merge edge can't change silently.
+			for i := len(next) - 1; i >= 0; i-- {
+				if next[i].Kind == "think" && next[i].ID == entry.ID {
 					// birth stamp wins (see the wthink merge above).
-					if msg.At != 0 {
-						entry.At = msg.At
+					if next[i].At != 0 {
+						entry.At = next[i].At
 					}
 					next[i] = entry
 					merged = true
 					break
+				}
+			}
+			if !merged {
+				for i, msg := range next {
+					if msg.Kind == "think" && msg.ID == entry.ID {
+						// birth stamp wins (see the wthink merge above).
+						if msg.At != 0 {
+							entry.At = msg.At
+						}
+						next[i] = entry
+						merged = true
+						break
+					}
 				}
 			}
 			if !merged {
@@ -3543,15 +3614,31 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 			}
 			merged := false
 			next := append([]state.ChatMsg(nil), st.Chat...)
-			for i, msg := range next {
-				if msg.Kind == line.Kind && msg.ID == line.ID {
+			// tail-first: running → done replaces the line the tool just
+			// appended (the tail); head sweep below kept as the fallback so
+			// the merged/no-merge edge can't change silently.
+			for i := len(next) - 1; i >= 0; i-- {
+				if next[i].Kind == line.Kind && next[i].ID == line.ID {
 					// birth stamp wins (see the wthink merge above).
-					if msg.At != 0 {
-						line.At = msg.At
+					if next[i].At != 0 {
+						line.At = next[i].At
 					}
 					next[i] = line
 					merged = true
 					break
+				}
+			}
+			if !merged {
+				for i, msg := range next {
+					if msg.Kind == line.Kind && msg.ID == line.ID {
+						// birth stamp wins (see the wthink merge above).
+						if msg.At != 0 {
+							line.At = msg.At
+						}
+						next[i] = line
+						merged = true
+						break
+					}
 				}
 			}
 			if !merged {
@@ -3569,6 +3656,19 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 			// renders the dim "✓ answered" suffix instead of the hint.
 			if ev.ToolState == "resolved" && ev.QuestionID != "" {
 				id := "q-" + ev.QuestionID
+				// tail-first: a question resolves moments after it surfaced
+				// (near the tail); the head sweep below stays as the fallback
+				// so the mutate/no-mutate edge can't change silently.
+				for i := len(st.Chat) - 1; i >= 0; i-- {
+					m := st.Chat[i]
+					if m.Kind == "question" && m.ID == id &&
+						!strings.HasSuffix(m.Meta, "\x1fanswered") {
+						next := append([]state.ChatMsg(nil), st.Chat...)
+						next[i].Meta = m.Meta + "\x1fanswered"
+						st.Chat = next
+						return st
+					}
+				}
 				for i, m := range st.Chat {
 					if m.Kind == "question" && m.ID == id &&
 						!strings.HasSuffix(m.Meta, "\x1fanswered") {
@@ -3631,11 +3731,15 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				toolID := "wtool-" + name + "-" + ev.CallID
 				next := append([]state.ChatMsg(nil), st.Chat...)
 				merged := false
-				for i, msg := range next {
-					if msg.Kind == line.Kind && msg.ID == line.ID {
+				// tail-first: a wdiff is born right beside its tool row at the
+				// tail of the transcript. Both find-by-ID loops sweep backwards
+				// first, with the head sweeps kept verbatim as fallbacks so the
+				// merged/inserted boolean edges can't change silently.
+				for i := len(next) - 1; i >= 0; i-- {
+					if next[i].Kind == line.Kind && next[i].ID == line.ID {
 						// birth stamp wins (see the wtool merge above).
-						if msg.At != 0 {
-							line.At = msg.At
+						if next[i].At != 0 {
+							line.At = next[i].At
 						}
 						next[i] = line
 						merged = true
@@ -3643,14 +3747,38 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 					}
 				}
 				if !merged {
-					inserted := false
 					for i, msg := range next {
-						if msg.Kind == "wtool" && msg.ID == toolID {
+						if msg.Kind == line.Kind && msg.ID == line.ID {
+							// birth stamp wins (see the wtool merge above).
+							if msg.At != 0 {
+								line.At = msg.At
+							}
+							next[i] = line
+							merged = true
+							break
+						}
+					}
+				}
+				if !merged {
+					inserted := false
+					for i := len(next) - 1; i >= 0; i-- {
+						if next[i].Kind == "wtool" && next[i].ID == toolID {
 							// fresh tail first — the insert never aliases
 							tail := append([]state.ChatMsg{line}, next[i+1:]...)
 							next = append(next[:i+1], tail...)
 							inserted = true
 							break
+						}
+					}
+					if !inserted {
+						for i, msg := range next {
+							if msg.Kind == "wtool" && msg.ID == toolID {
+								// fresh tail first — the insert never aliases
+								tail := append([]state.ChatMsg{line}, next[i+1:]...)
+								next = append(next[:i+1], tail...)
+								inserted = true
+								break
+							}
 						}
 					}
 					if !inserted {

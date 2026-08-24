@@ -8,7 +8,9 @@
 //	          git missing, timeout)
 //
 // Pure stdlib. Every git call is shelled out under an ~800ms timeout so a
-// wedged repo can never stall a render.
+// wedged repo can never stall a render — and past the TTL the Cache probes
+// ASYNCHRONOUSLY (stale value served instantly, one in-flight refresh per
+// dir), so the Frame path never blocks on a fork/exec at all.
 package projinfo
 
 import (
@@ -99,11 +101,14 @@ func Current(dir string) Info {
 }
 
 // Cache memoizes Current per directory so the top bar — recomputed every
-// frame — hits git at most once per TTL per dir.
+// frame — hits git at most once per TTL per dir, and NEVER on the UI
+// goroutine past the TTL: an expired entry is served stale while exactly
+// one background refresh runs per dir.
 type Cache struct {
-	ttl   time.Duration
-	mu    sync.Mutex
-	items map[string]entry
+	ttl        time.Duration
+	mu         sync.Mutex
+	items      map[string]entry
+	refreshing map[string]bool // in-flight async refresh per dir (storm guard)
 }
 
 type entry struct {
@@ -120,25 +125,46 @@ func NewCache(ttl time.Duration) *Cache {
 	if ttl <= 0 {
 		ttl = DefaultTTL
 	}
-	return &Cache{ttl: ttl, items: map[string]entry{}}
+	return &Cache{ttl: ttl, items: map[string]entry{}, refreshing: map[string]bool{}}
 }
 
 // DefaultCache is the house default: 5s TTL.
 func DefaultCache() *Cache { return NewCache(DefaultTTL) }
 
-// Get returns dir's cached Info. Past the TTL it refreshes once; a failed
-// refresh keeps the last good Info for that dir (stale-on-error) and notes
-// the attempt time so a broken repo isn't re-probed every frame.
+// Get returns dir's cached Info. Within the TTL it is the memoized value.
+// Past the TTL it returns the STALE value immediately and fires ONE async
+// refresh goroutine per dir (a second expiry while a refresh is in flight
+// fires nothing) — the Frame path never blocks on execGit. The very first
+// sight of a dir still computes synchronously: with no stale value to
+// serve, an empty identity must never render while a real answer exists.
+// A failed refresh keeps the last good Info for that dir (stale-on-error)
+// and notes the attempt time so a broken repo isn't re-probed every frame.
 func (c *Cache) Get(dir string) Info {
 	key := resolveDir(dir)
 
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if e, ok := c.items[key]; ok && time.Since(e.fetched) < c.ttl {
-		return e.info
+	if e, ok := c.items[key]; ok {
+		if time.Since(e.fetched) < c.ttl {
+			c.mu.Unlock()
+			return e.info
+		}
+		// Expired: serve the stale value NOW and kick one background
+		// refresh — no exec on the caller's goroutine.
+		if !c.refreshing[key] {
+			c.refreshing[key] = true
+			go c.refresh(key)
+		}
+		stale := e.info
+		c.mu.Unlock()
+		return stale
 	}
+	c.mu.Unlock()
+
+	// Cold path (first sight of the dir): compute synchronously, as before.
 	info, err := current(key)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err != nil {
 		if e, ok := c.items[key]; ok {
 			e.fetched = time.Now() // stale, but don't hammer a broken repo
@@ -148,4 +174,25 @@ func (c *Cache) Get(dir string) Info {
 	}
 	c.items[key] = entry{info: info, fetched: time.Now()}
 	return info
+}
+
+// refresh recomputes key's identity off the UI goroutine and atomically
+// replaces the cached entry. On failure the last good Info stays but the
+// attempt time advances (stale-on-error — a broken repo isn't re-probed
+// every frame). The in-flight guard is always released, under the lock, so
+// the NEXT expiry after completion may fire exactly one follow-up refresh.
+func (c *Cache) refresh(key string) {
+	info, err := current(key)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	defer delete(c.refreshing, key)
+	if err != nil {
+		if e, ok := c.items[key]; ok {
+			e.fetched = time.Now() // stale, but don't hammer a broken repo
+			c.items[key] = e
+		}
+		return
+	}
+	c.items[key] = entry{info: info, fetched: time.Now()}
 }

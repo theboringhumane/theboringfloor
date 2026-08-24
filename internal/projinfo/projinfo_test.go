@@ -1,7 +1,9 @@
 // projinfo_test.go — the Current contract: resolve the repo toplevel project
 // and branch (short SHA when detached), degrade silently everywhere git
 // can't answer; and the Cache contract: exec at most once per TTL per dir,
-// stale-on-error, never hammering a broken repo.
+// stale-on-error, never hammering a broken repo — and past the TTL, Get
+// serves the stale value INSTANTLY while one async refresh runs per dir
+// (git execs never ride the frame's goroutine).
 package projinfo
 
 import (
@@ -15,6 +17,31 @@ import (
 	"testing"
 	"time"
 )
+
+// refreshIdle reports whether no async refresh is in flight for dir. Because
+// the refresh goroutine stores the entry and clears the in-flight flag
+// inside the same locked section, an idle cache also proves the store has
+// landed — tests can use this as a deterministic completion seam.
+func refreshIdle(c *Cache, dir string) bool {
+	key := resolveDir(dir)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.refreshing[key]
+}
+
+// eventually polls cond until it holds, failing after a generous deadline
+// (async refresh timing must never turn a test run flaky).
+func eventually(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
 
 func needGit(t *testing.T) {
 	t.Helper()
@@ -173,6 +200,14 @@ func TestCacheMaxOneExecPerTTLPerDir(t *testing.T) {
 
 	time.Sleep(80 * time.Millisecond)
 	if got := c.Get(dir); got != want {
+		t.Fatalf("expired Get = %+v, want stale %+v (refresh is async)", got, want)
+	}
+	// the expiry fired ONE async refresh: wait for it to actually land.
+	eventually(t, "the post-TTL async refresh (4 git execs)", func() bool {
+		return calls.Load() == 4 && refreshIdle(c, dir)
+	})
+
+	if got := c.Get(dir); got != want {
 		t.Fatalf("refreshed Get = %+v, want %+v", got, want)
 	}
 	if n := calls.Load(); n != 4 {
@@ -184,11 +219,11 @@ func TestCacheMaxOneExecPerTTLPerDir(t *testing.T) {
 	fail.Store(true)
 	time.Sleep(80 * time.Millisecond)
 	if got := c.Get(dir); got != want {
-		t.Fatalf("failed refresh = %+v, want stale %+v", got, want)
+		t.Fatalf("expired Get under broken git = %+v, want stale %+v", got, want)
 	}
-	if n := calls.Load(); n != 5 { // toplevel probe fails -> single exec
-		t.Fatalf("failed refresh ran %d git execs total, want 5", n)
-	}
+	eventually(t, "the failed async refresh (one more exec)", func() bool {
+		return calls.Load() == 5 && refreshIdle(c, dir) // toplevel probe fails -> single exec
+	})
 	if got := c.Get(dir); got != want {
 		t.Fatalf("post-failure Get = %+v, want stale %+v", got, want)
 	}
@@ -201,4 +236,104 @@ func TestDefaultCacheTTL(t *testing.T) {
 	if DefaultCache().ttl != 5*time.Second {
 		t.Fatalf("DefaultCache TTL = %v, want 5s", DefaultCache().ttl)
 	}
+}
+
+// TestCacheExpiredGetReturnsStaleAndRefreshesAsync pins the async-refresh
+// contract that keeps git execs OFF the Frame path:
+//
+//	(a) an expired Get returns the STALE value IMMEDIATELY — proven by
+//	    letting the refresh's toplevel probe hang on a channel: a blocking
+//	    Get would never come back — and schedules ONE refresh;
+//	(b) a later Get after the refresh completed returns the FRESH value;
+//	(c) repeated Gets while a refresh is in flight fire NO extra refresh.
+func TestCacheExpiredGetReturnsStaleAndRefreshesAsync(t *testing.T) {
+	dir := t.TempDir()
+
+	orig := execGit
+	t.Cleanup(func() { execGit = orig })
+
+	release := make(chan struct{}) // closing lets in-flight git probes answer
+	var calls atomic.Int32
+	var seenFirst atomic.Bool
+	var branch atomic.Value
+	branch.Store("old-branch")
+	execGit = func(_ context.Context, _ string, args ...string) (string, error) {
+		calls.Add(1)
+		switch {
+		case len(args) == 2 && args[1] == "--show-toplevel":
+			if seenFirst.Swap(true) {
+				<-release // every toplevel probe but the cold one waits
+			}
+			return dir, nil
+		case len(args) == 3 && args[1] == "--abbrev-ref":
+			return branch.Load().(string), nil
+		default:
+			return "", errors.New("unexpected git args: " + strings.Join(args, " "))
+		}
+	}
+
+	c := NewCache(60 * time.Millisecond)
+	wantStale := Info{Project: filepath.Base(dir), Branch: "old-branch"}
+	wantFresh := Info{Project: filepath.Base(dir), Branch: "new-branch"}
+
+	// getFetching calls Get and FAILS if it has not returned within a hard
+	// wall — the whole point: the UI goroutine must never wait on git.
+	getFetching := func(what string) Info {
+		type res struct{ info Info }
+		done := make(chan res, 1)
+		go func() { done <- res{c.Get(dir)} }()
+		select {
+		case r := <-done:
+			return r.info
+		case <-time.After(300 * time.Millisecond):
+			t.Fatalf("%s: Get blocked on git — expired reads must return stale immediately", what)
+			return Info{}
+		}
+	}
+
+	// Cold Get: synchronous as ever (there is no stale to serve yet) and it
+	// yields the REAL answer, not an empty placeholder.
+	if got := getFetching("cold Get"); got != wantStale {
+		t.Fatalf("cold Get = %+v, want %+v (the cold path still computes synchronously)", got, wantStale)
+	}
+	t.Logf("trace: cold Get -> %+v (sync; git calls=%d)", wantStale, calls.Load())
+
+	// Expire the entry, flip the branch, and read again: the answer must be
+	// the OLD value, returned without waiting for the probe it scheduled.
+	time.Sleep(80 * time.Millisecond)
+	branch.Store("new-branch")
+
+	if got := getFetching("expired Get"); got != wantStale {
+		t.Fatalf("(a) expired Get = %+v, want the STALE %+v returned immediately", got, wantStale)
+	}
+	t.Logf("trace: expired Get -> stale %+v instantly while refresh in flight", wantStale)
+	// The scheduled refresh has STARTED (it hangs inside the toplevel probe
+	// right now): one cold toplevel+branch pair + one in-flight toplevel.
+	eventually(t, "the scheduled async refresh to begin (3 git calls)", func() bool {
+		return calls.Load() == 3
+	})
+
+	// (c) no refresh storm: hammering expired Gets while the first refresh
+	// is still in flight schedules nothing extra.
+	for i := 0; i < 3; i++ {
+		if got := getFetching("storm Get"); got != wantStale {
+			t.Fatalf("(c) storm Get = %+v, want stale %+v", got, wantStale)
+		}
+	}
+	if n := calls.Load(); n != 3 {
+		t.Fatalf("(c) expired Gets during an in-flight refresh fired git again (calls=%d, want 3)", n)
+	}
+	t.Logf("trace: 3 hammer Gets during in-flight refresh -> stale %+v, git calls still %d (no storm)", wantStale, calls.Load())
+
+	// (b) release git; once the refresh lands, Gets return the FRESH value
+	// without any further execs.
+	close(release)
+	eventually(t, "the async refresh to complete", func() bool { return refreshIdle(c, dir) })
+	if got := getFetching("post-refresh Get"); got != wantFresh {
+		t.Fatalf("(b) Get after refresh completion = %+v, want fresh %+v", got, wantFresh)
+	}
+	if n := calls.Load(); n != 4 {
+		t.Fatalf("(b) the completed refresh ran %d git calls total, want 4 (2 cold + 2 refresh)", n)
+	}
+	t.Logf("trace: post-completion Get -> fresh %+v (git calls=%d) — stale->fresh hand-off complete", wantFresh, calls.Load())
 }
