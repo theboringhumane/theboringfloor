@@ -1278,9 +1278,24 @@ func runFreeShot(dur time.Duration) (string, []string, error) {
 // --- /stop proof (--stop) ---------------------------------------------------
 // Synchronous driver (no wall clock): the boss is mid-stream with its own
 // tool running, tekton-1 is at work with one tool still running, a second
-// prompt has staged its own placeholder, a permission roadblock holds one
-// client item, and the boss has gone quiet (delegating). Typing /stop must
+// prompt has staged its own placeholder, a client backlog item rides a
+// DEFERRED boss question hold (today's reachable enqueue roadblock — see
+// below), and the boss has gone quiet (delegating). Typing /stop must
 // (1) hit stub.AbortSessions, (2) unwind everything in ONE frame.
+//
+// Roadblock-premise refresh (the wave-13 script went stale): back then the
+// permission modal was non-modal to text — a typed prompt + enter ENQUEUED
+// behind it. The wave-16 floating permission popover claims enter as
+// "confirm the highlighted option" (y/a/n quick-answer): under the old
+// script the enter ANSWERED the ask, the stranded draft then rode `/stop`'s
+// first enter into a busy-send, and the concierge-incapable stub's fallback
+// free-routed the text SERVER-side ("concierge unavailable — boss queued
+// it") — /stop never ran, zero AbortSessions. TODAY the only reachable
+// client-queue roadblock is an outstanding boss question hold (the chat
+// panel's enter gate: "the turn is parked at the question reply API", the
+// placeholder reads "boss is waiting for your answer… · N queued"). The
+// /stop promise proven here is unchanged: abort + ONE-frame unwind + the
+// LOCAL queue intact and unsent.
 
 func runStopProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
@@ -1308,6 +1323,14 @@ func runStopProof() error {
 	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stop stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+	// the ROADBLOCK, staged FIRST: the boss parks the turn on a question
+	// (parkForQuestion purges pending boss-N placeholders at park time —
+	// none exist yet). The member ESC-DEFERS the popover: the hold stays
+	// outstanding (questionWaiting keeps the chat enter gate armed), the
+	// placeholder reads "boss is waiting for your answer…".
+	d.send(state.Event{Kind: state.EvQuestion, EmployeeName: "boss", QuestionID: "qq-1",
+		Text: "Roll the SSE stream behind a feature flag?", ToolSummary: "flag it | ship it straight"})
+	drainCmd(d, key(tea.KeyEscape), 0) // defer the hold — typing keeps working, enter enqueues
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"wire the sse stream", false)})
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -1325,13 +1348,16 @@ func runStopProof() error {
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u2", "user",
 		"and the retry backoff", false)})
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-2", "boss", "", true)})
-	// a ROADBLOCK-held client item: the permission modal opens; a typed
-	// prompt enqueues behind it (text avoids y/a/n — the modal's answer
-	// keys)
-	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "perm-1",
-		ToolName: "write", ToolSummary: "main.go", ToolState: ""})
+	// the roadblock-held client item: a typed prompt + enter while the
+	// (esc'd) question hold is outstanding enqueues LOCALLY — the chat
+	// panel's enter gate sees questionWaiting and routes to onEnqueue.
+	// This send must never reach the concierge/busy free-route: the drift
+	// guard below fails fast with the pointed sendLog dump if it does.
 	typeIn("keep me plz")
 	drainCmd(d, key(tea.KeyEnter), 0)
+	if stub.sendLog != nil {
+		return fail("stop: the roadblock item free-routed to the server (sendLog %v) — the enqueue gate must hold it locally", stub.sendLog)
+	}
 	d.pump(8) // boss quiet at its placeholder with a busy worker → delegating
 	preFrame := d.m.Frame()
 	if !strings.Contains(preFrame, "delegating · 1 busy") {
@@ -1399,7 +1425,7 @@ func runStopProof() error {
 	}
 	fmt.Println("--- /queue leg (after /stop): the roadblock item survived verbatim, NOT sent ---")
 	fmt.Println(frameQ)
-	fmt.Println("asserts: OK — AbortSessions captured once; boss-2 placeholder → \"stopped by user\"; streamed text kept + \" (stopped)\"; boss + worker tools ✗ aborted; thread (· 2 tool calls ✗ stopped); BossThinking/BossDelegating cleared; queue intact (1 item, badge q1, send next turn)")
+	fmt.Println("asserts: OK — AbortSessions captured once; boss-2 placeholder → \"stopped by user\"; streamed text kept + \" (stopped)\"; boss + worker tools ✗ aborted; thread (· 2 tool calls ✗ stopped); BossThinking/BossDelegating cleared; queue intact (1 item enqueued behind the esc-deferred question hold, badge q1, NOT sent — flushes next turn)")
 	return nil
 }
 
