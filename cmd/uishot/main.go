@@ -82,10 +82,18 @@
 //	                                while a modal is open), and a two-run
 //	                                determinism check over the frame triplet.)
 //	                    [--layout]  (layout-modes proof: THREE frames over the
-//	                                same scripted window — NORMAL (sidebar 44),
+//	                                same scripted window — NORMAL (sidebar 80),
 //	                                compact (sidebar 30, short tab labels, 2-row
-//	                                chat input, compressed topbar) and wide 56 —
+//	                                chat input, compressed topbar) and wide 90 —
 //	                                each with its computed width asserts)
+//	                    [--planshot] (plan-mode screenshot: after the scripted
+//	                                round settles ctrl+p flips the office into
+//	                                plan mode — the full-pane markdown editor
+//	                                owns the floor slot, two typed bullets land
+//	                                in the focused editor; ONE frame at ~3.6s:
+//	                                PLAN · markdown header + approve hint, the
+//	                                [plan] statusbar badge, plan statusline
+//	                                hint and the pane footer hint)
 //	                    [--terminal] (terminal-tab proof: the stub TermPanel
 //	                                (terminal_panel_stub.go — uishot ONLY)
 //	                                wires through app.SpawnTerminal; selecting
@@ -240,6 +248,7 @@ type stubBackend struct {
 	abortLog []string // AbortSessions capture (the --stop proof)
 
 	powerDemo bool // --power: minimal quiet script for the slash/name legs
+	planDemo  bool // --planshot: minimal quiet script (no floats) for the plan-mode shot
 }
 
 func mail(id, from, to, subject, body string, kind state.MailKind) state.MailItem {
@@ -285,6 +294,10 @@ func (b *stubBackend) script() {
 	}
 	if b.powerDemo {
 		b.scriptPowerDemo(at)
+		return
+	}
+	if b.planDemo {
+		b.scriptPlanDemo(at)
 		return
 	}
 
@@ -2070,10 +2083,22 @@ func runSocialProof() error {
 
 // --- layout-modes proof (--layout) ------------------------------------------
 // THREE frames over the identical scripted window + identical config base,
-// differing ONLY by the layout knobs: NORMAL (defaults, sidebar 44),
-// compact (ui.compact → sidebar 30, short tab labels, 2-row chat input,
-// compressed topbar) and wide 56 (ui.sidebarWidth). Each frame prints its
-// computed geometry and passes width/label asserts.
+// differing ONLY by the layout knobs. The expectations pin the CURRENT
+// geometry contract (internal/app/model.go resize/sidebarBase; the same 80
+// default is pinned app-side by mobile_test.go's LayoutInfo check):
+//   - NORMAL  → defaultSidebarW = 80 (bcb1635 "ui: default sidebar 80 cols";
+//     the proof's stale 44 predates the 44→68 (0337ec1) → 80 (bcb1635)
+//     widenings — the proof's job is pinning the layout MODES to truth,
+//     not embalming the old numbers)
+//   - compact → compactSidebarW = 30 (ui.compact: short tab labels, 2-row
+//     chat input, compressed topbar)
+//   - wide 90 → an explicit ui.sidebarWidth (/wide) wins outright over the
+//     default, clamped to sidebarMin..sidebarMax = 26..100; 90 keeps the
+//     leg genuinely WIDE (> 80) and under the ceiling (floor = 40 ≥ 8-min)
+//
+// At shotCols=130 the narrow-terminal degrade (w/3 min 20 under degradeCols
+// 100) and the mobile stack (under mobileMaxCols 100) never fire. Each
+// frame prints its computed geometry and passes width/label asserts.
 
 type layoutLeg struct {
 	name        string
@@ -2084,9 +2109,14 @@ type layoutLeg struct {
 
 func runLayoutProof() error {
 	legs := []layoutLeg{
-		{"NORMAL", func(*config.Config) {}, 44, false},
+		// defaultSidebarW = 80 (the bcb1635 default — was 44 when this proof
+		// was written, then 68 via 0337ec1, now 80)
+		{"NORMAL", func(*config.Config) {}, 80, false},
+		// compactSidebarW = 30
 		{"compact", func(c *config.Config) { c.UI.Compact = true }, 30, true},
-		{"wide 56", func(c *config.Config) { c.UI.SidebarWidth = 56 }, 56, false},
+		// explicit /wide: clamped to 26..100, wins over the default; 90 keeps
+		// the leg genuinely wider than the 80 default (56 would now NARROW it)
+		{"wide 90", func(c *config.Config) { c.UI.SidebarWidth = 90 }, 90, false},
 	}
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	for _, leg := range legs {
@@ -2137,7 +2167,133 @@ func runLayoutProof() error {
 			fmt.Printf("asserts: OK — sidebar %d, all six full tab labels visible, full topbar (mode segment present)\n", leg.wantSidebar)
 		}
 	}
-	fmt.Println("asserts: OK — 44 (default) / 30 (compact) / 56 (wide 56) sidebars; floor = 130 - sidebar in every leg")
+	fmt.Println("asserts: OK — 80 (default) / 30 (compact) / 90 (wide 90) sidebars; floor = 130 - sidebar in every leg")
+	return nil
+}
+
+// --- plan-mode screenshot (--planshot) ---------------------------------------
+// ONE frame over a minimal quiet demo script: after the chat round settles,
+// ctrl+p flips the office into plan mode (the wave-34 full-pane markdown
+// editor owns the floor slot — plan mode is app-side UI, so the demo stub
+// needs NOTHING plan-aware: it just must not break when the toggle fires),
+// then two plan bullets are typed rune by rune (the typing helper mirrored
+// from --slash) into the focused editor. The script schedules NO floats
+// (questions/permissions) for the whole window by design: while a
+// perm/question float is up the pane YIELDS keys to the modal (handleKey's
+// claim order), so the default script's 1.92s question / 2.4s permission
+// beats would eat the plan typing — determinism comes from the quiet script,
+// not from threading the typing between the floats.
+
+// scriptPlanDemo (--planshot) — status, three hires, one settled chat round
+// (user ask → typing placeholder → a short markdown boss reply), then quiet
+// forever: every later beat is the workload's (ctrl+p + plan typing).
+func (b *stubBackend) scriptPlanDemo(at func(ms int, ev state.Event)) {
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — plan-mode stub online"})
+	at(100, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+	at(250, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "sco-1", Name: "skopos-1", Role: state.RoleScout, Sprite: state.SpriteAtDesk}})
+	at(400, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "rev-1", Name: "dikastes", Role: state.RoleReviewer, Sprite: state.SpriteAtDesk}})
+	at(550, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"sketch the lobby gallery wall", false)})
+	at(600, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+	at(1100, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("b1", "boss",
+		"On it — flip the floor with **ctrl+p** and the plan wall takes over.", false)})
+	// quiet: ctrl+p + the plan bullets are the ONLY later beats
+}
+
+// planShotWorkload — ctrl+p at 1.5s (the chat round settled at ~1.1s; the
+// editor Focus() arms synchronously inside Update, so no settle beyond the
+// brief's ~0.5s is needed), the plan bullets at ~2.0s. The Enter first:
+// the starter template's cursor sits at the buffer END after SetValue (=
+// Reset + InsertString) — on the closing ``` of the example mermaid fence —
+// so a fresh line keeps the typed bullets OUT of the fence marker. The two
+// bullets carry unique marker words ("kanban", "clerical") that appear
+// nowhere else in the frame, so the contains-asserts pin the PANE.
+func planShotWorkload(p *tea.Program) {
+	typeLine := func(s string) {
+		for _, r := range s {
+			p.Send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+			time.Sleep(10 * time.Millisecond)
+		}
+		p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+		time.Sleep(80 * time.Millisecond)
+	}
+	time.Sleep(1500 * time.Millisecond)
+	p.Send(tea.KeyPressMsg(tea.Key{Code: 'p', Mod: tea.ModCtrl})) // the real claim site: no terminal focus, no floats
+	time.Sleep(500 * time.Millisecond)
+	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	typeLine("- glassmorphic kanban lanes")
+	typeLine("- zero clerical chrome")
+}
+
+// runPlanShot runs one fresh app+program against the plan-demo stub for
+// `dur` while the workload drives ctrl+p + plan typing, then returns the
+// final frame (model still IN plan mode — no second toggle).
+func runPlanShot(dur time.Duration) (string, error) {
+	backend := &stubBackend{done: make(chan struct{}), planDemo: true}
+	m := app.New(backend, config.Default())
+	if !m.SelectTab("chat") {
+		return "", fmt.Errorf("unknown tab %q", "chat")
+	}
+	p := tea.NewProgram(m,
+		tea.WithWindowSize(shotCols, shotRows),
+		tea.WithoutRenderer(),
+		tea.WithInput(nil),
+		tea.WithOutput(io.Discard),
+	)
+	emit := func(ev state.Event) { p.Send(ev) }
+	if err := backend.Start(emit); err != nil {
+		return "", err
+	}
+	go planShotWorkload(p)
+	go func() {
+		time.Sleep(dur)
+		p.Quit()
+	}()
+	final, err := p.Run()
+	if err != nil {
+		return "", err
+	}
+	fm, ok := final.(app.Model)
+	if !ok {
+		return "", fmt.Errorf("unexpected final model type %T", final)
+	}
+	return fm.Frame(), nil
+}
+
+func runPlanProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	frame, err := runPlanShot(3600 * time.Millisecond)
+	if err != nil {
+		return err
+	}
+	fmt.Println("===== UI SHOT · PLAN — t=3.6s (plan mode ACTIVE: the markdown plan editor owns the floor slot, two typed bullets in the focused editor, [plan] badge + plan hints up) =====")
+	fmt.Println(frame)
+	fmt.Println("===== UI SHOT =====")
+
+	stripped := ansi.Strip(frame)
+	for _, want := range []string{
+		"PLAN · markdown",                    // pane header in the floor slot
+		"ctrl+x approve",                     // header right hint VISIBLE prefix — the 80-col sidebar leaves the pane 50 cols, so the full "ctrl+x approve → build · ctrl+p close" clips after "approve"
+		"enter: newline · esc: done editing", // pane footer hint (fits the 50-col pane in full)
+		"[plan]",                             // statusbar agent badge (counts segment — never dropped)
+		"ctrl+x approve→build · esc chat · ctrl+p exit", // the planHint statusline segment (app/keys.go frozen copy)
+		"plan mode — draft the plan below",              // the office notice posted by togglePlanMode itself — proof ctrl+p went through the REAL claim site
+		"kanban",                                        // typed bullet 1 (unique marker)
+		"clerical",                                      // typed bullet 2 (unique marker)
+	} {
+		if !strings.Contains(stripped, want) {
+			return fail("planshot: frame missing %q", want)
+		}
+	}
+	// the pane REPLACES the office floor in the slot — the sprite plane must
+	// not render at all while plan mode is active
+	if strings.Contains(stripped, "[=BOSS=]") {
+		return fail("planshot: the office floor still renders — the plan pane must OWN the floor slot in plan mode")
+	}
+	fmt.Println("asserts: OK — ctrl+p flipped to plan mode via the real claim site (office notice); the plan pane owns the floor slot (PLAN · markdown header + ctrl+x approve hint, footer hint, typed glassmorphic-kanban / clerical-chrome bullets); the [plan] badge + plan statusline hint ride the statusbar; the office floor is swapped out")
 	return nil
 }
 
@@ -3128,7 +3284,8 @@ func main() {
 	batchRespawn := flag.Bool("batch-respawn", false, "failure-respawn proof: the first batch Send is rejected once — the app must ResetPrimary(true) and resend the SAME batch exactly once")
 	power := flag.String("power", "", "power-governor proof: 6s scripted window per mode (auto|saver|performance|all) — tick counts, floor frame-cache hit %, TickDelay table, /power + /model slash demo, custom boss-name frame")
 	social := flag.Bool("social", false, "social-clock proof: synchronous tick pump — three frames (tea ask / both walking / gossip chain), banter chain trace, question-modal gate assert, tick-seeded determinism check")
-	layout := flag.Bool("layout", false, "layout-modes proof: three frames over the same window — NORMAL (sidebar 44), compact (sidebar 30, short tab labels, 2-row chat input, compressed topbar), wide 56 — with computed width asserts per frame")
+	layout := flag.Bool("layout", false, "layout-modes proof: three frames over the same window — NORMAL (sidebar 80, the bcb1635 default), compact (sidebar 30, short tab labels, 2-row chat input, compressed topbar), wide 90 (explicit ui.sidebarWidth, clamped 26..100) — with computed width asserts per frame")
+	planshot := flag.Bool("planshot", false, "plan-mode screenshot: after the quiet demo round settles ctrl+p flips the office to plan mode (the full-pane markdown editor owns the floor slot) and two plan bullets type into the focused editor — ONE frame at ~3.6s: PLAN · markdown pane + approve hint, [plan] statusbar badge, plan hints, typed text, office floor swapped out")
 	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, keys routed into the shell surface, frame + asserts")
 	focus := flag.Bool("focus", false, "fix-wave proof, THREE synchronous-tick frames: (a) empty pending bubble — typing row below the divider (above the input), NO caret anywhere; (b) streaming partial bubble — text grows in the viewport while the typing row STAYS below the divider for the whole pending period (still no caret); (c) two concurrent agents — per-agent work threads grouped (headers + merged rows), boss tool line still inline, boss idle at the placeholder in delegating state (dim row in the same below-divider slot, [delegat] nameplate). Every frame: no \"▌\", every chat row inside the divider's width budget")
 	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEBORINGOFFICE_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
@@ -3290,6 +3447,14 @@ func main() {
 
 	if *layout {
 		if err := runLayoutProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *planshot {
+		if err := runPlanProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
