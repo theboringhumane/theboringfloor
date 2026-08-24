@@ -11,9 +11,11 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -72,6 +74,71 @@ func bossReply(t *testing.T, m Model, id, text string) Model {
 	return runMsg(t, m, state.Event{Kind: state.EvChatBoss,
 		Msg: state.ChatMsg{ID: id, From: "boss", Text: text}})
 }
+
+// approveDoublePress drives the F1 ctrl+x arm+fire pair end to end: the
+// ARMING press goes through Update DIRECTLY (never runMsg — its own
+// tea.Tick would sleep the window, then the expiry would clear the young
+// arm before the second press lands); the FIRING press rides runMsg so
+// the async send closure + approveSentMsg/approveErrMsg resolution
+// resolve synchronously.
+func approveDoublePress(t *testing.T, m Model) Model {
+	t.Helper()
+	nm, cmd := m.Update(ctrlX())
+	m = nm.(Model)
+	if cmd == nil {
+		t.Fatal("an approvable pane's first ctrl+x must arm (expiry tick returned)")
+	}
+	if m.approveArmAt.IsZero() {
+		t.Fatal("the first ctrl+x must STAMP the approve arm")
+	}
+	return runMsg(t, m, ctrlX())
+}
+
+// countOfficeRows tallies transcript rows (From "office") containing sub.
+func countOfficeRows(m Model, sub string) int {
+	n := 0
+	for _, c := range m.st.Chat {
+		if c.From == "office" && strings.Contains(c.Text, sub) {
+			n++
+		}
+	}
+	return n
+}
+
+// errBackend — agentRecBackend whose agent seam can be made to fail: the
+// F3 rollback playground (a rejected approve must leave plan mode ON).
+type errBackend struct {
+	agentRecBackend
+	err error
+}
+
+func (e *errBackend) SendAgent(text, agent string) error {
+	if e.err != nil {
+		return e.err
+	}
+	e.agentCalls = append(e.agentCalls, agentCall{text: text, agent: agent})
+	return nil
+}
+
+// failSendBackend — agentRecBackend whose plain attachment seam fails:
+// the F6 playground (an ordinary failed send must land a red transcript
+// row, not just a statusline blip).
+type failSendBackend struct {
+	agentRecBackend
+	err error
+}
+
+func (f *failSendBackend) SendWith(text string, atts []state.Attachment) error {
+	return f.err
+}
+
+// degradedBackend — agentRecBackend + the additive agentDegradeSeam, hard
+// latched: the F5 badge/warning playground.
+type degradedBackend struct {
+	agentRecBackend
+}
+
+func (d *degradedBackend) AgentDegraded() bool { return true }
 
 // typeText feeds one run of plain characters through Update (the chat
 // textarea inserts them) — mirroring how the queue tests drive keys.
@@ -272,7 +339,7 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	}
 
 	// esc back to chat (buffer keeps), then approve CONSUMES the latch:
-	// the edit is what gets signed off
+	// the edit is what gets signed off (F1: the arm + fire double-press)
 	m = runMsg(t, m, escKey())
 	if m.plan.Focused() {
 		t.Fatal("esc must blur the editor back to chat")
@@ -280,7 +347,7 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	if m.plan.Value() != edited {
 		t.Fatal("esc keeps the plan buffer")
 	}
-	m = runMsg(t, m, ctrlX())
+	m = approveDoublePress(t, m)
 	if len(b.agentCalls) != 1 || b.agentCalls[0].text != approvePrefix+edited {
 		t.Fatalf("the EDITED plan is what ships to build: %+v", b.agentCalls)
 	}
@@ -305,7 +372,7 @@ func TestPlanApproveHappyPath(t *testing.T) {
 	body := "Plan: plan/build modes for the office\n1. wire the agent seam\n2. swap the floor slot"
 	m = bossReply(t, m, "b1", body)
 
-	m = runMsg(t, m, ctrlX()) // chat-focused ctrl+x — the free-everywhere claim
+	m = approveDoublePress(t, m) // chat-focused ctrl+x twice — F1 arm → fire
 	if len(b.agentCalls) != 1 {
 		t.Fatalf("approve must send exactly once through the agent seam, got %d calls", len(b.agentCalls))
 	}
@@ -369,7 +436,7 @@ func TestPlanApproveFromEditorFocus(t *testing.T) {
 	if !m.plan.Focused() {
 		t.Fatal("setup: the pane must be focused for the editor-focus claim")
 	}
-	m = runMsg(t, m, ctrlX())
+	m = approveDoublePress(t, m)
 	if len(b.agentCalls) != 1 {
 		t.Fatalf("editor-focused approve must send once, got %d calls", len(b.agentCalls))
 	}
@@ -385,7 +452,8 @@ func TestPlanApproveFromEditorFocus(t *testing.T) {
 // TestPlanApproveRefusesUnedited pins (f): ctrl+x with NO plan (empty,
 // hidden pane) earns the dim refusal no-op; the manually-OPENED starter
 // template is the wave-34 refusal (untouched boilerplate must not spend a
-// build turn); whitespace-only is nothing too.
+// build turn); whitespace-only is nothing too. F1: refusals land BEFORE
+// the double-press arm — a refusal press NEVER stamps approveArmAt.
 func TestPlanApproveRefusesUnedited(t *testing.T) {
 	b := &agentRecBackend{}
 	m := New(b, nil)
@@ -402,6 +470,9 @@ func TestPlanApproveRefusesUnedited(t *testing.T) {
 	}
 	if got := lastOfficeMsg(m); !strings.Contains(got, "nothing to approve") {
 		t.Fatalf("empty-pane refusal notice = %q", got)
+	}
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("a refusal lands BEFORE the arm — nothing stamps")
 	}
 	if m.planPaneVisible() {
 		t.Fatal("the refusal leaves the floor alone (pane still hidden)")
@@ -425,6 +496,9 @@ func TestPlanApproveRefusesUnedited(t *testing.T) {
 	}
 	if got := lastOfficeMsg(m); !strings.Contains(got, "nothing to approve") {
 		t.Fatalf("template refusal notice = %q", got)
+	}
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("a template refusal lands BEFORE the arm — nothing stamps")
 	}
 
 	// (c) a whitespace-only scratch buffer is nothing too
@@ -642,4 +716,484 @@ func firstNonEmptyLine(s string) string {
 		}
 	}
 	return ""
+}
+
+// officeRowByText finds the newest office transcript row containing sub.
+func officeRowByText(m Model, sub string) (state.ChatMsg, bool) {
+	for i := len(m.st.Chat) - 1; i >= 0; i-- {
+		c := m.st.Chat[i]
+		if c.From == "office" && strings.Contains(c.Text, sub) {
+			return c, true
+		}
+	}
+	return state.ChatMsg{}, false
+}
+
+// --- F1: the ctrl+x approve-arm double press ---------------------------------
+
+// TestApproveArmFlow pins the arm→fire pair: the FIRST ctrl+x stamps the
+// arm + swaps the hint bar to the warn toast + sends NOTHING; the second
+// press inside approveArmWindow fires the approve (send + flip + toast
+// retires). Ctrl+x claims from the chat focus here; the editor-focus twin
+// rides TestPlanApproveFromEditorFocus.
+func TestApproveArmFlow(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+
+	body := "# Arm plan\n- first arms, second fires"
+	m = bossReply(t, m, "b1", body)
+
+	// (a) ARMING press — direct Update: runMsg would execute the arm's own
+	// tea.Tick (1.5s sleep + expiry clearing the young arm).
+	nm, cmd := m.Update(ctrlX())
+	m = nm.(Model)
+	if cmd == nil {
+		t.Fatal("the arming press must schedule its own expiry tick")
+	}
+	if m.approveArmAt.IsZero() {
+		t.Fatal("the first ctrl+x must STAMP the approve arm")
+	}
+	if hint := m.hintLine(); !strings.Contains(hint, approveArmToast) {
+		t.Fatalf("the armed hint bar must swap to the approve toast, got %q", hint)
+	}
+	if len(b.agentCalls) != 0 {
+		t.Fatalf("an arm sends NOTHING, got %+v", b.agentCalls)
+	}
+	if m.agentMode != agentModePlan {
+		t.Fatalf("an arm never flips the mode, got %q", m.agentMode)
+	}
+
+	// (b) the second press inside the window FIRES.
+	m = runMsg(t, m, ctrlX())
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("the firing press clears the arm")
+	}
+	if len(b.agentCalls) != 1 {
+		t.Fatalf("the fire sends once through the agent seam, got %d calls", len(b.agentCalls))
+	}
+	if b.agentCalls[0] != (agentCall{text: approvePrefix + body, agent: agentModeBuild}) {
+		t.Fatalf("fired approve = %+v", b.agentCalls[0])
+	}
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("the fire flips to build on acceptance, got %q", m.agentMode)
+	}
+	if hint := m.hintLine(); strings.Contains(hint, approveArmToast) {
+		t.Fatalf("the approve toast retires with the arm, got %q", hint)
+	}
+	t.Logf("F1 trace: ctrl+x → arm(stamp=%v, toast=%q) → ctrl+x → SendAgent(agent=%q) → mode=%q",
+		!m.approveArmAt.IsZero(), approveArmToast, b.agentCalls[0].agent, m.agentMode)
+}
+
+// TestApproveArmOtherKeyDisarms pins: ANY other key press clears a live
+// approve arm (its toast retires) — an armed ctrl+x can never surprise-
+// fire behind later typing.
+func TestApproveArmOtherKeyDisarms(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	m = bossReply(t, m, "b1", "# Disarm plan\n- typing kills the arm")
+
+	nm, cmd := m.Update(ctrlX())
+	m = nm.(Model)
+	if cmd == nil || m.approveArmAt.IsZero() {
+		t.Fatal("precondition: the first press armed")
+	}
+
+	m = runMsg(t, m, pressKey('z'))
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("any other key press must disarm the approve arm")
+	}
+	if hint := m.hintLine(); strings.Contains(hint, approveArmToast) {
+		t.Fatalf("the toast retires with the disarm, got %q", hint)
+	}
+	if len(b.agentCalls) != 0 {
+		t.Fatalf("a disarmed arm never fires, got %+v", b.agentCalls)
+	}
+
+	// and a fresh pair still works (no stale state left behind)
+	m = approveDoublePress(t, m)
+	if len(b.agentCalls) != 1 {
+		t.Fatalf("a fresh arm+fire pair works after the disarm, got %d calls", len(b.agentCalls))
+	}
+}
+
+// TestApproveArmStaleReArms pins: a STALE first press (older than
+// approveArmWindow) can't pair — the next press re-opens a FRESH arm (the
+// quitarm time-injection idiom), and only the press after that fires.
+func TestApproveArmStaleReArms(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	m = bossReply(t, m, "b1", "# Stale plan\n- old arms never pair")
+
+	nm, _ := m.Update(ctrlX())
+	m = nm.(Model)
+	if m.approveArmAt.IsZero() {
+		t.Fatal("precondition: the first press armed")
+	}
+	m.approveArmAt = time.Now().Add(-approveArmWindow - time.Second) // stale the opener
+
+	// press 2: outside the window — NO fire, and this press becomes the
+	// fresh opener.
+	nm, _ = m.Update(ctrlX())
+	m = nm.(Model)
+	if m.approveArmAt.IsZero() || time.Since(m.approveArmAt) > approveArmWindow {
+		t.Fatalf("a stale pair must RE-ARM with a fresh stamp, got %v", m.approveArmAt)
+	}
+	if len(b.agentCalls) != 0 {
+		t.Fatalf("a stale pair must NOT fire, got %+v", b.agentCalls)
+	}
+	if m.agentMode != agentModePlan {
+		t.Fatalf("a stale pair stays in plan mode, got %q", m.agentMode)
+	}
+
+	// press 3 completes the FRESH pair.
+	m = runMsg(t, m, ctrlX())
+	if len(b.agentCalls) != 1 || m.agentMode != agentModeBuild {
+		t.Fatalf("the press after the re-arm must fire: calls=%+v mode=%q", b.agentCalls, m.agentMode)
+	}
+}
+
+// TestApproveArmTickExpiryClears pins: the arm's own expiry tick
+// (approveArmClearMsg) clears an arm old enough and leaves a YOUNGER
+// re-arm alone (its own tick owns its expiry).
+func TestApproveArmTickExpiryClears(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	m = bossReply(t, m, "b1", "# Expiry plan\n- ticks own windows")
+
+	// young arm: a stale tick landing early must NOT clear it.
+	nm, _ := m.Update(ctrlX())
+	m = nm.(Model)
+	nm, _ = m.Update(approveArmClearMsg{})
+	m = nm.(Model)
+	if m.approveArmAt.IsZero() {
+		t.Fatal("a tick landing early must not clear a YOUNG approve arm")
+	}
+
+	// old arm: the real expiry case.
+	m.approveArmAt = time.Now().Add(-approveArmWindow) // exactly aged out
+	nm, _ = m.Update(approveArmClearMsg{})
+	m = nm.(Model)
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("the expiry tick must clear an approve arm old enough")
+	}
+	if hint := m.hintLine(); strings.Contains(hint, approveArmToast) {
+		t.Fatalf("the toast retires with the expired arm, got %q", hint)
+	}
+}
+
+// TestApproveArmToastCopyFrozen pins the toast + window copy contract.
+func TestApproveArmToastCopyFrozen(t *testing.T) {
+	if approveArmToast != "ctrl+x again: approve plan + switch to build" {
+		t.Fatalf("the approve-arm toast copy is frozen, got %q", approveArmToast)
+	}
+	if approveArmWindow != quitArmWindow {
+		t.Fatalf("the two armed windows are one contract: approve=%v quit=%v", approveArmWindow, quitArmWindow)
+	}
+}
+
+// --- F2: a restored plan refuses an untouched approve -------------------------
+
+// TestApproveRestoredRefusesUntilEdited pins F2: a plan buffer hydrated
+// from session.json (restoredPlan) refuses the approve ARM with the dim
+// restored notice — no stamp, no send, mode kept — until the member edits
+// it (userDirty lifts the gate); the accept path clears the latch.
+func TestApproveRestoredRefusesUntilEdited(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	plan := "Restored: lobby wall\n- matte panels"
+	m.hydrateSession(&SessionFile{PlanText: plan})
+	if !m.restoredPlan {
+		t.Fatal("hydrate must latch restoredPlan when planText seeds the buffer")
+	}
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	if !m.planPaneVisible() {
+		t.Fatal("sanity: restored content owns the floor slot in plan mode")
+	}
+
+	// untouched: even repeated ctrl+x presses REFUSE before the arm
+	for i := 0; i < 2; i++ {
+		m = runMsg(t, m, ctrlX())
+		if got := lastOfficeMsg(m); got != planRestoredNotice {
+			t.Fatalf("press %d restored refusal notice = %q, want %q", i+1, got, planRestoredNotice)
+		}
+		if !m.approveArmAt.IsZero() {
+			t.Fatalf("press %d: the restored refusal lands BEFORE the arm — nothing stamps", i+1)
+		}
+		if len(b.agentCalls) != 0 {
+			t.Fatalf("press %d: an untouched restored plan must NOT send, got %+v", i+1, b.agentCalls)
+		}
+		if m.agentMode != agentModePlan {
+			t.Fatalf("press %d: the refusal keeps plan mode, got %q", i+1, m.agentMode)
+		}
+	}
+
+	// open + edit: the gate lifts (userDirty) and the accept clears the latch
+	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, pressKey('!'))
+	if !m.plan.UserDirty() {
+		t.Fatal("an edit must latch userDirty (the gate's lift)")
+	}
+	m = approveDoublePress(t, m)
+	if len(b.agentCalls) != 1 {
+		t.Fatalf("an edited restored plan approves, got %d calls", len(b.agentCalls))
+	}
+	if b.agentCalls[0].text != approvePrefix+plan+"!" {
+		t.Fatalf("the EDITED restore ships: %+v", b.agentCalls[0])
+	}
+	if m.restoredPlan {
+		t.Fatal("a successful approve clears the restored latch")
+	}
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("the edited restore flips to build, got %q", m.agentMode)
+	}
+}
+
+// --- F3: the flip rides SEND ACCEPTANCE ---------------------------------------
+
+// TestApproveRollbackOnSendError pins F3: when the approve's wire send
+// fails, the office STAYS in plan mode (no stale flip) with a red
+// transcript row — and the failure is the tagged approveErrMsg twin (no
+// cross-talk with an ordinary send failure). When the wire recovers the
+// retry flips on acceptance exactly like a first-time approve.
+func TestApproveRollbackOnSendError(t *testing.T) {
+	b := &errBackend{err: errors.New("wire down")}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+
+	body := "# Rollback plan\n- keep the wiring intact"
+	m = bossReply(t, m, "b1", body)
+
+	nm, cmd := m.Update(ctrlX())
+	m = nm.(Model)
+	if cmd == nil || m.approveArmAt.IsZero() {
+		t.Fatal("precondition: approvable pane arms on the first press")
+	}
+	m = runMsg(t, m, ctrlX()) // fire → SendAgent errors → approveErrMsg
+
+	if m.agentMode != agentModePlan {
+		t.Fatalf("F3 rollback: a failed approve must KEEP plan mode, got %q", m.agentMode)
+	}
+	if m.plan.Mode() != agentModePlan {
+		t.Fatalf("the pane badge mirrors the kept mode, got %q", m.plan.Mode())
+	}
+	if got := m.plan.Value(); got != body {
+		t.Fatalf("the plan buffer survives the rollback untouched, got %q", got)
+	}
+	row, ok := officeRowByText(m, "approve failed — still in plan: wire down")
+	if !ok {
+		t.Fatalf("the red approve-failed row must land in the transcript, rows: %+v", m.st.Chat)
+	}
+	if row.Meta != "error" {
+		t.Fatalf("the approve-failed row is the red error class, got Meta=%q", row.Meta)
+	}
+	// no cross-talk: an approve failure is NOT the ordinary send failure
+	if n := countOfficeRows(m, "send failed:"); n != 0 {
+		t.Fatalf("approveErrMsg must not trip sendErrMsg's row, got %d", n)
+	}
+	if n := countOfficeRows(m, "plan approved — sent to build"); n != 0 {
+		t.Fatalf("no optimistic approval notice on a failed wire, got %d", n)
+	}
+	t.Logf("F3 rollback trace: SendAgent → %q → approveErrMsg → mode stays %q, red row %q",
+		"wire down", m.agentMode, row.Text)
+
+	// the wire recovers: the retry flips on acceptance (exact fire path)
+	b.err = nil
+	m = approveDoublePress(t, m)
+	if len(b.agentCalls) != 1 {
+		t.Fatalf("the retry sends once, got %+v", b.agentCalls)
+	}
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("the flip rides acceptance, got %q", m.agentMode)
+	}
+	if n := countOfficeRows(m, "plan approved — sent to build"); n != 1 {
+		t.Fatalf("the approval notice posts on acceptance, got %d", n)
+	}
+	t.Logf("F3 acceptance trace: SendAgent → nil → approveSentMsg → mode=%q (notice posted)", m.agentMode)
+}
+
+// --- F4: mid-turn flip transparency -------------------------------------------
+
+// TestPlanCompletionNoteOnMidTurnExit pins the planSendPending counter: a
+// plan-mode send outstanding while the member reflex-flips back to build
+// leaves the boss's completed reply in chat only (the pane never opens) —
+// the exit notice gains the in-flight suffix and the completion lands the
+// ONCE-per-turn dim note. A plan-mode completion (no flip) notes nothing.
+func TestPlanCompletionNoteOnMidTurnExit(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+
+	// control: a build-mode completion with NO plan send never notes
+	m = bossReply(t, m, "b0", "# Unrelated\n- build chatter")
+	if n := countOfficeRows(m, planLandedInChat); n != 0 {
+		t.Fatalf("no counter → no note, got %d", n)
+	}
+
+	// a plan-tagged send goes out; the boss is typing
+	m = runMsg(t, m, ctrlP())
+	m = typeText(t, m, "plan the doorway")
+	m = runMsg(t, m, enterKey())
+	if m.planSendPending != 1 {
+		t.Fatalf("an accepted plan send tallies the counter, got %d", m.planSendPending)
+	}
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "boss-1", From: "boss", Pending: true}})
+
+	// the reflex flip mid-turn: exit notice gains the in-flight suffix
+	m = runMsg(t, m, ctrlP())
+	if got := lastOfficeMsg(m); !strings.Contains(got, "; an in-flight reply lands in chat") {
+		t.Fatalf("exit-with-in-flight notice = %q", got)
+	}
+
+	// the boss's reply completes AFTER the flip: pane stays shut, the dim
+	// note posts ONCE, the counter closes.
+	m = bossReply(t, m, "b1", "# Door plan\n- hinge")
+	if n := countOfficeRows(m, planLandedInChat); n != 1 {
+		t.Fatalf("the land-in-chat note must post exactly once, got %d", n)
+	}
+	if m.planSendPending != 0 {
+		t.Fatalf("the completion consumes the tally, got %d", m.planSendPending)
+	}
+
+	// a second completion posts nothing extra (once per turn-edge)
+	m = bossReply(t, m, "b2", "# Door plan v2\n- knob")
+	if n := countOfficeRows(m, planLandedInChat); n != 1 {
+		t.Fatalf("the note is once per turn-edge, got %d", n)
+	}
+
+	// an IN-PLAN completion presents and notes nothing
+	m = runMsg(t, m, ctrlP())
+	m = typeText(t, m, "plan the threshold")
+	m = runMsg(t, m, enterKey())
+	if m.planSendPending != 1 {
+		t.Fatalf("the second plan send tallies again, got %d", m.planSendPending)
+	}
+	m = bossReply(t, m, "b3", "# Threshold plan\n- flush")
+	if n := countOfficeRows(m, planLandedInChat); n != 1 {
+		t.Fatalf("an in-plan completion never notes, got %d", n)
+	}
+	if m.planSendPending != 0 {
+		t.Fatalf("the in-plan completion still consumes the tally, got %d", m.planSendPending)
+	}
+	if !strings.Contains(m.plan.Value(), "Threshold") {
+		t.Fatal("the in-plan completion presents into the pane as before")
+	}
+}
+
+// --- F5: degrade visibility ----------------------------------------------------
+
+// TestAgentDegradeBadgeAndWarning pins F5b: a backend carrying
+// agentDegradeSeam latched ON renders "[plan·degraded]" in plan mode, and
+// entering plan mode posts the one-time-per-session red warning.
+func TestAgentDegradeBadgeAndWarning(t *testing.T) {
+	b := &degradedBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	if got := m.agentBadge(); got != "" {
+		t.Fatalf("build mode carries no badge, got %q", got)
+	}
+
+	m = runMsg(t, m, ctrlP())
+	if got := m.agentBadge(); got != "[plan·degraded]" {
+		t.Fatalf("a degraded plan badge = %q, want %q", got, "[plan·degraded]")
+	}
+	row, ok := officeRowByText(m, "can't route them")
+	if !ok {
+		t.Fatal("entering plan on a degraded serve posts the entry warning")
+	}
+	if row.Meta != "error" {
+		t.Fatalf("the degrade warning is the red class, got Meta=%q", row.Meta)
+	}
+	if row.Text != planDegradeWarn {
+		t.Fatalf("the warning copy = %q, want %q", row.Text, planDegradeWarn)
+	}
+	t.Logf("F5 badge: %q; warning row: %q", m.agentBadge(), row.Text)
+
+	// once per session: exit + re-enter posts no second warning
+	m = runMsg(t, m, ctrlP())
+	m = runMsg(t, m, ctrlP())
+	if n := countOfficeRows(m, "can't route them"); n != 1 {
+		t.Fatalf("the entry warning is one-time-per-session, got %d", n)
+	}
+	if got := m.agentBadge(); got != "[plan·degraded]" {
+		t.Fatalf("the badge degraded flag stays honest every frame, got %q", got)
+	}
+
+	// a NON-degraded backend badges + warns nothing
+	clean := &agentRecBackend{}
+	m2 := New(clean, nil)
+	m2 = runMsg(t, m2, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m2 = runMsg(t, m2, ctrlP())
+	if got := m2.agentBadge(); got != "[plan]" {
+		t.Fatalf("a healthy serve keeps the plain badge, got %q", got)
+	}
+	if n := countOfficeRows(m2, "can't route them"); n != 0 {
+		t.Fatalf("a healthy serve warns nothing, got %d", n)
+	}
+}
+
+// TestAgentFieldStatusEscalatesToTranscript pins F5a: a backend EvStatus
+// carrying the agent-field marker ALSO lands as a red transcript office
+// row; an ordinary EvStatus stays statusline-only.
+func TestAgentFieldStatusEscalatesToTranscript(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+
+	note := "[theboringoffice] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: note})
+	row, ok := officeRowByText(m, "agent field unavailable")
+	if !ok {
+		t.Fatalf("the marked status must escalate into the transcript, rows: %+v", m.st.Chat)
+	}
+	if row.Meta != "error" {
+		t.Fatalf("the escalated row is the red error class, got Meta=%q", row.Meta)
+	}
+	if row.Text != note {
+		t.Fatalf("the escalated row carries the status verbatim:\n got %q\nwant %q", row.Text, note)
+	}
+	if m.st.StatusLine != note {
+		t.Fatalf("the statusline twin is untouched, got %q", m.st.StatusLine)
+	}
+
+	// a plain (unmarked) status never double-posts
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live - http://127.0.0.1:9999 | board: git"})
+	if n := countOfficeRows(m, "[theboringoffice]"); n != 1 {
+		t.Fatalf("unmarked statuses stay statusline-only (office rows=%d)", n)
+	}
+}
+
+// --- F6: an ordinary failed send is transcript-visible --------------------------
+
+// TestSendFailurePostsTranscriptRow pins F6: a rejected plain send posts
+// the red transcript row IN ADDITION to the transient statusline twin.
+func TestSendFailurePostsTranscriptRow(t *testing.T) {
+	b := &failSendBackend{err: errors.New("wire snapped")}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+
+	m = typeText(t, m, "ship it")
+	m = runMsg(t, m, enterKey())
+
+	row, ok := officeRowByText(m, "send failed: wire snapped")
+	if !ok {
+		t.Fatalf("the failed send must land a red transcript row, rows: %+v", m.st.Chat)
+	}
+	if row.Meta != "error" {
+		t.Fatalf("the send-failed row is the red error class, got Meta=%q", row.Meta)
+	}
+	if !strings.Contains(m.st.StatusLine, "send failed") {
+		t.Fatalf("the statusline twin is untouched, got %q", m.st.StatusLine)
+	}
+	t.Logf("F6 transcript row: %q (Meta=%q)", row.Text, row.Meta)
 }

@@ -358,15 +358,31 @@ func (b *liveBackend) SendAgent(text, agent string) error {
 	return b.sendWithAgent(text, nil, agent)
 }
 
+// AgentDegraded exposes the promptAgentRejected latch as the app's
+// agentDegradeSeam (internal/app plan_mode.go — additive, type-asserted):
+// true once a serve has 400'd the plan/build agent field. From then on
+// plan-mode sends still go out (bare), but the office's "[plan]" badge
+// flips to "[plan·degraded]" and a plan-mode entry warns once — label,
+// no routing.
+func (b *liveBackend) AgentDegraded() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.promptAgentRejected
+}
+
 // agentSender pins the app's agentBackend seam shape at compile time —
 // this package CANNOT import the app (dependency direction), so the
 // contract is asserted here against a local twin: a drift fails the
 // build, not a runtime type-assert.
 type agentSender interface{ SendAgent(text, agent string) error }
 
+// agentDegradeSignal pins the app's agentDegradeSeam shape the same way.
+type agentDegradeSignal interface{ AgentDegraded() bool }
+
 var (
-	_ agentSender = (*liveBackend)(nil)
-	_ agentSender = (*demoBackend)(nil)
+	_ agentSender        = (*liveBackend)(nil)
+	_ agentSender        = (*demoBackend)(nil)
+	_ agentDegradeSignal = (*liveBackend)(nil)
 )
 
 // sendWithAgent is the ONE send pipeline behind Send/SendWith/SendAgent;
@@ -1196,8 +1212,11 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 		b.promptAgentRejected = true
 		b.mu.Unlock()
 		// One note, exactly once: the latch means no future prompt ever
-		// retries the field (the member is not re-told per send).
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"})
+		// retries the field (the member is not re-told per send). The
+		// "agent-field:" marker is the contract with the app — it
+		// escalades this statusline note into a red transcript row (the
+		// next status event would otherwise hide it, F5a).
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"})
 		delete(payload, "agent")
 		body, _ = json.Marshal(payload)
 		err = b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)

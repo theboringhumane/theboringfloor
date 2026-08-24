@@ -26,8 +26,8 @@
 package app
 
 import (
-	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -83,14 +83,63 @@ const approvePrefix = "Approved plan — implement it exactly as specified:\n\n"
 // just talks; pane-visible means a presented/edited plan sits in the
 // floor slot. Frozen copy — pinned by plan_mode_test.go.
 const (
-	planHintIdle = "plan · boss plans read-only · ctrl+p exits · ctrl+x approves a presented plan"
-	planHintPane = "plan · click to edit · ctrl+x approve → build · ctrl+p exits"
+	planHintIdle = "plan · boss plans read-only · ctrl+p exits · ctrl+x twice approves a presented plan"
+	planHintPane = "plan · click to edit · ctrl+x twice: approve → build · ctrl+p exits"
 )
 
 // planKeptNotice — the anti-clobber transcript note: a fresh boss reply
 // arrived while the pane carries USER edits — the edits win, the pane is
 // not touched. Frozen copy — pinned by plan_mode_test.go.
 const planKeptNotice = "boss replied — your edited plan kept"
+
+// approveArmToast — the high-visibility statusbar line swapped in while a
+// ctrl+x approve arm is live (the FIRST press arms instead of firing; the
+// second press inside approveArmWindow approves + flips to build). Mirrors
+// the ctrl+q quitArmToast pattern exactly. Frozen copy — pinned by
+// plan_mode_test.go.
+const approveArmToast = "ctrl+x again: approve plan + switch to build"
+
+// Refusal/notice copies (frozen — pinned by plan_mode_test.go):
+//
+//   - planNothingNotice: ctrl+x with no plan presented (empty+hidden pane).
+//   - planStarterNotice: ctrl+x on the never-edited starter template.
+//   - planRestoredNotice: F2 — a restored-from-session buffer REFUSES the
+//     arm until the member has touched it.
+//   - planLandedInChat: F4 — the boss's reply for a plan-tagged send
+//     completed while the office had already flipped back to build (the
+//     pane never opens then — the transcript carries the tell instead).
+//   - planDegradeWarn: F5 — one-time-per-session entry warning when the
+//     serve rejected the plan/build agent field (labels only, no routing).
+const (
+	planNothingNotice  = "[office] nothing to approve — the boss hasn't presented a plan yet · click the plan pane to scratch one · ctrl+p exits"
+	planStarterNotice  = "[office] nothing to approve — edit the plan, then ctrl+x twice (ctrl+p exits plan mode)"
+	planRestoredNotice = "plan restored from your last session — open it (click), edit, then ctrl+x twice"
+	planLandedInChat   = "boss reply landed in chat (plan mode was off when it completed)"
+	planDegradeWarn    = "this serve rejected the agent field — plan mode labels sends but can't route them (retry bare)"
+)
+
+// agentFieldStatusMarker — the string contract between the live backend's
+// degrade latch note (opencode.go's postPrompt) and the app's transcript
+// escalation (F5a): an EvStatus text carrying this prefix ALSO lands in
+// the transcript as a red office row, because the statusline-only note is
+// overwritten by the next status event.
+const agentFieldStatusMarker = "[theboringoffice] agent-field:"
+
+// approveArmWindow — the ctrl+x double-press window (identical to
+// quitArmWindow by design: the two armed-destructive keys feel the same).
+const approveArmWindow = 1500 * time.Millisecond
+
+// approveSentMsg / approveErrMsg — the approved-plan send's async
+// resolutions (the F3 tagged twins of chatSentMsg/sendErrMsg: a failed
+// approve must NEVER be mistaken for an ordinary failed send — the
+// rollback is exact). The flip to build rides approveSentMsg ONLY.
+type approveSentMsg struct{ planLen int }
+type approveErrMsg struct{ err error }
+
+// approveArmClearMsg — the approve arm's own expiry tick landed
+// (armClearMsg's twin): retires the arm + its toast when old enough; a
+// YOUNGER re-arm's own tick owns its expiry.
+type approveArmClearMsg struct{}
 
 // setAgentMode is the ONE mutation point for m.agentMode — the pane's own
 // mode badge (pane.SetMode) never drifts from the model's.
@@ -149,11 +198,23 @@ func (m *Model) togglePlanMode() tea.Cmd {
 	if m.agentMode == agentModePlan {
 		m.setAgentMode(agentModeBuild)
 		m.plan.Blur()
-		m.notice("[office] build mode — prompts go straight to the boss")
+		note := "[office] build mode — prompts go straight to the boss"
+		if m.planSendPending > 0 {
+			// F4: a plan-tagged send is still in flight — its completion
+			// lands in the chat; say so at the EXACT exit the member made.
+			note += "; an in-flight reply lands in chat"
+		}
+		m.notice(note)
 		return nil
 	}
 	m.setAgentMode(agentModePlan)
-	m.notice("[office] plan mode — the boss's reply lands in the plan pane · ctrl+x approves a presented plan · ctrl+p exits")
+	m.notice("[office] plan mode — the boss's reply lands in the plan pane · ctrl+x twice approves a presented plan · ctrl+p exits")
+	if m.agentDegraded() && !m.planDegradeNoted {
+		// F5: degraded-entering warning, once per office session — the
+		// badge flips too, but a first-time member gets told in text.
+		m.planDegradeNoted = true
+		m.noticeErr(planDegradeWarn)
+	}
 	return nil
 }
 
@@ -189,6 +250,27 @@ func (m *Model) presentBossPlan(msg state.ChatMsg) {
 	}
 	m.plan.SetValue(msg.Text)
 	m.plan.SetUserDirty(false)
+	m.restoredPlan = false // F2: a boss-adopted buffer is presented, not restored
+}
+
+// notePlanCompletion — the F4 turn-edge hook, driven for EVERY completed
+// boss reply (applyEvent, right before presentBossPlan): a completed
+// reply consumes one outstanding plan-tagged send. When the office flipped
+// back to build MID-TURN (the reflex ctrl+p), presentBossPlan skips and
+// the pane never opens — the transcript must carry the tell instead, ONCE
+// per completion, and only for normal completions (error/empty finals
+// already speak for themselves).
+func (m *Model) notePlanCompletion(msg state.ChatMsg) {
+	if m.planSendPending <= 0 {
+		return
+	}
+	m.planSendPending--
+	if m.agentMode != agentModePlan &&
+		msg.From == "boss" && !msg.Pending &&
+		!strings.HasPrefix(msg.ID, "boss-error-") &&
+		strings.TrimSpace(msg.Text) != "" {
+		m.notice(planLandedInChat)
+	}
 }
 
 // openPlanForEdit — a click inside the pane region in plan mode (the
@@ -200,30 +282,58 @@ func (m *Model) openPlanForEdit() {
 	m.plan.Focus()
 }
 
-// approvePlan is ctrl+x — claimable from BOTH chat input and pane focus
-// while a plan exists: the composed prompt (approvePrefix + the plan body)
-// leaves through the agent seam with agent="build", the office flips BACK
-// to build mode, the pane hides (content PERSISTS for restore — a
-// re-entered plan mode finds the approved plan again), and the dirty
-// latch resets. Refusals: an empty/hidden pane (no plan yet) or the
-// never-touched starter template (only reachable after a manual open) —
-// approving boilerplate would spend a whole build turn on nothing.
-func (m *Model) approvePlan() tea.Cmd {
+// approveRefusal — the claim-side refusal gate (F1/F2): returns the
+// refusal notice text when the approve can NOT fire, "" when it can.
+// Refusals land BEFORE the double-press arm — a toast promising "approve
+// + switch to build" never shows when nothing can fire. Ideal order:
+//
+//   - F2: a restored-from-session buffer (SessionFile.PlanText hydrate)
+//     refuses while UNTOUCHED — approving stale text the member never
+//     re-read would spend a build turn on a session ago. ANY edit lifts
+//     the gate: the latch follows userDirty (its own write side), so a
+//     restored plan that was edited is just a plan.
+//   - an empty/hidden pane (no plan yet);
+//   - the never-touched starter template (only reachable after a manual
+//     open) — approving boilerplate would spend a whole build turn on
+//     nothing.
+func (m *Model) approveRefusal() string {
 	if m.plan == nil {
+		return planNothingNotice
+	}
+	if m.restoredPlan {
+		if m.plan.UserDirty() {
+			m.restoredPlan = false // edited since restore — the gate lifts
+		} else {
+			return planRestoredNotice
+		}
+	}
+	if strings.TrimSpace(m.plan.Value()) == "" {
+		return planNothingNotice
+	}
+	if m.plan.IsStarter() {
+		return planStarterNotice
+	}
+	return ""
+}
+
+// approvePlan is the ctrl+x FIRE (the double-press's second strike —
+// model.go's claim arms first): the composed prompt (approvePrefix + the
+// plan body) leaves through the agent seam with agent="build". F3: the
+// mode flip rides SEND ACCEPTANCE — the closure returns the tagged
+// approveSentMsg (Update's case flips to build, blurs the editor, resets
+// the dirty/restore latches, posts the approval notice) or the tagged
+// approveErrMsg (plan mode KEPT, red transcript row, pane untouched) —
+// never a stale flip on a wire the serve rejected. The buffer PERSISTS
+// either way for restore — a re-entered plan mode finds the plan again.
+func (m *Model) approvePlan() tea.Cmd {
+	if refused := m.approveRefusal(); refused != "" {
+		m.notice(refused)
 		return nil
 	}
 	v := m.plan.Value()
-	if strings.TrimSpace(v) == "" {
-		m.notice("[office] nothing to approve — the boss hasn't presented a plan yet · click the plan pane to scratch one · ctrl+p exits")
-		return nil
-	}
-	if m.plan.IsStarter() {
-		m.notice("[office] nothing to approve — edit the plan, then ctrl+x (ctrl+p exits plan mode)")
-		return nil
-	}
 	text := approvePrefix + v
 	b := m.backend
-	send := func() tea.Msg {
+	return func() tea.Msg {
 		if b != nil {
 			var err error
 			if ab, ok := b.(agentBackend); ok {
@@ -233,19 +343,13 @@ func (m *Model) approvePlan() tea.Cmd {
 				err = sendChat(b, text, nil)
 			}
 			if err != nil {
-				return sendErrMsg{err: err}
+				// tagged twin — no cross-talk with an ordinary failed
+				// send (sendErrMsg keeps its own generic transcript row).
+				return approveErrMsg{err: err}
 			}
 		}
-		return chatSentMsg{text: text}
+		return approveSentMsg{planLen: len(v)}
 	}
-	// Flip first, send second — the same optimistic ordering every chat
-	// send uses (the member's own echo lands synchronously, the wire POST
-	// rides async; a failure surfaces through the normal sendErrMsg path).
-	m.setAgentMode(agentModeBuild)
-	m.plan.SetUserDirty(false)
-	m.plan.Blur()
-	m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", len(v)))
-	return send
 }
 
 // planText is the persistence projection (session.json's planText field):
@@ -264,13 +368,38 @@ func (m *Model) planText() string {
 	return v
 }
 
+// agentDegradeSeam — the additive backend seam (F5b): the live backend's
+// promptAgentRejected latch surfaced app-side. Type-asserted exactly like
+// agentBackend — harness stubs without it are simply never degraded.
+type agentDegradeSeam interface {
+	AgentDegraded() bool
+}
+
+// agentDegraded — the serve rejected the plan/build agent field: sends
+// still go out (bare), but plan-mode ROUTING is dead weight. The badge
+// and the entry warning ride this so the member is never told plan mode
+// works while it silently cannot.
+func (m *Model) agentDegraded() bool {
+	if m.backend == nil {
+		return false
+	}
+	if d, ok := m.backend.(agentDegradeSeam); ok {
+		return d.AgentDegraded()
+	}
+	return false
+}
+
 // agentBadge is the statusbar's plan/build marker segment: "[plan]" while
 // plan mode is active, "" in build — the default office's statusbar stays
 // byte-identical to before (the badge only ever appears during a plan
-// session).
+// session). F5b: a degraded serve shows "[plan·degraded]" — the label
+// keeps showing but stops LYING about routing.
 func (m *Model) agentBadge() string {
-	if m.agentMode == agentModePlan {
-		return "[plan]"
+	if m.agentMode != agentModePlan {
+		return ""
 	}
-	return ""
+	if m.agentDegraded() {
+		return "[plan·degraded]"
+	}
+	return "[plan]"
 }

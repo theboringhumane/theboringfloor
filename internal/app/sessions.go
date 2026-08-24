@@ -291,8 +291,11 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 	m.st.Mails = append([]state.MailItem(nil), sf.Mails...)
 	// The plan editor's drafted-but-unapproved buffer comes back too —
 	// the MODE does not (a boot always lands in build; ctrl+p re-enters).
+	// F2: a restored buffer latches m.restoredPlan — it is NOT approvable
+	// untouched (the member must open it, edit, then ctrl+x twice).
 	if m.plan != nil && sf.PlanText != "" {
 		m.plan.SetValue(sf.PlanText)
+		m.restoredPlan = true
 	}
 	m.tabs.SetState(m.st)
 	m.notice(RestoreNotice(sf))
@@ -349,7 +352,7 @@ func (m *Model) persistOfficePin(primaryID string) {
 	}
 	m.sessLast = time.Now()
 	sf := Snapshot(m.sessDir, primaryID, m.st)
-	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	sf.PlanText = m.planText()     // plan editor buffer, "" when pristine
 	_ = SaveSession(m.sessDir, sf) // quit path — best effort, bounded + sync
 }
 
@@ -386,6 +389,8 @@ func (m *Model) newOffice() {
 	if m.plan != nil {
 		m.plan.SetValue(m.planTemplate) // the new office drafts from a fresh canvas
 	}
+	m.restoredPlan = false // /new's canvas is fresh — nothing "restored"
+	m.planSendPending = 0  // and no prior turn's completion follows us in
 	if tb, ok := m.team(); ok {
 		// Hold is cleared first: NewOffice resolves the fresh session
 		// eagerly, so the respawn latch cannot survive into a later Send.

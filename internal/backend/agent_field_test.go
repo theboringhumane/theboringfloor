@@ -113,8 +113,10 @@ func TestAgentFieldRidesPromptAsync(t *testing.T) {
 
 // TestAgentFieldDegradeLatchesAndRetriesOnce: a 400 on the agent field
 // (a) retries the SAME prompt once without it, (b) emits the status note
-// exactly once, (c) never sends the field again — degrade open, and both
-// prompts still land (SendAgent returns nil).
+// exactly once (with the "[theboringoffice] agent-field:" marker the app
+// escalades into the transcript), (c) never sends the field again —
+// degrade open, and both prompts still land (SendAgent returns nil), and
+// (d) AgentDegraded() (the app's badge/warning seam) follows the latch.
 func TestAgentFieldDegradeLatchesAndRetriesOnce(t *testing.T) {
 	stub := &modelStub{}
 	srv := stub.serveAgentRejecting(t)
@@ -122,6 +124,9 @@ func TestAgentFieldDegradeLatchesAndRetriesOnce(t *testing.T) {
 	log := &eventLog{}
 	b.fl.setEmit(log.emit)
 
+	if b.AgentDegraded() {
+		t.Fatal("a fresh backend is not degraded")
+	}
 	if err := b.SendAgent("step one of the plan", "plan"); err != nil {
 		t.Fatalf("SendAgent must degrade open (nil error), got %v", err)
 	}
@@ -135,6 +140,12 @@ func TestAgentFieldDegradeLatchesAndRetriesOnce(t *testing.T) {
 	payloadAgent(t, posts[1], false) // the retry is bare
 	if n := log.textCount("agent field"); n != 1 {
 		t.Fatalf("status note must fire exactly once, got %d", n)
+	}
+	if n := log.textCount("[theboringoffice] agent-field:"); n != 1 {
+		t.Fatalf("the marker the app escalades to the transcript rides the note, got %d", n)
+	}
+	if !b.AgentDegraded() {
+		t.Fatal("the latched 400 must expose AgentDegraded() (the app's badge/warning seam)")
 	}
 
 	// Latch held: the next SendAgent ships bare immediately — no retry,

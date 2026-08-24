@@ -240,6 +240,26 @@ type Model struct {
 	plan         *panels.PlanEditor
 	planTemplate string
 	agentMode    string
+	// approveArmAt — the ctrl+x double-press arm (approveArmWindow, F1):
+	// set by the first press (the hint bar swaps to the warn-class
+	// approveArmToast), cleared by its own expiry tick (approveArmClearMsg),
+	// by ANY other key press, or by the firing second press. plan_mode.go
+	// owns the whole approve flow.
+	approveArmAt time.Time
+	// restoredPlan — F2: set when session.json's planText seeds the pane
+	// buffer on boot (sessions.go hydrate); cleared on any edit (it follows
+	// userDirty), on a boss adoption (presentBossPlan), on an approve, and
+	// on /new. While set AND untouched, the approve arm refuses.
+	restoredPlan bool
+	// planSendPending — F4: outstanding plan-tagged sends; incremented on
+	// each plan-mode send's acceptance (chatSentMsg/busySentMsg), consumed
+	// one-per-completed-boss-reply (notePlanCompletion). A completion that
+	// lands after a reflex flip back to build posts the land-in-chat note;
+	// toggling OUT of plan mode with any pending shows the exit suffix.
+	planSendPending int
+	// planDegradeNoted — F5: the one-time-per-session entry warning for a
+	// degraded agent seam (the badge keeps showing it every frame after).
+	planDegradeNoted bool
 
 	// floor-click bookkeeping (bubbletea v2 mouse): lastClickAgent/At
 	// detect a DOUBLE-click on the same sprite (double-click = toggle
@@ -526,13 +546,21 @@ func (h *questionHold) summary() string {
 
 // chatSentMsg fires after backend.Send succeeds — the local user bubble and
 // the typing placeholder are appended through the normal reducer path.
-type chatSentMsg struct{ text string }
+// agent carries the wire tag the send rode ("plan" in plan mode — F4's
+// planSendPending tally rides it), "" for any ordinary build send.
+type chatSentMsg struct {
+	text  string
+	agent string
+}
 
 // busySentMsg fires after a FREE-SEND resolves — a prompt that went
 // straight to the backend while the boss was mid-turn (the serve queues it
 // server-side, draining after the current turn). The model tallies it for
-// the busy-status compose.
-type busySentMsg struct{ text string }
+// the busy-status compose. agent is chatSentMsg's twin F4 field.
+type busySentMsg struct {
+	text  string
+	agent string
+}
 
 // busySendReqMsg is the panel's busy-turn hand-off: Enter landed while the
 // boss was mid-turn, but the ROUTING decision (boss server-queue vs
@@ -668,11 +696,13 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 				return slashMsg{text: text}
 			}
 			if b != nil {
-				if err := sendChatMode(b, text, atts, paneAgent(plan)); err != nil {
+				agent := paneAgent(plan)
+				if err := sendChatMode(b, text, atts, agent); err != nil {
 					cleanupAttachments(atts) // nobody will retry this prompt
 					return sendErrMsg{err: err}
 				}
 				cleanupAttachments(atts)
+				return chatSentMsg{text: text, agent: agent}
 			}
 			return chatSentMsg{text: text}
 		}
@@ -992,6 +1022,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
 		// bubble) via the event stream — applying them here duplicated the bubbles.
 		m.playSound("send")
+		if msg.agent == agentModePlan {
+			m.planSendPending++ // F4 — an in-flight plan-tagged turn
+		}
 	case busySendReqMsg:
 		// the panel fired while the boss looked busy; route with live state
 		cmds = append(cmds, m.routeBusySend(msg.text, msg.atts))
@@ -1004,6 +1037,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// status compose + placeholder turn count keep the UI alive (the
 		// client queue stays untouched).
 		m.playSound("send")
+		if msg.agent == agentModePlan {
+			m.planSendPending++ // F4 — an in-flight plan-tagged turn
+		}
 		m.serverQueued++
 		if m.chat != nil {
 			m.chat.SetServerTurn(m.serverQueued)
@@ -1015,10 +1051,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.notice(msg.text)
 	case sendErrMsg:
 		m.playSound("error")
+		// F6 — a failed send is not just a transient statusline blip: the
+		// transcript keeps the red row too (the next EvStatus overwrites
+		// the line, never the transcript).
+		m.noticeErr(fmt.Sprintf("send failed: %v", msg.err))
 		cmds = append(cmds, m.applyEvent(state.Event{
 			Kind: state.EvStatus,
 			Text: fmt.Sprintf("[theboringoffice] send failed: %v", msg.err),
 		}))
+	case approveSentMsg:
+		// F3 — the plan→build flip rides SEND ACCEPTANCE: the approved
+		// plan's wire POST landed; NOW the office flips back (the pane
+		// hides with the mode flip), the buffer persists for restore, the
+		// dirty/restore latches reset, and the approval notice posts.
+		m.setAgentMode(agentModeBuild)
+		m.restoredPlan = false
+		if m.plan != nil {
+			m.plan.SetUserDirty(false)
+			m.plan.Blur()
+		}
+		m.playSound("send")
+		m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", msg.planLen))
+	case approveErrMsg:
+		// F3 rollback — the tag-flip never happened: plan mode KEPT, the
+		// plan buffer untouched, the red row explains it in the transcript
+		// (the statusline twin rides the EvStatus below).
+		m.playSound("error")
+		cmds = append(cmds, m.applyEvent(state.Event{
+			Kind: state.EvStatus,
+			Text: fmt.Sprintf("[theboringoffice] approve failed: %v", msg.err),
+		}))
+		m.noticeErr(fmt.Sprintf("approve failed — still in plan: %v", msg.err))
 	case queueSendErrMsg:
 		// FAILURE RESPAWN — one per flush call: the boss session died at
 		// Send; reset the primary and resend the SAME composed batch on the
@@ -1226,6 +1289,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitArmAt = time.Time{}
 			m.frameNonce++ // the toast retires — the hint bar repaints
 		}
+	case approveArmClearMsg:
+		// the approve arm's expiry tick landed (armClearMsg's twin):
+		// retires a stale ctrl+x arm; a YOUNGER re-arm survives — its own
+		// tick owns its expiry, this landing just no-ops.
+		if !m.approveArmAt.IsZero() && time.Since(m.approveArmAt) >= approveArmWindow {
+			m.approveArmAt = time.Time{}
+			m.frameNonce++ // the toast retires — the hint bar repaints
+		}
 	case copyNoteClearMsg:
 		// the copy toast's own expiry tick landed (armClearMsg's twin):
 		// retire a note old enough — a FRESHER re-arm's own tick owns its
@@ -1367,6 +1438,11 @@ func (m Model) hintLine() string {
 	if !m.quitArmAt.IsZero() {
 		return chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" ")
 	}
+	if !m.approveArmAt.IsZero() {
+		// F1 — the ctrl+x approve arm rides the same warn seam, just
+		// under the quit arm (quit-out-everything outranks approve).
+		return chrome.OnBarBold(chrome.Warn, " "+approveArmToast+" ")
+	}
 	if m.copyNote != "" {
 		return chrome.OnBarBold(chrome.OK, " "+m.copyNote+" ")
 	}
@@ -1409,6 +1485,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// on the next render via the keypress frameNonce bump).
 	if key != "ctrl+q" && !m.quitArmAt.IsZero() {
 		m.quitArmAt = time.Time{}
+	}
+	// Same for the ctrl+x approve arm (F1): any other key disarms it —
+	// including edits that would change WHAT the fire would approve.
+	if key != "ctrl+x" && !m.approveArmAt.IsZero() {
+		m.approveArmAt = time.Time{}
 	}
 
 	switch {
@@ -1484,14 +1565,29 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.togglePlanMode()
 	}
 
-	// ctrl+x — approve the presented/edited plan → build (or the dim
-	// refusal when none exists), claimable from BOTH the chat input and
-	// the plan editor focus while plan mode is active. Same exclusion
-	// list as ctrl+p (floats; terminal focus returns above), and claimed
-	// BEFORE the pane's key routing below and BEFORE the chat textarea.
+	// ctrl+x — F1: approve-arm double press, claimable from BOTH the chat
+	// input and the plan editor focus while plan mode is active. Same
+	// exclusion list as ctrl+p (floats; terminal focus returns above),
+	// and claimed BEFORE the pane's key routing below and BEFORE the chat
+	// textarea. The FIRST press arms (warn toast on the hint bar seam,
+	// self-expiring tick); the second press inside approveArmWindow fires
+	// approvePlan. REFUSALS land BEFORE the arm (approveRefusal: empty /
+	// starter / restored-untouched) so the toast never promises a fire
+	// that can't happen.
 	if key == "ctrl+x" && m.agentMode == agentModePlan &&
 		m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
-		return m.approvePlan()
+		if refused := m.approveRefusal(); refused != "" {
+			m.approveArmAt = time.Time{}
+			m.notice(refused)
+			return nil
+		}
+		now := time.Now()
+		if !m.approveArmAt.IsZero() && now.Sub(m.approveArmAt) <= approveArmWindow {
+			m.approveArmAt = time.Time{}
+			return m.approvePlan()
+		}
+		m.approveArmAt = now
+		return tea.Tick(approveArmWindow, func(time.Time) tea.Msg { return approveArmClearMsg{} })
 	}
 
 	// The plan editor, while focused, owns every remaining key — the
@@ -1792,11 +1888,23 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 	}
 	m.tabs.SetState(m.st)
 
+	// F5a — the backend's agent-degrade latch note is statusline-only by
+	// nature, and the NEXT EvStatus overwrites it; statuses carrying the
+	// agentFieldStatusMarker escalade into the transcript as a red office
+	// row (the marker is the string contract with opencode.go's postPrompt).
+	if ev.Kind == state.EvStatus && strings.HasPrefix(ev.Text, agentFieldStatusMarker) {
+		m.noticeErr(ev.Text)
+	}
+
 	// Plan-mode presentation (plan_mode.go): a COMPLETED boss bubble
 	// while plan mode is active mirrors its markdown into the plan pane —
 	// passive, chat keeps focus; a user-edited buffer is never clobbered
-	// (the anti-clobber notice rides the office channel instead).
+	// (the anti-clobber notice rides the office channel instead). F4's
+	// completion hook runs first: a plan-tagged send whose turn ended
+	// after a mid-turn flip BACK to build leaves its reply chat-only —
+	// the transcript note says so once (the pane never opens then).
 	if ev.Kind == state.EvChatBoss && !ev.Msg.Pending {
+		m.notePlanCompletion(ev.Msg)
 		m.presentBossPlan(ev.Msg)
 	}
 
@@ -2010,11 +2118,13 @@ func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 	b := m.backend
 	return func() tea.Msg {
 		if b != nil {
-			if err := sendChatMode(b, text, atts, m.planAgent()); err != nil {
+			agent := m.planAgent()
+			if err := sendChatMode(b, text, atts, agent); err != nil {
 				cleanupAttachments(atts) // nobody will retry this prompt
 				return sendErrMsg{err: err}
 			}
 			cleanupAttachments(atts)
+			return busySentMsg{text: text, agent: agent}
 		}
 		return busySentMsg{text: text}
 	}
@@ -2198,12 +2308,14 @@ func (m *Model) dispatchQueued(manual bool) tea.Cmd {
 			return slashMsg{text: texts[0]}
 		}
 		if b != nil {
-			if err := sendChatMode(b, sendText, batchAtts, m.planAgent()); err != nil {
+			agent := m.planAgent()
+			if err := sendChatMode(b, sendText, batchAtts, agent); err != nil {
 				// no cleanup: a respawn retry (queueSendErrMsg) may still
 				// need the files; IT owns the cleanup on terminal failure.
 				return queueSendErrMsg{err: err, items: items, batch: batch, retry: false}
 			}
 			cleanupEntries(items)
+			return chatSentMsg{text: sendText, agent: agent}
 		}
 		return chatSentMsg{text: sendText}
 	}
@@ -2229,10 +2341,12 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 			}
 		}
 		if b != nil {
-			if err := sendChatMode(b, text, atts, m.planAgent()); err != nil {
+			agent := m.planAgent()
+			if err := sendChatMode(b, text, atts, agent); err != nil {
 				return queueSendErrMsg{err: err, items: items, batch: true, retry: true}
 			}
 			cleanupEntries(items)
+			return chatSentMsg{text: text, agent: agent}
 		}
 		return chatSentMsg{text: text}
 	}
