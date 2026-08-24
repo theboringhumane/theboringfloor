@@ -333,7 +333,7 @@ install_binary() {
     run mkdir -p "$PREFIX"
     if [ "$DRY_RUN" -eq 1 ]; then
         info "  [dry-run] tar -xzf workdir/${TARBALL} -C workdir theboringoffice   (extract ONLY the theboringoffice member)"
-        info "  [dry-run] cp workdir/theboringoffice ${PREFIX}/theboringoffice && chmod 755 ${PREFIX}/theboringoffice"
+        info "  [dry-run] cp workdir/theboringoffice ${PREFIX}/.theboringoffice.tmp.\$PID && chmod 755 <tmp> && mv -f <tmp> ${PREFIX}/theboringoffice   (atomic rename — never an in-place overwrite)"
         return 0
     fi
     tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringoffice 2>/dev/null \
@@ -342,8 +342,19 @@ install_binary() {
     if [ -e "${PREFIX}/theboringoffice" ] && [ ! -w "${PREFIX}/theboringoffice" ]; then
         die "${PREFIX}/theboringoffice is not writable — re-run with --prefix ~/.local/bin"
     fi
-    cp "${TMPWORK}/theboringoffice" "${PREFIX}/theboringoffice"
-    chmod 755 "${PREFIX}/theboringoffice"
+    # Install via ATOMIC RENAME, never an in-place overwrite: a cp that
+    # truncates+rewrites an executable that any process is still running gets
+    # that process SIGKILLed by macOS ("Code Signature Invalid", namespace
+    # CODESIGNING), and fresh execs of the poisoned vnode die the same way
+    # until it is reclaimed. rename(2) swaps the vnode atomically: running
+    # instances keep their old inode untouched, new execs always see a
+    # complete, intact file — no kill window, no torn binary.
+    tmp_dest="${PREFIX}/.theboringoffice.tmp.$$"
+    trap 'rm -f "$tmp_dest" 2>/dev/null; cleanup' EXIT
+    cp "${TMPWORK}/theboringoffice" "$tmp_dest"
+    chmod 755 "$tmp_dest"
+    mv -f "$tmp_dest" "${PREFIX}/theboringoffice"
+    trap cleanup EXIT
     info "    installed: ${PREFIX}/theboringoffice"
 }
 
