@@ -127,6 +127,38 @@ func TestNoCaretTypingRowAboveInput(t *testing.T) {
 // ansi-stripped View row must fit the panel, everything wrapped glyph
 // must SURVIVE (never clipped), and the markdown hanging indent aligns
 // under the bubble text start (prefix cell width, not byte length).
+// TestBossBubbleFirstLineRidesLabel — pre-fix, glamour's Document.BlockPrefix
+// emitted a blank frame row that cleanMarkdown kept, so "boss › " spent
+// itself on an empty label row and the whole bubble began one row later at
+// continuation depth — the visible "boss bubble misaligned" bug. Now the
+// first renderable line of the body rides on the SAME row as the prefix.
+func TestBossBubbleFirstLineRidesLabel(t *testing.T) {
+	c := NewChat(nil)
+	c.SetSize(60, 12)
+	c.SetState(state.OfficeState{
+		Tick: 1,
+		Chat: []state.ChatMsg{
+			{ID: "u1", From: "user", Kind: "user", Text: "report back"},
+			{ID: "b1", From: "boss", Kind: "boss", Text: "The pins are green — full gate, three packages:\n- panels\n- chrome\n- app"},
+		},
+	})
+	rows := strings.Split(ansi.Strip(c.View()), "\n")
+	joined := strings.Join(rows, "\n")
+	bossRow := -1
+	for i, r := range rows {
+		if strings.Contains(r, "boss ›") {
+			bossRow = i
+			if !strings.Contains(r, "The pins are green") {
+				t.Fatalf("the boss prefix row must carry the body's first line (no empty label row): %q\nview:\n%s", r, joined)
+			}
+			break
+		}
+	}
+	if bossRow < 0 {
+		t.Fatalf("no boss row in view at all:\n%s", joined)
+	}
+}
+
 func TestChatConvoWrapsAtWidth(t *testing.T) {
 	c := NewChat(nil)
 	c.SetSize(28, 30)

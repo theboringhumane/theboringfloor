@@ -372,6 +372,13 @@ func MarkdownStyle() glan.StyleConfig {
 	}
 	zero := uint(0)
 	s.Document.Margin = &zero
+	// zero the fence margin too: without it, fenced code hangs chatPadL+2
+	// deeper than its bubble's continuation rows (col 11 vs col 9) and the
+	// fence reads misaligned next to prose; this also grants fences +2
+	// usable columns of the same wrap budget.
+	if s.CodeBlock.Margin != nil {
+		s.CodeBlock.Margin = &zero
+	}
 	if current.Name == "noir" {
 		// keep the original noir look: explicit document ink
 		v := "252"

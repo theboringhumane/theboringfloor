@@ -299,6 +299,15 @@ func TestWedgePlaceholderNeverReArms(t *testing.T) {
 		t.Fatalf("a spent latch must NEVER reprint mid-turn, got %d rows", n)
 	}
 
+	// close the mid-stream delta first (its completion swap), so the
+	// turn-ending bubble below actually closes the WHOLE turn — an open
+	// stream delta counts as pending boss and would keep the latch armed.
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "bossmsg-m2", From: "boss", Text: "half an answer…"}})
+	if hasPendingBoss(m.st) {
+		t.Fatal("the mid-stream delta's completion must clear its placeholder")
+	}
+
 	// the turn actually ends: the completion placeholder-swap clears the
 	// latch for the NEXT episode (existing reset path).
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,

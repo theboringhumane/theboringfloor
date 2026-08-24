@@ -2491,7 +2491,10 @@ func (c *Chat) renderOffice(b *strings.Builder, m state.ChatMsg) {
 		return
 	}
 	lines := cleanMarkdown(c.renderMarkdown(m.Text))
-	lines = foldStyledLines(lines, c.mdWidth)
+	// office bubbles hang at 9 cells — fold at the office's own budget, not
+	// the boss's (contentW−8): the shared budget let office continuations
+	// reach contentW+1, one cell over the right gutter.
+	lines = foldStyledLines(lines, c.contentW()-cellWidth(officePrefix)-1)
 	writePrefixed(b, prefix, indent, lines)
 }
 
@@ -2531,11 +2534,19 @@ func (c *Chat) renderMarkdown(text string) string {
 }
 
 // cleanMarkdown trims glamour's frame noise: right-trailing styled spaces on
-// every line and trailing lines with no printable text.
+// every line and lines with no printable text at the EDGES. The leading strip
+// matters: glamour's Document.BlockPrefix emits one blank frame line ABOVE
+// every markdown block; if it survives, writePrefixed spends the "boss › "
+// prefix on an empty row and the entire body falls one level to continuation
+// indent — the bubble reads ~2 cells off (the "misaligned boss bubble" wart).
+// Interior blank rows (paragraph/fence separation) are untouched.
 func cleanMarkdown(out string) []string {
 	lines := strings.Split(out, "\n")
 	for i, ln := range lines {
 		lines[i] = strings.TrimRight(ln, " ")
+	}
+	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[0])) == "" {
+		lines = lines[1:]
 	}
 	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
 		lines = lines[:len(lines)-1]
