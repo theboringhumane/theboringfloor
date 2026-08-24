@@ -393,6 +393,16 @@ type Chat struct {
 	mdWidth   int
 	renderRev uint64 // cheap changed-detection for SetState
 
+	// deferRender — the thread-focus view's render saver (set by the app
+	// via SetDeferredRender while its focusDeferredRender flag is up):
+	// the focus pane renders from the SAME office state every pulse, so
+	// this main transcript's SetState keeps recording rev+snapshot but
+	// SKIPS renderConversation+vp.SetContent — rebuilding hidden rows
+	// per tick would be wasted work. ResumeFromFocus forces exactly one
+	// re-render at close. Zero behavior change while false (the default).
+	deferRender bool
+	renderCalls int // rebuild tally — the focus deferral's probe
+
 	// Attachment state (chat_attach.go): staged chips above the textarea
 	// plus the @ file-picker popover. The chips drain into onSend/onEnqueue
 	// on Enter; temp paste dirs are removed by the app's send closures (or
@@ -1291,6 +1301,34 @@ func (c *Chat) SetState(st state.OfficeState) {
 		c.SetSize(c.w, c.h) // typing row appears/disappears
 	}
 
+	if c.deferRender {
+		// the open thread-focus view renders this same state itself —
+		// the rev+snapshot above are recorded, so ResumeFromFocus's ONE
+		// re-render lands at the latest state when the focus closes.
+		return
+	}
+	c.setConversation(c.renderConversation())
+	if c.follow {
+		c.vp.GotoBottom()
+	}
+}
+
+// SetDeferredRender arms/clears the focus deferral (the app drives it
+// from its Model-owned focusDeferredRender flag; see deferRender above).
+func (c *Chat) SetDeferredRender(on bool) { c.deferRender = on }
+
+// RenderCalls — the renderConversation rebuild tally (the focus
+// deferral's test probe: with the saver armed, SetState pulses must NOT
+// move it; close must move it exactly once).
+func (c *Chat) RenderCalls() int { return c.renderCalls }
+
+// ResumeFromFocus — the thread-focus CLOSE: disarm the deferral and force
+// EXACTLY ONE re-render at the latest snapshot. SetState's revision gate
+// recorded every pulse's revision, so a fresh forceRender's twin (rebuild
+// + respect the follow pin) is the whole catch-up — the member returns to
+// the conversation byte-identical to where they left it.
+func (c *Chat) ResumeFromFocus() {
+	c.deferRender = false
 	c.setConversation(c.renderConversation())
 	if c.follow {
 		c.vp.GotoBottom()
@@ -1714,6 +1752,7 @@ func (c *Chat) View() string {
 // timestamp (a thread anchors at its creation time), so every entry —
 // chat message or subagent thread — scrolls in chronological order.
 func (c *Chat) renderConversation() string {
+	c.renderCalls++ // the focus deferral's probe (RenderCalls)
 	visible := make([]state.ChatMsg, 0, len(c.chat))
 	var workers []workerGroup
 	workerIdx := map[string]int{}

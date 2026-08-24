@@ -124,7 +124,13 @@ session and resends the batch.
   ```
 
   a `  ↳` sneak row previews the latest action; click the header (or
-  `ctrl+g`) to expand the full thread.
+  `ctrl+g`) to expand the full thread. `ctrl+f` opens the whole thread as
+  a **fullscreen focus view** — the complete transcript (every tool call,
+  think body, and per-call `↳ diff` you can click open) scrolling at the
+  frame width with live pulses as it works; `esc`/`ctrl+f` leaves and the
+  office underneath returns byte-identical (scroll, expansions, draft
+  untouched). The main chat defers re-rendering while the view is open
+  and catches up in exactly one pass on return.
 - **`/stop` + free-send** — `enter` while the boss works never blocks: the
   prompt free-sends into the backlog and the status line reads "busy · N
   queued". `/stop` aborts current work (boss + workers).
@@ -241,6 +247,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `backspace` on an empty input | drop the newest attachment chip |
 | `ctrl+t` | expand/collapse completed thinking blocks |
 | `ctrl+d` | expand/collapse diff blocks |
+| `ctrl+f` | open the most recent worker thread as a fullscreen focus view (tool calls + thinks + per-call diffs, live-pulsed; most recently expanded thread wins, else any live thread) — `esc` / `ctrl+f` closes back, office state byte-identical |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not while shell-captured or with an open float) |
 | `ctrl+x` | plan mode: approve the presented/edited plan → sent to the build agent, mode flips back to build |
 | `ctrl+space` | terminal tab: toggle shell keyboard capture BOTH ways (opt-in; released is the default and leaving auto-releases) |

@@ -72,6 +72,15 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 	if m.modelPick != nil {
 		return nil
 	}
+	// an open thread-focus owns the whole middle region: ONLY its ↳ diff
+	// sub-rows answer (the pane's own toolDiffRows hit-map) — every other
+	// row is inert, and NO selection arms on the hidden main transcript
+	// underneath (the release would replay straight into handleClick,
+	// whose focus gate below swallows it regardless).
+	if m.threadFocus != nil {
+		m.threadFocus.Click(msg.X, msg.Y-1) // pane coords: row 0 = its header
+		return nil
+	}
 	if cx, cy, ok := m.chatContentCoords(msg.X, msg.Y); ok && m.chat.SelectionBegin(cx, cy) {
 		m.sel = mselArmed
 		m.selPress = tea.Mouse(msg)

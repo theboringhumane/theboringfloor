@@ -41,6 +41,7 @@ type KeyMap struct {
 	Prev   key.Binding
 	Scroll key.Binding
 	Send   key.Binding
+	Focus  key.Binding
 	Tab1   key.Binding
 	Tab2   key.Binding
 	Tab3   key.Binding
@@ -58,6 +59,7 @@ func NewKeyMap() KeyMap {
 		Prev:   key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "panels")),
 		Scroll: key.NewBinding(key.WithKeys("up", "down", "pgup", "pgdown"), key.WithHelp("↑↓", "scroll")),
 		Send:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "send")),
+		Focus:  key.NewBinding(key.WithKeys("ctrl+f"), key.WithHelp("ctrl+f", "thread")),
 		Tab1:   key.NewBinding(key.WithKeys("1"), key.WithHelp("1", "chat")),
 		Tab2:   key.NewBinding(key.WithKeys("2"), key.WithHelp("2", "terminal")),
 		Tab3:   key.NewBinding(key.WithKeys("3"), key.WithHelp("3", "agents")),
@@ -68,7 +70,11 @@ func NewKeyMap() KeyMap {
 	}
 }
 
-// ShortHelp is the statusbar segment, in display order.
+// ShortHelp is the statusbar segment, in display order. The Focus binding
+// is deliberately NOT on it: the frozen segment's width budget is pinned
+// by shots across the harness (a longer line squeezes the left status
+// text), and the focus view advertises its own leave pair on the bar it
+// mounts ("thread X — esc · ctrl+f back to office").
 func (k KeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Next, k.Scroll, k.Send, k.Quit}
 }

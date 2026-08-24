@@ -3646,6 +3646,133 @@ func runWdiffProof() error {
 	return nil
 }
 
+// --- thread focus view (--threadfocus) ---------------------------------------
+// The ctrl+f fullscreen thread panel: two threads scripted (skopos FIRST
+// so tekton-1's fresher tags win the live chain; skopos then SETTLES so
+// tekton-1 alone is live), ctrl+f mounts the pane on tekton-1 — frame
+// asserts: the title row (glyph + "Developer Task — Wire the SSE
+// stream · 2 tool calls"), the FULL body rows (tools, the ↳ diff
+// sub-row — clicked open through the REAL mouse seam), the hint bar's
+// "esc · ctrl+f back to office", then esc closes back to the office
+// BYTE-FOR-BYTE.
+
+func runThreadFocusProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	d := newFocusDriver()
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — threadfocus stub online"})
+	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "sco-1", Name: "skopos-1", Role: state.RoleScout, Sprite: state.SpriteAtDesk}})
+	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"wire the sse stream", false)})
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-m1", "boss",
+		"tekton-1 is on the stream — the scout is sweeping.", false)})
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: "sco-1",
+		Task: state.BoardTask{ID: "t2", Title: "Scan the repo", At: time.Now().UnixMilli()}})
+	d.send(state.Event{Kind: state.EvWorking, EmployeeID: "sco-1", TaskID: "t2"})
+	d.send(focusTool("sco-1", "skopos-1", "call-s1", "grep", "SSE, 3 hits", "done"))
+	d.pump(2)
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: "dev-1",
+		Task: state.BoardTask{ID: "t1", Title: "Wire the SSE stream", At: time.Now().UnixMilli()}})
+	d.send(state.Event{Kind: state.EvWorking, EmployeeID: "dev-1", TaskID: "t1"})
+	d.send(focusTool("dev-1", "tekton-1", "call-t1", "read", "internal/room/manager.go", "done"))
+	d.send(focusTool("dev-1", "tekton-1", "call-t2", "edit", "internal/room/handler.go", "done"))
+	d.send(focusDiff("dev-1", "tekton-1", "call-t2", "internal/room/handler.go",
+		"--- a/internal/room/handler.go\n"+
+			"+++ b/internal/room/handler.go\n"+
+			"@@ -33,6 +33,9 @@\n"+
+			" func (h *Handler) Serve() {\n"+
+			"-\tmux := http.NewServeMux()\n"+
+			"+\tmux := h.routes()\n"+
+			"+\tmux.Handle(\"/events\", h.sse)\n"+
+			"+\thub.fanout(h.sseEvents)\n"+
+			" \treturn mux.ServeHTTP(w, r)\n"+
+			" }",
+		4, 1))
+	// the scout settles — tekton-1 is the ONLY live thread now
+	d.send(state.Event{Kind: state.EvReturned, EmployeeID: "sco-1", TaskID: "t2",
+		Mail: mail("m1", "skopos-1", "boss", "return: scan the repo", "12 hits, all mapped.", state.MailReturn)})
+	d.pump(3)
+	pre := d.m.Frame()
+
+	// ctrl+f — the live chain resolves to tekton-1
+	d.send(tea.KeyPressMsg(tea.Key{Code: 'f', Mod: tea.ModCtrl}))
+	fmt.Println("===== UI SHOT · FOCUS A — ctrl+f: tekton-1's thread fullscreen (header glyph + title + counters, FULL body, ↳ diff sub-row, the esc-hint bar) =====")
+	frameA := d.m.Frame()
+	fmt.Println(frameA)
+	fmt.Println("===== UI SHOT =====")
+	strippedA := ansi.Strip(frameA)
+	for _, want := range []string{
+		"Developer Task — Wire the SSE stream · 2 tool calls", // header title + counters
+		"  [tool] Read internal/room/manager.go ✓",            // merged tool row
+		"  [tool] Edit internal/room/handler.go ✓ · +4 -1",    // the edited call's suffix
+		"  ↳ diff · internal/room/handler.go +4 -1",           // the per-call sub-row
+		"esc · ctrl+f back to office",                         // the hint bar's leave copy
+	} {
+		if !strings.Contains(strippedA, want) {
+			return fail("threadfocus A: frame missing %q", want)
+		}
+	}
+	if strings.Contains(strippedA, "mux.Handle(\"/events\", h.sse)") {
+		return fail("threadfocus A: the wdiff body must wait for the ↳ click")
+	}
+	if strings.Contains(strippedA, "SSE, 3 hits") {
+		return fail("threadfocus A: the sibling thread (skopos-1) leaked into the fullscreen pane")
+	}
+	// the sibling thread is HIDDEN but the office stays alive underneath —
+	// the topbar/statusbar chrome rows survive (the focus covers the mid only)
+	if !strings.Contains(frameA, "theboringoffice") && !strings.Contains(strippedA, "agents | board") {
+		return fail("threadfocus A: topbar/statusbar chrome vanished under the focus")
+	}
+
+	// click the ↳ diff sub-row — REAL screen coords (the pane spans the
+	// FULL width: x inside it is just the row itself, +1 topbar row above)
+	diffY := -1
+	for i, ln := range strings.Split(strippedA, "\n") {
+		if strings.Contains(ln, "↳ diff · internal/room/handler.go") {
+			diffY = i
+			break
+		}
+	}
+	if diffY < 0 {
+		return fail("threadfocus B setup: the ↳ diff sub-row is not in the frame")
+	}
+	clickAt(d, 6, diffY)
+	fmt.Println("===== UI SHOT · FOCUS B — clicked the ↳ diff row: the parsed line-numbered body opens INSIDE the pane =====")
+	frameB := d.m.Frame()
+	fmt.Println(frameB)
+	fmt.Println("===== UI SHOT =====")
+	strippedB := ansi.Strip(frameB)
+	for _, want := range []string{
+		"mux.Handle(\"/events\", h.sse)", // an addition row's body text
+		"  ↳ diff · internal/room/handler.go +4 -1",
+	} {
+		if !strings.Contains(strippedB, want) {
+			return fail("threadfocus B: frame missing %q after the ↳ click", want)
+		}
+	}
+
+	// esc — back to the office, byte-identical to the covered frame
+	d.send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	fmt.Println("===== UI SHOT · FOCUS C — esc: back to the office, scroll + draft untouched =====")
+	frameC := d.m.Frame()
+	fmt.Println(frameC)
+	fmt.Println("===== UI SHOT =====")
+	strippedC := ansi.Strip(frameC)
+	if strings.Contains(strippedC, "esc · ctrl+f back to office") {
+		return fail("threadfocus C: the focus hint bar survived esc")
+	}
+	if !strings.Contains(strippedC, "Explore Task — Scan the repo") && !strings.Contains(strippedC, "tekton-1 is on the stream") {
+		return fail("threadfocus C: the office frame did not come back (both threads + boss reply hidden?)")
+	}
+	if frameC != pre {
+		return fail("threadfocus C: the office must return BYTE-IDENTICAL across open+close")
+	}
+	fmt.Println("asserts: OK — ctrl+f resolves the live thread into the fullscreen pane (header glyph + title + \"· 2 tool calls\", FULL body with the \"· +4 -1\" suffix + \"↳ diff\" sub-row), the ↳ click opens the parsed body inside the pane, the hint bar reads \"esc · ctrl+f back to office\", esc returns the office byte-identical")
+	return nil
+}
+
 // --- clickable agents (--click) ----------------------------------------------
 // Scripted bubbletea v2 mouse clicks through the REAL model: (S) a click on
 // tekton-1's floor sprite selects it — activity tab opens, the agents tab
@@ -3837,6 +3964,7 @@ func main() {
 	slashpop := flag.Bool("slashpop", false, "slash-popover proof: type \"/th\" → filtered menu (/theme /themes /thinking), Enter pre-fills \"/theme \" → theme picker, arrows preview LIVE (two states printed), esc cancels back, Enter commits + persists via the plain slash path")
 	threadsThink := flag.Bool("threads-think", false, "employee-thinking-in-threads proof: tekton-1 EvThought merges per CallID into its work thread (collapsed rollup keeps the \"· 1 think\" count), ctrl+g expands tools + thoughts in natural order — boss path byte-identical")
 	threads := flag.Bool("threads", false, "thread-render fixture (opencode renderer): ONE chat frame with BOTH thread states — a LIVE collapsed thread (animated braille glyph, NO rollup while running, bare ↳ sneak, live-only ctrl+g hint row) beside a COMPLETED collapsed thread (dim ✓ glyph, \"✓ done\" rollup) — every message reducer-shaped (Kind wtool, \"<verb> · <summary>\" text, \"<state>␟<tick>\" meta stamped by the REAL app reducer; the display layer shapes it to \"<Verb> <rest>\")")
+	threadfocus := flag.Bool("threadfocus", false, "thread-focus view proof (synchronous): two threads, ctrl+f mounts tekton-1's thread fullscreen — header glyph + title + counters, FULL body rows, the ↳ diff sub-row clicked open through the REAL mouse seam, the \"esc · ctrl+f back to office\" hint bar; esc closes back to the office byte-for-byte")
 	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
@@ -3858,6 +3986,14 @@ func main() {
 
 	if *focus {
 		if err := runFocusProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *threadfocus {
+		if err := runThreadFocusProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

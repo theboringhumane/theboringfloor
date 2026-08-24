@@ -60,6 +60,10 @@ func (m *Model) frameDigest() uint64 {
 	}
 	fmt.Fprintf(h, "|%d|%s|%s|%t|%t|%s|%d|%d", m.activityAdds, m.bossName, PowerMode(m.cfg), m.zen, m.compact(),
 		frontID, len(m.permQ.pending), len(m.permQ.escd))
+	// the thread-focus view owns Frame's whole middle region while open
+	// (and re-opens on a DIFFERENT thread after an esc) — both belong in
+	// the pixel signature: focusOpen + the focused agent's name.
+	fmt.Fprintf(h, "|%t|%s", m.threadFocus != nil, m.focusThread)
 	// Top bar's project+branch segment: a `git checkout` must repaint the
 	// bar even when no office term above moved (TTL-bounded by projinfo).
 	if pj := m.projInfo(); pj != (projinfo.Info{}) {

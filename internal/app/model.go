@@ -319,6 +319,20 @@ type Model struct {
 	// /zen is a focus session, not a preference).
 	zen bool
 
+	// threadFocus — the thread FOCUS view (ctrl+f): a fullscreen nested
+	// panel holding ONE worker thread's complete transcript (panels.
+	// ThreadFocus), nil while closed. zen outranks it in BOTH Frame and
+	// the key claims; a permission/question float DISMOUNTS it
+	// (dismountThreadFocus, applyEvent); esc/ctrl+f close it. focusThread
+	// is the focused agent's name (the statusbar's hint segment + a digest
+	// term). focusDeferredRender arms the main chat's render saver while
+	// open (chat-side deferRender): the focus renders from the same
+	// office state, so rebuilding the hidden main transcript per tick
+	// would be wasted work.
+	threadFocus         *panels.ThreadFocus
+	focusThread         string
+	focusDeferredRender bool
+
 	// quitArmAt — the ctrl+q double-press arm (quitArmWindow): set by the
 	// first press, cleared by its own expiry tick (armClearMsg), by ANY
 	// other key press, or by the quitting second press itself. While set,
@@ -1082,7 +1096,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// esc clears a live transcript selection FIRST (webpage rule):
 		// while a highlight is up on the chat tab the key belongs to it
 		// (it never reaches the textarea/dbl-esc and never unfolds a thread).
-		if msg.String() == "esc" && m.tabs.ActiveIndex() == 0 && m.chat != nil && m.chat.SelectionActive() {
+		// The thread-focus view's esc claims BEFORE the selection's though —
+		// it is the view's ONE leave key, and the main chat's selection
+		// (a) is behind a fullscreen pane and (b) must not swallow it.
+		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && m.chat != nil && m.chat.SelectionActive() {
 			m.chat.ClearSelection()
 			m.sel = mselIdle
 			break
@@ -1113,6 +1130,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sel == mselArmed {
 			m.frameNonce++
 			m.handleMotion(msg)
+		}
+	case tea.MouseWheelMsg:
+		// wheel scrolls the active panel (the default-arm's twin) — except
+		// an open thread-focus, which owns the wheel for its own viewport
+		// (the office underneath never scrolls behind the pane).
+		m.frameNonce++
+		if m.threadFocus != nil {
+			if cmd := m.threadFocus.Update(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			break
+		}
+		if cmd := m.tabs.Update(msg); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 	case chatSentMsg:
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
@@ -1487,6 +1518,21 @@ func (m Model) Frame() string {
 			bot = chrome.StatusBarZenHint(m.st, m.width,
 				chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" "))
 		}
+	} else if m.threadFocus != nil {
+		// thread focus (ctrl+f) — the fullscreen nested thread panel owns
+		// the whole middle region (zen's layout twin: sidebar hidden,
+		// topbar stays), the zen statusbar seam carrying the "how to
+		// leave" segment. zen's branch above still wins over it.
+		mid = lipgloss.NewStyle().Width(m.width).Height(m.middleH).
+			Render(m.threadFocus.View())
+		bot = chrome.StatusBarZenHint(m.st, m.width,
+			chrome.OnBar(chrome.Dim, " thread "+m.focusThread+" — esc · ctrl+f back to office "))
+		if !m.quitArmAt.IsZero() {
+			// the ctrl+q arm's toast outranks the focus chrome exactly
+			// like it outranks zen's default segment.
+			bot = chrome.StatusBarZenHint(m.st, m.width,
+				chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" "))
+		}
 	} else if m.mobile() {
 		// mobile (auto, width < mobileMaxCols): the middle stacks
 		// VERTICALLY — a compact floor band on top, the active panel
@@ -1658,6 +1704,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.modelPick.Key(msg)
 	}
 
+	// The open thread-focus view owns EVERY key (esc/ctrl+f leave, the
+	// rest scroll or toggle INSIDE the pane). Claimed AFTER ctrl+q (the
+	// quit arm outranks focus), AFTER zen (zen exits first press), and
+	// YIELDING to a permission/question float — the model.go:1657
+	// modelPicker pattern: a parked turn outranks the view.
+	if m.threadFocus != nil && m.permQ.front() == nil && m.question == nil {
+		return m.focusKey(msg)
+	}
+
 	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
 	// shell keyboard is RELEASED (the default). In CAPTURED mode (opt-in
 	// via ctrl+space) tab/shift+tab are the shell's completion keys and the
@@ -1799,6 +1854,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.chat.ToggleThreads()
 			return nil
 		}
+	case "ctrl+f":
+		if chatActive {
+			return m.toggleThreadFocus()
+		}
 	}
 	if termActive {
 		// Terminal active but RELEASED: every unclaimed key (typed letters,
@@ -1810,6 +1869,70 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	return m.tabs.Update(msg)
+}
+
+// focusKey — the open thread-focus view owns every key: esc/ctrl+f leave
+// (the office state underneath was never touched — scroll offsets, thread
+// expansion and the draft all survived behind the pane), everything else
+// forwards into the pane (its scrolling, its ↳ diff toggles). ctrl+q and
+// zen never reach here (claimed above, like the model picker's gate), and
+// neither float lets the view keep keys while a turn is parked.
+func (m *Model) focusKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "esc", "ctrl+f":
+		m.closeThreadFocus()
+		return nil
+	}
+	return m.threadFocus.Update(msg)
+}
+
+// toggleThreadFocus — ctrl+f OPEN: resolve the thread (the panel's
+// ResolveFocusThread chain: expand-ledger tail → any live thread → the
+// timeline's most recent → a hired worker with no recorded lines), mount
+// the fullscreen pane at the LIVE state, and arm the main chat's render
+// saver. No candidate → a dim office notice, no claim.
+func (m *Model) toggleThreadFocus() tea.Cmd {
+	name, ok := panels.ResolveFocusThread(m.chat, m.st)
+	if !ok {
+		m.notice("no worker threads yet")
+		return nil
+	}
+	m.threadFocus = panels.NewThreadFocus(name, m.width, m.middleH)
+	m.threadFocus.SetState(m.st)
+	m.focusThread = name
+	m.focusDeferredRender = true
+	if m.chat != nil {
+		m.chat.SetDeferredRender(true)
+	}
+	return nil
+}
+
+// closeThreadFocus — esc/ctrl+f out (and the float-dismount path): the
+// pane unmounts, the render saver clears, and ONE ResumeFromFocus
+// re-render lands the main chat exactly at the snapshot the last pulse
+// recorded — the return is byte-identical to the state the focus covered.
+func (m *Model) closeThreadFocus() {
+	if m.threadFocus == nil {
+		return
+	}
+	m.threadFocus = nil
+	m.focusThread = ""
+	m.focusDeferredRender = false
+	if m.chat != nil {
+		m.chat.ResumeFromFocus()
+	}
+}
+
+// dismountThreadFocus — a permission/question event armed a float the
+// focus must NOT cover: the pane unmounts mid-keystroke and a one-line
+// dim notice records the swap (the float keeps the pixels).
+func (m *Model) dismountThreadFocus(why string) {
+	if m.threadFocus == nil {
+		return
+	}
+	name := m.focusThread
+	m.closeThreadFocus()
+	m.notice("thread focus — " + name + " closed (" + why + ")")
 }
 
 // clickDblWindow — two floor clicks on the SAME sprite inside this window
@@ -1832,7 +1955,10 @@ const clickDblWindow = 400 * time.Millisecond
 // toggles that agent's thread too. Clicks landing in the 2-cell frame
 // chrome (topbar row / statusbar row) are ignored outright.
 func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
-	if m.height == 0 || m.zen || msg.Button != tea.MouseLeft {
+	// an open thread-focus renders clicks inert app-side (mirroring the
+	// zen gate + the /model picker swallow): handlePress already routed
+	// the pane's own ↳ diff toggle; nothing else may leak through here.
+	if m.height == 0 || m.zen || m.threadFocus != nil || msg.Button != tea.MouseLeft {
 		return nil
 	}
 	// the 2-cell chrome (topbar + statusbar) never reacts
@@ -2029,6 +2155,13 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 	if ev.Kind == state.EvQuestion {
 		m.handleQuestionEvent(ev)
 	}
+	// a permission/question float just armed: the thread-focus view must
+	// not cover it — dismount mid-keystroke (the float keeps the pixels),
+	// leaving a one-line dim notice.
+	if (ev.Kind == state.EvPermission || ev.Kind == state.EvQuestion) &&
+		(m.permQ.front() != nil || m.question != nil) && m.threadFocus != nil {
+		m.dismountThreadFocus("a permission/question needs your answer")
+	}
 
 	// Think-stream bookkeeping (model-owned; the reducer stays pure):
 	// open a CallID's stream on EvThought Done=false, close it on
@@ -2114,6 +2247,12 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 		m.chat.SetStreamingThink(m.activeThink)
 	}
 	m.tabs.SetState(m.st)
+	if m.threadFocus != nil {
+		// the focus's live pulse: every event (ticks included) re-filters
+		// the focused agent's slice into the pane — tens of lines,
+		// wtool/wthink/wdiff only, the clone's own rev gate keeps it cheap.
+		m.threadFocus.SetState(m.st)
+	}
 
 	// F5a — the backend's agent-degrade latch note is statusline-only by
 	// nature, and the NEXT EvStatus overwrites it; statuses carrying the
@@ -2981,6 +3120,11 @@ func (m *Model) resize(w, h int) {
 		m.tabs.SetSize(w, m.middleH-m.floorBandH())
 	} else {
 		m.tabs.SetSize(sw, m.middleH)
+	}
+	if m.threadFocus != nil {
+		// the open focus spans the whole middle region at ANY width —
+		// desktop and terminal-shrink alike (Frame clamps the rest).
+		m.threadFocus.SetSize(w, m.middleH)
 	}
 }
 
