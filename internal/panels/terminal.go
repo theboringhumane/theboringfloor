@@ -9,15 +9,16 @@
 //	         scroll (and the dead-shell view) fall back to the sanitized
 //	         raw scrollback, which holds the full retained byte stream.
 //	footer  — a one-row badge: "[tty] focused · ctrl+o to release" while
-//	         the terminal owns the keyboard; "[tty] inactive" (dim) when
-//	         the app owns keys again; a red "terminal exited (code N) —
-//	         press r to respawn" line replaces the whole body when the
-//	         shell dies.
+//	         the terminal CAPTURED the keyboard; "[tty] inactive" (dim)
+//	         while RELEASED — the office keys own the terminal tab again;
+//	         a red "terminal exited (code N) — press r to respawn" line
+//	         replaces the whole body when the shell dies.
 //
-// Keyboard contract (only while Focused — see internal/term/term.go for
-// the full byte-level matrix): chars/enter/backspace/tab/esc/arrows/
-// home/end/pgup/pgdown/delete/ctrl+letter all forward to the PTY;
-// ctrl+o is RESERVED (releases focus back to the app — never reaches the
+// Keyboard contract (wave-42: capture is OPT-IN — the app flips Focus/Blur
+// via its ctrl+i/ctrl+o toggle; see internal/term/term.go for the full
+// byte-level matrix). Only while Focused do chars/enter/backspace/tab/esc/
+// arrows/home/end/pgup/pgdown/delete/ctrl+letter forward to the PTY;
+// ctrl+o is RESERVED (releases capture back to the app — never reaches the
 // shell). Mouse wheel scrolls the retained scrollback; a click focuses.
 package panels
 
@@ -51,9 +52,11 @@ type TermPanel struct {
 // NewTerminal spawns the user's shell NOW on cols=width rows=height-1
 // (one row reserved for the badge) and returns the ready panel. If the
 // shell can't spawn the panel still comes up, showing the spawn error in
-// the dead-shell body (r retries).
+// the dead-shell body (r retries). The keyboard starts RELEASED — the app
+// opts into capture per visit with ctrl+i (Focus), so a fresh panel must
+// never assume the member wants the shell to own their keys.
 func NewTerminal(width, height int) (*TermPanel, error) {
-	p := &TermPanel{shell: term.DefaultShell(), focused: true}
+	p := &TermPanel{shell: term.DefaultShell()}
 	p.SetSize(width, height)
 	if err := p.spawn(); err != nil {
 		p.spawnErr = err
@@ -84,12 +87,12 @@ func (p *TermPanel) spawn() error {
 // Title implements Tab.
 func (p *TermPanel) Title() string { return "term" }
 
-// Focus hands the keyboard to the terminal (app calls when the tab
-// activates); the badge flips to the focused hint.
+// Focus CAPTURES the keyboard for the terminal (the app's ctrl+i dive);
+// the badge flips to the focused hint.
 func (p *TermPanel) Focus() { p.focused = true }
 
-// Blur returns the keyboard to the app (app calls on tab switch; ctrl+o
-// calls it internally).
+// Blur RELEASES the keyboard back to the office (the app's ctrl+o release /
+// auto-release on tab-leave; ctrl+o also blurs internally).
 func (p *TermPanel) Blur() { p.focused = false }
 
 // Focused reports whether keystrokes are forwarded to the shell.

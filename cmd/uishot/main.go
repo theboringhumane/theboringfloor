@@ -98,9 +98,18 @@
 //	                    [--terminal] (terminal-tab proof: the stub TermPanel
 //	                                (terminal_panel_stub.go — uishot ONLY)
 //	                                wires through app.SpawnTerminal; selecting
-//	                                the "terminal" tab lazy-spawns it, typed
-//	                                keys route into the shell surface, and
-//	                                CloseTerminal kills it — frame + asserts)
+//	                                the "terminal" tab lazy-spawns it. Wave-42
+//	                                OPT-IN capture flow: RELEASED default
+//	                                (typed letters never reach the shell,
+//	                                tab leaves the tab), ctrl+i CAPTURES
+//	                                (wave-41: letters/tab/shift+tab/digits
+//	                                all reach the shell), ctrl+o releases
+//	                                IN PLACE, leaving while captured
+//	                                auto-releases and re-entry starts
+//	                                RELEASED — frames + asserts, and
+//	                                CloseTerminal kills it. Deterministic:
+//	                                the synchronous drive runs twice and
+//	                                must produce byte-identical frames)
 //	                    [--stop]    (/stop proof: typed mid-stream — captures
 //	                                AbortSessions, then ONE unwound frame:
 //	                                "stopped by user" placeholder, " (stopped)"
@@ -1477,7 +1486,15 @@ func runStuckProof() error {
 	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stuck stub online"})
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "ship the report", false)})
 	// 200ms: the boss goes busy… and never completes (silence from here).
+	// The send-side placeholder is client staging — it never arms the W1
+	// watchdog's wall clock — so stage ONE real server-side beat as the
+	// turn's last proof of life: a boss EvThought. (A "bossmsg-" stream
+	// delta would arm the clock too, but the reducer consumes the boss-N
+	// placeholder into it — leg B NEEDS that placeholder outstanding to
+	// collapse at /stop.)
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+	d.send(state.Event{Kind: state.EvThought, EmployeeID: "boss", EmployeeName: "boss",
+		CallID: "wk-1", Text: "opening the report sources…", Done: true})
 	time.Sleep(60 * time.Millisecond) // past the 30ms harness threshold
 	d.pump(1)                         // the watchdog evaluates on the tick cheap loop
 
@@ -2504,87 +2521,227 @@ func runPlanProof() error {
 
 // --- terminal-tab proof (--terminal) ----------------------------------------
 // The stub TermPanel (uisshot ONLY) wires through app.SpawnTerminal — the
-// production wiring point where cmd/theboringoffice will plug panels.NewTerminal.
+// production wiring point where cmd/theboringoffice plugs panels.NewTerminal.
+// Wave-42: the terminal tab's shell capture is OPT-IN — ctrl+i dives in,
+// ctrl+o releases, RELEASED by default and on every (re-)entry — so the
+// proof walks the full toggle flow SYNCHRONOUSLY (focusDriver, no wall
+// clock, no real PTY):
+//
+//	1. RELEASED default — typed letters never reach the "shell" (the stub's
+//	   received counter stays put), the released hint rides the status bar,
+//	   and tab LEAVES the terminal tab like from any other;
+//	2. ctrl+i CAPTURED — waved-41: typed chars, tab/shift+tab and digits
+//	   ALL reach the shell (the echo: 4 letters → received +4), no app
+//	   switch fires;
+//	3. ctrl+o RELEASED — in place (no chat hop), letters consumed again;
+//	4. auto-release — leaving while captured drops the capture and
+//	   re-entering starts RELEASED (explicit opt-in per visit);
+//	5. quit hook — CloseTerminal kills the spawned stub shell.
+//
+// Byte-for-byte determinism: the same synchronous drive runs TWICE and the
+// frames must be identical.
 
-func runTerminalShot() (app.Model, *terminalPanelStub, int, error) {
-	var zero app.Model
-	calls := 0
-	var stub *terminalPanelStub
+// termDrive — ONE full synchronous walk of the toggle flow. Returns the
+// four phase frames (released default, captured, post-release, post-lose
+// re-entry), the stub, the spawn-call counter and a close hook that drives
+// the runtime leak-guard (model.CloseTerminal) while everything is live.
+func termDrive() (frames [4]string, stub *terminalPanelStub, calls int, closeFn func(), err error) {
 	app.SpawnTerminal = func(cols, rows int) (app.TerminalTab, error) {
 		calls++
 		stub = newTerminalPanelStub(cols, rows)
 		return stub, nil
 	}
 	backend := &stubBackend{done: make(chan struct{})}
-	m := app.New(backend, config.Default())
-	if !m.SelectTab("terminal") {
-		return zero, nil, 0, fmt.Errorf("unknown tab %q", "terminal")
+	d := &focusDriver{m: app.New(backend, config.Default())}
+	d.send(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	if !d.m.SelectTab("terminal") {
+		return frames, nil, 0, nil, fmt.Errorf("unknown tab %q", "terminal")
 	}
-	p := tea.NewProgram(m,
-		tea.WithWindowSize(shotCols, shotRows),
-		tea.WithoutRenderer(),
-		tea.WithInput(nil),
-		tea.WithOutput(io.Discard),
-	)
-	emit := func(ev state.Event) { p.Send(ev) }
-	if err := backend.Start(emit); err != nil {
-		return zero, nil, 0, err
+	closeFn = func() { d.m.CloseTerminal() }
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	key := func(k tea.KeyPressMsg) { d.send(k) }
+	press := func(c rune) { key(tea.KeyPressMsg(tea.Key{Code: c, Text: string(c)})) }
+	tabK := tea.KeyPressMsg(tea.Key{Code: tea.KeyTab})
+	shiftTabK := tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift})
+	ctrlI := tea.KeyPressMsg(tea.Key{Code: 'i', Mod: tea.ModCtrl})
+	ctrlO := tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl})
+
+	// PHASE 1 — RELEASED default: letters consumed, tab leaves the tab.
+	press('h') // the first keypress also dismisses the boot splash
+	press('i')
+	if stub.received != 0 {
+		return frames, nil, 0, nil, fail("released default: typed letters reached the shell (%d)", stub.received)
 	}
-	go queueWorkload(p) // types 3 lines at ~3s — must land in the "shell"
-	go func() {
-		time.Sleep(shotDur)
-		p.Quit()
-	}()
-	final, err := p.Run()
-	if err != nil {
-		return zero, nil, 0, err
+	if got := d.m.ActiveTabIndex(); got != 1 {
+		return frames, nil, 0, nil, fail("precondition: must be on the terminal tab, got %d", got)
 	}
-	fm, ok := final.(app.Model)
-	if !ok {
-		return zero, nil, 0, fmt.Errorf("unexpected final model type %T", final)
+	frames[0] = d.m.Frame()
+	key(tabK) // tab LEAVES the terminal tab (chat·terminal·agents cycle)
+	if got := d.m.ActiveTabIndex(); got != 2 {
+		return frames, nil, 0, nil, fail("released default: tab must cycle the office (want agents=2), got %d", got)
 	}
-	return fm, stub, calls, nil
+
+	// PHASE 2 — back on the terminal (still RELEASED), ctrl+i dives in:
+	// every key rides wave-41 to the shell.
+	key(shiftTabK)
+	if got := d.m.ActiveTabIndex(); got != 1 {
+		return frames, nil, 0, nil, fail("released round-trip: shift+tab must return to the terminal, got %d", got)
+	}
+	press('x')
+	if stub.received != 0 {
+		return frames, nil, 0, nil, fail("re-entry must start RELEASED (no memory), got %d shell keys", stub.received)
+	}
+	key(ctrlI)
+	if stub.received != 0 {
+		return frames, nil, 0, nil, fail("ctrl+i is app-kept — never shell input, got %d", stub.received)
+	}
+	for _, r := range "echo" {
+		press(r)
+	}
+	if stub.received != 4 {
+		return frames, nil, 0, nil, fail("captured: 4 typed letters must echo into the shell, got %d", stub.received)
+	}
+	frames[1] = d.m.Frame()
+	// wave-41 asserted while captured: tab/shift+tab complete, digits type.
+	key(tabK)
+	stubExpect := 5
+	if stub.received != stubExpect || d.m.ActiveTabIndex() != 1 {
+		return frames, nil, 0, nil, fail("captured: tab must reach the shell without switching (received=%d tab=%d)",
+			stub.received, d.m.ActiveTabIndex())
+	}
+	key(shiftTabK)
+	stubExpect++
+	if stub.received != stubExpect || d.m.ActiveTabIndex() != 1 {
+		return frames, nil, 0, nil, fail("captured: shift+tab must reach the shell without a Prev (received=%d tab=%d)",
+			stub.received, d.m.ActiveTabIndex())
+	}
+	press('3')
+	stubExpect++
+	if stub.received != stubExpect || d.m.ActiveTabIndex() != 1 {
+		return frames, nil, 0, nil, fail("captured: \"3\" must type into the shell without jumping (received=%d tab=%d)",
+			stub.received, d.m.ActiveTabIndex())
+	}
+	press('7')
+	stubExpect++
+	if stub.received != stubExpect || d.m.ActiveTabIndex() != 1 {
+		return frames, nil, 0, nil, fail("captured: \"7\" must type into the shell without jumping (received=%d tab=%d)",
+			stub.received, d.m.ActiveTabIndex())
+	}
+
+	// PHASE 3 — ctrl+o releases IN PLACE (no chat hop): letters consumed.
+	key(ctrlO)
+	if stub.received != stubExpect {
+		return frames, nil, 0, nil, fail("ctrl+o is app-kept — never shell input, got %d", stub.received)
+	}
+	if got := d.m.ActiveTabIndex(); got != 1 {
+		return frames, nil, 0, nil, fail("ctrl+o releases in place — the tab stays the terminal, got %d", got)
+	}
+	press('z')
+	if stub.received != stubExpect {
+		return frames, nil, 0, nil, fail("released again: letters must be consumed, got %d", stub.received)
+	}
+	frames[2] = d.m.Frame()
+
+	// PHASE 4 — capture again, leave captured, auto-release, re-enter.
+	key(ctrlI)
+	if !d.m.SelectTab("agents") { // a click/event-style tab switch while captured
+		return frames, nil, 0, nil, fail("agents tab not selectable")
+	}
+	press('x') // routed while OFF the terminal — must trip the auto-release
+	if stub.received != stubExpect {
+		return frames, nil, 0, nil, fail("auto-release: a key off-tab must never reach the shell, got %d", stub.received)
+	}
+	if !d.m.SelectTab("terminal") {
+		return frames, nil, 0, nil, fail("terminal tab not selectable")
+	}
+	press('w')
+	if stub.received != stubExpect {
+		return frames, nil, 0, nil, fail("re-entry must start RELEASED (no memory of the capture), got %d", stub.received)
+	}
+	frames[3] = d.m.Frame()
+	return frames, stub, calls, closeFn, nil
 }
 
 func runTerminalProof() error {
-	fm, stub, calls, err := runTerminalShot()
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	const releasedHint = "office keys · ctrl+i → shell · ctrl+q quit"
+	const capturedHint = "typing → shell · ctrl+o release · ctrl+q quit"
+
+	frames1, stub1, calls1, close1, err := termDrive()
+	app.SpawnTerminal = nil
 	if err != nil {
 		return err
 	}
-	frame := fm.Frame()
-	app.SpawnTerminal = nil
-	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
-	fmt.Println("===== UI SHOT · terminal tab (uisshot stub TermPanel) =====")
-	fmt.Println(frame)
-	fmt.Println("===== UI SHOT =====")
-	if calls != 1 {
-		return fail("lazy-spawn violated: SpawnTerminal factory called %d times (want exactly 1, on first visit)", calls)
+	if calls1 != 1 {
+		return fail("lazy-spawn violated: SpawnTerminal factory called %d times (want exactly 1, on first visit)", calls1)
 	}
-	if stub == nil {
+	if stub1 == nil {
 		return fail("no stub panel was spawned")
 	}
-	if !strings.Contains(frame, "uisshot STUB shell") {
-		return fail("frame missing the stub terminal's content marker")
+	if stub1.received != 8 {
+		return fail("key routing drifted: want exactly 8 shell keys (4 letters + tab + shift+tab + 2 digits), got %d", stub1.received)
 	}
-	if !strings.Contains(frame, "terminal") {
-		return fail("frame missing the \"terminal\" tab label")
+
+	labels := [4]string{
+		"PHASE 1 — RELEASED default: letters consumed (keys received: 0), released hint rides the bar",
+		"PHASE 2 — ctrl+i CAPTURED: \"echo\" typed (keys received: 4), captured hint; wave-41 kept (tab/shift+tab/digits → shell)",
+		"PHASE 3 — ctrl+o RELEASED in place (no chat hop): letters consumed again, released hint back",
+		"PHASE 4 — leave-while-captured auto-releases; re-entry starts RELEASED",
+	}
+	wantHints := [4]string{releasedHint, capturedHint, releasedHint, releasedHint}
+	for i := range frames1 {
+		fmt.Printf("===== UI SHOT · terminal toggle — %s =====\n", labels[i])
+		fmt.Println(frames1[i])
+		fmt.Println("===== UI SHOT =====")
+		if !strings.Contains(frames1[i], "uisshot STUB shell") {
+			return fail("phase %d: frame missing the stub terminal's content marker", i+1)
+		}
+		if !strings.Contains(frames1[i], "terminal") {
+			return fail("phase %d: frame missing the \"terminal\" tab label", i+1)
+		}
+		if !strings.Contains(frames1[i], wantHints[i]) {
+			return fail("phase %d: frame missing the %q hint", i+1, wantHints[i])
+		}
+	}
+	if !strings.Contains(frames1[0], "$ keys received: 0") {
+		return fail("phase 1: the stub must report ZERO keys while released")
+	}
+	if !strings.Contains(frames1[1], "$ keys received: 4") {
+		return fail("phase 2: the \"echo\" letters must count 4 on the stub line")
 	}
 	fmt.Printf("lazy-spawn: OK — SpawnTerminal called exactly once, on the first visit\n")
-	fmt.Printf("key routing: %d keystrokes routed into the shell surface (queue workload typing at ~3s)\n", stub.received)
-	if stub.received == 0 {
-		return fail("no keystrokes reached the terminal panel — routing broken")
+	fmt.Printf("key routing: %d shell keys across the toggle flow (4 typed + tab + shift+tab + 2 digits; letters blocked while released)\n", stub1.received)
+
+	// determinism: the synchronous drive replays byte-identically.
+	frames2, stub2, calls2, _, err := termDrive()
+	app.SpawnTerminal = nil
+	if err != nil {
+		return err
 	}
-	if stub.closed {
+	if calls2 != 1 {
+		return fail("second drive: lazy-spawn violated (%d factory calls)", calls2)
+	}
+	for i := range frames1 {
+		if frames1[i] != frames2[i] {
+			return fail("phase %d frame differs between the two synchronous drives", i+1)
+		}
+	}
+	if stub2.received != stub1.received {
+		return fail("stub received counter differs between drives (%d vs %d)", stub1.received, stub2.received)
+	}
+	fmt.Printf("deterministic: OK — two synchronous drives produced byte-identical frames\n")
+
+	// quit hook: cmd/theboringoffice calls CloseTerminal after Run returns —
+	// the explicit close is the leak guard.
+	if stub1.closed {
 		return fail("stub already closed before CloseTerminal — quit hook ran early")
 	}
-	// quit hook: cmd/theboringoffice calls CloseTerminal after p.Run returns (the
-	// runtime intercepts tea.QuitMsg before Update, so p.Quit() never
-	// reached handleKey here — the explicit close is the leak guard)
-	fm.CloseTerminal()
-	if !stub.closed {
+	close1()
+	if !stub1.closed {
 		return fail("CloseTerminal did not close the shell panel")
 	}
 	fmt.Printf("quit hook: OK — CloseTerminal closed the spawned shell (alive→false)\n")
+	fmt.Println("asserts: OK — RELEASED default (letters consumed, tab cycles, released hint); ctrl+i dives IN (echo → +4 keys, wave-41 tab/shift+tab/digits ride); ctrl+o releases IN PLACE; leave-while-captured auto-releases and re-entry starts RELEASED; lazy-spawn ×1; two drives byte-identical; CloseTerminal kills the stub shell")
 	return nil
 }
 
@@ -3491,7 +3648,7 @@ func main() {
 	social := flag.Bool("social", false, "social-clock proof: synchronous tick pump — three frames (tea ask / both walking / gossip chain), banter chain trace, question-modal gate assert, tick-seeded determinism check")
 	layout := flag.Bool("layout", false, "layout-modes proof: three frames over the same window — NORMAL (sidebar 80, the bcb1635 default), compact (sidebar 30, short tab labels, 2-row chat input, compressed topbar), wide 90 (explicit ui.sidebarWidth, clamped 26..100) — with computed width asserts per frame")
 	planshot := flag.Bool("planshot", false, "plan-mode screenshot (conversation-first): ctrl+p flips ONLY the mode — TWO frames: t=2.0s plan mode active with the pane empty+hidden (office floor kept, [plan] badge + idle hint); the scripted boss reply then completes and mirrors passively into the pane — t=3.6s the markdown pane owns the floor slot with the boss's plan text (unique azimuth marker), floor swapped out, starter template never armed, chat input still owns focus (click-to-edit pane footer)")
-	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, keys routed into the shell surface, frame + asserts")
+	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, OPT-IN capture toggle flow (released default, ctrl+i dives in, ctrl+o releases, auto-release on leave, re-entry released), hints + frames + asserts, byte-identical twice")
 	focus := flag.Bool("focus", false, "fix-wave proof, THREE synchronous-tick frames: (a) empty pending bubble — typing row below the divider (above the input), NO caret anywhere; (b) streaming partial bubble — text grows in the viewport while the typing row STAYS below the divider for the whole pending period (still no caret); (c) two concurrent agents — per-agent work threads grouped (headers + merged rows), boss tool line still inline, boss idle at the placeholder in delegating state (dim row in the same below-divider slot, [delegat] nameplate). Every frame: no \"▌\", every chat row inside the divider's width budget")
 	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEBORINGOFFICE_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
 	slashpop := flag.Bool("slashpop", false, "slash-popover proof: type \"/th\" → filtered menu (/theme /themes /thinking), Enter pre-fills \"/theme \" → theme picker, arrows preview LIVE (two states printed), esc cancels back, Enter commits + persists via the plain slash path")

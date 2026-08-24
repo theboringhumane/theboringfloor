@@ -266,6 +266,13 @@ type Model struct {
 	agents        *panels.Agents // roster tab — floor-click selection highlight
 	activity      *panels.Activity
 	termTab       *termTabWrap // tab 2: the real OS-shell (lazy PTY, terminal.go)
+	// termCaptured — the terminal tab's OPT-IN keyboard state (wave-42):
+	// false = RELEASED (the default — office keys behave normally on the
+	// terminal tab), true = CAPTURED via ctrl+i (wave-41: every key goes
+	// to the shell until ctrl+o releases). normalizeTermCapture keeps it
+	// from ever escaping its tab: leaving while captured auto-releases,
+	// and every (re-)entry starts RELEASED — explicit opt-in each visit.
+	termCaptured  bool
 	keys          KeyMap
 
 	// plan/build agent mode (plan_mode.go), MODEL-side on purpose —
@@ -927,6 +934,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 func (m *Model) SelectTab(name string) bool {
 	ok := m.tabs.SetActiveByTitle(name)
 	if ok {
+		m.normalizeTermCapture() // leaving captured → release before re-entry
 		m.maybeSpawnTerminal()
 	}
 	return ok
@@ -1036,6 +1044,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	var cmds []tea.Cmd
+	// Auto-release invariant: any tab change routed in above (click,
+	// event-driven SetActive, spawn-failure fallback) drops a stale shell
+	// capture before the next key routes — capture never escapes its tab.
+	m.normalizeTermCapture()
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.resize(msg.Width, msg.Height)
@@ -1554,7 +1566,10 @@ func (m Model) hintLine() string {
 		return chrome.OnBarBold(chrome.Warn, " "+wedgeHint+" ")
 	}
 	if m.terminalActive() {
-		return termHint
+		if m.termCapturedNow() {
+			return termHintCaptured
+		}
+		return termHintReleased
 	}
 	if m.agentMode == agentModePlan {
 		// conversation-first hint swap: no plan presented yet → the pane
@@ -1577,9 +1592,13 @@ const quitArmWindow = 1500 * time.Millisecond
 
 // handleKey implements the global keymap; unclaimed keys go to the tabs.
 //
-// The terminal tab has the tightest claim: when it is focused the ONLY keys
-// the app keeps are ctrl+o (the release-the-focus badge back to chat) and
-// ctrl+q (double-press to quit — claimed above). Every other key, tab,
+// The terminal tab's keyboard is OPT-IN (wave-42). RELEASED (the default)
+// the office behaves NORMALLY on the terminal tab: tab/shift+tab cycle,
+// 1..7 jump, ctrl+p toggles, q/ctrl+c quit, and typed letters/enter are
+// consumed WITHOUT reaching the PTY or leaking to the chat. ctrl+i DIVES
+// INTO capture — then the terminal tab has the tightest claim (wave-41):
+// the ONLY keys the app keeps are ctrl+o (release back to the office keys)
+// and ctrl+q (double-press to quit — claimed above). Every other key, tab,
 // shift+tab, the digit jumps, q and ctrl+c INCLUDED, forwards to the REAL
 // shell (term maps ctrl+c to 0x03 → SIGINT of the shell's foreground
 // process, not an app quit; tab to 0x09 → the shell's completion;
@@ -1632,34 +1651,42 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.modelPick.Key(msg)
 	}
 
-	// tab-switch keys work from every tab EXCEPT the terminal — while the
-	// shell owns the keyboard, tab/shift+tab are the shell's completion
-	// keys and the digit keys its ordinary input: they break out of this
-	// switch and fall through to the terminal forward below. ctrl+o stays
-	// app-kept from anywhere (the release badge back to chat).
+	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
+	// shell keyboard is RELEASED (the default). In CAPTURED mode (opt-in
+	// via ctrl+i) tab/shift+tab are the shell's completion keys and the
+	// digit keys its ordinary input: they break out of this switch and fall
+	// through to the shell forward below. The ctrl+i/ctrl+o toggle pair is
+	// app-kept (never forwarded) and fires only in its matching state:
+	// dive IN while released, release OUT while captured.
 	switch key {
 	case "tab":
-		if termActive {
-			break // the shell's completion key — forwarded below
+		if m.termCapturedNow() {
+			break // captured: the shell's completion key — forwarded below
 		}
 		m.tabs.Next()
 		m.maybeSpawnTerminal()
 		return nil
 	case "shift+tab":
-		if termActive {
-			break // the shell's reverse completion — forwarded below
+		if m.termCapturedNow() {
+			break // captured: the shell's reverse completion — forwarded below
 		}
 		m.tabs.Prev()
 		m.maybeSpawnTerminal()
 		return nil
+	case "ctrl+i":
+		// dive INTO shell capture — the released terminal's only kept key
+		if termActive && !m.termCapturedNow() {
+			m.setTermCaptured(true)
+			return nil
+		}
 	case "ctrl+o":
-		// release the terminal focus badge → back to chat
-		if termActive {
-			m.tabs.SetActive(0)
+		// release OUT of shell capture — stays on the tab, office keys live
+		if m.termCapturedNow() {
+			m.setTermCaptured(false)
 			return nil
 		}
 	}
-	if !chatActive && !termActive {
+	if !chatActive && !m.termCapturedNow() {
 		if idx := m.keys.TabJump(key); idx >= 0 {
 			m.tabs.SetActive(idx)
 			m.maybeSpawnTerminal()
@@ -1667,15 +1694,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 
-	if termActive {
-		// everything else belongs to the shell — ctrl+p INCLUDED (shell
-		// readline's previous-history key); the plan/build toggle below
-		// never fires while the terminal tab is focused.
+	if m.termCapturedNow() {
+		// captured: everything else belongs to the shell — ctrl+p INCLUDED
+		// (shell readline's previous-history key); the plan/build toggle
+		// below never fires while the shell owns the keyboard.
 		return m.tabs.Update(msg)
 	}
 
 	// ctrl+p — the plan/build mode toggle (toggle ONLY: chat keeps focus,
-	// the pane does not open), claimable from EVERY non-terminal surface.
+	// the pane does not open), claimable from every surface EXCEPT a
+	// captured terminal (the shell owns it there; released = normal office).
 	// The open /model picker already owns every key above (and yields to
 	// floats, mirrored here): the permission/question/model floats keep
 	// their keys — a parked turn outranks a mode switch.
@@ -1896,6 +1924,36 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 // terminalActive reports whether the focused tab is the OS-shell tab.
 func (m *Model) terminalActive() bool {
 	return m.tabs.ActiveIndex() == terminalIndex
+}
+
+// termCapturedNow — the EFFECTIVE capture state for routing: capture only
+// counts while the terminal tab is the active one (a stale flag off-tab is
+// released by normalizeTermCapture on the next routed message anyway, but
+// opinions never read it — the guard keeps every consumer honest by
+// construction).
+func (m *Model) termCapturedNow() bool {
+	return m.termCaptured && m.tabs.ActiveIndex() == terminalIndex
+}
+
+// normalizeTermCapture — the auto-release invariant (wave-42): shell
+// capture can never escape its tab. Runs at Update entry (any routed tab
+// change — click, event-driven SetActive, spawn-failure fallback) and in
+// SelectTab, so a stale capture is dropped before the next key routes.
+// Every terminal visit starts RELEASED: the opt-in is explicit per visit,
+// never a memory of a prior capture.
+func (m *Model) normalizeTermCapture() {
+	if m.termCaptured && m.tabs.ActiveIndex() != terminalIndex {
+		m.setTermCaptured(false)
+	}
+}
+
+// setTermCaptured flips the capture flag and mirrors it into the terminal
+// wrap (which gates key forwarding and syncs the inner panel's badge).
+func (m *Model) setTermCaptured(on bool) {
+	m.termCaptured = on
+	if m.termTab != nil {
+		m.termTab.setCaptured(on)
+	}
 }
 
 // maybeSpawnTerminal lazy-spawns the terminal tab's shell on the first

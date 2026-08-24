@@ -162,9 +162,9 @@ func lastOfficeMsg(m Model) string {
 
 // TestPlanModeToggleWithExclusions pins (a): ctrl+p flips build→plan→build
 // and NOTHING ELSE — chat keeps focus, the pane does not open (empty+
-// hidden is the plan-mode default), sends route per-mode; a focused
-// terminal tab keeps ctrl+p for the shell, and an open permission float
-// keeps its keys.
+// hidden is the plan-mode default), sends route per-mode; a CAPTURED
+// terminal tab keeps ctrl+p for the shell (released = normal office keys,
+// wave-42), and an open permission float keeps its keys.
 func TestPlanModeToggleWithExclusions(t *testing.T) {
 	b := &agentRecBackend{}
 	m := New(b, nil)
@@ -212,12 +212,27 @@ func TestPlanModeToggleWithExclusions(t *testing.T) {
 		t.Fatal("leaving plan mode must blur the editor")
 	}
 
-	// EXCLUSION 1 — the focused terminal tab keeps ctrl+p for the shell
+	// EXCLUSION 1 — the terminal tab's keyboard is OPT-IN (wave-42):
+	// RELEASED the office keys behave normally (ctrl+p toggles), CAPTURED
+	// (ctrl+i dive) ctrl+p belongs to the shell.
 	m.tabs.SetActive(terminalIndex)
 	m = runMsg(t, m, ctrlP())
-	if m.agentMode != agentModeBuild {
-		t.Fatalf("ctrl+p belongs to the shell while the terminal tab is focused: %q", m.agentMode)
+	if m.agentMode != agentModePlan {
+		t.Fatalf("released terminal: ctrl+p must toggle like any other tab, got mode %q", m.agentMode)
 	}
+	m = runMsg(t, m, ctrlP()) // back to build before the captured leg
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("released terminal: ctrl+p must toggle back to build, got %q", m.agentMode)
+	}
+	m = runMsg(t, m, grabCtrlI()) // dive INTO capture (app-kept, no mode flip)
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("ctrl+i is the terminal's capture toggle — never a mode flip, got %q", m.agentMode)
+	}
+	m = runMsg(t, m, ctrlP())
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("ctrl+p belongs to the shell while the terminal is captured: %q", m.agentMode)
+	}
+	m = runMsg(t, m, grabCtrlO()) // release back out (stays on the tab)
 	m.tabs.SetActive(0)
 
 	// EXCLUSION 2 — an open permission float keeps its keys

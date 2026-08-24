@@ -19,12 +19,17 @@
 //   - respawn: a dead shell renders a respawn prompt; pressing r respawns.
 //   - quit: Close() runs on every app quit path (closeTerminal).
 //
-// Key contract (from internal/term's keyboard doc): while the terminal tab
-// is focused the terminal GRABS the keyboard — the ONLY keys the app keeps
-// are ctrl+o (release → back to the chat tab) and ctrl+q (app quit-arm).
-// Everything else forwards to the shell: tab (0x09 completion), shift+tab
-// (\x1b[Z reverse completion), digits, q and ctrl+c included (term maps
-// ctrl+c to the 0x03 byte, i.e. SIGINT to the foreground process).
+// Key contract (wave-42): OPT-IN capture. On the terminal tab the keyboard
+// is RELEASED by default — office keys behave normally (tab/shift+tab
+// cycle, 1..7 jump, q quits) and typed letters are consumed WITHOUT
+// reaching the PTY. ctrl+i dives INTO capture (wave-41 grab semantics:
+// everything forwards to the shell — tab is 0x09 completion, shift+tab is
+// \x1b[Z reverse completion, digits, q and ctrl+c included — term maps
+// ctrl+c to the 0x03 byte, i.e. SIGINT to the foreground process); ctrl+o
+// releases back out. The ONLY keys the app keeps while captured are ctrl+o
+// and ctrl+q (quit-arm). Capture can never escape its tab: leaving while
+// captured auto-releases, and every (re-)entry starts RELEASED — the opt-in
+// is explicit per visit.
 package app
 
 import (
@@ -70,6 +75,11 @@ type termTabWrap struct {
 	tried  bool        // a spawn attempt happened (success or recorded failure)
 	err    error       // last spawn/respawn failure (rendered in View)
 	closed bool        // Close ran — no more spawns (app is quitting)
+	// captured — the OPT-IN keyboard state, OWNED by the model (handleKey
+	// drives setCaptured). While false the wrap swallows every key instead
+	// of forwarding: the released default can never leak a keystroke into
+	// the PTY even if it slips past the model's own claims (belt + hanger).
+	captured bool
 }
 
 func newTermTabWrap() *termTabWrap { return &termTabWrap{} }
@@ -118,7 +128,34 @@ func (t *termTabWrap) ensure() error {
 	}
 	t.err = nil
 	t.inner = tp
+	t.applyCapture() // the default is RELEASED — sync a fresh panel's badge
 	return nil
+}
+
+// setCaptured flips the wrap's keyboard state (model-driven: ctrl+i dives
+// in, ctrl+o releases, tab-leave auto-releases) and mirrors it into the
+// spawned panel.
+func (t *termTabWrap) setCaptured(on bool) {
+	t.captured = on
+	t.applyCapture()
+}
+
+// applyCapture mirrors the capture state into a spawned panel's focus idiom
+// (the production panels.TermPanel flips its badge row via Focus/Blur).
+// Panels lacking the idiom (uiso shot stubs, test fakes) are left alone.
+func (t *termTabWrap) applyCapture() {
+	if t.inner == nil {
+		return
+	}
+	if t.captured {
+		if f, ok := t.inner.(interface{ Focus() }); ok {
+			f.Focus()
+		}
+		return
+	}
+	if f, ok := t.inner.(interface{ Blur() }); ok {
+		f.Blur()
+	}
 }
 
 // close kills the shell (idempotent; the app quit path calls it once).
@@ -200,12 +237,18 @@ func fitTermPlain(s string, w int) string {
 }
 
 // Update implements panels.Interactive:
-//   - alive shell → every byte goes to the PTY (the app's handleKey already
-//     filtered the tab-switch / ctrl+o / ctrl+q keys).
-//   - dead/failed → r respawns; every other key is swallowed (writing to a
-//     dead PTY is an error, and the member's intent is obvious).
+//   - alive shell + CAPTURED (ctrl+i) → every byte goes to the PTY (the
+//     app's handleKey already filtered the ctrl+o / ctrl+q keeps).
+//   - alive shell + RELEASED (the default) → every key is swallowed: the
+//     office owns the keyboard on a released terminal tab.
+//   - dead/failed → r respawns (in either state); every other key is
+//     swallowed (writing to a dead PTY is an error, and the member's
+//     intent is obvious).
 func (t *termTabWrap) Update(msg tea.Msg) tea.Cmd {
 	if t.alive() {
+		if !t.captured {
+			return nil // released: the office owns the keys (wave-42 D1)
+		}
 		return t.inner.Update(msg)
 	}
 	if kp, ok := msg.(tea.KeyPressMsg); ok && kp.String() == "r" {

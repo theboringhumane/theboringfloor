@@ -18,8 +18,10 @@
 //	delete               → "\x1b[3~"
 //	space                → " "
 //	ctrl+c/d/x (all ctrl+<letter>) → 0x01..0x1a pass-through
-//	ctrl+o               → RESERVED by the app (releases the terminal's
-//	                       keyboard grab); never reaches the shell
+//	ctrl+i / ctrl+o      → RESERVED by the app (the capture toggle: ctrl+i
+//	                       dives INTO shell capture — opt-in, released is
+//	                       the default — ctrl+o releases OUT); neither
+//	                       ever reaches the shell
 //	bracketed paste / F-keys / kitty modifiers → NOT forwarded in v1
 //
 // Process-group discipline: creack/pty's StartWithSize configures

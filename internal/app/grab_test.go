@@ -1,26 +1,36 @@
-// grab_test.go — the terminal tab's KEY-GRAB contract from the model level
-// (fakes only, real Model + a recording TerminalTab double wired through
-// the SpawnTerminal seam — never a real PTY):
+// grab_test.go — the terminal tab's OPT-IN keyboard-capture contract from
+// the model level (wave-42; fakes only, real Model + a recording
+// TerminalTab double wired through the SpawnTerminal seam — never a real
+// PTY):
 //
-//	(a) while the terminal tab is focused, TAB is not an app tab-switch:
-//	    the active sidebar index stays on the terminal and the raw key
-//	    event forwards to the terminal verbatim (the panel maps it to
-//	    0x09 — the shell's completion);
-//	(b) SHIFT+TAB rides the same grab — the shell's reverse completion
-//	    ("\x1b[Z" from the panel's keyToBytes), never a Prev;
-//	(c) the digit jumps (TabJump 1..7) are also captured while focused —
-//	    "3" does NOT jump to the agents tab, "7" does not jump to git;
-//	(d) ctrl+o is the ONE kept release key: it switches to chat (index 0)
-//	    and is NEVER forwarded to the shell; once released, ordinary app
-//	    shortcuts are live again;
-//	(e) with the terminal NOT focused the old contract is byte-identical:
-//	    tab Next, shift+tab Prev, digit jumps fire — including a digit
-//	    jump INTO the terminal tab;
-//	(f) ctrl+q double-press-to-quit still works from the terminal (arm on
-//	    the first press, quit on the second, tab never moves);
-//	(g) the frozen termHint copy drops the now-false "1-6/tab panels"
-//	    wording and rides hintLine while the terminal is focused;
-//	(h) TabJump covers 1..7 with -1 bounds on the edges.
+//	(a) RELEASED is the default: on the terminal tab the office keys behave
+//	    EXACTLY like any other tab — tab/shift+tab cycle out and back,
+//	    typed letters and enter are consumed (never the shell, never the
+//	    chat), the released hint rides the status bar;
+//	(b) the digit jump fires from a released terminal too ("3" → agents);
+//	(c) ctrl+i dives INTO capture: the toggle is swallowed (never the
+//	    shell), letters start reaching the PTY and the hint swaps;
+//	(d) wave-41 while captured: tab forwards without a switch, shift+tab
+//	    forwards without a Prev, "3"/"7" forward without a jump;
+//	(e) ctrl+o releases OUT: swallowed, the app stays ON the terminal tab
+//	    (the office keys are live in place — the old "release → chat" hop
+//	    is gone), letters go quiet again and ctrl+i re-enters; a released
+//	    ctrl+o is inert;
+//	(f) capture can never escape its tab: leaving while captured
+//	    auto-releases and every (re-)entry starts RELEASED (explicit opt-in
+//	    per visit — no memory of a prior capture);
+//	(g) ctrl+q double-press-to-quit works from the RELEASED terminal (arm
+//	    on the first press, quit on the second, tab never moves);
+//	(h) same from the CAPTURED terminal (the wave-41 safety keep);
+//	(i) with the terminal NOT focused the old contract is byte-identical:
+//	    tab Next, shift+tab Prev, digit jumps fire — including a digit jump
+//	    INTO the terminal tab;
+//	(j) q and ctrl+c never lost their quit teeth: released on the terminal
+//	    tab they quit; captured they forward to the REAL shell (q as
+//	    ordinary input, ctrl+c as the 0x03 SIGINT byte), never a quit;
+//	(k) the two frozen hint copies are pinned verbatim and hintLine swaps
+//	    between them per capture state;
+//	(l) TabJump covers 1..7 with -1 bounds on the edges.
 package app
 
 import (
@@ -35,7 +45,8 @@ import (
 // grabFakeTerm — a recording TerminalTab double for the SpawnTerminal seam:
 // every forwarded keypress is captured so the grab tests can assert which
 // raw key events reached the terminal (and, by exclusion, which the app
-// kept).
+// kept). Anything NOT recorded proves consumption — the wrap gates released
+// forwarding itself (belt + hanger).
 type grabFakeTerm struct {
 	keys   []string // String() of every forwarded tea.KeyPressMsg
 	closed bool
@@ -63,15 +74,19 @@ func (f *grabFakeTerm) lastKey() string {
 }
 
 // grabKey constructors — bubbletea v2 Key{Code,Mod} → the exact String()
-// spellings handleKey switches on ("tab", "shift+tab", "ctrl+o").
+// spellings handleKey switches on ("tab", "shift+tab", "ctrl+i", "ctrl+o").
 func grabTab() tea.KeyPressMsg      { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}) }
 func grabShiftTab() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}) }
+func grabCtrlI() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: 'i', Mod: tea.ModCtrl}) }
 func grabCtrlO() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl}) }
+func pressEnter() tea.KeyPressMsg   { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}) }
 
 // grabSetupTerminal — a scratch-home model with the SpawnTerminal seam
 // wired to a recording fake, arrived at the terminal tab the REAL way (one
 // tab from chat — the arrival also exercises the terminal-INACTIVE switch
-// path). The seam restores itself on test cleanup.
+// path). The model arrives RELEASED: the default is the office keys, the
+// opt-in capture is explicit per visit. The seam restores itself on test
+// cleanup.
 func grabSetupTerminal(t *testing.T) (Model, *grabFakeTerm) {
 	t.Helper()
 	scratchHome(t)
@@ -85,92 +100,287 @@ func grabSetupTerminal(t *testing.T) (Model, *grabFakeTerm) {
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
 		t.Fatalf("precondition: tab from chat must land on the terminal tab, got %d", idx)
 	}
+	if m.termCapturedNow() {
+		t.Fatalf("precondition: the terminal tab must arrive RELEASED (opt-in), got captured")
+	}
 	if len(fake.keys) != 0 {
 		t.Fatalf("precondition: the ARRIVAL tab was the app's own switch — nothing forwarded yet, got %v", fake.keys)
 	}
 	return m, fake
 }
 
-// (a) tab while focused: no switch, the raw "tab" event reaches the shell.
-func TestTerminalGrabTabForwardsNoSwitch(t *testing.T) {
+// grabSetupCaptured — the released default PLUS one ctrl+i dive (the
+// toggle itself is swallowed — never the shell).
+func grabSetupCaptured(t *testing.T) (Model, *grabFakeTerm) {
+	t.Helper()
+	m, fake := grabSetupTerminal(t)
+	nm, _ := m.Update(grabCtrlI())
+	m = nm.(Model)
+	if !m.termCapturedNow() {
+		t.Fatalf("ctrl+i must dive INTO capture while the terminal is released")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("ctrl+i is APP-KEPT — it must never reach the shell, got %v", fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintCaptured {
+		t.Fatalf("the captured terminal's hint line must be termHintCaptured verbatim, got %q", hint)
+	}
+	return m, fake
+}
+
+// (a) RELEASED is the default: office keys behave normally on the terminal
+// tab — letters/enter consumed (nothing reaches the shell), tab cycles out,
+// shift+tab cycles back, released hint throughout.
+func TestTerminalReleasedDefaultOfficeKeys(t *testing.T) {
 	m, fake := grabSetupTerminal(t)
 
+	// typed letters and enter are CONSUMED — never the shell.
+	for _, kp := range []tea.KeyPressMsg{pressKey('h'), pressKey('i'), pressEnter()} {
+		nm, _ := m.Update(kp)
+		m = nm.(Model)
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("released terminal: typed letters must NOT reach the PTY, got %v", fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("released terminal must ride the released hint, got %q", hint)
+	}
+
+	// tab cycles OFF the terminal (terminal → agents) like any other tab…
 	nm, _ := m.Update(grabTab())
 	m = nm.(Model)
-
-	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("tab while the terminal is focused must NOT switch tabs, got index %d", idx)
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("released terminal: tab must cycle to agents, got index %d", idx)
 	}
-	if got := fake.lastKey(); got != "tab" {
-		t.Fatalf("the raw tab event must forward to the shell (the panel maps it to 0x09), got %q (all: %v)", got, fake.keys)
-	}
-}
-
-// (b) shift+tab while focused: no Prev, the raw "shift+tab" event reaches
-// the shell (keyToBytes translates it to "\x1b[Z").
-func TestTerminalGrabShiftTabForwardsNoSwitch(t *testing.T) {
-	m, fake := grabSetupTerminal(t)
-
-	nm, _ := m.Update(grabShiftTab())
+	// …shift+tab cycles back (agents → terminal)…
+	nm, _ = m.Update(grabShiftTab())
 	m = nm.(Model)
-
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("shift+tab while the terminal is focused must NOT switch tabs, got index %d", idx)
+		t.Fatalf("released round-trip: shift+tab must return to the terminal, got index %d", idx)
 	}
-	if got := fake.lastKey(); got != "shift+tab" {
-		t.Fatalf("the raw shift+tab event must forward to the shell, got %q (all: %v)", got, fake.keys)
+	// …and the round trip neither captured nor forwarded anything.
+	if m.termCapturedNow() {
+		t.Fatalf("the tab cycle must not toggle capture (opt-in only)")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("released terminal: navigation keys must never reach the shell, got %v", fake.keys)
 	}
 }
 
-// (c) digit jumps die at the grab too: "3" does not jump to agents, "7"
-// (the Tab7 seam) does not jump to git — both are ordinary shell input.
-func TestTerminalGrabDigitsForwardNoJump(t *testing.T) {
+// (b) the digit jump fires from a released terminal (1..7 are office keys
+// again): "3" jumps to agents, "2" jumps back INTO the terminal.
+func TestTerminalReleasedDigitsJump(t *testing.T) {
 	m, fake := grabSetupTerminal(t)
 
 	nm, _ := m.Update(pressKey('3'))
 	m = nm.(Model)
-	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("\"3\" while the terminal is focused must NOT jump to agents, got index %d", idx)
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("released terminal: \"3\" must jump to agents, got index %d", idx)
 	}
-	if got := fake.lastKey(); got != "3" {
-		t.Fatalf("the digit must reach the shell as ordinary input, got %q", got)
-	}
-
-	nm, _ = m.Update(pressKey('7'))
+	nm, _ = m.Update(pressKey('2'))
 	m = nm.(Model)
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("\"7\" while the terminal is focused must NOT jump to git, got index %d", idx)
+		t.Fatalf("released round-trip: \"2\" must jump back INTO the terminal, got index %d", idx)
 	}
-	if got := fake.lastKey(); got != "7" {
-		t.Fatalf("the digit must reach the shell as ordinary input, got %q", got)
+	if len(fake.keys) != 0 {
+		t.Fatalf("released terminal: digit jumps must never reach the shell, got %v", fake.keys)
 	}
 }
 
-// (d) ctrl+o releases the keyboard back to the app: it switches to chat,
-// is never forwarded, and ordinary shortcuts (tab → Next) work again.
-func TestTerminalGrabCtrlOReleasesToChat(t *testing.T) {
-	m, fake := grabSetupTerminal(t)
+// (c) ctrl+i dives INTO capture: letters start reaching the shell.
+func TestTerminalCtrlIDivesIntoCapture(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
+
+	nm, _ := m.Update(pressKey('p'))
+	m = nm.(Model)
+	if got := fake.lastKey(); got != "p" {
+		t.Fatalf("captured terminal: the typed letter must reach the shell, got %q (all: %v)", got, fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintCaptured {
+		t.Fatalf("captured terminal must ride the captured hint, got %q", hint)
+	}
+}
+
+// (d) wave-41 while captured: TAB/SHIFT+TAB are the shell's completion
+// pair (no app switch), the digit keys ordinary input (no jump).
+func TestTerminalCapturedWave41Keys(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
+
+	nm, _ := m.Update(grabTab())
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("captured: tab must NOT switch tabs, got index %d", idx)
+	}
+	if got := fake.lastKey(); got != "tab" {
+		t.Fatalf("captured: the raw tab event must forward to the shell (0x09 completion), got %q (all: %v)", got, fake.keys)
+	}
+
+	nm, _ = m.Update(grabShiftTab())
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("captured: shift+tab must NOT Prev tabs, got index %d", idx)
+	}
+	if got := fake.lastKey(); got != "shift+tab" {
+		t.Fatalf("captured: the raw shift+tab event must forward to the shell (\\x1b[Z), got %q", got)
+	}
+
+	for _, key := range []string{"3", "7"} {
+		nm, _ = m.Update(pressKey(rune(key[0])))
+		m = nm.(Model)
+		if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+			t.Fatalf("captured: %q must NOT jump tabs, got index %d", key, idx)
+		}
+		if got := fake.lastKey(); got != key {
+			t.Fatalf("captured: the digit %q must reach the shell as ordinary input, got %q", key, got)
+		}
+	}
+}
+
+// (e) ctrl+o releases OUT of capture: swallowed, the app stays ON the
+// terminal tab, office keys live again; ctrl+o while released is inert;
+// ctrl+i re-enters.
+func TestTerminalCtrlOReleasesCapture(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
 	wantKeys := len(fake.keys)
 
 	nm, _ := m.Update(grabCtrlO())
 	m = nm.(Model)
-	if idx := m.tabs.ActiveIndex(); idx != 0 {
-		t.Fatalf("ctrl+o must release the terminal focus back to chat, got index %d", idx)
+	if m.termCapturedNow() {
+		t.Fatalf("ctrl+o must release the shell capture")
+	}
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("ctrl+o releases IN PLACE — no hop back to chat (released office keys live here), got index %d", idx)
 	}
 	if len(fake.keys) != wantKeys {
 		t.Fatalf("ctrl+o is APP-KEPT — it must never reach the shell, got %v", fake.keys)
 	}
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("post-release hint must be the released copy, got %q", hint)
+	}
 
-	// released → the office shortcuts are live again: tab cycles Next.
+	// office keys live right here: letters consumed, tab cycles out.
+	nm, _ = m.Update(pressKey('z'))
+	m = nm.(Model)
+	if len(fake.keys) != wantKeys {
+		t.Fatalf("released again: the letter must not reach the shell, got %v", fake.keys)
+	}
 	nm, _ = m.Update(grabTab())
 	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("released again: tab must cycle to agents, got index %d", idx)
+	}
+	nm, _ = m.Update(grabShiftTab())
+	m = nm.(Model)
+
+	// a released ctrl+o is inert…
+	nm, _ = m.Update(grabCtrlO())
+	m = nm.(Model)
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("after the release, tab must cycle panels again (chat → terminal), got index %d", idx)
+		t.Fatalf("ctrl+o fires only while captured — released it must be a no-op, got index %d", idx)
+	}
+	if len(fake.keys) != wantKeys {
+		t.Fatalf("a released ctrl+o must never reach the shell, got %v", fake.keys)
+	}
+
+	// …and ctrl+i dives back in (the pair toggles indefinitely).
+	nm, _ = m.Update(grabCtrlI())
+	m = nm.(Model)
+	if !m.termCapturedNow() {
+		t.Fatalf("ctrl+i must re-enter capture from the released state")
+	}
+	nm, _ = m.Update(pressKey('k'))
+	m = nm.(Model)
+	if got := fake.lastKey(); got != "k" {
+		t.Fatalf("re-captured: the typed letter must reach the shell again, got %q", got)
 	}
 }
 
-// (e) terminal NOT focused — the pre-grab contract byte for byte: tab
-// Next, shift+tab Prev, digit jumps fire (into the terminal included).
+// (f) capture never escapes its tab: leaving while captured auto-releases;
+// re-entering starts RELEASED (no memory of the prior capture).
+func TestTerminalCaptureNeverEscapesItsTab(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
+
+	// leave while captured through a NON-keyboard path (the click/event
+	// seam — an index switch) then route one more key: capture must be
+	// released before it is handled.
+	m.tabs.SetActive(2) // agents
+	nm, _ := m.Update(pressKey('x'))
+	m = nm.(Model)
+	if m.termCaptured {
+		t.Fatalf("leaving the terminal tab while captured must auto-release the capture")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("the auto-release key must never forward into the shell, got %v", fake.keys)
+	}
+
+	// re-enter: RELEASED again — the opt-in is explicit per visit.
+	nm, _ = m.Update(pressKey('2'))
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("re-enter must land on the terminal tab, got index %d", idx)
+	}
+	if m.termCapturedNow() {
+		t.Fatalf("re-entering the terminal must start RELEASED (no memory of the prior capture)")
+	}
+	nm, _ = m.Update(pressKey('w'))
+	m = nm.(Model)
+	if len(fake.keys) != 0 {
+		t.Fatalf("released re-entry: the letter must not reach the shell, got %v", fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("re-entry must ride the released hint, got %q", hint)
+	}
+}
+
+// (g) the safety keep: ctrl+q from a RELEASED terminal ARMS on the first
+// press (tab stays put, no quit) and quits on the second inside the window.
+func TestTerminalReleasedCtrlQStillArmsAndQuits(t *testing.T) {
+	m, _ := grabSetupTerminal(t)
+
+	nm, _ := m.Update(ctrlQ())
+	m = nm.(Model)
+	if m.quitArmAt.IsZero() {
+		t.Fatalf("the first ctrl+q must ARM on the released terminal")
+	}
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("the arming press must not move the tab, got index %d", idx)
+	}
+	if hint := m.hintLine(); !strings.Contains(hint, quitArmToast) {
+		t.Fatalf("the arm toast must outrank the terminal hint, got %q", hint)
+	}
+
+	nm, cmd := m.Update(ctrlQ())
+	m = nm.(Model)
+	if !hasQuitLeaf(leafMsgs(cmd)) {
+		t.Fatalf("the second ctrl+q inside the window must quit from the released terminal")
+	}
+}
+
+// (h) same from a CAPTURED terminal — the wave-41 safety keep.
+func TestTerminalCapturedCtrlQStillArmsAndQuits(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
+
+	nm, _ := m.Update(ctrlQ())
+	m = nm.(Model)
+	if m.quitArmAt.IsZero() {
+		t.Fatalf("the first ctrl+q must ARM even with the shell captured")
+	}
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("the arming press must not move the tab, got index %d", idx)
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("ctrl+q is APP-KEPT — it must never reach the shell, got %v", fake.keys)
+	}
+
+	nm, cmd := m.Update(ctrlQ())
+	m = nm.(Model)
+	if !hasQuitLeaf(leafMsgs(cmd)) {
+		t.Fatalf("the second ctrl+q inside the window must quit from the captured terminal")
+	}
+}
+
+// (i) terminal NOT focused — the old contract byte for byte: tab Next,
+// shift+tab Prev, digit jumps fire (into the terminal included).
 func TestTerminalInactiveOldSwitchesUnchanged(t *testing.T) {
 	fake := &grabFakeTerm{}
 	prev := SpawnTerminal
@@ -207,49 +417,88 @@ func TestTerminalInactiveOldSwitchesUnchanged(t *testing.T) {
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
 		t.Fatalf("\"2\" from a non-terminal tab must jump INTO the terminal, got index %d", idx)
 	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("the arriving digit jump must not forward to the shell, got %v", fake.keys)
+	}
 }
 
-// (f) the safety keep: ctrl+q from the terminal ARMS on the first press
-// (tab stays put, no quit) and quits on the second inside the window.
-func TestTerminalGrabCtrlQStillArmsAndQuits(t *testing.T) {
-	m, _ := grabSetupTerminal(t)
-
-	nm, _ := m.Update(ctrlQ())
-	m = nm.(Model)
-	if m.quitArmAt.IsZero() {
-		t.Fatalf("the first ctrl+q must ARM even with the terminal focused")
-	}
-	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
-		t.Fatalf("the arming press must not move the tab, got index %d", idx)
-	}
-	if hint := m.hintLine(); !strings.Contains(hint, quitArmToast) {
-		t.Fatalf("the arm toast must outrank the terminal hint, got %q", hint)
-	}
-
-	nm, cmd := m.Update(ctrlQ())
+// (j) q and ctrl+c keep their quit teeth while released on the terminal
+// tab; captured they belong to the shell (q ordinary input, ctrl+c 0x03
+// SIGINT) — never an app quit.
+func TestTerminalQuitKeysReleasedVsCaptured(t *testing.T) {
+	// released: q quits.
+	m, fake := grabSetupTerminal(t)
+	nm, cmd := m.Update(pressKey('q'))
 	m = nm.(Model)
 	if !hasQuitLeaf(leafMsgs(cmd)) {
-		t.Fatalf("the second ctrl+q inside the window must quit from the terminal")
+		t.Fatalf("released terminal: q must quit (like any other non-chat tab)")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("released terminal: the quitting q must not reach the shell, got %v", fake.keys)
+	}
+
+	// released: ctrl+c quits.
+	m, fake = grabSetupTerminal(t)
+	nm, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	m = nm.(Model)
+	if !hasQuitLeaf(leafMsgs(cmd)) {
+		t.Fatalf("released terminal: ctrl+c must quit (like any other tab)")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("released terminal: the quitting ctrl+c must not reach the shell, got %v", fake.keys)
+	}
+
+	// captured: q is the shell's ordinary input.
+	m, fake = grabSetupCaptured(t)
+	nm, cmd = m.Update(pressKey('q'))
+	m = nm.(Model)
+	if hasQuitLeaf(leafMsgs(cmd)) {
+		t.Fatalf("captured terminal: q must belong to the shell, never an app quit")
+	}
+	if got := fake.lastKey(); got != "q" {
+		t.Fatalf("captured terminal: q must reach the shell as ordinary input, got %q", got)
+	}
+
+	// captured: ctrl+c is the shell's SIGINT byte, not an app quit.
+	nm, cmd = m.Update(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	m = nm.(Model)
+	if hasQuitLeaf(leafMsgs(cmd)) {
+		t.Fatalf("captured terminal: ctrl+c must be the shell's 0x03, never an app quit")
+	}
+	if got := fake.lastKey(); got != "ctrl+c" {
+		t.Fatalf("captured terminal: ctrl+c must forward to the shell (0x03 SIGINT), got %q", got)
 	}
 }
 
-// (g) the terminal hint drops the panel-switch wording — and hintLine
-// surfaces it verbatim while the terminal is focused.
-func TestTerminalGrabTermHintCopy(t *testing.T) {
-	if termHint != "typing → shell · ctrl+o release · ctrl+q quit" {
-		t.Fatalf("the termHint copy is frozen to the grab contract, got %q", termHint)
+// (k) the two frozen hint copies — hintLine swaps verbatim per state.
+func TestTerminalHintConstPinned(t *testing.T) {
+	if termHintReleased != "office keys · ctrl+i → shell · ctrl+q quit" {
+		t.Fatalf("termHintReleased copy is frozen to the toggle contract, got %q", termHintReleased)
 	}
-	if strings.Contains(termHint, "1-6/tab") {
-		t.Fatalf("the panel-switch wording must be gone (false while grabbed), got %q", termHint)
+	if termHintCaptured != "typing → shell · ctrl+o release · ctrl+q quit" {
+		t.Fatalf("termHintCaptured copy is frozen to the toggle contract, got %q", termHintCaptured)
+	}
+	if strings.Contains(termHintCaptured, "1-6/tab") || strings.Contains(termHintReleased, "1-6/tab") {
+		t.Fatalf("the hint copies must not mix the panel-switch wording")
 	}
 
 	m, _ := grabSetupTerminal(t)
-	if hint := m.hintLine(); hint != termHint {
-		t.Fatalf("the focused terminal's hint line must be the termHint verbatim, got %q", hint)
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("the released terminal's hint line must be termHintReleased verbatim, got %q", hint)
+	}
+	nm, _ := m.Update(grabCtrlI())
+	m = nm.(Model)
+	if hint := m.hintLine(); hint != termHintCaptured {
+		t.Fatalf("the captured terminal's hint line must be termHintCaptured verbatim, got %q", hint)
+	}
+	nm, _ = m.Update(grabCtrlO())
+	m = nm.(Model)
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("post-release the hint must swap back verbatim, got %q", hint)
 	}
 }
 
-// (h) TabJump covers 1..7 (the git tab's "7" seam) and misses outside.
+// (l) TabJump covers 1..7 (the git tab's "7" seam) and misses outside.
 func TestTerminalGrabTabJumpOneToSeven(t *testing.T) {
 	k := NewKeyMap()
 	for want, s := range []string{"1", "2", "3", "4", "5", "6", "7"} {

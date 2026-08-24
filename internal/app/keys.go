@@ -2,9 +2,9 @@
 // and the actual key handling can never drift apart. ctrl+q QUIT-ARMS from
 // EVERYWHERE — the first press toasts the hint bar, the second press inside
 // quitArmWindow quits (q/ctrl+c stay single-press, and only outside the
-// chat textarea and the terminal tab — inside the terminal they go to the
-// shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle panels, 1..7
-// jump, ↑↓/pgup/pgdn/wheel scroll, enter sends chat.
+// chat textarea and a CAPTURED terminal — inside a captured terminal they
+// go to the shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle
+// panels, 1..7 jump, ↑↓/pgup/pgdn/wheel scroll, enter sends chat.
 package app
 
 import (
@@ -14,11 +14,19 @@ import (
 	"charm.land/bubbles/v2/key"
 )
 
-// termHint is the statusline hint shown while the terminal tab is active:
-// typing — tab/shift+tab and the digit keys INCLUDED — goes to the REAL
-// shell; the only app-kept keys are ctrl+o (release the focus badge back
-// to chat) and ctrl+q.
-const termHint = "typing → shell · ctrl+o release · ctrl+q quit"
+// termHintReleased is the statusline hint while the terminal tab is active
+// and the keyboard is RELEASED (the DEFAULT): the office keys behave
+// exactly like on any other tab — tab/shift+tab cycle, 1..7 jump, q quits —
+// and ctrl+i is the one-key dive INTO shell capture. Frozen copy, pinned by
+// grab_test.go.
+const termHintReleased = "office keys · ctrl+i → shell · ctrl+q quit"
+
+// termHintCaptured is the statusline hint while the terminal tab CAPTURED
+// the keyboard (opt-in via ctrl+i): typing — tab/shift+tab and the digit
+// keys INCLUDED — goes to the REAL shell; the only app-kept keys are ctrl+o
+// (release back to the office keys) and ctrl+q. Frozen copy, pinned by
+// grab_test.go.
+const termHintCaptured = "typing → shell · ctrl+o release · ctrl+q quit"
 
 // quitArmToast — the high-visibility statusbar line swapped in while a
 // ctrl+q arm is live (the FIRST press arms instead of quitting; the
