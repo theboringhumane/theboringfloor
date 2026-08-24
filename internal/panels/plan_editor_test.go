@@ -1,7 +1,9 @@
-// plan_editor_test.go — the PlanEditor contract: starter template, the pure
-// mermaid caption/count pass (nested fences stay invisible), focus gating of
-// keystrokes, SetSize clamps, the focused-vs-read-only body split, glamour
-// memoization, and theme-switch safety.
+// plan_editor_test.go — the PlanEditor contract: the empty conversation-first
+// rest state and the on-demand starter scaffold (ArmStarter / IsStarter),
+// the userDirty anti-clobber latch, the pure mermaid caption/count pass
+// (nested fences stay invisible), focus gating of keystrokes, SetSize clamps,
+// the focused-vs-read-only body split, glamour memoization, and
+// theme-switch safety.
 package panels
 
 import (
@@ -28,19 +30,52 @@ func frame(t *testing.T, title, view string) {
 	t.Logf("--- %s ---\n%s\n--- /%s ---", title, ansi.Strip(view), title)
 }
 
-func TestPlanEditorStarterTemplate(t *testing.T) {
+func TestPlanEditorRestStateAndStarter(t *testing.T) {
 	e := NewPlanEditor()
-	if v := e.Value(); strings.TrimSpace(v) == "" {
-		t.Fatalf("starter template must be non-empty")
+	// the conversation-first rest state: EMPTY buffer, unfocused, plan mode
+	if v := e.Value(); strings.TrimSpace(v) != "" {
+		t.Fatalf("NewPlanEditor must start EMPTY (the app hides it until content), got %q", v)
 	}
-	if got := mermaidCount(e.Value()); got < 1 {
-		t.Fatalf("starter template must contain ≥1 mermaid fence, got %d", got)
+	if e.IsStarter() {
+		t.Fatalf("an empty buffer is NOT the untouched template (templates report starter-only)")
 	}
 	if e.Focused() {
 		t.Fatalf("NewPlanEditor must be unfocused initially")
 	}
 	if e.Mode() != "plan" {
 		t.Fatalf("NewPlanEditor must start in plan mode, got %q", e.Mode())
+	}
+	if e.UserDirty() {
+		t.Fatalf("a fresh pane carries no user edits")
+	}
+
+	// ArmStarter — the app's manual-open path: the scaffold loads, the pane
+	// reports starter (the approve refusal), and the arm is NOT a user edit
+	if !e.ArmStarter() {
+		t.Fatalf("ArmStarter must arm into an empty buffer")
+	}
+	if v := e.Value(); strings.TrimSpace(v) == "" {
+		t.Fatalf("starter template must be non-empty")
+	}
+	if got := mermaidCount(e.Value()); got < 1 {
+		t.Fatalf("starter template must contain ≥1 mermaid fence, got %d", got)
+	}
+	if !e.IsStarter() {
+		t.Fatalf("freshly-armed buffer must report IsStarter (untouched template)")
+	}
+	if e.UserDirty() {
+		t.Fatalf("arming the template is an app-side load, not a user edit")
+	}
+
+	// ArmStarter NEVER clobbers a non-empty buffer (a presented plan wins)
+	if e.ArmStarter() {
+		t.Fatalf("ArmStarter must refuse a non-empty buffer")
+	}
+
+	// any actual edit drops the starter report
+	e.SetValue("# custom")
+	if e.IsStarter() {
+		t.Fatalf("an edited buffer must NOT report IsStarter")
 	}
 }
 
@@ -92,12 +127,50 @@ func TestMermaidCaptionPass(t *testing.T) {
 	// (d) Value() is byte-identical after the caption pass (the captioned
 	// string is a display copy, never stored)
 	e := NewPlanEditor()
+	e.ArmStarter()
 	before := e.Value()
 	_ = mermaidCaptioned(before)
 	e.Blur()
 	_ = e.View() // runs the full read-only render path (captioned internally)
 	if got := e.Value(); got != before {
 		t.Fatalf("Value() must round-trip byte-identical:\n want %q\n got  %q", before, got)
+	}
+}
+
+// TestPlanEditorUserDirtyLatch pins the anti-clobber latch: app-side
+// SetValue (boss presentation, hydrate, approve reset) never dirties; a
+// real keystroke edit does; the app's SetUserDirty clears it.
+func TestPlanEditorUserDirtyLatch(t *testing.T) {
+	e := NewPlanEditor()
+	if e.UserDirty() {
+		t.Fatalf("a fresh pane is clean")
+	}
+	e.SetValue("# boss's presented plan") // app-side load — never a user edit
+	if e.UserDirty() {
+		t.Fatalf("app-side SetValue must NOT latch userDirty")
+	}
+
+	// keystroke edits while unfocused/build keep the latch clean
+	typeRun(e, "zzz")
+	if e.UserDirty() {
+		t.Fatalf("unfocused keys never reach the buffer — no dirty")
+	}
+
+	// a REAL edit latches; a buffer-preserving cursor key does not
+	e.Focus()
+	typeRun(e, "x")
+	if !e.UserDirty() {
+		t.Fatalf("a keystroke buffer change must latch userDirty")
+	}
+	t.Logf("user edit latched userDirty: buffer=%q dirty=%t", e.Value(), e.UserDirty())
+
+	e.SetUserDirty(false) // the boss-set adoption / approve reset seam
+	if e.UserDirty() {
+		t.Fatalf("SetUserDirty(false) must clear the latch")
+	}
+	e.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyLeft})) // cursor move only
+	if e.UserDirty() {
+		t.Fatalf("a buffer-preserving keystroke must not re-dirty")
 	}
 }
 
@@ -159,6 +232,7 @@ func TestPlanEditorSetSizeClamps(t *testing.T) {
 
 func TestPlanEditorFocusedVsReadOnly(t *testing.T) {
 	e := NewPlanEditor().SetSize(80, 20)
+	e.ArmStarter()
 
 	// focused plan-mode: the live textarea — prompt glyph + raw buffer chars
 	e.Focus()
@@ -169,9 +243,17 @@ func TestPlanEditorFocusedVsReadOnly(t *testing.T) {
 	if !strings.Contains(v, "# Goal") {
 		t.Fatalf("focused View must show raw buffer chars, got:\n%s", v)
 	}
+	last := func(s string) string {
+		ls := strings.Split(s, "\n")
+		return ls[len(ls)-1]
+	}
+	if !strings.Contains(last(v), "enter: newline · esc: done editing") {
+		t.Fatalf("FOCUSED plan-mode footer hint missing, got last line %q", last(v))
+	}
 	frame(t, "plan FOCUSED (live textarea) 80x20", e.View())
 
-	// unfocused plan-mode: read-only glamour render WITH the caption
+	// unfocused plan-mode: read-only glamour render WITH the caption — the
+	// passive presentation surface (the footer advertises the way back in)
 	e.Blur()
 	v = ansi.Strip(e.View())
 	if !strings.Contains(v, mermaidCaption) {
@@ -180,11 +262,11 @@ func TestPlanEditorFocusedVsReadOnly(t *testing.T) {
 	if !strings.Contains(v, "PLAN · markdown (1 mermaid diagram)") {
 		t.Fatalf("header must label PLAN + the diagram count, got first line %q", strings.Split(v, "\n")[0])
 	}
-	if !strings.Contains(v, "ctrl+x approve → build · ctrl+p close") {
+	if !strings.Contains(v, "ctrl+x approve → build · ctrl+p exits") {
 		t.Fatalf("header must carry the key hints, got first line %q", strings.Split(v, "\n")[0])
 	}
-	if !strings.Contains(v, "enter: newline · esc: done editing") {
-		t.Fatalf("plan-mode footer hint missing, got last line %q", strings.Split(v, "\n")[len(strings.Split(v, "\n"))-1])
+	if !strings.Contains(v, "click to edit · ctrl+x approve → build · ctrl+p exits") {
+		t.Fatalf("UNFOCUSED plan-mode footer hint missing, got last line %q", last(v))
 	}
 	// glamour actually formatted the markdown (heading restyled, so the raw
 	// "# Goal" markup is gone from the render even though the words stay)
@@ -230,6 +312,7 @@ func TestPlanEditorFocusedVsReadOnly(t *testing.T) {
 func TestPlanEditorFrames60x20(t *testing.T) {
 	// the contract's proof frames: the pane at the floor-region's 60x20
 	e := NewPlanEditor().SetSize(60, 20)
+	e.ArmStarter()
 	e.Blur()
 	frame(t, "plan read-only 60x20", e.View())
 	e.SetMode("build")
@@ -274,6 +357,7 @@ func TestPlanEditorThemeSwitch(t *testing.T) {
 	t.Cleanup(func() { chrome.SetTheme(before) })
 
 	e := NewPlanEditor().SetSize(60, 20)
+	e.ArmStarter()
 	_ = e.View() // warm the memo under the current theme
 	renders := e.renderCount
 

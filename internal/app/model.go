@@ -233,9 +233,10 @@ type Model struct {
 	// state.Mode already means live/demo and stays untouched. agentMode
 	// is "plan"|"build"; plan is the colleague's contract-frozen floor-slot
 	// plan editor (panels.PlanEditor, asserted against planEditorPane);
-	// planTemplate is the pane's untouched starter buffer, captured at
-	// build time — approve refuses it and persistence drops it, so a
-	// pristine editor never fakes a signed-off plan.
+	// planTemplate is the pane's REST buffer captured at build time ("" —
+	// conversation-first: the starter scaffold arms on manual open, see
+	// openPlanForEdit), so the /new reset in sessions.go clears the canvas
+	// back to empty+hidden and a pristine editor never fakes a saved plan.
 	plan         *panels.PlanEditor
 	planTemplate string
 	agentMode    string
@@ -1312,9 +1313,10 @@ func (m Model) Frame() string {
 		floor := lipgloss.NewStyle().Width(m.width).Height(bandH).
 			Render(office.CachedStyled(m.st, m.width, bandH))
 		var side string
-		if m.agentMode == agentModePlan && m.plan != nil {
-			// plan mode swaps the PANEL slot (the big lower region) for
-			// the plan editor; the floor band stays on top.
+		if m.planPaneVisible() {
+			// a presented/edited plan swaps the PANEL slot (the big lower
+			// region) for the plan editor; the floor band stays on top.
+			// Plan mode with an EMPTY pane keeps the normal panel stack.
 			m.plan.SetSize(m.width, m.middleH-bandH)
 			side = m.plan.View()
 		} else {
@@ -1326,8 +1328,9 @@ func (m Model) Frame() string {
 	} else {
 		side := lipgloss.NewStyle().Width(m.sidebar).Height(m.middleH).
 			Render(m.tabs.View())
-		if m.agentMode == agentModePlan && m.plan != nil {
-			// plan mode: the plan editor owns the floor slot.
+		if m.planPaneVisible() {
+			// a presented/edited plan: the plan editor owns the floor slot.
+			// Plan mode with an EMPTY pane leaves the normal office floor.
 			m.plan.SetSize(m.floorW, m.middleH)
 			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.plan.View(), side)
 		} else {
@@ -1371,7 +1374,13 @@ func (m Model) hintLine() string {
 		return termHint
 	}
 	if m.agentMode == agentModePlan {
-		return planHint
+		// conversation-first hint swap: no plan presented yet → the pane
+		// is hidden and the member just talks; a presented/edited plan →
+		// the click-to-edit surface hint (plan_mode.go — frozen copy).
+		if m.planPaneVisible() {
+			return planHintPane
+		}
+		return planHintIdle
 	}
 	return m.keys.HintLine()
 }
@@ -1466,27 +1475,37 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.tabs.Update(msg)
 	}
 
-	// ctrl+p — the plan/build toggle, claimable from EVERY non-terminal
-	// surface. The open /model picker already owns every key above (and
-	// yields to floats, mirrored here): the permission/question/model
-	// floats keep their keys — a parked turn outranks a mode switch.
+	// ctrl+p — the plan/build mode toggle (toggle ONLY: chat keeps focus,
+	// the pane does not open), claimable from EVERY non-terminal surface.
+	// The open /model picker already owns every key above (and yields to
+	// floats, mirrored here): the permission/question/model floats keep
+	// their keys — a parked turn outranks a mode switch.
 	if key == "ctrl+p" && m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
 		return m.togglePlanMode()
+	}
+
+	// ctrl+x — approve the presented/edited plan → build (or the dim
+	// refusal when none exists), claimable from BOTH the chat input and
+	// the plan editor focus while plan mode is active. Same exclusion
+	// list as ctrl+p (floats; terminal focus returns above), and claimed
+	// BEFORE the pane's key routing below and BEFORE the chat textarea.
+	if key == "ctrl+x" && m.agentMode == agentModePlan &&
+		m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+		return m.approvePlan()
 	}
 
 	// The plan editor, while focused, owns every remaining key — the
 	// terminal tab's tight claim, mirrored for the plan surface. The
 	// excepted keys ride the claims AROUND this block: ctrl+q (the quit
-	// arm) and the tab switches above; ctrl+c (quit) via its fall-through
-	// case inside; ctrl+x (approve→build) and esc (blur back to the chat
-	// input) handled here. While a perm/question float is up the pane
-	// yields entirely — the float's chat-modal keys keep working (the
-	// model-picker contract, one level down).
+	// arm) and the tab switches above; ctrl+x (approve→build) via its own
+	// global claim right above; ctrl+c (quit) via its fall-through case
+	// inside; esc (blur back to the chat input) handled here. While a
+	// perm/question float is up the pane yields entirely — the float's
+	// chat-modal keys keep working (the model-picker contract, one level
+	// down).
 	if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
 		m.permQ.front() == nil && m.question == nil {
 		switch key {
-		case "ctrl+x":
-			return m.approvePlan()
 		case "esc":
 			// done editing for now — typing lands in the chat input again
 			// (the plan buffer keeps; the editor just blurs).
@@ -1562,8 +1581,10 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.modelPick != nil {
 		return nil
 	}
-	// Plan mode's floor-slot pane owns its region: a click INSIDE it
-	// focuses the editor (and is swallowed — no sprite hit-testing;
+	// Plan mode's floor-slot pane owns its region: a click INSIDE it opens
+	// the pane for editing — an EMPTY pane first arms its starter scaffold
+	// (the manual-open scratch workflow), a presented plan is never
+	// clobbered — and the click is swallowed (no sprite hit-testing;
 	// textarea cursor placement is out of v1). A click anywhere else
 	// (chat region, floor band on mobile) hands typing back to the chat
 	// input — the editor blurs and the permanently-focused chat textarea
@@ -1571,11 +1592,11 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.agentMode == agentModePlan && m.plan != nil {
 		if m.mobile() {
 			if msg.Y >= 1+m.floorBandH() {
-				m.plan.Focus()
+				m.openPlanForEdit()
 				return nil
 			}
 		} else if msg.X < m.floorW {
-			m.plan.Focus()
+			m.openPlanForEdit()
 			return nil
 		}
 		m.plan.Blur()
@@ -1770,6 +1791,14 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 		m.chat.SetStreamingThink(m.activeThink)
 	}
 	m.tabs.SetState(m.st)
+
+	// Plan-mode presentation (plan_mode.go): a COMPLETED boss bubble
+	// while plan mode is active mirrors its markdown into the plan pane —
+	// passive, chat keeps focus; a user-edited buffer is never clobbered
+	// (the anti-clobber notice rides the office channel instead).
+	if ev.Kind == state.EvChatBoss && !ev.Msg.Pending {
+		m.presentBossPlan(ev.Msg)
+	}
 
 	// activity: mid-stream deltas are visual growth of ONE bubble — logging
 	// each would spam the log (the placeholder's "typing…" and the final's

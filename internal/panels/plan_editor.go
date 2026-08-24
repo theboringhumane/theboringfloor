@@ -1,12 +1,15 @@
 // plan_editor.go — the full-pane markdown PLAN workspace hosted in the app's
 // floor region: one header row, a body, one footer hint row.
 //
-// WHY this exists: plan mode needs a real EDITING surface, not a chat draft —
-// the boss writes/refines the plan as raw markdown here, approves it into
-// build mode (ctrl+x) and reads it rendered. The pane deliberately has ZERO
-// app/backend knowledge: the app only drives Focus/Blur/SetSize/SetMode and
-// routes keys; everything else (editing, rendering, mermaid awareness,
-// glamour memoization) lives behind the PlanEditor contract.
+// WHY this exists: plan mode is CONVERSATION-FIRST — the member chats with
+// the boss; a completed boss reply is mirrored INTO this pane by the app
+// (passive presentation, chat keeps focus). The pane is also the optional
+// scratch surface: a click inside it arms the starter template and focuses
+// raw editing. The pane deliberately has ZERO app/backend knowledge: the
+// app drives Focus/Blur/SetSize/SetMode/ArmStarter, routes keys, and owns
+// the presentation policy; everything else (editing, rendering, mermaid
+// awareness, glamour memoization, the userDirty anti-clobber latch) lives
+// behind the PlanEditor contract.
 //
 // Body composition rule (spec): FOCUSED + plan-mode shows the live textarea
 // (raw editing); UNFOCUSED or build-mode shows the READ-ONLY glamour render
@@ -66,13 +69,18 @@ const starterPlan = `# Goal
 // ONLY source of truth for the buffer (Value() is a byte-identical round
 // trip); `rv` is the read-only viewport that shows the glamour render; the
 // memo trio (mdKey/mdRender/renderCount) guarantees glamour runs at most
-// once per (buffer, width, mode, theme) change.
+// once per (buffer, width, mode, theme) change. userDirty is the
+// anti-clobber latch: any buffer mutation delivered through Update (a real
+// keystroke edit, never an app-side SetValue) latches it; the app reads it
+// before adopting a fresh boss reply and clears it on each boss-set
+// adoption and on approve.
 type PlanEditor struct {
-	ta      textarea.Model
-	rv      viewport.Model
-	w, h    int
-	focused bool
-	mode    string
+	ta        textarea.Model
+	rv        viewport.Model
+	w, h      int
+	focused   bool
+	mode      string
+	userDirty bool
 
 	// taTheme tracks the chrome theme the textarea styles were last applied
 	// against, so a /theme switch re-points them on the next frame without
@@ -87,16 +95,18 @@ type PlanEditor struct {
 	renderCount int
 }
 
-// NewPlanEditor builds the pane: UNFOCUSED, plan mode, starter template in
-// the buffer. The host is expected to SetSize before the first frame; a sane
-// default keeps pre-SetSize Views renderable.
+// NewPlanEditor builds the pane: UNFOCUSED, plan mode, EMPTY buffer — the
+// conversation-first default (the app keeps the pane hidden until the boss
+// presents a reply, the user edits, or a persisted plan restores; the
+// starter scaffold arms on demand via ArmStarter). The host is expected to
+// SetSize before the first frame; a sane default keeps pre-SetSize Views
+// renderable.
 func NewPlanEditor() *PlanEditor {
 	ta := textarea.New()
 	ta.Prompt = "› " // the house editing gutter (mirrors chat)
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
 	applyTextareaStyles(&ta) // reads the live chrome palette
-	ta.SetValue(starterPlan)
 
 	rv := viewport.New(viewport.WithWidth(1), viewport.WithHeight(1))
 	// glamour already word-wraps at the pane width; SoftWrap is the guard
@@ -108,15 +118,45 @@ func NewPlanEditor() *PlanEditor {
 	return e
 }
 
+// ArmStarter loads the starter template into an EMPTY buffer — the app's
+// manual-open path (a click inside the floor slot gives a blank pane the
+// scratch scaffold). A non-empty buffer is NEVER clobbered (a presented
+// plan wins over boilerplate). Returns true when it armed.
+func (e *PlanEditor) ArmStarter() bool {
+	if strings.TrimSpace(e.ta.Value()) != "" {
+		return false
+	}
+	e.ta.SetValue(starterPlan)
+	return true
+}
+
+// IsStarter reports the buffer IS the untouched starter template (the
+// approve refusal: approving boilerplate would spend a whole build turn on
+// nothing).
+func (e *PlanEditor) IsStarter() bool { return e.ta.Value() == starterPlan }
+
+// UserDirty reports whether the user has edited anything since the last
+// boss-set refresh adoption / approve reset (the anti-clobber latch).
+func (e *PlanEditor) UserDirty() bool { return e.userDirty }
+
+// SetUserDirty is the latch's write side — the app clears it when a boss
+// reply is adopted into the pane and on approve.
+func (e *PlanEditor) SetUserDirty(d bool) { e.userDirty = d }
+
 // Update forwards input to the inner textarea ONLY when focused AND editable
 // (plan mode). In build mode the plan is approved → keys are fully ignored;
-// unfocused the buffer must not move at all.
+// unfocused the buffer must not move at all. A keystroke that actually
+// changes the buffer latches userDirty (app-side SetValue never does).
 func (e *PlanEditor) Update(msg tea.Msg) tea.Cmd {
 	if !e.focused || e.mode == planModeBuild {
 		return nil
 	}
+	before := e.ta.Value()
 	var cmd tea.Cmd
 	e.ta, cmd = e.ta.Update(msg)
+	if e.ta.Value() != before {
+		e.userDirty = true
+	}
 	return cmd
 }
 
@@ -221,7 +261,7 @@ func (e *PlanEditor) header() string {
 	}
 	left := labelStyle.Render(label) + chrome.DimText.Render(" · markdown ") +
 		chrome.DimText.Render("("+diagrams+")")
-	right := chrome.DimText.Render("ctrl+x approve → build · ctrl+p close")
+	right := chrome.DimText.Render("ctrl+x approve → build · ctrl+p exits")
 	gap := e.w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
@@ -233,11 +273,17 @@ func (e *PlanEditor) header() string {
 	return line
 }
 
-// footer renders the one-line dim hint row for the current mode.
+// footer renders the one-line dim hint row for the current mode: the
+// edit-focused hint while the textarea owns keys, the click-to-edit surface
+// hint while the pane sits passive (chat keeps typing), the build lane's
+// exit pointer.
 func (e *PlanEditor) footer() string {
 	hint := "enter: newline · esc: done editing"
-	if e.mode == planModeBuild {
+	switch {
+	case e.mode == planModeBuild:
 		hint = "ctrl+p back to plan"
+	case !e.focused:
+		hint = "click to edit · ctrl+x approve → build · ctrl+p exits"
 	}
 	s := chrome.DimText.Render(hint)
 	if e.w >= 1 && lipgloss.Width(s) > e.w {

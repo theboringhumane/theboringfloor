@@ -19,13 +19,6 @@ import (
 // switches, ctrl+o (release the focus badge back to chat) and ctrl+q.
 const termHint = "typing → shell · 1-6/tab panels · ctrl+o release · ctrl+q quit"
 
-// planHint is the statusline hint while plan mode is active: the focused
-// plan editor owns the keys (ctrl+x approves the drafted plan and sends
-// it to a build agent, esc blurs back to the chat input — the buffer
-// keeps), ctrl+p exits plan mode entirely. Frozen copy — pinned by
-// plan_mode_test.go.
-const planHint = "plan · ctrl+x approve→build · esc chat · ctrl+p exit"
-
 // quitArmToast — the high-visibility statusbar line swapped in while a
 // ctrl+q arm is live (the FIRST press arms instead of quitting; the
 // second press inside quitArmWindow quits). Frozen copy — pinned by

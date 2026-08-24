@@ -86,14 +86,15 @@
 //	                                compact (sidebar 30, short tab labels, 2-row
 //	                                chat input, compressed topbar) and wide 90 —
 //	                                each with its computed width asserts)
-//	                    [--planshot] (plan-mode screenshot: after the scripted
-//	                                round settles ctrl+p flips the office into
-//	                                plan mode — the full-pane markdown editor
-//	                                owns the floor slot, two typed bullets land
-//	                                in the focused editor; ONE frame at ~3.6s:
-//	                                PLAN · markdown header + approve hint, the
-//	                                [plan] statusbar badge, plan statusline
-//	                                hint and the pane footer hint)
+//	                    [--planshot] (plan-mode screenshot, conversation-first:
+//	                                ctrl+p flips ONLY the mode (chat keeps
+//	                                focus, pane hidden while empty) then the
+//	                                scripted boss reply completes and mirrors
+//	                                passively into the pane — TWO frames:
+//	                                t=2.0s floor kept + [plan] badge + idle
+//	                                hint; t=3.6s PLAN · markdown pane carrying
+//	                                the boss's text, floor swapped out, chat
+//	                                input still owns focus)
 //	                    [--terminal] (terminal-tab proof: the stub TermPanel
 //	                                (terminal_panel_stub.go — uishot ONLY)
 //	                                wires through app.SpawnTerminal; selecting
@@ -2172,21 +2173,25 @@ func runLayoutProof() error {
 }
 
 // --- plan-mode screenshot (--planshot) ---------------------------------------
-// ONE frame over a minimal quiet demo script: after the chat round settles,
-// ctrl+p flips the office into plan mode (the wave-34 full-pane markdown
-// editor owns the floor slot — plan mode is app-side UI, so the demo stub
-// needs NOTHING plan-aware: it just must not break when the toggle fires),
-// then two plan bullets are typed rune by rune (the typing helper mirrored
-// from --slash) into the focused editor. The script schedules NO floats
-// (questions/permissions) for the whole window by design: while a
-// perm/question float is up the pane YIELDS keys to the modal (handleKey's
-// claim order), so the default script's 1.92s question / 2.4s permission
-// beats would eat the plan typing — determinism comes from the quiet script,
-// not from threading the typing between the floats.
+// TWO frames over a minimal quiet demo script, the conversation-first plan
+// flow: the script delivers status + hires up front and stays quiet while
+// the workload presses ctrl+p at 1.5s (the REAL global claim site — no
+// terminal focus, no floats); only THEN does the scripted chat round run
+// (user ask → typing placeholder → the boss's markdown plan reply), so the
+// bossCompleted mirror lands while plan mode is active. Frame 1 (~2.0s)
+// proves the toggle alone swaps NOTHING (chat-first: empty pane → office
+// floor keeps the slot, [plan] badge + idle hint up); frame 2 (~3.6s)
+// proves the boss's reply presented passively into the pane (chat keeps
+// focus — the pane footer's "click to edit" is the visible tell). The
+// script schedules NO floats (questions/permissions) for the whole window:
+// while a float is up ctrl+p is refused (handleKey's claim order), so
+// determinism comes from the quiet script.
 
-// scriptPlanDemo (--planshot) — status, three hires, one settled chat round
-// (user ask → typing placeholder → a short markdown boss reply), then quiet
-// forever: every later beat is the workload's (ctrl+p + plan typing).
+// scriptPlanDemo (--planshot) — status, three hires, then (AFTER the
+// workload's ctrl+p) one chat round: user ask → typing placeholder → the
+// boss's short markdown PLAN reply, then quiet forever. The plan body
+// carries a unique marker word ("azimuth") that appears nowhere else in
+// the frame, so the contains-asserts pin the pane's adopted content.
 func (b *stubBackend) scriptPlanDemo(at func(ms int, ev state.Event)) {
 	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — plan-mode stub online"})
 	at(100, state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -2195,37 +2200,21 @@ func (b *stubBackend) scriptPlanDemo(at func(ms int, ev state.Event)) {
 		ID: "sco-1", Name: "skopos-1", Role: state.RoleScout, Sprite: state.SpriteAtDesk}})
 	at(400, state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "rev-1", Name: "dikastes", Role: state.RoleReviewer, Sprite: state.SpriteAtDesk}})
-	at(550, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
-		"sketch the lobby gallery wall", false)})
-	at(600, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
-	at(1100, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("b1", "boss",
-		"On it — flip the floor with **ctrl+p** and the plan wall takes over.", false)})
-	// quiet: ctrl+p + the plan bullets are the ONLY later beats
+	at(1600, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"plan the lobby gallery wall", false)})
+	at(1650, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+	at(2400, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("b1", "boss",
+		"# Lobby gallery wall\n1. matte panels azimuth-washed\n2. glassmorphic kanban lanes\n3. zero clerical chrome", false)})
+	// quiet: ctrl+p (workload) + this scripted round are the ONLY beats
 }
 
-// planShotWorkload — ctrl+p at 1.5s (the chat round settled at ~1.1s; the
-// editor Focus() arms synchronously inside Update, so no settle beyond the
-// brief's ~0.5s is needed), the plan bullets at ~2.0s. The Enter first:
-// the starter template's cursor sits at the buffer END after SetValue (=
-// Reset + InsertString) — on the closing ``` of the example mermaid fence —
-// so a fresh line keeps the typed bullets OUT of the fence marker. The two
-// bullets carry unique marker words ("kanban", "clerical") that appear
-// nowhere else in the frame, so the contains-asserts pin the PANE.
+// planShotWorkload — ONE key: ctrl+p at 1.5s, after the hires settled and
+// before the scripted chat round begins. The mode flip is ALL the key
+// does (chat keeps focus; the pane opens only when the boss's reply
+// completes at 2.4s — plan_mode.go's presentation hook).
 func planShotWorkload(p *tea.Program) {
-	typeLine := func(s string) {
-		for _, r := range s {
-			p.Send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
-			time.Sleep(10 * time.Millisecond)
-		}
-		p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-		time.Sleep(80 * time.Millisecond)
-	}
 	time.Sleep(1500 * time.Millisecond)
 	p.Send(tea.KeyPressMsg(tea.Key{Code: 'p', Mod: tea.ModCtrl})) // the real claim site: no terminal focus, no floats
-	time.Sleep(500 * time.Millisecond)
-	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-	typeLine("- glassmorphic kanban lanes")
-	typeLine("- zero clerical chrome")
 }
 
 // runPlanShot runs one fresh app+program against the plan-demo stub for
@@ -2265,35 +2254,78 @@ func runPlanShot(dur time.Duration) (string, error) {
 
 func runPlanProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
-	frame, err := runPlanShot(3600 * time.Millisecond)
+	assertPresent := func(frame string, wants ...string) error {
+		stripped := ansi.Strip(frame)
+		for _, want := range wants {
+			if !strings.Contains(stripped, want) {
+				return fail("planshot: frame missing %q", want)
+			}
+		}
+		return nil
+	}
+	assertAbsent := func(frame string, rejects ...string) error {
+		stripped := ansi.Strip(frame)
+		for _, reject := range rejects {
+			if strings.Contains(stripped, reject) {
+				return fail("planshot: frame must NOT contain %q", reject)
+			}
+		}
+		return nil
+	}
+
+	// FRAME 1 — t=2.0s: ctrl+p landed at 1.5s, the boss's answer is still
+	// pending → plan mode is ACTIVE but the pane is EMPTY, so the office
+	// floor keeps the slot (conversation-first: chat-first = floor-first).
+	frame1, err := runPlanShot(2000 * time.Millisecond)
 	if err != nil {
 		return err
 	}
-	fmt.Println("===== UI SHOT · PLAN — t=3.6s (plan mode ACTIVE: the markdown plan editor owns the floor slot, two typed bullets in the focused editor, [plan] badge + plan hints up) =====")
-	fmt.Println(frame)
+	fmt.Println("===== UI SHOT · PLAN frame 1/2 — t=2.0s (plan mode ACTIVE, pane empty+hidden: office floor keeps the slot, [plan] badge + idle plan hint up) =====")
+	fmt.Println(frame1)
 	fmt.Println("===== UI SHOT =====")
+	if err := assertPresent(frame1,
+		"[=BOSS=]",                     // the office floor still owns the slot
+		"[plan]",                       // statusbar agent badge
+		"plan · boss plans read-only",  // the idle plan hint prefix (statusline)
+		"[office] plan mode",           // the toggle's own notice — proof ctrl+p went through the REAL claim site
+		"plan the lobby gallery wall",  // the scripted chat round still runs in the sidebar
+	); err != nil {
+		return err
+	}
+	if err := assertAbsent(frame1,
+		"PLAN · markdown", // no pane header while the buffer is empty
+		"click to edit",   // no pane footer either
+	); err != nil {
+		return err
+	}
 
-	stripped := ansi.Strip(frame)
-	for _, want := range []string{
-		"PLAN · markdown",                    // pane header in the floor slot
-		"ctrl+x approve",                     // header right hint VISIBLE prefix — the 80-col sidebar leaves the pane 50 cols, so the full "ctrl+x approve → build · ctrl+p close" clips after "approve"
-		"enter: newline · esc: done editing", // pane footer hint (fits the 50-col pane in full)
-		"[plan]",                             // statusbar agent badge (counts segment — never dropped)
-		"ctrl+x approve→build · esc chat · ctrl+p exit", // the planHint statusline segment (app/keys.go frozen copy)
-		"plan mode — draft the plan below",              // the office notice posted by togglePlanMode itself — proof ctrl+p went through the REAL claim site
-		"kanban",                                        // typed bullet 1 (unique marker)
-		"clerical",                                      // typed bullet 2 (unique marker)
-	} {
-		if !strings.Contains(stripped, want) {
-			return fail("planshot: frame missing %q", want)
-		}
+	// FRAME 2 — t=3.6s: the boss's markdown plan completed at 2.4s and
+	// mirrored PASSIVELY into the pane (plan_mode.go's bossCompleted hook):
+	// the pane owns the floor slot carrying the boss's text, chat keeps
+	// focus (the pane footer's "click to edit" is the visible tell).
+	frame2, err := runPlanShot(3600 * time.Millisecond)
+	if err != nil {
+		return err
 	}
-	// the pane REPLACES the office floor in the slot — the sprite plane must
-	// not render at all while plan mode is active
-	if strings.Contains(stripped, "[=BOSS=]") {
-		return fail("planshot: the office floor still renders — the plan pane must OWN the floor slot in plan mode")
+	fmt.Println("===== UI SHOT · PLAN frame 2/2 — t=3.6s (boss reply PRESENTED: the markdown pane owns the floor slot with the boss's plan text, [plan] badge + click-to-edit hint, chat input still owns focus) =====")
+	fmt.Println(frame2)
+	fmt.Println("===== UI SHOT =====")
+	if err := assertPresent(frame2,
+		"PLAN · markdown",     // pane header in the floor slot
+		"azimuth",             // the boss's plan text, mirrored into the pane (unique marker)
+		"[plan]",              // statusbar agent badge
+		"plan · click to edit", // the pane-visible statusline hint prefix
+		"click to edit",       // pane footer hint — the pane is UNFOCUSED: focus visibly stays in the chat input
+	); err != nil {
+		return err
 	}
-	fmt.Println("asserts: OK — ctrl+p flipped to plan mode via the real claim site (office notice); the plan pane owns the floor slot (PLAN · markdown header + ctrl+x approve hint, footer hint, typed glassmorphic-kanban / clerical-chrome bullets); the [plan] badge + plan statusline hint ride the statusbar; the office floor is swapped out")
+	if err := assertAbsent(frame2,
+		"[=BOSS=]",  // the pane REPLACES the office floor in the slot
+		"flowchart", // the starter template never armed (empty+hidden default; boss text presented instead)
+	); err != nil {
+		return err
+	}
+	fmt.Println("asserts: OK — ctrl+p went through the real claim site (office notice) and flipped ONLY the mode (frame 1: floor kept, [plan] badge + idle hint, pane hidden); the boss's completed reply presented passively into the pane (frame 2: PLAN · markdown + azimuth marker, floor swapped out, starter template never armed) while chat kept focus (click-to-edit footer, pane-side hint prefixes)")
 	return nil
 }
 
@@ -3285,7 +3317,7 @@ func main() {
 	power := flag.String("power", "", "power-governor proof: 6s scripted window per mode (auto|saver|performance|all) — tick counts, floor frame-cache hit %, TickDelay table, /power + /model slash demo, custom boss-name frame")
 	social := flag.Bool("social", false, "social-clock proof: synchronous tick pump — three frames (tea ask / both walking / gossip chain), banter chain trace, question-modal gate assert, tick-seeded determinism check")
 	layout := flag.Bool("layout", false, "layout-modes proof: three frames over the same window — NORMAL (sidebar 80, the bcb1635 default), compact (sidebar 30, short tab labels, 2-row chat input, compressed topbar), wide 90 (explicit ui.sidebarWidth, clamped 26..100) — with computed width asserts per frame")
-	planshot := flag.Bool("planshot", false, "plan-mode screenshot: after the quiet demo round settles ctrl+p flips the office to plan mode (the full-pane markdown editor owns the floor slot) and two plan bullets type into the focused editor — ONE frame at ~3.6s: PLAN · markdown pane + approve hint, [plan] statusbar badge, plan hints, typed text, office floor swapped out")
+	planshot := flag.Bool("planshot", false, "plan-mode screenshot (conversation-first): ctrl+p flips ONLY the mode — TWO frames: t=2.0s plan mode active with the pane empty+hidden (office floor kept, [plan] badge + idle hint); the scripted boss reply then completes and mirrors passively into the pane — t=3.6s the markdown pane owns the floor slot with the boss's plan text (unique azimuth marker), floor swapped out, starter template never armed, chat input still owns focus (click-to-edit pane footer)")
 	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, keys routed into the shell surface, frame + asserts")
 	focus := flag.Bool("focus", false, "fix-wave proof, THREE synchronous-tick frames: (a) empty pending bubble — typing row below the divider (above the input), NO caret anywhere; (b) streaming partial bubble — text grows in the viewport while the typing row STAYS below the divider for the whole pending period (still no caret); (c) two concurrent agents — per-agent work threads grouped (headers + merged rows), boss tool line still inline, boss idle at the placeholder in delegating state (dim row in the same below-divider slot, [delegat] nameplate). Every frame: no \"▌\", every chat row inside the divider's width budget")
 	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEBORINGOFFICE_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
