@@ -201,6 +201,7 @@
 /* Herdr-style page frame: faint square grid in gutters, hard L/R rules on content. */
 .page-grid {
   min-height: 100svh;
+  overflow-x: clip;
   background-color: #0a0a0a;
   background-image:
     linear-gradient(to right, oklch(1 0 0 / 4%) 1px, transparent 1px),

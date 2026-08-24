@@ -23,6 +23,7 @@ export function ScrollReveal({
   stagger?: number
 }) {
   const ref = useRef<HTMLDivElement>(null)
+  const horizontal = direction === 'left' || direction === 'right'
 
   useEffect(() => {
     const el = ref.current
@@ -56,8 +57,20 @@ export function ScrollReveal({
     return () => st.kill()
   }, [direction, delay, distance, stagger])
 
+  // Clip sideways slides on a static parent so pre-enter translateX
+  // doesn't expand document scrollWidth on mobile.
+  if (horizontal) {
+    return (
+      <div className="min-w-0 overflow-x-clip">
+        <div ref={ref} className={className}>
+          {children}
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div ref={ref} className={className}>
+    <div ref={ref} className={cn(className)}>
       {children}
     </div>
   )
