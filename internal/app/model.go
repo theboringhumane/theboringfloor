@@ -1562,11 +1562,12 @@ func (m Model) hintLine() string {
 		}
 		return chrome.OnBarBold(chrome.OK, " "+m.copyNote+" ")
 	}
-	if m.wedgeNoted {
-		// W1 — the wedge watchdog's statusline swap rides the hint seam
-		// (warn class, like the arm toasts) until boss traffic re-arms
-		// the latch or /stop closes the turn; it never blocks input —
-		// enter keeps free-queueing.
+	if hasPendingBoss(m.st) && !m.questionParked && m.bossWedgeOverdue() {
+		// W1 — the wedge hint derives from the silence CLOCK, not the
+		// one-shot latch: it shows whenever a boss turn is overdue and
+		// vanishes on its own the moment real traffic refreshes the
+		// clock — no stale banner after a recovered turn, no chorus of
+		// repeated rows either (the transcript row fires once per turn).
 		return chrome.OnBarBold(chrome.Warn, " "+wedgeHint+" ")
 	}
 	if m.terminalActive() {
@@ -2235,17 +2236,19 @@ func (m *Model) applyDelegation(ev state.Event) {
 	if isBossActivity(ev) {
 		m.lastBossActivity = m.st.Tick
 		// W1 — the wall-clock twin: real silence is measured against this.
-		// Only REAL server-side boss traffic re-arms the wedge watchdog —
+		// Only REAL server-side boss traffic refreshes the wedge clock —
 		// the send-side typing placeholder is the UI's own optimistic
 		// staging (opencode.go emits one on EVERY send/queue-flush), not
 		// proof of life. Letting it stamp the clock restarted the 2m
 		// window per send, so a wedged turn printed one red row per turn
-		// forever. Real traffic on a wedged turn that finally moves still
-		// clears the latch (and its hint/row) the same reduce, so the note
-		// can never lag a recovered turn.
+		// forever. The LATCH, though, is NOT re-armed here: mid-turn
+		// traffic must not re-arm the one-shot (a long turn with quiet
+		// stretches printed the same row over and over); it re-arms only
+		// at the turn END (completion//stop unwind). The hint bar derives
+		// from the clock itself, so a recovered turn clears its own
+		// banner without any latch flip.
 		if !isSendSidePlaceholder(ev) {
 			m.lastBossActivityAt = time.Now()
-			m.wedgeNoted = false
 		}
 	}
 	busy := 0
@@ -2320,18 +2323,26 @@ func (m *Model) checkBossWedge() {
 	if m.wedgeNoted || m.questionParked || !hasPendingBoss(m.st) {
 		return // already said, waiting on the user's question answer, or nothing outstanding
 	}
+	if !m.bossWedgeOverdue() {
+		return
+	}
+	m.wedgeNoted = true
+	m.noticeErr("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own")
+}
+
+// bossWedgeOverdue — the wall-clock wedge predicate, shared by the
+// one-shot fire (checkBossWedge) and the live hint swap: outstanding
+// boss placeholder AND the last REAL traffic opencode-side is older than
+// the threshold. Zero clock = never fired yet this run.
+func (m *Model) bossWedgeOverdue() bool {
 	if m.lastBossActivityAt.IsZero() {
-		return // no boss traffic this run — nothing to age out
+		return false
 	}
 	threshold := m.wedgeAfter
 	if threshold <= 0 {
 		threshold = bossWedgeAfter
 	}
-	if time.Since(m.lastBossActivityAt) < threshold {
-		return
-	}
-	m.wedgeNoted = true
-	m.noticeErr("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own")
+	return time.Since(m.lastBossActivityAt) >= threshold
 }
 
 // SetWedgeAfterForShot is the uishot/test harness seam for the wedge

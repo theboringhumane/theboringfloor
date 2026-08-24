@@ -282,20 +282,38 @@ func TestWedgePlaceholderNeverReArms(t *testing.T) {
 		t.Fatalf("placeholders must never reprint the wedge row, got %d rows", n)
 	}
 
-	// real traffic (a stream delta) re-arms the episode; a fresh silence
-	// notes ONE more row — one per episode, never per placeholder.
+	// real traffic (a stream delta) re-stamps the CLOCK mid-turn — the
+	// derived hint clears itself — but does NOT re-arm the fired latch:
+	// one red row per TURN, never one per quiet stretch (the field fix).
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
 		Msg: state.ChatMsg{ID: "bossmsg-m2", From: "boss", Text: "half an answer…", Pending: true}})
-	if m.wedgeNoted {
-		t.Fatal("real boss traffic must re-arm the latch for the next episode")
+	if !m.wedgeNoted {
+		t.Fatal("mid-turn real traffic must NOT re-arm the fired latch (one row per turn until the turn ends)")
 	}
 	if m.lastBossActivityAt.Equal(armedAt) {
 		t.Fatal("real boss traffic must re-stamp the watchdog clock")
 	}
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 2)
+	if n := countWedgeRows(m); n != 1 {
+		t.Fatalf("a spent latch must NEVER reprint mid-turn, got %d rows", n)
+	}
+
+	// the turn actually ends: the completion placeholder-swap clears the
+	// latch for the NEXT episode (existing reset path).
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "b1", From: "boss", Text: "done — report shipped"}})
+	if m.wedgeNoted {
+		t.Fatal("the completion (turn end) must re-arm the watchdog for the next episode")
+	}
+
+	// a NEW turn stalls again: one more row, exactly once.
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "boss-2", From: "boss", Pending: true}})
+	stale(&m, bossWedgeAfter+time.Second)
+	m = pumpTicks(m, 1)
 	if n := countWedgeRows(m); n != 2 {
-		t.Fatalf("the re-armed watchdog notes the second episode exactly once, got %d rows", n)
+		t.Fatalf("the turn-ended watchdog notes the next episode once, got %d rows", n)
 	}
 }
 
