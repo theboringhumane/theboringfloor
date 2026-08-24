@@ -28,5 +28,5 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 
 ## Recent posts
 
-- [How to run multiple coding agents without drowning in tmux](https://theboringoffice.pages.dev/blog/running-multiple-coding-agents)
-- [Subagents are easy. Watching their work is the hard part](https://theboringoffice.pages.dev/blog/watching-subagent-work)
+- [Running more than one coding agent at a time](https://theboringoffice.pages.dev/blog/running-multiple-coding-agents)
+- [You launched the subagents. Now you have to watch them.](https://theboringoffice.pages.dev/blog/watching-subagent-work)

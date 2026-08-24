@@ -1,69 +1,94 @@
 ---
-title: "How to run multiple coding agents without drowning in tmux"
-description: "Reddit is full of people juggling Claude Code, Cursor, Codex, and OpenCode in parallel panes. The real problem is not launching agents — it is seeing the work."
+title: "Running more than one coding agent at a time"
+description: "What actually breaks when you put Claude Code, Codex, or OpenCode in parallel — and the few things that keep the afternoon from dissolving into panes."
 date: "2026-08-24"
 author: "theboringoffice team"
 categories: ["AI Agents", "Office"]
 featured: true
 ---
 
-If you spend time on Reddit's Claude Code, Codex, and vibecoding threads, a pattern shows up fast: people are no longer asking whether AI agents can write code. They are asking how to **run several at once** without losing the plot.
+Most people get to a second agent the same way. The first one is stuck on a permission, or grinding through tests, and you still have a ticket sitting there. You open another terminal. You tell yourself you will check back in five minutes.
 
-The answers usually look the same. Split a terminal. Open another Cursor window. Wrap Claude Code in tmux. Spin up a homemade orchestrator. Someone always posts a screenshot of four panes and a tired caption about "the setup that finally works."
+An hour later you have three sessions, two of them waiting on you, and you cannot remember which one owns the auth change.
 
-That setup is real progress. It is also incomplete.
+This is not a model problem. Claude Code, Codex, Cursor, and OpenCode will all write the code. The hard part is staying oriented once more than one of them is moving at once.
 
-## What people are actually searching for
+## Start with one, longer than you think
 
-Across comparison posts and "which tool do you use in 2026" threads, the demand clusters into three jobs:
+A second session is only cheaper than a first session if you can still answer, without scanning every pane: what is in flight, what is blocked, and what landed.
 
-1. **Pick a primary agent** — Claude Code for deep repo work, Cursor for in-editor speed, Codex for longer background runs, OpenCode as a flexible CLI.
-2. **Run more than one** — parallel agents on different tickets, or specialist subagents on review, tests, and security.
-3. **Stay oriented** — know who is blocked, who is waiting on a permission, and what changed since you last looked.
+If you cannot answer that for *one* agent — because the transcript is a wall, or because the last useful diff is 400 lines up — two agents will not save time. They will double the reconstruction work.
 
-The first two jobs have plenty of tools. The third is where most "multi-agent setups" quietly fail.
+Give the first session a way to finish without you. Tests it can run. A plan you already approved. An allowlist for the commands you trust (`git status`, the linter, the test target). Then, and only then, open another one.
 
-## tmux is a launcher, not a floor
+Anthropic's own guidance on Claude Code is the same shape: explore, plan, implement, and give the agent a check it can run. Parallelism is a later move.
 
-tmux (and iTerm splits, and Windows ports of the same idea) answers a narrow question: *can I attach to several agent processes?*
+## Isolate the files, or they will fight
 
-It does not answer:
+Two agents in the same working tree will overwrite each other. This is not theoretical. One will format a file the other is mid-edit. One will revert a hunk it did not understand. You spend the evening unscrewing a merge you never asked for.
 
-- Which employee owns the flaky test ticket right now?
-- What diff did they just produce, and in which thread?
-- Which shell permission is sitting in a queue while the rest of the floor keeps moving?
-- What should you read first when you come back from lunch?
+The boring fix is git worktrees (or copies, if you are not in git):
 
-So people invent glue. Status scripts. Named panes. Custom dashboards. Orchestrators that promise to "manage 10–20 agents." The category is growing because the pain is honest: **parallel agents create parallel context debt.**
+```bash
+git worktree add ../office-auth -b agent/auth-refresh
+git worktree add ../office-tests -b agent/flaky-test
+```
 
-## The missing primitive is a shared workplace
+Each agent gets a checkout. Each checkout gets a branch. When a session is done, you review the branch the way you would review a coworker, not by scrolling a chat.
 
-A coding agent is not a chat bubble. It is closer to a coworker with a desk, a queue of asks, and a trail of work.
+Name the sessions the way you name branches. `oauth-migration` is findable tomorrow. `claude-3` is not.
 
-When you treat agents like tabs, you get tab management. When you treat them like a team, you need:
+## What tmux is for, and what it is not
 
-- a **roster** you can scan
-- a **board** for claimed work
-- **work threads** that keep diffs and thinking attached to the task
-- a **permission queue** so one yes/no does not hijack every pane
-- enough ambient signal that a glance replaces a status meeting
+tmux (or iTerm splits, or extra Cursor windows) answers one question: can I attach to more than one process?
 
-That is the product bet behind theboringoffice. The boss is a real `opencode` session. Sub-agents are real employees on a floor you can watch. The point is not another model comparison chart. It is a place where the parallel work stays legible.
+It does not tell you:
 
-## A practical way to evaluate any multi-agent setup
+- which session claimed the flaky test
+- whether the diff in pane 2 is the one you should read first
+- that pane 3 has been sitting on `chmod +x scripts/deploy.sh` for twenty minutes
+- what you missed while you were in pane 1
 
-Before you add another orchestrator, ask four questions of the setup you already have:
+People compensate with named panes, status scripts, and homemade orchestrators. Some of that is fine. A `Ctrl-b w` list of session names is already better than untitled windows. But a list of processes is still not a picture of the work.
 
-1. **Can you name the active work without reading every pane?** If not, you have launchers, not visibility.
-2. **Does a permission ask pause the whole world?** If one `chmod` steals focus from every agent, parallelism is fake.
-3. **Can you review a change from the worker who made it?** Diffs stranded in scrollback are how trust dies.
-4. **Does context survive `ctrl+c` and a closed laptop?** Teams that forget overnight are expensive.
+If you stay in tmux, at least give every pane a title that matches the branch, and keep a single note — a file, a board, a paper square — of who owns what. The note is the actual coordination. The panes are just where the typing happens.
 
-If those answers are weak, more panes will not help. You need a workplace model.
+## Permissions will serialize you if you let them
 
-## Try the office shape before you buy another wrapper
+One agent asking "can I run this?" is a speed bump. Four agents asking, each in their own pane, is a queue you are servicing by alt-tab.
 
-If you want to feel the difference without wiring a fleet:
+Two habits help:
+
+1. **Pre-approve the boring commands.** Test runners, formatters, `git diff`. If you already type `y` without reading, it should not have been a prompt.
+2. **Keep the scary ones queued, not modal.** A write to production config, a network call, a `chmod` on a deploy script — those should wait. They should not freeze every other session while they wait.
+
+If every ask steals the whole screen, "parallel" just means four serial interruptions with extra windows.
+
+## Review in a fresh context
+
+The session that wrote the code is a bad reviewer of that code. It will defend the path it took.
+
+Have a second session (or a subagent with a clean context) look at the diff and only the diff. Tell it what "done" means: the tests that must pass, the files that should not have changed, the edge case you care about. Ask it to report gaps, not style.
+
+Then you read the gaps. Not the full transcript. The transcript is how the agent spent the afternoon. The diff is what you are shipping.
+
+## When this is the wrong move
+
+Do not parallelize a task you could describe in one sentence. A typo, a log line, a rename — one agent, no plan file, no worktree.
+
+Do not parallelize when you do not have a check. If "looks done" is the only signal, you become the test suite for every session at once.
+
+Do not add a fourth agent because the third one is blocked on you. Unblock the third one.
+
+## Why we built a floor instead of another pane manager
+
+We kept hitting the same afternoon: real `opencode` sessions, real sub-agents, and a human (us) reconstructing the shift from scrollback.
+
+theboringoffice is a native terminal app for that shift. The boss is an `opencode` session. Employees are task sub-agents. The floor, roster, board, mail, and work threads are different views of the same work, not extra products. Permission asks stack instead of hijacking the screen. Yesterday's session is still there in the morning.
+
+It will not replace git worktrees, and it should not. Isolation still belongs in the repo. What it replaces is the part where you play air-traffic control across untitled panes.
+
+If you want to see the interaction without wiring a live server:
 
 ```bash
 curl -fsSL \
@@ -72,6 +97,10 @@ curl -fsSL \
 theboringoffice --demo
 ```
 
-Demo mode walks a full shift with a scripted team so you can judge the interaction — roster, board, threads, permissions — before you attach a live `opencode` server.
+Demo mode is labeled as a tour. When that feels like a workplace instead of a dashboard, run it live — or attach to an `opencode` server you already have:
 
-Running multiple coding agents is no longer exotic. Making that work *readable* is still rare. Build for the floor, not just the panes.
+```bash
+theboringoffice --server http://127.0.0.1:4096
+```
+
+The goal is not more agents. It is still being able to say, at 4pm, who is doing what.

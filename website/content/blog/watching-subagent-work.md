@@ -1,76 +1,97 @@
 ---
-title: "Subagents are easy. Watching their work is the hard part"
-description: "Parallel review agents and specialist subagents are everywhere in 2026. The bottleneck moved from generation to supervision — permissions, diffs, and handoffs."
+title: "You launched the subagents. Now you have to watch them."
+description: "Parallel reviewers and specialist workers are easy to spawn. The job that remains is supervision: permissions, diffs, and a handoff you would actually accept from a coworker."
 date: "2026-08-24"
 author: "theboringoffice team"
 categories: ["AI Agents", "Engineering"]
 featured: true
 ---
 
-A year ago, the hard question was whether an agent could finish a non-trivial change. In 2026 the harder question shows up in every serious workflow post: once you have **many** agents — reviewers, implementers, security checkers, test runners — who watches them?
+Spawning a specialist is the fun part. A review agent, a test runner, a security pass — each with its own prompt, each in its own context so they do not pollute the session that is still writing code.
 
-People are publishing elaborate Claude Code subagent fleets for parallel code review. Others are wiring specialist workers for tests, style, and deployment safety. The generation side is getting cheaper. The supervision side is getting noisier.
+Then they all come back at once.
 
-## Where the bottleneck moved
+One wants `npm test`. One wants to write `auth.go`. One finished a review you have not opened. One is blocked on a question that looks like a permission prompt but is actually a product decision. You are now the merge queue.
 
-Search Reddit and engineering blogs for coding agents and you will see the same complaints under different names:
+This is the part of "multi-agent" setups that blog posts skip, because it is not a clever prompt. It is operations.
 
-- **Permission fatigue** — allow this shell command, allow that write, allow the next network call. One agent is manageable. Four agents fighting for your attention is not.
-- **Diff soup** — the change exists somewhere in a transcript. Finding *which* agent produced *which* hunk is archaeology.
-- **Handoff failure** — the implementer finished, the reviewer has notes, and you still do not have a single place that feels like a coworker briefing.
-- **Silent success / silent failure** — an agent stalled while you were reading another pane. You only notice when the clock does.
+## Generation got cheap. Attention did not.
 
-These are not model problems. They are **operations** problems.
+A year ago the question was whether an agent could finish a non-trivial change. That bar moved. People now run nine parallel reviewers, or a writer and a reviewer in two windows, or a fleet of Claude Code subagents that each own a category of nits.
 
-## Specialists scale output. They also scale interrupts.
+Output scales. Interrupts scale with it.
 
-Parallel subagents are a good idea. Security review should not wait on style nits. Tests should not wait on prose. The mistake is assuming that "launch nine agents" includes a human-usable merge of their work.
+The failures we keep seeing — in our own usage, and in the writeups people publish — have the same shape:
 
-Without structure, each specialist becomes another interrupt channel:
+**You cannot find the change.** It is in a transcript, somewhere, mixed with tool noise and a thinking block that auto-collapsed. You wanted a handoff. You got archaeology.
 
-1. Agent A wants `npm test`
-2. Agent B wants a write to `auth.go`
-3. Agent C finished a review nobody asked you to open yet
-4. Agent D is blocked on a question that looks like a permission prompt but is really a product decision
+**Every permission is an all-hands meeting.** Four agents, four panes, four "allow this?". You stop being a programmer and start being a clicker.
 
-If every interrupt is modal, you become the serial bottleneck the agents were supposed to remove.
+**Done is silent.** An agent stalled while you were reading another one. You notice when the clock does, or when someone asks where the PR is.
 
-## What "watching the work" should feel like
+**The writer grades its own exam.** The same context that produced the patch then "reviews" it, and of course the patch looks reasonable.
 
-A usable multi-agent office has a few non-negotiables:
+None of that is fixed by a better model. It is fixed by how the work is shown to you.
 
-### 1. Permissions wait their turn
+## Watch the diff, not the autobiography
 
-Asks should stack as a queue — allow once, allow always, reject — without stealing the whole screen every time. The rest of the floor keeps moving.
+An agent session is a diary. You rarely need the diary.
 
-### 2. Diffs stay attached to the worker
+You need:
 
-A work thread is not a log dump. It is the story of one piece of work: tool calls, thinking you can collapse, and the patch you will actually review.
+- the files that changed
+- the test command that was run, and whether it passed
+- anything still waiting on you
+- a short account of *why*, if the why is not obvious from the diff
 
-### 3. The board is the source of truth
+If your tool cannot produce that without you grepping the log, you do not have a team. You have chat rooms.
 
-Tickets claimed, tickets blocked, tickets done. If status only lives in prose replies, you will rebuild a project tracker in your head every morning.
+A work thread — diffs, tool calls, and thinking attached to *one* task — is the difference. Click the worker, see the work. Collapse the thinking. Keep the patch.
 
-### 4. Shoulder taps are rare and specific
+When you review, use a fresh context. Anthropic's Claude Code guidance is explicit about this: a reviewer that did not write the code will actually look for gaps. Tell it the requirements and the tests, and tell it not to report style. Then you decide. Chasing every finding from a reviewer that was told to "find issues" is how you get extra abstraction layers you did not ask for.
 
-Notify when you are away and something needs a human call. Stay quiet while you are already looking. Attention is the scarce resource.
+## Permissions should wait, not freeze the floor
 
-## Why we built an office instead of another agent launcher
+You will not pre-approve everything. You should not.
 
-theboringoffice assumes the agents already exist — starting with `opencode` as the boss and sub-agents as employees. The product job is to make their shift legible:
+You *will* type `y` on the tenth `git status` without reading it. That is the tell. Put those commands on an allowlist.
 
-- walk the floor and see motion tied to real events
-- open a work thread the way you would ask a coworker what changed
-- answer the permission queue without pausing every other desk
-- come back tomorrow to a team that still remembers yesterday
+Leave the rest in a queue: allow once, allow always, reject. The rest of the agents keep working. A `chmod` on a deploy script can sit at 1 of 3 while the test runner finishes. That is the whole trick. Modal prompts make you the bottleneck the specialists were supposed to remove.
 
-You can tour that shape without wiring production:
+A useful extra: you can tell a permission from a *question*. "May I run this?" is a permission. "Should this be a breaking API change?" is a decision. If both arrive as the same popup, you will treat product calls like shell noise, or the reverse.
+
+## Status has to live somewhere that is not prose
+
+"I'll take the flaky test" in a chat message is gone the next time you scroll.
+
+A board — even a crude one — is enough: claimed, blocked, done. If the only status is buried in replies, you will rebuild a project tracker in your head every time you sit down. That cost is why people say agents "don't save time" after a week of using them.
+
+The same goes for coming back tomorrow. If the session dies and the next one starts from a blank slate, you paid for yesterday twice. Memory is not a slogan here. It is whether the board, the last chat, and the last decision are still there after `ctrl+q`.
+
+## Do not add a tenth until you can see the nine
+
+A practical bar, before you write another subagent prompt:
+
+- Can you name who is blocked without polling windows?
+- Can you review the last change without searching scrollback?
+- Does one permission ask stop everyone else?
+- Will tomorrow's you inherit any of this?
+
+If the answer is no, the next specialist makes your afternoon worse. Fix the watching first. One implementer you can supervise beats four you babysit.
+
+## What we wanted to look at
+
+We wanted a shift we could understand at a glance: who is walking, who is waiting, what changed.
+
+theboringoffice is that workplace in a terminal. Boss chat is a real `opencode` session. Sub-agents show up as employees on a floor. Work threads keep the diff with the worker. The permission queue is 1 of N, with `y` / `a` / `n`, and it does not kidnap the rest of the office. agentmemory keeps the board, the mail, and the last session across restarts.
+
+You can take the tour without a live backend:
 
 ```bash
 theboringoffice --demo
 ```
 
-Or install and run live:
+Or install and clock in:
 
 ```bash
 curl -fsSL \
@@ -79,13 +100,4 @@ curl -fsSL \
 theboringoffice
 ```
 
-## A short checklist before you add another subagent
-
-- Do you know who is blocked without polling panes?
-- Can you review the last change without searching scrollback?
-- Will a permission ask serialize the whole fleet?
-- Will tomorrow's you inherit today's context?
-
-If any answer is no, do not add a tenth specialist yet. Fix how you watch the nine you already have.
-
-Subagents made coding agents productive. Supervision is what makes them trustworthy. Build for the second problem on purpose.
+Subagents are a good idea. They are also how you accidentally hire a team you cannot manage. Build the watching on purpose, or the extra hands just mean extra noise.
