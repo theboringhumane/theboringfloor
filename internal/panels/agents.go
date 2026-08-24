@@ -10,6 +10,7 @@
 package panels
 
 import (
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -59,7 +60,8 @@ type Agents struct {
 	vp       viewport.Model
 	st       state.OfficeState
 	w, h     int
-	rev      string
+	rev      string // last rendered content (compare-based cache)
+	key      string // cheap fingerprint of every render input — hit ⇒ skip render+compare
 	bossName string // cfg.Boss.Name — the human label pinned first (default below)
 	selected string // floor-click selection: a "▸" marker + bold row (popover.go SetSelected)
 }
@@ -105,14 +107,63 @@ func (a *Agents) SetSize(w, h int) {
 	a.SetState(a.st)
 }
 
-// SetState implements Tab.
+// SetState implements Tab. Same rev-key discipline as Board/Mail: the key
+// fingerprints every render input (width, theme, boss label, selection,
+// concierge-answering flag, the full employee tuple set); a hit skips
+// render+compare, a miss falls back to the old render+compare path
+// verbatim — output is byte-identical to the un-keyed panel in every case.
 func (a *Agents) SetState(st state.OfficeState) {
 	a.st = st
+	key := a.revKeyOf(st)
+	if key == a.key {
+		return // provably identical content — zero render churn
+	}
+	a.key = key
 	content := a.render()
 	if content != a.rev {
 		a.rev = content
 		a.vp.SetContent(content)
 	}
+}
+
+// revKeyOf — every input render() consumes, cheaply: panel width, theme
+// name (chrome vars re-point on /theme), the pinned boss label, the
+// floor-click selection, the concierge "answering" flag (a pending
+// EvChatOffice bubble anywhere in the chat log), and per employee
+// id·name·role·sprite·task (a mid-roster task edit with stable ids still
+// flips the key).
+func (a *Agents) revKeyOf(st state.OfficeState) string {
+	answering := false
+	for _, m := range st.Chat {
+		if m.From == "office" && m.Kind == "office" && m.Pending {
+			answering = true
+			break
+		}
+	}
+	var sb strings.Builder
+	sb.Grow(64 + len(st.Employees)*48)
+	sb.WriteString(strconv.Itoa(a.w))
+	sb.WriteByte('|')
+	sb.WriteString(chrome.CurrentTheme().Name)
+	sb.WriteByte('|')
+	sb.WriteString(a.bossName)
+	sb.WriteByte('|')
+	sb.WriteString(a.selected)
+	sb.WriteByte('|')
+	sb.WriteString(strconv.FormatBool(answering))
+	for _, e := range st.Employees {
+		sb.WriteByte('|')
+		sb.WriteString(e.ID)
+		sb.WriteByte(',')
+		sb.WriteString(e.Name)
+		sb.WriteByte(',')
+		sb.WriteString(string(e.Role))
+		sb.WriteByte(',')
+		sb.WriteString(string(e.Sprite))
+		sb.WriteByte(',')
+		sb.WriteString(e.Task)
+	}
+	return sb.String()
 }
 
 // Update implements Interactive (scroll).

@@ -5,6 +5,7 @@ package panels
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -19,7 +20,8 @@ type Mail struct {
 	vp   viewport.Model
 	st   state.OfficeState
 	w, h int
-	rev  string
+	rev  string // last rendered content (compare-based cache)
+	key  string // cheap fingerprint of every render input — hit ⇒ skip render+compare
 }
 
 // NewMail builds the mailbox panel.
@@ -42,14 +44,50 @@ func (m *Mail) SetSize(w, h int) {
 	m.SetState(m.st)
 }
 
-// SetState implements Tab.
+// SetState implements Tab. Same rev-key discipline as Board/Agents: the
+// key fingerprints every render input (width, theme, the full mail tuple
+// set); a hit skips render+compare, a miss falls back to the old
+// render+compare path verbatim — output is byte-identical to the un-keyed
+// panel in every case.
 func (m *Mail) SetState(st state.OfficeState) {
 	m.st = st
+	key := m.revKeyOf(st)
+	if key == m.key {
+		return // provably identical content — zero render churn
+	}
+	m.key = key
 	content := m.render()
 	if content != m.rev {
 		m.rev = content
 		m.vp.SetContent(content)
 	}
+}
+
+// revKeyOf — len(items)|lastID|kind-counts generalised to a full tuple
+// fingerprint: per mail, id·at·kind·from·to·subject (a mid-list subject
+// edit with stable ids still flips the key), plus the width + the active
+// theme name (chrome vars re-point on /theme).
+func (m *Mail) revKeyOf(st state.OfficeState) string {
+	var sb strings.Builder
+	sb.Grow(64 + len(st.Mails)*64)
+	sb.WriteString(strconv.Itoa(m.w))
+	sb.WriteByte('|')
+	sb.WriteString(chrome.CurrentTheme().Name)
+	for _, it := range st.Mails {
+		sb.WriteByte('|')
+		sb.WriteString(it.ID)
+		sb.WriteByte(',')
+		sb.WriteString(strconv.FormatInt(it.At, 10))
+		sb.WriteByte(',')
+		sb.WriteString(string(it.Kind))
+		sb.WriteByte(',')
+		sb.WriteString(it.From)
+		sb.WriteByte(',')
+		sb.WriteString(it.To)
+		sb.WriteByte(',')
+		sb.WriteString(it.Subject)
+	}
+	return sb.String()
 }
 
 // Update implements Interactive (scroll).

@@ -7,6 +7,7 @@ package panels
 import (
 	"image/color"
 	"sort"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -22,7 +23,8 @@ type Board struct {
 	vp   viewport.Model
 	st   state.OfficeState
 	w, h int
-	rev  string
+	rev  string // last rendered content (compare-based cache)
+	key  string // cheap fingerprint of every render input — hit ⇒ skip render+compare
 }
 
 // NewBoard builds the board panel.
@@ -45,14 +47,49 @@ func (b *Board) SetSize(w, h int) {
 	b.SetState(b.st)
 }
 
-// SetState implements Tab.
+// SetState implements Tab. A cheap rev key fingerprints EVERYTHING the
+// render consumes (width, theme, the full task tuple set); a hit skips BOTH
+// the render pass and the string compare — the per-SetState fan-out of the
+// tab bar. A miss falls back to the old render+compare path verbatim, so
+// output is byte-identical to the un-keyed panel in every case.
 func (b *Board) SetState(st state.OfficeState) {
 	b.st = st
+	key := b.revKeyOf(st)
+	if key == b.key {
+		return // provably identical content — zero render churn
+	}
+	b.key = key
 	content := b.render()
 	if content != b.rev {
 		b.rev = content
 		b.vp.SetContent(content)
 	}
+}
+
+// revKeyOf — len(items)|lastID|statusCounts generalised to a full tuple
+// fingerprint: per task, id·status·title·owner·at (a mid-list edit with
+// stable ids still flips the key), plus the width + the active theme name
+// (chrome vars re-point on /theme — a theme flip with frozen state must
+// re-render through the miss path).
+func (b *Board) revKeyOf(st state.OfficeState) string {
+	var sb strings.Builder
+	sb.Grow(64 + len(st.Tasks)*32)
+	sb.WriteString(strconv.Itoa(b.w))
+	sb.WriteByte('|')
+	sb.WriteString(chrome.CurrentTheme().Name)
+	for _, t := range st.Tasks {
+		sb.WriteByte('|')
+		sb.WriteString(t.ID)
+		sb.WriteByte(',')
+		sb.WriteString(string(t.Status))
+		sb.WriteByte(',')
+		sb.WriteString(t.Title)
+		sb.WriteByte(',')
+		sb.WriteString(t.Owner)
+		sb.WriteByte(',')
+		sb.WriteString(strconv.FormatInt(t.At, 10))
+	}
+	return sb.String()
 }
 
 // Update implements Interactive (scroll).

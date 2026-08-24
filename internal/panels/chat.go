@@ -1154,16 +1154,34 @@ func (c *Chat) Title() string { return "chat" }
 // Pending reports whether a boss reply is outstanding.
 func (c *Chat) Pending() bool { return c.pending }
 
-// SpinnerKick returns the cmd that starts the braille-spin animation. The
+// SpinnerKick returns the cmd that RE-ARMS the braille-spin animation. The
 // app fires it on the BOSS-PENDING flip: applyEvent (internal/app/
 // model.go) calls it exactly when the office state goes from NO pending
 // boss bubble to one (!prevPending && hasPendingBoss) — the moment a
 // delegation burst's first LIVE worker-thread header appears too. The
 // returned c.sp.Tick schedules the first spinner.TickMsg; the panel's own
-// Update arm answers each one with sp.Update + the next Tick, so once
-// kicked the chain self-perpetuates and live thread glyphs animate for
-// the rest of the session.
+// Update arm answers each one with sp.Update, but re-arms the chain ONLY
+// while spinnerLive holds — a settled session emits ZERO spinner ticks
+// (the power governor's idle duty: each tick used to bump frameNonce → a
+// full Frame() at 10k-line transcripts every ~83ms forever).
 func (c *Chat) SpinnerKick() tea.Cmd { return c.sp.Tick }
+
+// spinnerLive — the liveness set the spinner chain gates on: every glyph
+// that visibly animates while the chain runs. The set is the same one the
+// loading/typing rows read:
+//   - c.anyThreadActive() — the "team is working…" loading row + every LIVE
+//     worker-thread header (chat_loading.go: roster sprite busy + freshest
+//     wtool/wthink meta-tick inside wtoolStaleTicks). The header braille
+//     itself is a pure function of the office tick now (threadLiveGlyph),
+//     so gating the chain changes no pixels while live.
+//   - c.pendingSpin — the "<boss> is typing…" row below the divider,
+//     shown for the whole boss-pending period (SetState).
+//
+// When BOTH are quiet nothing animates: the next Tick is withheld and the
+// chain stops. A later boss-pending flip re-arms via SpinnerKick.
+func (c *Chat) spinnerLive() bool {
+	return c.pendingSpin || c.anyThreadActive()
+}
 
 // inputRows is the textarea's visible height: textareaH normally, trimmed
 // to 2 rows in the /compact layout. The permission popover is a floating
@@ -1690,6 +1708,13 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		c.sp, cmd = c.sp.Update(msg)
+		if !c.spinnerLive() {
+			// power governor: quiet session → the chain STOPS here (no
+			// re-arm, zero 83ms ticks → zero frameNonce bumps → zero
+			// full Frame() renders). SpinnerKick is the re-arm on the
+			// next boss-pending flip.
+			return nil
+		}
 		return cmd
 	case clipPasteMsg:
 		// the image probe answered (chat_attach.go) — fired by the

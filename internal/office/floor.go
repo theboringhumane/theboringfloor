@@ -117,10 +117,64 @@ func abs(v int) int {
 	return v
 }
 
+// spriteCanMove — the state machine's own "can this sprite change WITHOUT
+// an external event" predicate: the three transit states walk toward their
+// hotspot and flip on arrival, and the parked coffee sprite trips back to
+// the desk once its since-gate expires. Every other state (at-desk,
+// working, meeting, at-mailbox) changes ONLY via reducer events, never
+// inside AdvanceSprites.
+func spriteCanMove(s state.SpriteState) bool {
+	switch s {
+	case state.SpriteToManager, state.SpriteToCoffee, state.SpriteToDesk, state.SpriteCoffee:
+		return true
+	}
+	return false
+}
+
+// spritesAllParked — the fast-path probe for AdvanceSprites: true when no
+// employee is in a self-moving state, every walker already sits on its
+// sprite's target (incl. plan-generation drift + first-sight creation), and
+// no stale walker id needs pruning. Zero allocations — plain loops over the
+// employees slice and the (tiny) walkers map.
+func spritesAllParked(st state.OfficeState, plan Plan) bool {
+	for id := range walkers {
+		found := false
+		for _, e := range st.Employees {
+			if e.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false // stale walker to prune → slow path
+		}
+	}
+	for _, e := range st.Employees {
+		if spriteCanMove(e.Sprite) {
+			return false
+		}
+		w := walkers[e.ID]
+		if w == nil || w.gen != plan.Gen {
+			return false // first sight / plan resize → seed or re-walk
+		}
+		if t := targetFor(e.Sprite, e.Seat, plan); w.x != t.X || w.y != t.Y {
+			return false // drifted off target (seat moved) → walk back
+		}
+	}
+	return true
+}
+
 // AdvanceSprites — advance every walker by up to 2 cells (dogleg: x first,
 // then y); drive state transitions.
 func AdvanceSprites(st state.OfficeState) state.OfficeState {
 	plan := CurrentPlan()
+	// fast path: a parked office tick+state advances nothing — the state,
+	// the floor frame, and the walkers map are all bytes-identical, so the
+	// live-map + employees-slice allocations of the slow path are pure
+	// churn (per idle tick).
+	if spritesAllParked(st, plan) {
+		return st
+	}
 	live := map[string]bool{}
 	for _, e := range st.Employees {
 		live[e.ID] = true

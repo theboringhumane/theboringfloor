@@ -26,7 +26,6 @@ package app
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 
 	"github.com/theboringhumane/theboringoffice/internal/office"
@@ -157,10 +156,33 @@ func newSocialClock() *SocialClock {
 	return &SocialClock{teaPairs: map[string]bool{}}
 }
 
-// seed — deterministic PRNG for one decision: same tick + same seq ⇒ same
+// socialRNG — the deterministic PRNG of ONE social decision, allocation-free:
+// a splitmix64 counter over the (tick, seq, salt) seed. The CONTRACT is
+// unchanged: same tick + same seq ⇒ same social outcome across runs (the
+// uishot --social determinism proof pins tick-seeded reproducibility, not
+// the byte sequence). This replaces rand.New(rand.NewSource(seed)) which
+// allocated a ~5KB warm rngSource PER IDLE TICK when the spacing gate asked
+// for one Intn (52% of the tick branch's mallocgc share in profiles).
+type socialRNG struct{ s uint64 }
+
+// next — one splitmix64 step: Weyl-sequence advance + Stafford13 finalizer.
+func (r *socialRNG) next() uint64 {
+	r.s += 0x9e3779b97f4a7c15
+	z := r.s
+	z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9
+	z = (z ^ (z >> 27)) * 0x94d049bb133111eb
+	return z ^ (z >> 31)
+}
+
+// Intn — [0,n). Modulo reduction: n is tiny (≤~100); the bias is far under
+// the noise floor of a social-clock roll (the old math/rand path was an
+// equally arbitrary mapping of the same seed).
+func (r *socialRNG) Intn(n int) int { return int(r.next() % uint64(n)) }
+
+// rng — deterministic PRNG for one decision: same tick + same seq ⇒ same
 // social outcome across runs (the uishot --social determinism proof).
-func (c *SocialClock) rand(tick int) *rand.Rand {
-	return rand.New(rand.NewSource(int64(tick)*73402369 + int64(c.seq)*2713 + 481))
+func (c *SocialClock) rng(tick int) socialRNG {
+	return socialRNG{s: uint64(tick)*73402369 + uint64(c.seq)*2713 + 481}
 }
 
 // crewMembers — non-manager employees (the boss never banters; hr does).
@@ -193,7 +215,7 @@ func (c *SocialClock) socialStep(st state.OfficeState, modalOpen, thinkActive bo
 	if len(crew) == 0 {
 		return nil
 	}
-	r := c.rand(st.Tick)
+	r := c.rng(st.Tick) // value: shared across the plan calls via &r
 	solo := len(crew) <= 1 // boss+hr only (or less): water-cooler, half as often
 
 	// gate (2): firing spacing.
@@ -212,7 +234,7 @@ func (c *SocialClock) socialStep(st state.OfficeState, modalOpen, thinkActive bo
 
 	now := st.Tick
 	if solo {
-		return c.planWaterCooler(crew, r, now)
+		return c.planWaterCooler(crew, &r, now)
 	}
 
 	roll := r.Intn(100)
@@ -221,25 +243,25 @@ func (c *SocialClock) socialStep(st state.OfficeState, modalOpen, thinkActive bo
 	}
 	switch {
 	case roll < socialRollBanter:
-		if beats := c.planBanter(crew, r, now); len(beats) > 0 {
+		if beats := c.planBanter(crew, &r, now); len(beats) > 0 {
 			return beats
 		}
 	case roll < socialRollTea:
-		if beats := c.planTea(crew, r, now); len(beats) > 0 {
+		if beats := c.planTea(crew, &r, now); len(beats) > 0 {
 			return beats
 		}
 	case roll < socialRollGossip:
-		if beats := c.planGossip(crew, r, now); len(beats) > 0 {
+		if beats := c.planGossip(crew, &r, now); len(beats) > 0 {
 			return beats
 		}
 	}
 	// unavailable pairing / force roll water-cooler / roll >= 85: solo drift.
-	return c.planWaterCooler(crew, r, now)
+	return c.planWaterCooler(crew, &r, now)
 }
 
 // pickPartner — B for A, preferring the same side of the floor (seat-anchor
 // x on the same half) when any same-side candidate exists.
-func pickPartner(a state.Employee, crew []state.Employee, r *rand.Rand) (state.Employee, bool) {
+func pickPartner(a state.Employee, crew []state.Employee, r *socialRNG) (state.Employee, bool) {
 	planW := office.CurrentPlan().Width
 	ax := office.SeatAnchor(a.Seat).X < planW/2
 	var same, other []state.Employee
@@ -264,7 +286,7 @@ func pickPartner(a state.Employee, crew []state.Employee, r *rand.Rand) (state.E
 
 // planBanter (a) — a 2-3 beat pair dialog: A bubbles now, B answers
 // socialBeatGap ticks later (optional third beat back to A).
-func (c *SocialClock) planBanter(crew []state.Employee, r *rand.Rand, now int) []socialBeat {
+func (c *SocialClock) planBanter(crew []state.Employee, r *socialRNG, now int) []socialBeat {
 	if len(crew) < 2 {
 		return nil
 	}
@@ -290,7 +312,7 @@ func (c *SocialClock) planBanter(crew []state.Employee, r *rand.Rand, now int) [
 // +6, and an arrival check (their walk + ~45 ticks) bubbles "good idea."
 // from both only if both actually reached the machine. Skew walkers (one
 // already on a tea walk, or active-walking) disqualify the pair.
-func (c *SocialClock) planTea(crew []state.Employee, r *rand.Rand, now int) []socialBeat {
+func (c *SocialClock) planTea(crew []state.Employee, r *socialRNG, now int) []socialBeat {
 	if len(crew) < 2 {
 		return nil
 	}
@@ -329,7 +351,7 @@ func (c *SocialClock) planTea(crew []state.Employee, r *rand.Rand, now int) []so
 
 // planGossip (c) — a 3-beat chain between two talkers mentioning an absent
 // third employee BY NAME.
-func (c *SocialClock) planGossip(crew []state.Employee, r *rand.Rand, now int) []socialBeat {
+func (c *SocialClock) planGossip(crew []state.Employee, r *socialRNG, now int) []socialBeat {
 	if len(crew) < 3 {
 		return nil
 	}
@@ -365,7 +387,7 @@ func (c *SocialClock) planGossip(crew []state.Employee, r *rand.Rand, now int) [
 // planWaterCooler (d) — an idle employee wanders off for a solo coffee with
 // a self-bubble from the legacy bank; with nobody idling, a single solo
 // line for a random crew member (the legacy ambient case).
-func (c *SocialClock) planWaterCooler(crew []state.Employee, r *rand.Rand, now int) []socialBeat {
+func (c *SocialClock) planWaterCooler(crew []state.Employee, r *socialRNG, now int) []socialBeat {
 	line := socialSoloBank[r.Intn(len(socialSoloBank))]
 	for _, e := range crew {
 		if e.Sprite == state.SpriteAtDesk && !c.teaPairs[e.ID] {
