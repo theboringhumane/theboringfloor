@@ -384,6 +384,20 @@ type Model struct {
 	// delegation reducer hook (applyDelegation, P3).
 	lastBossActivity int
 
+	// Boss-wedge watchdog (W1): lastBossActivityAt is the WALL-CLOCK twin
+	// of the tick counter above, refreshed by the same isBossActivity set
+	// in applyDelegation. NEVER derived from st.Tick — the governor
+	// re-arms ticks at 180ms–3s depending on posture (power.go), so tick
+	// deltas cannot measure real silence. wedgeNoted is the one-shot
+	// latch: the "boss turn wedged" red row + hint-swap fire ONCE per
+	// wedge and ride until any boss activity re-arms it (mirror of
+	// conciergeNoted) or resetServerTurn//stop closes the turn. wedgeAfter
+	// is the threshold override (0 = bossWedgeAfter); the uishot/test
+	// harness seams it via SetWedgeAfterForShot.
+	lastBossActivityAt time.Time
+	wedgeNoted         bool
+	wedgeAfter         time.Duration
+
 	// Office-session persistence (sessions.go; LIVE mode only):
 	// sessDir is the working directory the office belongs to ("" = no
 	// persist), sessLast throttles the 5s cheap-write loop off EvTick.
@@ -1446,6 +1460,13 @@ func (m Model) hintLine() string {
 	if m.copyNote != "" {
 		return chrome.OnBarBold(chrome.OK, " "+m.copyNote+" ")
 	}
+	if m.wedgeNoted {
+		// W1 — the wedge watchdog's statusline swap rides the hint seam
+		// (warn class, like the arm toasts) until boss traffic re-arms
+		// the latch or /stop closes the turn; it never blocks input —
+		// enter keeps free-queueing.
+		return chrome.OnBarBold(chrome.Warn, " "+wedgeHint+" ")
+	}
 	if m.terminalActive() {
 		return termHint
 	}
@@ -1892,7 +1913,10 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 	// nature, and the NEXT EvStatus overwrites it; statuses carrying the
 	// agentFieldStatusMarker escalade into the transcript as a red office
 	// row (the marker is the string contract with opencode.go's postPrompt).
-	if ev.Kind == state.EvStatus && strings.HasPrefix(ev.Text, agentFieldStatusMarker) {
+	// W4 extends the same seam to the serveDiedStatusMarker (opencode.go's
+	// watchServe): a dead serve must never be a blink-and-miss-it line.
+	if ev.Kind == state.EvStatus && (strings.HasPrefix(ev.Text, agentFieldStatusMarker) ||
+		strings.HasPrefix(ev.Text, serveDiedStatusMarker)) {
 		m.noticeErr(ev.Text)
 	}
 
@@ -1927,6 +1951,10 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 		// social clock: plans + fires its beats off the tick (EvBubble/
 		// EvIdleDrift events through the normal reducer path — ambient.go).
 		m.runSocial()
+		// W1 wedge watchdog: notice-only, wall clock, one-shot per wedge
+		// (checkBossWedge) — rides this same cheap loop since the tick is
+		// the only event guaranteed to keep arriving during dead silence.
+		m.checkBossWedge()
 		// governor: the next delay is chosen from the CURRENT cycle's
 		// busy/idle posture (power.go).
 		return m.tickCmd()
@@ -2001,6 +2029,12 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 func (m *Model) applyDelegation(ev state.Event) {
 	if isBossActivity(ev) {
 		m.lastBossActivity = m.st.Tick
+		// W1 — the wall-clock twin: real silence is measured against this.
+		// Any boss traffic is ALSO the wedge watchdog's re-arm: a wedged
+		// turn that finally moves clears the latch (and its hint/row)
+		// the same reduce, so the note can never lag a recovered turn.
+		m.lastBossActivityAt = time.Now()
+		m.wedgeNoted = false
 	}
 	busy := 0
 	for _, e := range m.st.Employees {
@@ -2030,6 +2064,52 @@ func isBossActivity(ev state.Event) bool {
 	}
 	return false
 }
+
+// --- boss-wedge watchdog (W1) ------------------------------------------------
+
+// bossWedgeAfter — the silence threshold: a pending boss turn (typing
+// placeholder) or a parked question hold with ZERO boss-side traffic for
+// this long counts as wedged. Wall clock only — the tick governor's
+// cadence varies 180ms–3s, so the threshold measures
+// m.lastBossActivityAt, never st.Tick.
+const bossWedgeAfter = 120 * time.Second
+
+// wedgeHint — the statusline swap while the wedge latch is set (rides the
+// hint seam, warn class). It never auto-kills: /stop is offered, but the
+// turn may still complete on its own and queued input keeps working.
+const wedgeHint = "boss looks wedged — no reply for 2m · /stop to abort · enter queues anyway"
+
+// checkBossWedge runs off the EvTick cheap loop (applyEvent's tick branch).
+// NOTICE-ONLY by design: NEVER auto-kill, NEVER auto-respawn the turn — a
+// slow model round or a long delegation quiet spell is indistinguishable
+// from a dead one, and firing either would destroy real work. Armed when a
+// boss placeholder is outstanding or a question hold is parked; fires ONCE
+// per wedge (wedgeNoted, re-armed by any isBossActivity refresh in
+// applyDelegation and by resetServerTurn//stop): one red transcript row
+// plus the hint swap, then silence until recovery.
+func (m *Model) checkBossWedge() {
+	if m.wedgeNoted || (!hasPendingBoss(m.st) && !m.questionParked) {
+		return // nothing outstanding, or already said
+	}
+	if m.lastBossActivityAt.IsZero() {
+		return // no boss traffic this run — nothing to age out
+	}
+	threshold := m.wedgeAfter
+	if threshold <= 0 {
+		threshold = bossWedgeAfter
+	}
+	if time.Since(m.lastBossActivityAt) < threshold {
+		return
+	}
+	m.wedgeNoted = true
+	m.noticeErr("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own")
+}
+
+// SetWedgeAfterForShot is the uishot/test harness seam for the wedge
+// threshold (same additive pattern as SelectTab/PersistSession): the
+// synchronous proof drivers can't wait out the 2m production floor. A
+// zero/negative value restores the default.
+func (m *Model) SetWedgeAfterForShot(d time.Duration) { m.wedgeAfter = d }
 
 // team type-asserts the optional teamBackend seam (live/demo backends).
 func (m *Model) team() (teamBackend, bool) {
@@ -2068,13 +2148,21 @@ func (m *Model) clearBusyStatus() {
 	m.busyStatus = false
 }
 
+// serveDiedStatusMarker — the W4 string contract with opencode.go's
+// watchServe: the "serve died" note is statusline-only by nature (the next
+// EvStatus overwrites it), so it rides the F5a escalation seam into the
+// transcript as a red office row.
+const serveDiedStatusMarker = "[theboringoffice] opencode serve died"
+
 // resetServerTurn closes the free-queuing tally for the busy turn that just
 // ended (completion / error / /stop): placeholder turn count back to 0, the
 // status compose restored, the concierge routing notice re-armed for the
-// next busy turn.
+// next busy turn — and the W1 wedge watchdog re-armed with it (the turn is
+// closed, whatever its end).
 func (m *Model) resetServerTurn() {
 	m.serverQueued = 0
 	m.conciergeNoted = false
+	m.wedgeNoted = false // W1: the turn ended (completion//stop) — re-arm the watchdog
 	m.clearBusyStatus()
 	if m.chat != nil {
 		m.chat.SetServerTurn(0)
@@ -2136,11 +2224,21 @@ func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 // unwind the in-flight UI cleanly. The client queue is NOT touched (queued
 // items send on the next turn), permission/question roadblocks stay put,
 // and the whole thing plays no sound — a stop is not an error.
+//
+// G1 — the abort RPC is best-effort now: a dead serve or a dead transport
+// makes AbortSessions fail, and the old early-return LEFT THE OFFICE
+// STRANDED on the wedged turn (placeholder forever "typing…", the wedge
+// watchdog's advice literally not working). The OFFICE always recovers:
+// on failure we log + print one dim note and CONTINUE into the exact same
+// unwind as success. The turn may still finish server-side later — its
+// late completion then appends as a fresh bubble: the placeholder is
+// already collapsed, so the reducer's (c) branch takes the non-pending
+// "bossmsg-"+id append path and nothing double-pops.
 func (m *Model) stopWork() {
 	if ab, ok := m.backend.(state.SessionAborter); ok {
 		if err := ab.AbortSessions(); err != nil {
-			m.noticeErr(fmt.Sprintf("/stop: abort failed: %v", err))
-			return
+			qdebugf("/stop: AbortSessions failed (unwinding anyway): %v", err)
+			m.notice("/stop: abort signal failed remotely — office unwound anyway (the turn may still finish server-side; its reply lands as a fresh bubble)")
 		}
 	}
 	m.unwindStoppedWork()

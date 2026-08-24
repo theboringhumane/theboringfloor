@@ -149,6 +149,14 @@ type liveBackend struct {
 	// aborted turn's own death rattle and is swallowed instead of surfacing
 	// as a "could not read reply" line (see maybeBossCompleted).
 	lastAbortAt int64
+	// serveDied (W4) latches when watchServe sees our spawned `opencode
+	// serve` die out from under the office (an exit NOT initiated by
+	// Stop — Stop kills the proc only after fl.stop seals, which flips
+	// the same guard). While set, the next Send respawns a FRESH serve
+	// before staging its placeholder (respawnServeForSend) — never
+	// auto-respawned earlier: a fresh serve is the office's boot, and an
+	// idle office must not keep re-booting a dead binary.
+	serveDied bool
 	// review — the CTO's once-per-drained-board latch over the CHILD-
 	// SESSION brief board (ctx.tasks): any child EvDispatch re-arms it, and
 	// the return that drains the board makes the CTO post his ONE review
@@ -213,7 +221,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 		u = os.Getenv("OPENCODE_SERVER")
 	}
 	if u == "" {
-		spawnedURL, proc, err := spawnServe(b.directory)
+		spawnedURL, proc, exitCh, err := spawnServe(b.directory)
 		if err == nil && charterNotes.changed {
 			// opencode spoils its config at start: a serve whose boot
 			// raced/missed the freshly-written instructions entry keeps
@@ -225,8 +233,8 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 			// charter applies from the server's next boot.
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] manager charter: restarting serve so it picks up the config"})
 			_ = proc.Process.Kill()
-			_ = proc.Wait()
-			spawnedURL, proc, err = spawnServe(b.directory)
+			<-exitCh // reap via the scan-era reaper (never a second cmd.Wait)
+			spawnedURL, proc, exitCh, err = spawnServe(b.directory)
 		}
 		if err != nil {
 			return err
@@ -234,6 +242,11 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 		b.mu.Lock()
 		b.proc = proc
 		b.mu.Unlock()
+		// W4 — the serve-death watch: ONE row + the serveDied latch the
+		// next Send turns into a fresh serve. Started only for the FINAL
+		// live spawn (the charter restart above reaps its own proc first,
+		// so this goroutine can never fire for the killed one).
+		go b.watchServe(proc, exitCh)
 		u = spawnedURL
 	}
 	b.mu.Lock()
@@ -417,6 +430,16 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 		b.fl.emit(state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
 			ID: userID, From: "user", Text: trimmed, At: now, Kind: "user", Meta: meta,
 		}})
+	}
+
+	// W4 — the serve died under us (watchServe latched it): respawn NOW,
+	// before the ready gate below. Never earlier: an idle office doesn't
+	// re-boot dead binaries, a sending one needs a live serve.
+	b.mu.Lock()
+	serveRespawn := b.serveDied
+	b.mu.Unlock()
+	if serveRespawn {
+		b.respawnServeForSend()
 	}
 
 	b.mu.Lock()
@@ -707,6 +730,76 @@ func (b *liveBackend) Stop() error {
 
 // ---------------------------------------------------------------- spawn
 
+// watchServe is the W4 serve-death detector: ONE goroutine per spawned
+// serve, parked on the exit channel spawnServe hands out (the reaper owns
+// cmd.Wait — this is a LISTEN only). A live serve dying is always
+// abnormal — this backend never stops the proc mid-run: Stop() kills it
+// only after fl.stop() seals, and the charter restart/Stop respawn paths
+// swap b.proc before their kill lands — so the stopping guard is the
+// pair (proc still current AND flow not stopped). On a real death: flip
+// the serveDied latch (the next Send respawns — never auto-respawn an
+// idle office) and print ONE status row carrying the app's serve-died
+// marker (F5a-style escalation mints the red transcript row app-side).
+func (b *liveBackend) watchServe(proc *exec.Cmd, exit <-chan error) {
+	err := <-exit
+	b.mu.Lock()
+	current := b.proc == proc
+	if current {
+		b.proc = nil // a fresh serve (or none) takes over from here
+	}
+	stopped := b.fl.isStopped()
+	if current && !stopped {
+		b.serveDied = true
+	}
+	b.mu.Unlock()
+	if !current || stopped || b.fl.isStopped() {
+		return // Stop()-initiated, or superseded before the exit landed
+	}
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+		"[theboringoffice] opencode serve died (exited: %v) — your next send will spawn a fresh one", err)})
+}
+
+// respawnServeForSend is the W4 send-side half: the serve died, this Send
+// needs one — spawn a FRESH serve NOW (never leave the placeholder staged
+// against a dead URL), swap baseURL/proc, clear the latch, take the new
+// watch, and push the pump onto the new URL immediately (bump the net
+// generation so its backoff ladder fresh-starts at 1s, then cancel the
+// live pass — the dead stream's EOF/error would otherwise wait out up to
+// 30s). The PRIMARY session died with the old serve: it is dropped so the
+// send path's own on-demand resolver establishes a fresh primary on the
+// new serve (the same machinery ResetPrimary uses). A spawn failure keeps
+// the latch set and blanks baseURL — the send falls into the plain
+// "backend not started" error path, no fake success.
+func (b *liveBackend) respawnServeForSend() {
+	spawnedURL, proc, exitCh, err := spawnServe(b.directory)
+	if err != nil {
+		b.mu.Lock()
+		b.baseURL = ""
+		b.mu.Unlock()
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] opencode serve respawn failed: " + shortTitle(err.Error(), 100)})
+		return
+	}
+	b.mu.Lock()
+	b.serveDied = false
+	b.proc = proc
+	b.baseURL = spawnedURL
+	oldPrimary := b.primaryID
+	b.primaryID = ""
+	b.respawnOldID = oldPrimary // the send path un-seats + re-hires below
+	b.netGen++
+	sseCancel := b.sseCancel
+	concID := b.forgetConciergeLocked() // concierge died with the serve too
+	b.mu.Unlock()
+	if sseCancel != nil {
+		sseCancel() // dead stream: drop the live pass, the pump re-attaches now
+	}
+	go b.watchServe(proc, exitCh)
+	if concID != "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the serve respawn (" + concID + ") — recreates lazily"})
+	}
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] opencode serve respawned fresh (" + spawnedURL + ") — re-establishing the boss session"})
+}
+
 var urlRe = regexp.MustCompile(`https?://\S+`)
 var urlTrimRe = regexp.MustCompile(`[.,;)\]]+$`)
 
@@ -716,21 +809,25 @@ var debugSSE = envOrLegacy("THEBORINGOFFICE_DEBUG_SSE", "GRAFEIO_DEBUG_SSE") != 
 
 // spawnServe runs `opencode serve --port 0 --hostname 127.0.0.1` and
 // resolves with the listening URL scanned from stdout, or dies after 10s.
-func spawnServe(directory string) (string, *exec.Cmd, error) {
+// The returned channel carries the process's eventual Wait result (the
+// scan-era reaper goroutine keeps ownership of cmd.Wait — callers must
+// NEVER re-Wait the cmd) so the W4 death watch (watchServe) can listen on
+// a live serve without racing the reaper.
+func spawnServe(directory string) (string, *exec.Cmd, <-chan error, error) {
 	cmd := exec.Command("opencode", "serve", "--port", "0", "--hostname", "127.0.0.1")
 	if directory != "" {
 		cmd.Dir = directory
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", nil, fmt.Errorf("opencode serve spawn failed: %w", err)
+		return "", nil, nil, fmt.Errorf("opencode serve spawn failed: %w", err)
 	}
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return "", nil, fmt.Errorf("opencode serve spawn failed: %w", err)
+		return "", nil, nil, fmt.Errorf("opencode serve spawn failed: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return "", nil, fmt.Errorf("opencode serve spawn failed: %w", err)
+		return "", nil, nil, fmt.Errorf("opencode serve spawn failed: %w", err)
 	}
 
 	var outMu sync.Mutex
@@ -772,16 +869,16 @@ func spawnServe(directory string) (string, *exec.Cmd, error) {
 
 	select {
 	case r := <-urlCh:
-		return r.url, cmd, nil
+		return r.url, cmd, exitCh, nil
 	case err := <-exitCh:
 		outMu.Lock()
 		snap := output.String()
 		outMu.Unlock()
-		return "", nil, fmt.Errorf("opencode serve exited before printing a URL: %v: %s", err, trimTo(snap, 200))
+		return "", nil, nil, fmt.Errorf("opencode serve exited before printing a URL: %v: %s", err, trimTo(snap, 200))
 	case <-time.After(10 * time.Second):
 		_ = cmd.Process.Kill()
 		<-exitCh
-		return "", nil, errors.New("opencode serve: no listening URL within 10s")
+		return "", nil, nil, errors.New("opencode serve: no listening URL within 10s")
 	}
 }
 
@@ -1794,6 +1891,13 @@ func (b *liveBackend) sseNote(sig, text string) {
 // sseRecovered is streamOnce's first-frame hook: when the stream yields
 // data after a reported outage or close, the ONE recovery line goes out
 // and the dedupe latch clears so a later outage reports fresh.
+//
+// W3 — a successful re-attach with pending boss placeholders outstanding
+// triggers ONE reconcile pass (reconcileBossCompletion): the turn may have
+// COMPLETED while the stream was down (the placeholder would otherwise sit
+// "typing…" forever, the exact boss-stuck-busy edge). Bounded: this hook
+// fires at most once per reattach (streamOnce's first frame), never per
+// frame.
 func (b *liveBackend) sseRecovered() {
 	b.mu.Lock()
 	had := b.sseNoteSig
@@ -1801,6 +1905,63 @@ func (b *liveBackend) sseRecovered() {
 	b.mu.Unlock()
 	if had != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] event stream: reconnected"})
+	}
+	b.reconcileBossCompletion()
+}
+
+// reconcileBossCompletion (W3) — post-reattach truth pass for the boss
+// lane: GET the primary session's messages and, for every COMPLETED
+// assistant reply that belongs to an outstanding placeholder window, mint
+// the SAME completion as the live pump (maybeBossCompleted — identical
+// identity "bossmsg-"+id, the bossCompleted dedupe, the abortQuietMs
+// window, the FIFO pop, the fetch-pinned text). Errors or an empty result
+// mint NOTHING (no fake success): the placeholder stays and the next
+// reattach retries.
+//
+// "Belongs to an outstanding placeholder": the N entries of pendingBoss
+// pair 1:1 (FIFO) with the N most recent user prompts this office POSTed;
+// the OLDEST of those bounds the window — anything completed earlier is
+// already-pinned history (or a boot-resumed session's past — bossCompleted
+// starts empty each run, so WITHOUT this bound a first reattach would
+// replay the session's whole history as fresh bubbles).
+func (b *liveBackend) reconcileBossCompletion() {
+	b.mu.Lock()
+	n := len(b.pendingBoss)
+	primaryID := b.primaryID
+	started := b.baseURL != "" && !b.fl.isStopped()
+	b.mu.Unlock()
+	if n == 0 || primaryID == "" || !started {
+		return
+	}
+	var rows []struct {
+		Info  ocMessage `json:"info"`
+		Parts []ocPart  `json:"parts"`
+	}
+	if err := b.doJSON(http.MethodGet, "/session/"+primaryID+"/message", nil, &rows); err != nil {
+		return
+	}
+	bound := int64(0)
+	haveBound := false
+	need := n
+	for i := len(rows) - 1; i >= 0 && need > 0; i-- {
+		if rows[i].Info.Role != "user" {
+			continue
+		}
+		need--
+		if !haveBound || rows[i].Info.Time.Created < bound {
+			bound = rows[i].Info.Time.Created
+			haveBound = true
+		}
+	}
+	if !haveBound {
+		return // outstanding placeholder patrons not found — mint nothing
+	}
+	for _, row := range rows {
+		info := row.Info
+		if info.Role != "assistant" || info.Time.Completed == 0 || info.Time.Created < bound {
+			continue
+		}
+		b.maybeBossCompleted(info) // dedupe + abort window + fetch live inside
 	}
 }
 
@@ -2066,6 +2227,22 @@ func (b *liveBackend) onEvent(raw ocSSEEvent) error {
 		}
 	}
 	events := mapOCEvent(raw, b.ctx, primaryID, nowMs())
+	// W5 — FIFO leak fix: a session.error on the PRIMARY is that turn's
+	// death certificate (mapOCEvent above just minted its "boss-error-"
+	// bubble). The completed-message pop in maybeBossCompleted never runs
+	// for it (no message.updated follows a turn that errored), and the
+	// AbortSessions path's own pop already happened pre-abort (its
+	// "Aborted" session.error is swallowed in the quiet window ABOVE,
+	// before this line) — so THIS is the one place the FIFO head can be
+	// released: len>0 + session-is-primary guard, exactly the abort
+	// path's shape. Without it the head outlives its turn and the NEXT
+	// send's completion pops the stale entry instead (the leak).
+	if raw.Type == "session.error" && len(b.pendingBoss) > 0 {
+		var p ocSessionErrorProps
+		if json.Unmarshal(raw.Properties, &p) == nil && p.SessionID == primaryID {
+			b.pendingBoss = b.pendingBoss[1:]
+		}
+	}
 	// A fresh child dispatch re-arms the CTO review latch: the batch that
 	// just opened owes him exactly one review when it drains.
 	for _, e := range events {

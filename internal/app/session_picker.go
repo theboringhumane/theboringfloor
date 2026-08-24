@@ -180,6 +180,21 @@ func (m *Model) acceptSessionPick(id string) tea.Cmd {
 	// record the exec intent for main's post-Run relaunch (id + nothing
 	// else — binary lookup + flag carry-forward are cmd's business).
 	m.execSession = id
+	// G6 — RE-ANCHOR CLEAR: strip every Pending row from the transcript
+	// BEFORE the pin below persists it (mirror of hydrateSession's
+	// restore-leg loop in sessions.go: bubbles of a turn the quit kills
+	// are ghosts — a persisted one would re-hydrate as a stuck "typing…"
+	// placeholder nothing will ever complete; the busy block above
+	// already refuses boss-pending anchors, this is the belt-and-braces
+	// clear for anything else, e.g. an outstanding concierge placeholder).
+	kept := make([]state.ChatMsg, 0, len(m.st.Chat))
+	for _, c := range m.st.Chat {
+		if c.Pending {
+			continue
+		}
+		kept = append(kept, c)
+	}
+	m.st.Chat = kept
 	// the relaunch rides the transcript as REAL history — persisted with
 	// the pin below, the new boot hydrates right through the swap.
 	m.notice(fmt.Sprintf("closing — relaunching as `theboringoffice -s %s`", id))

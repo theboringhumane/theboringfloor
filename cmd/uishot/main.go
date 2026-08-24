@@ -106,6 +106,13 @@
 //	                                "stopped by user" placeholder, " (stopped)"
 //	                                stream appendix, tools ✗ aborted, thread
 //	                                (· N tool calls ✗ stopped), queue intact)
+//	                    [--stuck]   (boss-stuck-busy proof (synchronous):
+//	                                the boss goes busy at 200ms and NEVER
+//	                                completes; the W1 watchdog (harness-seamed
+//	                                to a 30ms threshold) fires its ONE red
+//	                                wedge row + hint swap; then the /stop leg
+//	                                runs against an AbortSessions stubbed to
+//	                                FAIL — the office still unwinds (G1))
 //	                    [--freesend] (free-queuing proof: boss busy 3s, two
 //	                                prompts sent DURING — both Send() calls
 //	                                land immediately (trace: both BEFORE the
@@ -120,6 +127,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -247,6 +255,7 @@ type stubBackend struct {
 	freeMode bool // --freesend: boss busy ~3s, two sends land mid-turn
 
 	abortLog []string // AbortSessions capture (the --stop proof)
+	abortErr error    // --stuck: AbortSessions returns this error (the G1 leg)
 
 	powerDemo bool // --power: minimal quiet script for the slash/name legs
 	planDemo  bool // --planshot: minimal quiet script (no floats) for the plan-mode shot
@@ -770,7 +779,7 @@ func (b *stubBackend) AbortSessions() error {
 	if b.trace != nil {
 		b.trace("[stub] AbortSessions()")
 	}
-	return nil
+	return b.abortErr
 }
 
 // --- concierge seam (--concierge) ------------------------------------------
@@ -1377,6 +1386,130 @@ func runStopProof() error {
 	fmt.Println("--- /queue leg (after /stop): the roadblock item survived verbatim, NOT sent ---")
 	fmt.Println(frameQ)
 	fmt.Println("asserts: OK — AbortSessions captured once; boss-2 placeholder → \"stopped by user\"; streamed text kept + \" (stopped)\"; boss + worker tools ✗ aborted; thread (· 2 tool calls ✗ stopped); BossThinking/BossDelegating cleared; queue intact (1 item, badge q1, send next turn)")
+	return nil
+}
+
+// --- boss-stuck-busy proof (--stuck) ----------------------------------------
+// Synchronous driver (no wall clock beyond TWO bounded sleeps the watchdog
+// threshold makes deterministic). Leg 1 — W1: the boss goes busy at 200ms
+// and NEVER completes; the wedge watchdog (harness-seamed through
+// SetWedgeAfterForShot — the production 2m floor can't be slept out in a
+// shot) fires exactly ONCE: one red "boss turn wedged" transcript row and
+// the hint-seam swap. Leg 2 — G1: /stop against an AbortSessions stubbed
+// to FAIL (stub.abortErr): the office must NOT strand — the placeholder
+// collapses to "stopped by user", one dim note records the remote
+// failure, the statusline reads stopped, the watchdog re-arms.
+
+func runStuckProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	stub := &stubBackend{done: make(chan struct{}),
+		abortErr: errors.New("abort: connection refused (serve dead)")}
+	m := app.New(stub, config.Default())
+	m.SetWedgeAfterForShot(30 * time.Millisecond) // harness seam — not config
+	d := &focusDriver{m: m}
+	d.send(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+
+	key := func(code rune) tea.Cmd {
+		tm, c := d.m.Update(tea.KeyPressMsg(tea.Key{Code: code}))
+		if fm, ok := tm.(app.Model); ok {
+			d.m = fm
+		}
+		return c
+	}
+	typeIn := func(s string) {
+		for _, r := range s {
+			tm, _ := d.m.Update(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+			if fm, ok := tm.(app.Model); ok {
+				d.m = fm
+			}
+		}
+	}
+	wedgeRowCount := func() int {
+		n := 0
+		for _, c := range d.m.State().Chat {
+			if c.Meta == "error" && strings.Contains(c.Text, "boss turn wedged") {
+				n++
+			}
+		}
+		return n
+	}
+
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stuck stub online"})
+	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "ship the report", false)})
+	// 200ms: the boss goes busy… and never completes (silence from here).
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+	time.Sleep(60 * time.Millisecond) // past the 30ms harness threshold
+	d.pump(1)                         // the watchdog evaluates on the tick cheap loop
+
+	if n := wedgeRowCount(); n != 1 {
+		return fail("stuck A: wedge row must print exactly once after the threshold, got %d", n)
+	}
+	frameA := d.m.Frame()
+	fmt.Println("===== UI SHOT · STUCK A — watchdog fired: one red wedge row + hint swap (turn still pending, never auto-killed) =====")
+	fmt.Println(frameA)
+	fmt.Println("===== UI SHOT =====")
+	for _, want := range []string{"boss looks wedged", "is typing…"} {
+		if !strings.Contains(frameA, want) {
+			return fail("stuck A: frame missing %q", want)
+		}
+	}
+	var wedgeRow string
+	for _, c := range d.m.State().Chat {
+		if c.Meta == "error" && strings.Contains(c.Text, "boss turn wedged") {
+			wedgeRow = c.Text
+		}
+	}
+	if !strings.Contains(wedgeRow, "/stop unwinds it (queue intact); the turn may still complete on its own") {
+		return fail("stuck A: wedge row copy drifted, got %q", wedgeRow)
+	}
+	d.pump(3) // one-shot latch: silence past the note
+	if n := wedgeRowCount(); n != 1 {
+		return fail("stuck A: the wedge note is one-shot per wedge, got %d rows after more ticks", n)
+	}
+
+	// Leg 2 — /stop with the abort RPC FAILING remotely (G1).
+	typeIn("/stop")
+	drainCmd(d, key(tea.KeyEnter), 0)
+	drainCmd(d, key(tea.KeyEnter), 0)
+
+	if len(stub.abortLog) != 1 {
+		return fail("stuck B: expected exactly 1 AbortSessions call, got %d", len(stub.abortLog))
+	}
+	st := d.m.State()
+	frameB := d.m.Frame()
+	fmt.Println("===== UI SHOT · STUCK B — /stop unwound DESPITE the failed abort RPC: placeholder collapsed, dim failure note, watchdog re-armed =====")
+	fmt.Println(frameB)
+	fmt.Println("===== UI SHOT =====")
+	seenStopped, seenAbortNote := false, false
+	for _, c := range st.Chat {
+		if c.From == "office" && c.Text == "stopped by user" {
+			seenStopped = true
+		}
+		if c.From == "office" && c.Meta == "" && strings.Contains(c.Text, "abort signal failed remotely") {
+			seenAbortNote = true
+		}
+	}
+	if !seenStopped {
+		return fail("stuck B: the wedged placeholder must still collapse to \"stopped by user\"")
+	}
+	if !seenAbortNote {
+		return fail("stuck B: the failed abort must print exactly one dim note (never the old stranded early-return)")
+	}
+	if want := "stopped current work — queue intact (0 items)"; st.StatusLine != want {
+		return fail("stuck B: StatusLine = %q, want %q", st.StatusLine, want)
+	}
+	if strings.Contains(frameB, "boss looks wedged") {
+		return fail("stuck B: /stop closes the turn — the wedge hint must retire with it")
+	}
+	d.pump(2) // nothing outstanding → the watchdog stays disarmed
+	if n := wedgeRowCount(); n != 1 {
+		return fail("stuck B: no new wedge rows after the unwind, got %d", n)
+	}
+	fmt.Println("--- stub capture (AbortSessions returned the stubbed error) ---")
+	for _, ln := range stub.abortLog {
+		fmt.Println(ln)
+	}
+	fmt.Println("asserts: OK — one red \"boss turn wedged\" row + hint swap at the seamed threshold (one-shot); /stop with AbortSessions FAILING still unwinds (placeholder → \"stopped by user\", dim abort-failure note, \"stopped current work\" statusline, watchdog re-armed, queue intact)")
 	return nil
 }
 
@@ -3326,6 +3459,7 @@ func main() {
 	threads := flag.Bool("threads", false, "thread-render fixture (opencode renderer): ONE chat frame with BOTH thread states — a LIVE collapsed thread (animated braille glyph, NO rollup while running, bare ↳ sneak, live-only ctrl+g hint row) beside a COMPLETED collapsed thread (dim ✓ glyph, \"✓ done\" rollup) — every message reducer-shaped (Kind wtool, \"<verb> · <summary>\" text, \"<state>␟<tick>\" meta stamped by the REAL app reducer; the display layer shapes it to \"<Verb> <rest>\")")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
+	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) fires ONE red \"boss turn wedged\" row + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
 	freesend := flag.Bool("freesend", false, "free-queuing proof: boss busy 200–3000ms; two prompts sent DURING the window must hit backend.Send IMMEDIATELY (both ([stub] Send lines precede the turn-completed marker in the ordering trace) — frame 1 (t=2.2s) shows \"busy · 2 queued (server)\" + the \"turn 2 · your message rides next\" placeholder; frame 2 (t=3.6s) shows the drained FIFO pins + restored status line")
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
 	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")
@@ -3350,6 +3484,14 @@ func main() {
 
 	if *stop {
 		if err := runStopProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *stuck {
+		if err := runStuckProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
