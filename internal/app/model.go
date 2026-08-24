@@ -195,6 +195,15 @@ type SoundBus interface {
 	Play(name string)
 }
 
+// NotifyBus — the OS desktop-notification engine seam (internal/notify owns
+// the engine; the app only CALLS Notify). Nil by default — main injects via
+// SetNotifyBus. Mode flips (/notify) ride a SetMode type-assert, the same
+// style of seam as the send-attachment one: wiring stays additive for headless
+// stubs.
+type NotifyBus interface {
+	Notify(kind, title, body string)
+}
+
 // Model is the tea.Model for the whole app.
 type Model struct {
 	backend state.Backend
@@ -211,6 +220,35 @@ type Model struct {
 	// snd — the sound bus (nil by default; manager injects). Reducer hook
 	// points call playSound() which no-ops on nil.
 	snd SoundBus
+
+	// notifyBus — the OS desktop-notification seam (nil = headless; main
+	// wires it UNCOUPLED from the sounds gate — a muted speaker config must
+	// never mute the look-away pings). Every hook gates on !focused: the
+	// pings exist for when the terminal has NO focus; in front of your face
+	// the popover/spinner already carries the signal.
+	notifyBus NotifyBus
+	// focused — terminal focus latch, fed by bubbletea's ReportFocus stream
+	// (tea.FocusMsg/tea.BlurMsg). DEFAULT TRUE: terminals without
+	// focus-event support never stream, and unknown == focused — an
+	// unsupported terminal must never false-ping.
+	focused bool
+	// permNotifyIDs — the permission COHORT for notifications: wire ids of
+	// every UNANSWERED ask (pending ∪ esc'd pile alike). The ask that flips
+	// the set 0→1 owns the ONE cohort ping; every later ask inside the same
+	// cohort coalesces silently; user answers + server-side "resolved"
+	// events drop ids; the set emptying re-arms the next cohort. Resolved
+	// events and re-presses never mint pings — but a BLUR while the cohort
+	// is live fires its own one (the "looked away during a block" intent,
+	// BlurMsg case in Update).
+	permNotifyIDs map[string]bool
+	// notifyDoneArmed — the done-ping debounce: a user send (chatSentMsg/
+	// busySentMsg) arms it, the FIRST completed boss bubble fires exactly
+	// once and disarms — boss-error bubbles disarm silently too (the error
+	// already owns the transcript), and a completion landing while
+	// questionParked counts as not-done (the member just engaged through
+	// the modal; the arm is consumed without a ping). The concierge lane
+	// (EvChatOffice) never touches it.
+	notifyDoneArmed bool
 
 	// bossName/bossShort — the human boss label from cfg.Boss.Name: the full
 	// string for roster rows ("jorge (El Jefe)"), its first word for the
@@ -287,12 +325,14 @@ type Model struct {
 	// text ARMS a pending selection (selPress pins the original press for
 	// the motionless-release click replay; selDragged flips on the first
 	// drag-motion); copyNote/copyNoteAt ride the status bar for
-	// copyNoteWindow after a successful copy.
-	sel        int
-	selPress   tea.Mouse
-	selDragged bool
-	copyNote   string
-	copyNoteAt time.Time
+	// copyNoteWindow after a VERDICTED copy (darwin gates on pbcopy's
+	// result); copyNoteBad picks the warn class for a failed copy.
+	sel         int
+	selPress    tea.Mouse
+	selDragged  bool
+	copyNote    string
+	copyNoteAt  time.Time
+	copyNoteBad bool
 
 	// frameNonce — bumped on every message that can mutate panel ephemera
 	// the state digest can't see (textarea draft, scroll, spinner, theme
@@ -740,6 +780,8 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 		planTemplate:     plan.Value(),
 		agentMode:        agentModeBuild,
 		activeThink:      map[string]bool{},
+		focused:          true, // default: unknown == focused — never false-ping
+		permNotifyIDs:    map[string]bool{},
 		social:           newSocialClock(),
 		lastDispatchTick: -1,
 		tabs: panels.NewTabs(
@@ -896,6 +938,12 @@ func (m *Model) SetSoundBus(bus SoundBus) {
 	m.snd = bus
 }
 
+// SetNotifyBus injects the notification engine's bus (nil disables desktop
+// notifications). The app only calls Notify — the engine is owned elsewhere.
+func (m *Model) SetNotifyBus(bus NotifyBus) {
+	m.notifyBus = bus
+}
+
 // playSound — reducer-property sound hook; no-ops while no bus is injected.
 func (m *Model) playSound(name string) {
 	if m.snd != nil {
@@ -993,6 +1041,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// inside; auto picks never persist, and macOS dark↔light flips
 		// re-theme live as spontaneous events.
 		chrome.SetThemeAuto(msg.IsDark())
+	case tea.FocusMsg:
+		// terminal regained focus: the desktop-ping gate closes until the
+		// next blur. No frameNonce — focus alone repaints nothing.
+		m.focused = true
+	case tea.BlurMsg:
+		// terminal lost focus: unfocused pings are live again. A LIVE
+		// permission cohort fires its ping immediately — the member looked
+		// away DURING a block, exactly the moment the nudge exists for.
+		m.focused = false
+		if len(m.permNotifyIDs) > 0 {
+			if p := m.permCohortFront(); p != nil {
+				m.fireNotification("permission", permNotifyBody(p.Agent, p.ToolName))
+			}
+		}
 	case tea.KeyPressMsg:
 		// keys can mutate panel ephemera (textarea, scroll) the state
 		// digest can't see — invalidate the frame cache conservatively.
@@ -1036,6 +1098,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
 		// bubble) via the event stream — applying them here duplicated the bubbles.
 		m.playSound("send")
+		m.notifyDoneArmed = true // arm the done ping's one-shot debounce
 		if msg.agent == agentModePlan {
 			m.planSendPending++ // F4 — an in-flight plan-tagged turn
 		}
@@ -1051,6 +1114,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// status compose + placeholder turn count keep the UI alive (the
 		// client queue stays untouched).
 		m.playSound("send")
+		m.notifyDoneArmed = true // free-sends start real turns too → arm the done ping
 		if msg.agent == agentModePlan {
 			m.planSendPending++ // F4 — an in-flight plan-tagged turn
 		}
@@ -1195,6 +1259,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			pid, response := p.ID, msg.response
 			m.permQ.pending = m.permQ.pending[1:]
 			m.permQ.escd = dropPrompt(m.permQ.escd, pid) // defensive: an ask lives in exactly one slice
+			delete(m.permNotifyIDs, pid)                 // the cohort shrinks; empty re-arms the next ping
 			m.chat.SetPermission(m.permQ.view())
 			cmds = append(cmds, func() tea.Msg {
 				if m.backend != nil {
@@ -1311,6 +1376,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.approveArmAt = time.Time{}
 			m.frameNonce++ // the toast retires — the hint bar repaints
 		}
+	case clipboardResultMsg:
+		// darwin's pbcopy round-trip landed (selection.go): the toast
+		// gates on the real verdict — success arms the frozen "Copied N
+		// chars", failure rides the same seam as a warn. The old
+		// OSC52-only path toasted unconditionally and lied whenever the
+		// escape was swallowed.
+		if msg.err != nil {
+			cmds = append(cmds, m.armCopyNoteErr(msg.err))
+		} else {
+			cmds = append(cmds, m.armCopyNote(msg.n))
+		}
 	case copyNoteClearMsg:
 		// the copy toast's own expiry tick landed (armClearMsg's twin):
 		// retire a note old enough — a FRESHER re-arm's own tick owns its
@@ -1340,11 +1416,13 @@ func (m Model) View() tea.View {
 	if !m.bootDone && m.width > 0 {
 		v := tea.NewView(m.boot.View())
 		v.AltScreen = true
+		v.ReportFocus = true // focus latch feeds the notify pings from tick one
 		return v
 	}
 	v := tea.NewView(m.Frame())
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
+	v.ReportFocus = true // terminal focus events drive the !focused ping gate
 	return v
 }
 
@@ -1441,7 +1519,8 @@ func (m Model) Frame() string {
 // hintLine — the statusbar's hint segment for THIS frame: the ctrl+q
 // arm's HIGH-VISIBILITY toast while an arm is live (chrome's warn class
 // on the bar background), the "Copied N chars" copy note while fresh
-// (chrome's OK class), the terminal hint while the shell tab is focused,
+// (chrome's OK class, or warn for a verdicted copy FAILURE), the terminal
+// hint while the shell tab is focused,
 // else the static keymap line. PRECEDENCE: the quit-arm toast OUTRANKS
 // the copy toast — safety first (the armed-quit affordance never hides
 // behind a clipboard note; the note simply resumes once the arm retires,
@@ -1458,6 +1537,9 @@ func (m Model) hintLine() string {
 		return chrome.OnBarBold(chrome.Warn, " "+approveArmToast+" ")
 	}
 	if m.copyNote != "" {
+		if m.copyNoteBad {
+			return chrome.OnBarBold(chrome.Warn, " "+m.copyNote+" ")
+		}
 		return chrome.OnBarBold(chrome.OK, " "+m.copyNote+" ")
 	}
 	if m.wedgeNoted {
@@ -1899,6 +1981,19 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 		m.playSound("dispatch")
 	case state.EvBlocked:
 		m.playSound("alert")
+	}
+
+	// notify: the done ping — an armed send's FIRST completed boss turn.
+	// boss-error bubbles disarm silently (the error already owns the
+	// transcript); a completion that lands while questionParked counts as
+	// NOT-done (the member just engaged through the question modal — no
+	// ping). Either way the arm is consumed exactly once per send; a later
+	// respawn re-arms through its own chatSentMsg.
+	if ev.Kind == state.EvChatBoss && !ev.Msg.Pending && m.notifyDoneArmed {
+		m.notifyDoneArmed = false
+		if !strings.HasPrefix(ev.Msg.ID, "boss-error-") && !m.questionParked {
+			m.fireNotification("done", doneNotifyBody(ev.Msg.Text))
+		}
 	}
 
 	prevPending := hasPendingBoss(m.st)
@@ -2461,6 +2556,9 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 func (m *Model) handlePermissionEvent(ev state.Event) {
 	if ev.ToolState == "resolved" {
 		m.permQ.resolve(ev.PermissionID)
+		// the notification cohort shrinks with the ask; emptying it re-arms
+		// the next cohort's ONE ping. Resolved events themselves are silent.
+		delete(m.permNotifyIDs, ev.PermissionID)
 		m.chat.SetPermission(m.permQ.view())
 		return
 	}
@@ -2472,8 +2570,59 @@ func (m *Model) handlePermissionEvent(ev state.Event) {
 		ID: ev.PermissionID, ToolName: ev.ToolName, Summary: ev.ToolSummary,
 		Agent: agent,
 	})
+	// notify cohort: the ask that flips the set 0→1 owns the ONE ping —
+	// every later ask inside the cohort coalesces silently.
+	if len(m.permNotifyIDs) == 0 {
+		m.fireNotification("permission", permNotifyBody(agent, ev.ToolName))
+	}
+	m.permNotifyIDs[ev.PermissionID] = true
 	m.playSound("alert") // every NEW ask opening the popover (boss or child)
 	m.chat.SetPermission(m.permQ.view())
+}
+
+// notifyTitle — every desktop ping's banner title: the product badge. The
+// OS shows it once; the body carries the signal.
+const notifyTitle = "theboringoffice"
+
+// fireNotification — THE single bus call-site shape. Gates: an engine is
+// wired (nil = headless harness), the terminal is UNfocused (these are
+// look-away pings, never noise in front of your face), and /notify didn't
+// turn them off in this session's config. Rate/silence details live in the
+// engine (internal/notify), not here.
+func (m *Model) fireNotification(kind, body string) {
+	if m.notifyBus == nil || m.focused {
+		return
+	}
+	if m.cfg != nil && m.cfg.UI.Notifications == "off" {
+		return
+	}
+	m.notifyBus.Notify(kind, notifyTitle, body)
+}
+
+// permNotifyBody — the privacy-safe ask copy: agent + tool NAME only, never
+// the ToolSummary (a banner is visible over your shoulder — file paths and
+// command lines stay inside the terminal).
+func permNotifyBody(agent, tool string) string {
+	return "permission needed — " + agent + " needs " + tool
+}
+
+// doneNotifyBody — the completion copy: the boss's reply clipped to one
+// line (clipRunes already flattens newlines), so a wall-of-markdown answer
+// still fits on a banner.
+func doneNotifyBody(text string) string {
+	return "the boss is done — " + clipRunes(strings.TrimSpace(text), 60)
+}
+
+// permCohortFront — the ask a blur-cohort ping quotes: the displayed front
+// first (it's what's on screen), else the newest esc'd one.
+func (m *Model) permCohortFront() *permPrompt {
+	if p := m.permQ.front(); p != nil {
+		return p
+	}
+	if n := len(m.permQ.escd); n > 0 {
+		return m.permQ.escd[n-1]
+	}
+	return nil
 }
 
 // handleQuestionEvent opens/closes the boss question WIZARD. Boss/primary
@@ -3246,6 +3395,7 @@ const slashHelp = `commands:
   /theme <name>      switch theme (persists)
   /themes            list themes
   /power [mode]      show/set the power governor (auto|performance|saver)
+  /notify [on|off]   OS desktop notifications while unfocused (persists)
   /model [ref]       show/set the boss model (provider/model)
   /thinking on|off   show/hide thinking blocks
   /tools on|off      show/hide tool one-liners
@@ -3351,6 +3501,28 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.cfg.UI.Power = mode
 		m.notice(fmt.Sprintf("power → %s (%s) · current tick %s · %s",
 			mode, powerDescribe(mode), m.currentTick(), m.persistCfg()))
+	case "/notify":
+		if len(fields) < 2 {
+			cur := m.cfg.UI.Notifications
+			if cur == "" {
+				cur = "on"
+			}
+			m.notice(fmt.Sprintf("notifications %s (OS desktop pings while the terminal is unfocused) — /notify on|off", cur))
+			return nil
+		}
+		mode := strings.ToLower(fields[1])
+		if mode != "on" && mode != "off" {
+			m.noticeErr(fmt.Sprintf("/notify: unknown mode %q (on|off)", fields[1]))
+			return nil
+		}
+		m.cfg.UI.Notifications = mode
+		// live-set the injected engine too (type-assert seam — headless
+		// record-stubs may simply not accept a mode and stay honored by the
+		// config gate above).
+		if sm, ok := m.notifyBus.(interface{ SetMode(string) }); ok {
+			sm.SetMode(mode)
+		}
+		m.notice(fmt.Sprintf("notifications → %s · %s", mode, m.persistCfg()))
 	case "/model":
 		if len(fields) < 2 {
 			// bare /model: open the interactive picker when the backend

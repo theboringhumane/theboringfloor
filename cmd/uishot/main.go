@@ -123,6 +123,20 @@
 //	                                ONCE, office placeholder+bubbles, agents
 //	                                row answering|on call); idle boss picks
 //	                                Send again — zero duplication)
+//	                    [--notifications] (OS desktop notification proof
+//	                                (synchronous): a recording NotifyBus at the
+//	                                app's seam — focused startup stays silent
+//	                                (default true: unsupported terminals never
+//	                                false-ping); BLUR opens the window; ONE
+//	                                cohort ping for the boss ask (the child ask
+//	                                coalesces, generic "needed — <agent> needs
+//	                                <tool>" copy, no ToolSummary leak); answering
+//	                                the front shrinks the cohort but keeps it
+//	                                silent; the boss's completion pings ONCE
+//	                                ("the boss is done — <clipped reply>");
+//	                                refocus = silence; re-blur on the live cohort
+//	                                re-nudges at once; /notify off → zero
+//	                                captures + persisted brain.json proof)
 package main
 
 import (
@@ -3464,6 +3478,7 @@ func main() {
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
 	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")
 	at := flag.Int("at", 0, "capture the standard-script frame at ms-from-start instead of the usual 4s — e.g. 2920 catches the permission queue modal OPEN (the always-on queue typing's enter keys answer it from ~3.06s on, so the 4s frame has already advanced past it)")
+	notifications := flag.Bool("notifications", false, "OS desktop notification proof (synchronous): recording NotifyBus at the app seam — focused startup silent; blur opens the window; ONE boss-ask cohort ping (child coalesces, generic agent+tool copy); front-answer keeps the cohort silent; ONE completion ping (clipped reply); refocus silent; re-blur re-nudges; /notify off → zero captures + persisted brain.json")
 	flag.Parse()
 
 	if *persist {
@@ -3653,6 +3668,14 @@ func main() {
 
 	if *power != "" {
 		if err := runPowerProof(*power); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *notifications {
+		if err := runNotificationsProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
@@ -3921,4 +3944,242 @@ func main() {
 		}
 		fmt.Printf("theme file content: %q\n", strings.TrimSpace(string(content)))
 	}
+}
+
+// --- OS desktop notification proof (--notifications) ------------------------
+// Synchronous driver (no wall clock): a recording NotifyBus sits at the
+// app's seam and every leg counts its taps.
+//  1. focused startup: a full send + ask + completion cycle mints ZERO taps
+//     (the focus latch defaults true — unsupported terminals never
+//     false-ping) and the un-blurred completion CONSUMES the turn's arm.
+//  2. a fresh send ARMS the done debounce (popover closed — below the open
+//     popover Enter confirms its answer instead of sending).
+//  3. tea.BlurMsg on an EMPTY cohort: silent.
+//  4. the boss's EvPermission pings the cohort opener ONCE (generic
+//     "permission needed — <agent> needs <tool>" copy — no ToolSummary leak).
+//  5. the child ask behind it coalesces into the SAME cohort (still one tap).
+//  6. the click-burst: y answers the front, the wire "resolved" follows, a
+//     THIRD ask rides the same cohort — still ONE cohort ping total.
+//  7. the armed turn's boss completion (still blurred) pings ONCE with the
+//     clipped reply ("the boss is done — …").
+//  8. FocusMsg → BlurMsg: a RE-blur on the still-live cohort re-nudges at
+//     once, quoting the CURRENT front (the child ask).
+//  9. refocused silence: typing through the popover's Enters answers both
+//     stacked asks (the cohort empties), the send arms, and the refocused
+//     completion adds NOTHING.
+// 10. the /notify legs: bare /notify (two-press popover dance) reports the
+//     mode; "/notify off" flips config + live bus mode and persists.
+// 11. the full hook sweep after off (fresh 0→1 cohort + blur + armed
+//     completion) dies at the config gate — zero further captures — and
+//     brain.json carries the persisted write.
+
+// notifyTaps — the --notifications proof's recording NotifyBus.
+type notifyTaps struct {
+	taps  []string
+	modes []string
+}
+
+func (b *notifyTaps) Notify(kind, title, body string) {
+	b.taps = append(b.taps, kind+" | "+title+" | "+body)
+}
+
+// SetMode — the /notify live-toggle seam (the app's type-assert finds it).
+func (b *notifyTaps) SetMode(mode string) { b.modes = append(b.modes, mode) }
+
+func runNotificationsProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+
+	// brain.json write-through lands in a scratch THEBORINGOFFICE_HOME —
+	// the user's real config is never touched by shots (runPowerProof's
+	// shape).
+	home, err := os.MkdirTemp("", "theboringoffice-notify")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(home)
+	if err := os.Setenv("THEBORINGOFFICE_HOME", home); err != nil {
+		return err
+	}
+	fmt.Printf("--- scratch THEBORINGOFFICE_HOME: %s ---\n", home)
+
+	stub := &stubBackend{done: make(chan struct{})}
+	m := app.New(stub, config.Default())
+	bus := &notifyTaps{}
+	m.SetNotifyBus(bus)
+	d := &focusDriver{m: m}
+	d.send(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	typeIn := func(s string) {
+		for _, r := range s {
+			d.send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+		}
+	}
+	key := func(code rune) tea.Cmd {
+		tm, c := d.m.Update(tea.KeyPressMsg(tea.Key{Code: code}))
+		if fm, ok := tm.(app.Model); ok {
+			d.m = fm
+		}
+		return c
+	}
+	wantTaps := func(n int, leg string) error {
+		if len(bus.taps) != n {
+			return fail("%s: expected %d capture(s), got %d (%v)", leg, n, len(bus.taps), bus.taps)
+		}
+		return nil
+	}
+
+	// leg 1 — t=0: FOCUSED startup (default true). Send → ask → completion
+	// stays silent; the un-blurred completion CONSUMES the turn's done arm
+	// (the ping exists for completed turns you couldn't watch).
+	typeIn("wire the notifier")
+	drainCmd(d, key(tea.KeyEnter), 0)
+	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "perm-0",
+		ToolName: "read", ToolSummary: "a.go", ToolState: "pending"})
+	d.send(state.Event{Kind: state.EvPermission, PermissionID: "perm-0", ToolState: "resolved"})
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-0", "boss", "silent startup turn", false)})
+	if err := wantTaps(0, "leg 1 (focused startup)"); err != nil {
+		return err
+	}
+
+	// leg 2 — t≈1800: a fresh send ARMS the done debounce (the permission
+	// popover is CLOSED here, so the Enter really sends — below the open
+	// popover Enter would confirm its answer instead).
+	typeIn("ship it") // no y/a/n letters — the popover owns them below
+	drainCmd(d, key(tea.KeyEnter), 0)
+
+	// leg 3 — t≈2300: the member looks away. Blur on an EMPTY cohort is
+	// silent (no post-hoc noise for long-resolved asks).
+	d.send(tea.BlurMsg{})
+	if err := wantTaps(0, "leg 3 (blur on an empty cohort)"); err != nil {
+		return err
+	}
+
+	// leg 4 — t≈2400: the boss's ask flips the cohort 0→1: ONE ping, generic
+	// copy (agent + tool NAME — the ToolSummary path never leaves the glass).
+	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "perm-1",
+		ToolName: "write", ToolSummary: "main.go", ToolState: "pending"})
+	wantTap0 := "permission | theboringoffice | permission needed — boss needs write"
+	if err := wantTaps(1, "leg 4 (boss ask opens the cohort)"); err != nil {
+		return err
+	}
+	if bus.taps[0] != wantTap0 {
+		return fail("leg 4: cohort ping copy\ngot  %q\nwant %q", bus.taps[0], wantTap0)
+	}
+
+	// leg 5 — t≈2450: the child's ask stacks behind → the cohort coalesces.
+	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "tekton-1", PermissionID: "perm-2",
+		ToolName: "read", ToolSummary: "srv/x.go", ToolState: "pending"})
+	if err := wantTaps(1, "leg 5 (child ask coalesces)"); err != nil {
+		return err
+	}
+
+	// leg 6 — t≈2500: the click-burst. y (Allow once) releases the front;
+	// the wire "resolved" follows; a THIRD ask stacks onto the same cohort.
+	// The cohort shrinks but NEVER empties — still ONE cohort ping total.
+	drainCmd(d, key('y'), 0)
+	d.send(state.Event{Kind: state.EvPermission, PermissionID: "perm-1", ToolState: "resolved"})
+	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "skopos-1", PermissionID: "perm-3",
+		ToolName: "grep", ToolSummary: "SSE", ToolState: "pending"})
+	if err := wantTaps(1, "leg 6 (front answer + resolved + later ask)"); err != nil {
+		return err
+	}
+
+	// leg 7 — t≈3000: the leg-2-armed turn completes (still blurred) → ONE
+	// done ping, the reply clipped to one line.
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-1", "boss",
+		"banners landed next to the bell — notifier wired", false)})
+	wantTap1 := "done | theboringoffice | the boss is done — banners landed next to the bell — notifier wired"
+	if err := wantTaps(2, "leg 7 (boss completion)"); err != nil {
+		return err
+	}
+	if bus.taps[1] != wantTap1 {
+		return fail("leg 7: done ping copy\ngot  %q\nwant %q", bus.taps[1], wantTap1)
+	}
+
+	// leg 8 — t≈3300: refocus, then RE-BLUR on the still-live cohort (perm-2
+	// + perm-3 hang on) → the cohort's own ping fires at once, quoting the
+	// CURRENT front (the child ask that advanced to the top).
+	d.send(tea.FocusMsg{})
+	d.send(tea.BlurMsg{})
+	wantTap2 := "permission | theboringoffice | permission needed — tekton-1 needs read"
+	if err := wantTaps(3, "leg 8 (re-blur re-nudges the live cohort front)"); err != nil {
+		return err
+	}
+	if bus.taps[2] != wantTap2 {
+		return fail("leg 8: re-blur ping copy\ngot  %q\nwant %q", bus.taps[2], wantTap2)
+	}
+
+	// leg 9 — t≈3600: the refocused-silence leg. The typed text carries no
+	// y/a/n letters; below the open popover each Enter pops the front ask
+	// ("Allow once" apiece — the cohort empties, re-arming the next), so the
+	// third Enter really sends. The refocused completion then adds NOTHING.
+	d.send(tea.FocusMsg{})
+	typeIn("focus ok")
+	drainCmd(d, key(tea.KeyEnter), 0) // answers perm-2 (popover front)
+	drainCmd(d, key(tea.KeyEnter), 0) // answers perm-3 (advanced front)
+	drainCmd(d, key(tea.KeyEnter), 0) // popover closed: the send lands
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-2", "boss", "focused turn done", false)})
+	if err := wantTaps(3, "leg 9 (refocused completion)"); err != nil {
+		return err
+	}
+
+	// leg 10 — t≈3900: the /notify legs (the cohort drained in leg 9 — the
+	// popover is closed). Bare /notify rides the two-press dance (first
+	// Enter applies the popover row into the draft, the second sends the
+	// bare command) and reports the mode in-frame; "/notify off" types
+	// THROUGH the popover-closing space, one Enter.
+	typeIn("/notify")
+	drainCmd(d, key(tea.KeyEnter), 0) // apply "› /notify "
+	drainCmd(d, key(tea.KeyEnter), 0) // send the bare command → the status notice
+	statusFrame := d.m.Frame()
+	if !strings.Contains(statusFrame, "notifications on") {
+		return fail("leg 10: bare /notify frame missing the status line \"notifications on\":\n%s", statusFrame)
+	}
+	typeIn("/notify off")
+	drainCmd(d, key(tea.KeyEnter), 0)
+	if got := d.m.Config().UI.Notifications; got != "off" {
+		return fail("leg 10: /notify off must flip cfg.UI.Notifications, got %q", got)
+	}
+	if len(bus.modes) != 1 || bus.modes[0] != "off" {
+		return fail("leg 10: /notify off must live-set the bus mode, got %v", bus.modes)
+	}
+
+	// leg 11 — the full hook sweep AFTER off: a FRESH 0→1 cohort (leg 9
+	// emptied the last one), a blur (would re-nudge), an armed completion —
+	// everything dies at the config gate. Zero further captures.
+	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "perm-4",
+		ToolName: "bash", ToolSummary: "rm -rf", ToolState: "pending"})
+	d.send(tea.FocusMsg{})
+	d.send(tea.BlurMsg{})
+	typeIn("quiet boss")             // no y/a/n letters — the perm-4 popover owns them
+	drainCmd(d, key(tea.KeyEnter), 0) // answers perm-4 (popover front)
+	drainCmd(d, key(tea.KeyEnter), 0) // popover closed: the send lands
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-3", "boss", "silenced turn", false)})
+	if err := wantTaps(3, "leg 11 (/notify off: the full hook sweep stays silent)"); err != nil {
+		return err
+	}
+
+	// persistence proof: brain.json wrote the /notify off.
+	bts, rerr := os.ReadFile(config.Path())
+	if rerr != nil {
+		return fail("read persisted brain.json: %v", rerr)
+	}
+	if !strings.Contains(string(bts), `"notifications": "off"`) {
+		return fail("persisted brain.json missing the /notify write:\n%s", bts)
+	}
+
+	fmt.Println("===== UI SHOT · NOTIFICATIONS — cohort + done + toggled-off, capture ledger below =====")
+	finalFrame := d.m.Frame()
+	fmt.Println(finalFrame)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("--- notify capture (kind | title | body) ---")
+	for i, ln := range bus.taps {
+		fmt.Printf("#%d %s\n", i+1, ln)
+	}
+	fmt.Printf("--- live SetMode taps: %v ---\n", bus.modes)
+	fmt.Printf("--- persisted brain.json (%s) ---\n%s", config.Path(), bts)
+	if !strings.Contains(finalFrame, "notifications → off") {
+		return fail("final frame missing the \"notifications → off\" notice:\n%s", finalFrame)
+	}
+	fmt.Println("asserts: OK — focused startup silent (default true; the un-blurred completion consumed the turn's arm); blur on an empty cohort silent; ONE boss-ask cohort ping (child + third asks coalesce, generic agent+tool copy, no ToolSummary leak); click-burst front answer + resolved silent; ONE done ping off the armed send (clipped reply); re-blur re-nudges the live cohort front; refocused completion silent (typing through the popover answered its stacked asks); /notify bare reports the mode; /notify off → full sweep silent + live SetMode flip + persisted brain.json")
+	return nil
 }

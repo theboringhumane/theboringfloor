@@ -63,6 +63,7 @@ var slashCommands = []slashCommand{
 	{"/diffs", "expand/collapse file diffs", "/diffs on|off"},
 	{"/question", "re-open a deferred boss question", ""},
 	{"/power", "power governor", "/power auto|performance|saver"},
+	{"/notify", "desktop notifications while unfocused", "/notify on|off"},
 	{"/model", "boss model", "/model provider/model"},
 	{"/compact", "compact layout this session", "/compact on|off"},
 	{"/mode", "layout mode (persists)", "/mode normal|compact"},

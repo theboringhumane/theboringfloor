@@ -3,6 +3,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { Hero } from '@/components/home/hero'
 import { FeatureGrid } from '@/components/home/feature-grid'
 import { PlanThenBuild } from '@/components/home/plan-then-build'
+import { ShoulderTap } from '@/components/home/shoulder-tap'
 import { ContextModel } from '@/components/home/context-model'
 import { UnderTheHood } from '@/components/home/under-the-hood'
 import { WhyComposio } from '@/components/home/why-composio'
@@ -19,6 +20,7 @@ export default function Page() {
         <AgentsNeedAction />
         <FeatureGrid />
         <PlanThenBuild />
+        <ShoulderTap />
         <ContextModel />
         <UnderTheHood />
         <WhyComposio />

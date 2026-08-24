@@ -43,7 +43,7 @@ func TestSlashCommandsAllReal(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"/stop", "/new", "/route", "/zen", "/focus", "/power", "/model", "/question", "/perm",
+		"/stop", "/new", "/route", "/zen", "/focus", "/power", "/model", "/question", "/perm", "/notify",
 	} {
 		if !seen[required] {
 			t.Fatalf("real command %q missing from the popover list", required)

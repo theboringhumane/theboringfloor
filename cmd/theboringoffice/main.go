@@ -31,6 +31,7 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/notify"
 	"github.com/theboringhumane/theboringoffice/internal/office"
 	"github.com/theboringhumane/theboringoffice/internal/panels"
 	"github.com/theboringhumane/theboringoffice/internal/sound"
@@ -42,6 +43,13 @@ import (
 type sndBus struct{ *sound.Bus }
 
 func (s sndBus) Play(name string) { _ = s.Bus.Play(name) }
+
+// notifyBus adapts *notify.Bus (the engine call is Send) to the app's
+// Notify-void seam; SetMode passes straight through for /notify's live
+// toggle.
+type notifyBus struct{ *notify.Bus }
+
+func (n notifyBus) Notify(kind, title, body string) { n.Bus.Send(kind, title, body) }
 
 // envOr reads the THEBORINGOFFICE_* env var, falling back to the pre-rename
 // GRAFEIO_* name (whole-product rename: grafeio -> theboringoffice; old
@@ -123,6 +131,11 @@ func main() {
 	if cfg.UI.Sounds != "" && cfg.UI.Sounds != "off" {
 		model.SetSoundBus(sndBus{sound.NewBus(cfg.UI.Sounds, "")})
 	}
+	// UNCOUPLED from the sounds gate above: a muted speaker config must
+	// never mute the desktop look-away pings. NewBus itself normalizes the
+	// mode ("" → on, unknown → off) and honors THEBORINGOFFICE_NO_NOTIFY —
+	// and wiring unconditionally keeps /notify on able to flip live.
+	model.SetNotifyBus(notifyBus{notify.NewBus(cfg.UI.Notifications)})
 
 	p := tea.NewProgram(model)
 

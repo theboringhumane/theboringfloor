@@ -78,6 +78,7 @@ type UIConfig struct {
 	TickMs         int       `json:"tickMs"`         // 0 = power-mode default base (180/500)
 	AmbientChatter bool      `json:"ambientChatter"` // office banter bubbles
 	Sounds         string    `json:"sounds"`         // "on" | "bell" (terminal bell only) | "off"
+	Notifications  string    `json:"notifications"` // "on" | "off" — OS desktop pings while the terminal is unfocused
 	SidebarWidth   int       `json:"sidebarWidth"`   // right panel cols, 0 = default 80 (26..100)
 	Compact        bool      `json:"compact"`        // compact layout mode
 }
@@ -127,6 +128,7 @@ func Default() *Config {
 			TickMs:         0,
 			AmbientChatter: true,
 			Sounds:         "on",
+			Notifications:  "on",
 			SidebarWidth:   0,
 			Compact:        false,
 		},
