@@ -3,11 +3,16 @@
 // selection (the click's fate — legacy click action vs copy-drag — stays
 // undecided until release, so single-click semantics survive untouched),
 // drag-motion extends the head (the chat panel highlights the span live,
-// chat_selection.go), and a dragged release copies the plain text via the
-// terminal's OSC52 clipboard (tea.SetClipboard) and toasts the status bar
-// with the frozen "Copied N chars" note. A motionless release replays the
-// ORIGINAL press through handleClick, so thread toggles, fold rows, perm
-// cards and floor picks behave exactly like a plain click.
+// chat_selection.go), and a dragged release copies the plain text and
+// toasts the status bar with the frozen "Copied N chars" note. The copy
+// itself: on darwin a REAL pbcopy round-trip (payload on stdin, error
+// checked) with the toast GATED on its verdict (clipboardResultMsg) and
+// the terminal's OSC52 escape (tea.SetClipboard) riding along as the
+// fallback for ssh'd terminals; elsewhere OSC52 is the only channel and
+// the note arms at release as before (no OS feedback exists there). A
+// motionless release replays the ORIGINAL press through handleClick, so
+// thread toggles, fold rows, perm cards and floor picks behave exactly
+// like a plain click.
 //
 // The copy note rides the same status-bar seam as the ctrl+q quit arm:
 // hintLine swaps to it while fresh and its own tea.Tick retires it
@@ -16,6 +21,9 @@ package app
 
 import (
 	"fmt"
+	"os/exec"
+	"runtime"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -33,6 +41,14 @@ const (
 // copyNoteClearMsg — the copy toast's expiry tick landing (armClearMsg's
 // twin for the selection note).
 type copyNoteClearMsg struct{}
+
+// clipboardResultMsg — darwin's pbcopy round-trip landing: err == nil means
+// the pasteboard really holds the text and the frozen "Copied N chars"
+// toast may arm; err != nil rides the same status-bar seam as a warn.
+type clipboardResultMsg struct {
+	n   int
+	err error
+}
 
 // copyNoteWindow — how long "Copied N chars" rides the status bar.
 const copyNoteWindow = 2 * time.Second
@@ -84,8 +100,8 @@ func (m *Model) handleMotion(msg tea.MouseMotionMsg) {
 
 // handleRelease settles an armed selection: NO motion since the press = a
 // plain click (replay it through the legacy path verbatim), motion = a
-// copy-drag (extract, OSC52-copy, toast). The highlight stays up until
-// cleared by esc / a plain click / a fresh drag.
+// copy-drag (extract, copy, verdict-gated toast — copySelectionCmd). The
+// highlight stays up until cleared by esc / a plain click / a fresh drag.
 func (m *Model) handleRelease(msg tea.MouseReleaseMsg) tea.Cmd {
 	if m.sel != mselArmed || m.chat == nil {
 		return nil
@@ -103,7 +119,43 @@ func (m *Model) handleRelease(msg tea.MouseReleaseMsg) tea.Cmd {
 		return nil // a zero-cell drag decides nothing (not even a clear-to-thread)
 	}
 	m.sel = mselSelected
-	return tea.Batch(tea.SetClipboard(text), m.armCopyNote(n))
+	return m.copySelectionCmd(text, n)
+}
+
+// copySelectionCmd — the dragged release's clipboard effect. On darwin the
+// copy is a REAL pbcopy round-trip (synchronous, error-checked — the
+// verdict lands as clipboardResultMsg and the toast gates on it) with the
+// OSC52 escape kept INSIDE the same batch as the leading fallback leaf:
+// tea.SetClipboard is fire-and-forget, and the old OSC52-only path toasted
+// unconditionally, so a swallowed escape (tmux without allow-passthrough,
+// an unsupported terminal, a piped stdout) showed the confirmation while
+// nothing reached the pasteboard. pbcopy is unaffected by terminal
+// passthrough — it works inside tmux and over ssh. Elsewhere OSC52 remains
+// the only channel (no OS feedback exists to gate on) and the note arms
+// at release, as before.
+func (m *Model) copySelectionCmd(text string, n int) tea.Cmd {
+	if runtime.GOOS != "darwin" {
+		return tea.Batch(tea.SetClipboard(text), m.armCopyNote(n))
+	}
+	return tea.Batch(
+		tea.SetClipboard(text), // OSC52 fallback: ssh'd terminals that honor it still win
+		func() tea.Msg {
+			return clipboardResultMsg{n: n, err: CopyTextPBCopy(text)}
+		},
+	)
+}
+
+// CopyTextPBCopy runs darwin's pbcopy with the payload on stdin and checks
+// the result: nil means the pasteboard round-trip really happened. Exported
+// for the out-of-tree round-trip harness (/tmp proof programs built against
+// the module path) — internal/app is still module-internal API.
+func CopyTextPBCopy(text string) error {
+	cmd := exec.Command("pbcopy")
+	cmd.Stdin = strings.NewReader(text)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pbcopy: %w", err)
+	}
+	return nil
 }
 
 // armCopyNote toasts "Copied N chars" (the README's frozen copy) on the
@@ -111,6 +163,17 @@ func (m *Model) handleRelease(msg tea.MouseReleaseMsg) tea.Cmd {
 // note's tick owns its own expiry, a stale landing just no-ops.
 func (m *Model) armCopyNote(n int) tea.Cmd {
 	m.copyNote = fmt.Sprintf("Copied %d chars", n)
+	m.copyNoteBad = false
+	m.copyNoteAt = time.Now()
+	return tea.Tick(copyNoteWindow, func(time.Time) tea.Msg { return copyNoteClearMsg{} })
+}
+
+// armCopyNoteErr toasts a FAILED copy on the same status-bar seam (warn
+// class, same 2s window — hintLine picks the class off copyNoteBad): the
+// copy verdict is now always REAL, never the old unconditional note.
+func (m *Model) armCopyNoteErr(err error) tea.Cmd {
+	m.copyNote = "Copy failed: " + err.Error()
+	m.copyNoteBad = true
 	m.copyNoteAt = time.Now()
 	return tea.Tick(copyNoteWindow, func(time.Time) tea.Msg { return copyNoteClearMsg{} })
 }

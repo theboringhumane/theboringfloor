@@ -8,8 +8,10 @@
 //	(b) the muscle-memory path press → motion → release: the dragged span
 //	    copies to the clipboard (tea.SetClipboard batch leaf, real text
 //	    asserted rune-for-rune), the status bar toasts the frozen
-//	    "Copied N chars" note with N matching the dragged span, and the
-//	    selection settles into SELECTED (highlight persists);
+//	    "Copied N chars" note with N matching the dragged span — on darwin
+//	    GATED on pbcopy's verdict (clipboardResultMsg), arming only when
+//	    the pasteboard round-trip really happened — and the selection
+//	    settles into SELECTED (highlight persists);
 //	(c) a MOTIONLESS press+release returns to idle, clears the armed
 //	    selection, and REPLAYS the original press through handleClick —
 //	    the fold hint row under it toggles exactly like a plain click;
@@ -23,11 +25,17 @@
 //	    (a following esc is a lone opener, still no stop);
 //	(f) press gating: /zen, the topbar/statusbar chrome rows, an open
 //	    /model picker, and a non-chat active tab all reject the press —
-//	    nothing arms, nothing selects.
+//	    nothing arms, nothing selects;
+//	(g) the copy VERDICT gates the toast: a pbcopy success verdict arms
+//	    the frozen "Copied N chars" (OK class), a failure verdict arms a
+//	    warn toast naming the error on the same seam (no real clipboard is
+//	    touched — clipboardResultMsg is dispatched synthetically).
 package app
 
 import (
+	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -235,14 +243,23 @@ func TestSelectionDragCopies(t *testing.T) {
 		t.Fatalf("the finished highlight persists until esc / a plain click / a fresh arm")
 	}
 	wantNote := fmt.Sprintf("Copied %d chars", wantN)
+	if relCmd == nil {
+		t.Fatalf("the release returns the clipboard + verdict batch (non-nil cmd)")
+	}
+	if runtime.GOOS == "darwin" {
+		// darwin GATES the toast on pbcopy's verdict: the release alone
+		// arms NOTHING (a swallowed OSC52 escape used to lie here).
+		if m.copyNote != "" {
+			t.Fatalf("the toast must wait for pbcopy's verdict on darwin, got %q", m.copyNote)
+		}
+		t.Logf("release → copyNote empty: the toast gates on the pbcopy round-trip")
+		m, _ = selUpdate(t, m, clipboardResultMsg{n: wantN}) // the verdict lands
+	}
 	if m.copyNote != wantNote {
 		t.Fatalf("the frozen toast must count the dragged span: want %q, got %q", wantNote, m.copyNote)
 	}
 	if strings.Contains(m.copyNote, "Copied 0 chars") {
 		t.Fatalf("the drag carried real text — n must be > 0")
-	}
-	if relCmd == nil {
-		t.Fatalf("the release returns the SetClipboard + expiry batch (non-nil cmd)")
 	}
 	if hint := m.hintLine(); !strings.Contains(hint, wantNote) {
 		t.Fatalf("the copy note rides the status-bar seam, hint=%q", hint)
@@ -338,6 +355,9 @@ func TestSelectionEscClearsSelectionFirst(t *testing.T) {
 	m, _ = selUpdate(t, m, selClickAt(selChatX(m, 0), y))
 	m, _ = selUpdate(t, m, selDragAt(selChatX(m, 12), y))
 	m, relCmd := selUpdate(t, m, selUpAt(m.width-2, y))
+	if runtime.GOOS == "darwin" {
+		m, _ = selUpdate(t, m, clipboardResultMsg{n: 1}) // the verdict the toast gates on
+	}
 	if m.sel != mselSelected || !m.chat.SelectionActive() || m.copyNote == "" || relCmd == nil {
 		t.Fatalf("precondition: a finished selection is up (sel=%d active=%v note=%q)",
 			m.sel, m.chat.SelectionActive(), m.copyNote)
@@ -444,4 +464,45 @@ func TestSelectionPressGating(t *testing.T) {
 				m.sel, m.chat.SelectionActive(), cmd)
 		}
 	})
+}
+
+// (g) the copy verdict gates the toast: clipboardResultMsg is the ONLY darwin
+// toast trigger — success arms "Copied N chars" (OK), failure arms a warn
+// toast naming the error on the same seam. Synthetic msgs: no real clipboard.
+func TestSelectionCopyVerdictGatesToast(t *testing.T) {
+	m := selSetupModel(t, &selBackend{sessBackend: sessBackend{primary: "ses-sel"}})
+
+	// success verdict → the frozen note, OK class.
+	m, okCmd := selUpdate(t, m, clipboardResultMsg{n: 42})
+	if m.copyNote != "Copied 42 chars" {
+		t.Fatalf("a success verdict arms the frozen toast, got %q", m.copyNote)
+	}
+	if m.copyNoteBad {
+		t.Fatalf("a success verdict never rides the warn class")
+	}
+	if okCmd == nil {
+		t.Fatalf("the verdict arms the note's own expiry tick")
+	}
+	if hint := m.hintLine(); !strings.Contains(hint, "Copied 42 chars") {
+		t.Fatalf("the toasted verdict rides the status-bar seam, hint=%q", hint)
+	}
+
+	// failure verdict → the error toast, warn class, same seam.
+	m, errCmd := selUpdate(t, m, clipboardResultMsg{err: errors.New("pbcopy: exit status 1")})
+	if m.copyNote != "Copy failed: pbcopy: exit status 1" {
+		t.Fatalf("a failure verdict must NAME the error, got %q", m.copyNote)
+	}
+	if !m.copyNoteBad {
+		t.Fatalf("a failure verdict rides the warn class")
+	}
+	if errCmd == nil {
+		t.Fatalf("a failed copy's note still arms its expiry tick")
+	}
+	if hint := m.hintLine(); !strings.Contains(hint, "Copy failed: pbcopy: exit status 1") {
+		t.Fatalf("the failure toast rides the same status-bar seam, hint=%q", hint)
+	}
+	if strings.Contains(m.copyNote, "Copied ") {
+		t.Fatalf("a failed copy must never toast a success, note=%q", m.copyNote)
+	}
+	t.Logf("verdicts → success %q (OK) / failure %q (warn)", "Copied 42 chars", m.copyNote)
 }
