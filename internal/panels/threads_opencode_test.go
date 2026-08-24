@@ -39,6 +39,14 @@
 //	    content row 0, not base+2 (renderConversation's TrimLeft eats
 //	    the block's "\n\n" lead there) — so a click on the visual header
 //	    row toggles, and no registration hijacks the next item's row.
+//	(l) per-call diffs (Kind wdiff, "wdiff-<agent>-<callid>") pin INSIDE
+//	    the thread: collapsed shows only the sneak's dim "· +A -D" suffix,
+//	    expanded gains the tool row's suffix AND a one-row "↳ diff · path
+//	    +A -D" sub-row DIRECTLY beneath that tool row — rollups count the
+//	    diff as NEITHER tool nor think;
+//	(m) the ↳ diff sub-row owns the toolDiffRows hit-map: ClickRow there
+//	    opens/closes the parsed body (diffClip machinery verbatim) without
+//	    touching the thread's own toggle; body rows never register.
 //
 // No clocks, no sleeps: every office tick and wtool meta-tick is a
 // literal (Meta carries "state␟tick" like the reducer writes —
@@ -645,6 +653,175 @@ func TestThreadFirstGroupTopEdgeHitMap(t *testing.T) {
 		t.Fatalf("click on the following user message's row %d must fall through", userRow)
 	}
 	tbAssertExpanded(t, c, "tekton-1", false, "after user-row click (no-op)")
+}
+
+// newWdiffChat — the per-call-diff fixture: tekton-1's DONE thread
+// (idle sprite, ticks far past the meta marks) carries a read, then an
+// edit whose completed patch rode in as "wdiff-tekton-1-tc-2" — the REAL
+// reducer's id pairing (tool "wtool-tekton-1-tc-2" ↔ diff tail), so
+// threadDiffFor resolves exactly like production.
+func newWdiffChat(t *testing.T, w, h int) *Chat {
+	t.Helper()
+	c := NewChat(nil)
+	c.SetSize(w, h)
+	c.SetState(state.OfficeState{
+		Tick: 1000,
+		Employees: []state.Employee{
+			{ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper,
+				Sprite: state.SpriteAtDesk, Task: "Patch the lexer"},
+		},
+		Chat: []state.ChatMsg{
+			{ID: "u1", From: "user", Kind: "user", Text: "patch the lexer", At: 10},
+			{ID: "wtool-tekton-1-tc-1", From: "tekton-1", Kind: wtoolKind,
+				Text: "Read internal/panels/chat.go", Meta: "done\x1f5", At: 20},
+			{ID: "wtool-tekton-1-tc-2", From: "tekton-1", Kind: wtoolKind,
+				Text: "edit · lex.go", Meta: "done\x1f8", At: 30},
+			{ID: "wdiff-tekton-1-tc-2", From: "tekton-1", Kind: wdiffKind,
+				Text: "--- a/internal/panels/lex.go\n" +
+					"+++ b/internal/panels/lex.go\n" +
+					"@@ -10,1 +10,3 @@\n" +
+					" return rows\n" +
+					"-old\n" +
+					"+new one\n" +
+					"+new two\n",
+				Meta: "internal/panels/lex.go\x1f+2\x1f-1", At: 40},
+		},
+	})
+	return c
+}
+
+// TestThreadWdiffCollapsedSneakSuffix is proof (l)-collapsed: the thread
+// stays the two-row collapsed shape, the sneak (the NEWEST tool — the
+// edit, not its diff) gains the dim "· +2 -1" count suffix, and NO
+// "↳ diff" row or body line leaks into the collapsed view. The rollup
+// counts the diff as NEITHER tool nor think ("· 2 tool calls").
+func TestThreadWdiffCollapsedSneakSuffix(t *testing.T) {
+	c := newWdiffChat(t, 84, 24)
+	convo := ansi.Strip(c.renderConversation())
+	for _, want := range []string{
+		"✓ Developer Task — Patch the lexer (· 2 tool calls ✓ done)", // diff NOT a 3rd call
+		"  ↳ Edit lex.go · +2 -1",                                    // sneak: newest tool + counts
+	} {
+		if !strings.Contains(convo, want) {
+			t.Fatalf("collapsed wdiff thread missing shape %q:\n%s", want, convo)
+		}
+	}
+	if strings.Contains(convo, "↳ diff ·") || strings.Contains(convo, "new one") {
+		t.Fatalf("the collapsed thread must not show the ↳ diff row or body:\n%s", convo)
+	}
+	if strings.Contains(convo, "[tool] ") {
+		t.Fatalf("collapsed threads show no tool rows:\n%s", convo)
+	}
+}
+
+// TestThreadWdiffExpandedSubRow is proof (l)-expanded: the edit's tool
+// row carries the "· +2 -1" suffix, a one-row "↳ diff · path +2 -1"
+// sub-row sits DIRECTLY beneath it (before the read row? no — in natural
+// chat order right after ITS tool), the body stays closed until clicked,
+// and the closing rollup still reads "· 2 tool calls".
+func TestThreadWdiffExpandedSubRow(t *testing.T) {
+	c := newWdiffChat(t, 84, 24)
+	c.ToggleThread("tekton-1")
+	convo := ansi.Strip(c.renderConversation())
+	fmt.Println("---- THREAD + PER-CALL DIFF (84 cols, ansi-stripped) ----")
+	for _, ln := range strings.Split(convo, "\n") {
+		if strings.Contains(ln, "Developer Task") || strings.Contains(ln, "[tool] ") ||
+			strings.Contains(ln, "↳ diff") || strings.Contains(ln, "  · ") {
+			fmt.Printf("%2d|%s|\n", len([]rune(ln)), ln)
+		}
+	}
+	fmt.Println("---- END THREAD ----")
+	for _, want := range []string{
+		"  [tool] Read internal/panels/chat.go ✓", // the OTHER tool stays suffix-free
+		"  [tool] Edit lex.go ✓ · +2 -1",          // the edited tool's count suffix
+		"  ↳ diff · internal/panels/lex.go +2 -1", // the diff sub-row
+		"  ↳ Edit lex.go · +2 -1",                 // sneak: the current-task line, suffixed too
+		"  · 2 tool calls ✓ done",                 // diff counted as NEITHER tool nor think
+	} {
+		if !strings.Contains(convo, want) {
+			t.Fatalf("expanded wdiff thread missing row %q:\n%s", want, convo)
+		}
+	}
+	if strings.Contains(convo, "↳ diff ·\n") || strings.Contains(convo, "new one") {
+		t.Fatalf("the diff body stays closed until the ↳ row is clicked:\n%s", convo)
+	}
+	// ORDER: edit tool row < its ↳ diff sub-row < sneak < closing
+	iTool := strings.Index(convo, "[tool] Edit lex.go")
+	iDiff := strings.Index(convo, "↳ diff · internal/panels/lex.go")
+	iSneak := strings.LastIndex(convo, "↳ Edit lex.go")
+	iClose := strings.Index(convo, "  · 2 tool calls ✓ done")
+	if !(iTool >= 0 && iTool < iDiff && iDiff < iSneak && iSneak < iClose) {
+		t.Fatalf("the ↳ diff sub-row must land right beneath its tool row (t=%d d=%d s=%d c=%d):\n%s",
+			iTool, iDiff, iSneak, iClose, convo)
+	}
+}
+
+// TestThreadWdiffClickTogglesBody is proof (m): the ↳ diff sub-row
+// registers into toolDiffRows (EXACTLY one entry — body rows never
+// register, the thread's own frame rows are untouched); ClickRow on the
+// sub-row's visual line opens the parsed body (the flat-diff gutter/+
+// rows verbatim), a second click closes it, and the thread itself stays
+// expanded throughout.
+func TestThreadWdiffClickTogglesBody(t *testing.T) {
+	c := newWdiffChat(t, 84, 24)
+	c.ToggleThread("tekton-1")
+	rowOf := func(needle string) int {
+		for i, ln := range strings.Split(ansi.Strip(c.renderConversation()), "\n") {
+			if strings.Contains(ln, needle) {
+				return i
+			}
+		}
+		return -1
+	}
+	diffRow := rowOf("↳ diff · internal/panels/lex.go")
+	if diffRow < 0 {
+		t.Fatalf("the ↳ diff sub-row is missing from the expanded thread")
+	}
+	// the hit-map carries EXACTLY that row → the wdiff id
+	if len(c.toolDiffRows) != 1 || c.toolDiffRows[diffRow] != "wdiff-tekton-1-tc-2" {
+		t.Fatalf("toolDiffRows must register the ↳ row %d alone, got %v", diffRow, c.toolDiffRows)
+	}
+	// click → the parsed body opens (gutter + tinted rows are ANSI-styled;
+	// the plain text of the addition rows survives ansi.Strip)
+	if !c.ClickRow(chatPadL, diffRow) {
+		t.Fatalf("click on the ↳ diff row %d was not claimed", diffRow)
+	}
+	convo := ansi.Strip(c.renderConversation())
+	if !strings.Contains(convo, "new one") || !strings.Contains(convo, "new two") {
+		t.Fatalf("after the click the parsed body must render:\n%s", convo)
+	}
+	if !strings.Contains(convo, "old") || !strings.Contains(convo, "return rows") {
+		t.Fatalf("the body keeps its context/deletion rows too:\n%s", convo)
+	}
+	tbAssertExpanded(t, c, "tekton-1", true, "after ↳-click (thread toggle untouched)")
+	// the body rows themselves are NOT clickable — only the ↳ sub-row is
+	bodyRow := rowOf("new one")
+	if bodyRow >= 0 && c.ClickRow(chatPadL, bodyRow) {
+		t.Fatalf("click on a diff BODY row %d must fall through", bodyRow)
+	}
+	// click again → the body closes, the ↳ sub-row survives
+	if !c.ClickRow(chatPadL, diffRow) {
+		t.Fatalf("second click on the ↳ diff row %d was not claimed", diffRow)
+	}
+	convo = ansi.Strip(c.renderConversation())
+	if strings.Contains(convo, "new one") || !strings.Contains(convo, "↳ diff · internal/panels/lex.go +2 -1") {
+		t.Fatalf("the second click must close the body:\n%s", convo)
+	}
+	tbAssertExpanded(t, c, "tekton-1", true, "after ↳-close-click")
+}
+
+// TestThreadWdiffTrailingNeverStealsSneak mirrors proof (h): a wdiff as
+// the thread's LAST line never becomes (or scrambles) the sneak — the
+// peek still pins the newest TOOL line, suffixed.
+func TestThreadWdiffTrailingNeverStealsSneak(t *testing.T) {
+	c := newWdiffChat(t, 84, 24)
+	convo := ansi.Strip(c.renderConversation())
+	if !strings.Contains(convo, "  ↳ Edit lex.go · +2 -1") {
+		t.Fatalf("a trailing wdiff must leave the sneak on the newest tool:\n%s", convo)
+	}
+	if strings.Contains(convo, "↳ diff internal") || strings.Contains(convo, "  ↳ diff · internal/panels/lex.go\n") {
+		t.Fatalf("the ↳ diff row belongs to the EXPANDED thread only:\n%s", convo)
+	}
 }
 
 // TestThreadOpencodeFrame prints the canonical gallery frame — one LIVE

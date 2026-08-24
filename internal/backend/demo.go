@@ -231,6 +231,25 @@ func (b *demoBackend) Start(emit func(state.Event)) error {
 			ToolName: "read", ToolSummary: "src/index.ts", ToolState: "done", CallID: "demo-call-2"})
 	})
 
+	// t+6.0s: tekton-1's edit lands — the patch rides its OWN tool call
+	// (a CallID-keyed EvFileDiff), so the diff pins INSIDE the thread:
+	// the "[tool] Edit" row gains a "· +2 -1" suffix and the "↳ diff"
+	// sub-row beneath it opens the line-numbered body on click.
+	b.fl.at(6000*time.Millisecond, func() {
+		b.fl.emit(state.Event{Kind: state.EvTool, EmployeeID: "tekton-1", EmployeeName: "tekton-1",
+			ToolName: "edit", ToolSummary: "src/index.ts", ToolState: "done", CallID: "demo-call-3"})
+		b.fl.emit(state.Event{Kind: state.EvFileDiff, SessionID: "tekton-1",
+			EmployeeID: "tekton-1", EmployeeName: "tekton-1", CallID: "demo-call-3",
+			DiffPath: "src/index.ts", DiffAdd: 2, DiffDel: 1,
+			DiffBody: "--- a/src/index.ts\n" +
+				"+++ b/src/index.ts\n" +
+				"@@ -14,3 +14,4 @@\n" +
+				" import { mount } from './app'\n" +
+				"-mount(root)\n" +
+				"+mount(root, { theme: 'office' })\n" +
+				"+mountTrailer(root)\n"})
+	})
+
 	// Working pulses: typing frames for whoever is on a brief, round-robin.
 	// Blocked folks are at the mailbox waving, not typing — skip them.
 	b.fl.every(demoPulseMs, func() {

@@ -199,10 +199,18 @@ const (
 // fallback only when a thread has NO tool line yet, a full body under
 // ctrl+g.
 const (
-	thinkKind    = "think"
-	toolKind     = "tool"
-	wtoolKind    = "wtool"
-	wthinkKind   = "wthink"
+	thinkKind  = "think"
+	toolKind   = "tool"
+	wtoolKind  = "wtool"
+	wthinkKind = "wthink"
+	// wdiffKind is the per-CALL worker diff ("wdiff-<agent>-<callid>"): a
+	// completed employee edit/write lifted its patch off the wire's
+	// tool-part metadata, so the diff pins INSIDE the agent's thread —
+	// directly beneath its [tool] row as a clickable "↳ diff · path +A -D"
+	// sub-row (click opens/closes the parsed body; the body reuses the
+	// flat-diff parsing/rendering machinery). It merges into the SAME
+	// workerGroup as wtool/wthink but counts as NEITHER in the rollups.
+	wdiffKind    = "wdiff"
 	questionKind = "question"
 	diffKind     = "diff"
 	officeFrom   = "office"
@@ -428,6 +436,17 @@ type Chat struct {
 	threadStop        map[string]bool
 	threadExpandOrder []string
 
+	// threadDiffOpen / toolDiffRows — the per-call thread-diff pair,
+	// twins of threadExpand/threadRows: toolDiffRows is the click hit-map
+	// (rendered content row → wdiff msg ID) registering ONLY the expanded
+	// thread's "↳ diff · path +A -D" sub-rows (rebuilt every render, body
+	// rows themselves never register); threadDiffOpen holds each toggled-
+	// open wdiff body (default closed). ClickRow consults toolDiffRows
+	// right AFTER threadRows. Thread diffs stay click-only — the flat
+	// diff world keeps ctrl+d.
+	threadDiffOpen map[string]bool
+	toolDiffRows   map[int]string
+
 	// userExpanded / userFoldRows — the user-bubble fold pair, twins of
 	// threadExpand/threadRows: a user bubble whose wrapped body exceeds
 	// userFoldVisible rows renders collapsed (head rows + a clickable
@@ -537,6 +556,18 @@ func (c *Chat) ToggleDiffs() {
 // explicit per-agent expand). Independent of the thinking toggles.
 func (c *Chat) ToggleThreads() {
 	c.threadsExpanded = !c.threadsExpanded
+	c.forceRender()
+}
+
+// ToggleThreadDiff opens/closes ONE worker diff's parsed body inside its
+// thread (mouse: click the expanded thread's "↳ diff · path +A -D"
+// sub-row — toolDiffRows keys the lookup). Thread diffs are click-only:
+// the flat-diff ctrl+d baseline (diffExpanded) never opens them.
+func (c *Chat) ToggleThreadDiff(id string) {
+	if c.threadDiffOpen == nil {
+		c.threadDiffOpen = map[string]bool{}
+	}
+	c.threadDiffOpen[id] = !c.threadDiffOpen[id]
 	c.forceRender()
 }
 
@@ -746,6 +777,13 @@ func (c *Chat) ClickRow(x, y int) bool {
 	line := y + c.vp.YOffset()
 	if name, ok := c.threadRows[line]; ok {
 		c.ToggleThread(name)
+		return true
+	}
+	// an expanded thread's "↳ diff · path +A -D" sub-row toggles THAT
+	// wdiff's parsed body open/closed — checked right after the thread's
+	// frame rows; the body rows themselves fall through unclaimed.
+	if id, ok := c.toolDiffRows[line]; ok {
+		c.ToggleThreadDiff(id)
 		return true
 	}
 	// the user-bubble fold rows: a collapsed bubble's "… +N more lines"
@@ -1681,11 +1719,12 @@ func (c *Chat) renderConversation() string {
 	workerIdx := map[string]int{}
 	c.threadRows = map[int]string{}   // mouse hit-map, rebuilt every render
 	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
+	c.toolDiffRows = map[int]string{} // ↳ diff sub-row hit-map, same rebuild
 	for _, m := range c.chat {
-		if m.Kind == wtoolKind || m.Kind == wthinkKind {
+		if m.Kind == wtoolKind || m.Kind == wthinkKind || m.Kind == wdiffKind {
 			// /tools off hides the whole workers region; /thinking off
 			// takes only the think rows (the tools keep rendering)
-			if m.Kind == wtoolKind && !c.showTools {
+			if (m.Kind == wtoolKind || m.Kind == wdiffKind) && !c.showTools {
 				continue
 			}
 			if m.Kind == wthinkKind && !c.showThinking {
@@ -2108,7 +2147,16 @@ func (c *Chat) renderDiff(b *strings.Builder, m state.ChatMsg) {
 		opWord = "Delete"
 	}
 	b.WriteString(clipStyled(chrome.DimText.Bold(true), "← "+opWord+" "+path, c.contentW()))
+	c.renderDiffRows(b, rows)
+}
 
+// renderDiffRows writes the LINE-NUMBERED body of a parsed diff: one
+// renderDiffRow per parsed row (gutter + tinted add/del/context bars),
+// clipped to diffClip rows with a "+N more" trailer. The rows come from
+// c.diffRows (parseDiffBody + chroma paint, cached per msg ID) so BOTH
+// the flat diff (ctrl+d, above) and a worker thread's clicked-open ↳
+// diff body (threads_opencode.go wdiffRows) draw the byte-same body.
+func (c *Chat) renderDiffRows(b *strings.Builder, rows []diffRow) {
 	maxNum := 0
 	for _, r := range rows {
 		if r.num > maxNum {

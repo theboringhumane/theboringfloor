@@ -56,6 +56,19 @@
 // view subagents" hint row trails the last thread block of the
 // timeline.
 //
+// Per-call diffs (Kind wdiff — a completed employee edit/write whose
+// patch rode the wire's tool-part metadata, app-tagged
+// "wdiff-<agent>-<callid>") pin INSIDE the thread: the matching tool row
+// and the collapsed sneak gain a dim "· +A -D" count suffix, and the
+// EXPANDED thread renders a one-row "  ↳ diff · path +A -D" sub-row
+// DIRECTLY beneath that tool row (counts in the flat-diff inks). The
+// sub-row owns the NEW toolDiffRows click hit-map — a click there
+// opens/closes the parsed body (diffRows/renderDiffRow/diffClip
+// verbatim) without touching the thread's own toggle; body rows never
+// register. Rollups and the sneak's last-tool scan count wdiff entries
+// as NEITHER tools nor thinks, and the flat-diff world keeps ctrl+d to
+// itself (thread diff bodies are click-only).
+//
 // This file also owns the pending row's breathing block bar
 // (pendingBlockBar) — the opencode "Build · …" loading line's vibe for
 // "<boss> is typing…": height blocks ▁…█ sweeping left-to-right off the
@@ -164,9 +177,12 @@ func (c *Chat) threadTitle(name string) string {
 func (c *Chat) threadSummary(g workerGroup, stopped bool) string {
 	tools, thinks := 0, 0
 	for _, m := range g.lines {
-		if m.Kind == wthinkKind {
+		switch m.Kind {
+		case wthinkKind:
 			thinks++
-		} else {
+		case wdiffKind:
+			// a per-call diff rides its tool call — it is NOT a second call
+		default:
 			tools++
 		}
 	}
@@ -294,42 +310,162 @@ func (c *Chat) threadSneakRows(g workerGroup) []string {
 	}
 	lastTool := -1
 	for i := len(g.lines) - 1; i >= 0; i-- {
-		if g.lines[i].Kind != wthinkKind {
+		if g.lines[i].Kind != wthinkKind && g.lines[i].Kind != wdiffKind {
 			lastTool = i
 			break
 		}
 	}
 	textStyle := chrome.DimText
 	var text string
+	budget := c.contentW() - 4
 	if lastTool >= 0 {
 		text = shapeToolText(g.lines[lastTool].Text)
+		// a per-call diff under this tool peeks its counts along: the
+		// dim "· +A -D" suffix eats tail budget BEFORE the clip, so the
+		// sneak never overruns the single-row contract
+		if dm, ok := threadDiffFor(g, g.lines[lastTool].ID); ok {
+			if suf := diffCountSuffix(dm.Meta); suf != "" {
+				budget -= cellWidth(suf)
+				if budget < 1 {
+					budget = 1
+				}
+				text += suf
+			}
+		}
 	} else {
 		think := g.lines[len(g.lines)-1]
 		textStyle = chrome.DimText.Italic(true)
 		text = "thinking · " + countLines(foldStyledRows(think.Text, c.contentW()-4, c.contentW()-4)) + " lines"
 	}
-	return []string{chrome.DimText.Render("  ↳ ") + textStyle.Render(clipPlain(text, c.contentW()-4))}
+	return []string{chrome.DimText.Render("  ↳ ") + textStyle.Render(clipPlain(text, budget))}
 }
 
 // threadExpandedRows — the thread's merged tool/think rows, 2-cell
 // indented under the header (continuations hang 4 cells in, under the
 // text): "[tool] <Verb> <rest> <state mark>" in ToolStyle (workerToolLine
 // shapes the reducer's "<verb> · <rest>" text), thoughts via wthinkRows
-// (bodies only on a FULL expand). These rows still WRAP, never
-// truncate — the single-row contract binds ONLY the header and sneak.
-func (c *Chat) threadExpandedRows(g workerGroup, full bool) []string {
+// (bodies only on a FULL expand). A tool call whose completed edit/write
+// rode a per-call patch (Kind wdiff, "wdiff-<agent>-<callid>" — the SAME
+// agent+call tail as its "wtool-" id) gains a dim "· +A -D" count suffix,
+// and its wdiff line renders DIRECTLY beneath as a clickable
+// "↳ diff · path +A -D" sub-row (c.threadDiffOpen[id] opens the parsed
+// body there — the flat-diff diffRows machinery verbatim). The second
+// return maps each ↳ row's index WITHIN the returned slice to its wdiff
+// msg ID for the toolDiffRows click hit-map. These rows still WRAP,
+// never truncate — the single-row contract binds ONLY the header, the
+// sneak and the ↳ diff sub-row.
+func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]string) {
 	var rows []string
+	diffAt := map[int]string{}
 	for _, m := range g.lines {
-		if m.Kind == wthinkKind {
+		switch {
+		case m.Kind == wthinkKind:
 			rows = append(rows, c.wthinkRows(m, full)...)
 			continue
+		case m.Kind == wdiffKind:
+			diffAt[len(rows)] = m.ID
+			rows = append(rows, c.wdiffRows(m)...)
+			continue
 		}
-		for j, ln := range foldStyledRows(workerToolLine(m), c.contentW()-2, c.contentW()-4) {
+		suf := ""
+		if dm, ok := threadDiffFor(g, m.ID); ok {
+			suf = diffCountSuffix(dm.Meta)
+		}
+		headB := c.contentW() - 2 - cellWidth(suf)
+		contB := c.contentW() - 4 - cellWidth(suf)
+		if headB < 1 {
+			headB = 1
+		}
+		if contB < 1 {
+			contB = 1
+		}
+		lines := foldStyledRows(workerToolLine(m), headB, contB)
+		for j, ln := range lines {
 			prefix := "  "
 			if j > 0 {
 				prefix = "    "
 			}
-			rows = append(rows, chrome.ToolStyle.Render(prefix+ln))
+			row := chrome.ToolStyle.Render(prefix + ln)
+			if j == len(lines)-1 && suf != "" {
+				row += chrome.DimText.Render(suf)
+			}
+			rows = append(rows, row)
+		}
+	}
+	return rows, diffAt
+}
+
+// threadDiffFor pairs a merged tool entry ("wtool-<agent>-<callid>") with
+// its per-call diff ("wdiff-<agent>-<callid>") inside one thread.
+func threadDiffFor(g workerGroup, toolID string) (state.ChatMsg, bool) {
+	want := wdiffKind + strings.TrimPrefix(toolID, wtoolKind)
+	for _, m := range g.lines {
+		if m.Kind == wdiffKind && m.ID == want {
+			return m, true
+		}
+	}
+	return state.ChatMsg{}, false
+}
+
+// diffCountSuffix — the plain-text " · +A -D" counter suffix a tool row /
+// sneak gains when its paired per-call diff carries counts (either side
+// > 0); "" otherwise. Callers style it dim and subtract its cell width
+// from the row's clip budget FIRST.
+func diffCountSuffix(meta string) string {
+	_, adds, dels := parseDiffMeta(meta)
+	parts := ""
+	if adds != "" && adds != "+0" {
+		parts += " " + adds
+	}
+	if dels != "" && dels != "-0" {
+		parts += " " + dels
+	}
+	if parts == "" {
+		return ""
+	}
+	return " ·" + parts
+}
+
+// wdiffRows renders one per-call worker diff as the thread's "↳ diff ·
+// path +A -D" sub-row (ONE clipped row, dim like the sneak — but the
+// counts stay green/red, the flat collapsed-diff header's inks). A click
+// (toolDiffRows → ToggleThreadDiff) opens the parsed body DIRECTLY
+// beneath: c.diffRows' line-numbered tinted rows + the diffClip trailer,
+// the flat-diff body EXACTLY as-is (thread diffs ignore ctrl+d — click
+// only).
+func (c *Chat) wdiffRows(m state.ChatMsg) []string {
+	path, adds, dels := parseDiffMeta(m.Meta)
+	counts := ""
+	if adds != "" && adds != "+0" {
+		counts += adds
+	}
+	if dels != "" && dels != "-0" {
+		if counts != "" {
+			counts += " "
+		}
+		counts += dels
+	}
+	labelW := c.contentW() - 4 - cellWidth(counts)
+	if counts != "" {
+		labelW-- // the space before the counts
+	}
+	if labelW < 1 {
+		labelW = 1
+	}
+	head := chrome.DimText.Render("  ↳ ") + chrome.DimText.Render(clipPlain("diff · "+path, labelW))
+	if adds != "" && adds != "+0" {
+		head += " " + chrome.OKText.Render(adds)
+	}
+	if dels != "" && dels != "-0" {
+		head += " " + chrome.ErrText.Render(dels)
+	}
+	rows := []string{head}
+	if c.threadDiffOpen[m.ID] {
+		var b strings.Builder
+		drows, _ := c.diffRows(m, path)
+		c.renderDiffRows(&b, drows)
+		if b.Len() > 0 {
+			rows = append(rows, strings.Split(strings.TrimPrefix(b.String(), "\n"), "\n")...)
 		}
 	}
 	return rows
@@ -419,8 +555,12 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 	sneakAt := len(rows)
 	closingAt := -1
 	var closing []string
+	var diffHits map[int]string // ↳ diff sub-rows, indexed WITHIN expanded rows
+	expandedAt := len(rows)
 	if expanded {
-		rows = append(rows, c.threadExpandedRows(g, full)...)
+		var expandedRows []string
+		expandedRows, diffHits = c.threadExpandedRows(g, full)
+		rows = append(rows, expandedRows...)
 		sneakAt = len(rows)
 		rows = append(rows, sneak...)
 		closingAt = len(rows) // captured BEFORE the closing slice lands
@@ -451,6 +591,14 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 			// frame folds the bubble back
 			for i := range closing {
 				c.threadRows[base+lead+closingAt+i] = g.name
+			}
+			// …while each ↳ diff sub-row registers into the SEPARATE
+			// toolDiffRows map (checked after threadRows): a click there
+			// toggles the diff body, never the thread itself
+			for i, id := range diffHits {
+				if c.toolDiffRows != nil {
+					c.toolDiffRows[base+lead+expandedAt+i] = id
+				}
 			}
 		} else {
 			for i := range sneak {

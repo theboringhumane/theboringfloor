@@ -8,6 +8,7 @@ package backend
 import (
 	"encoding/json"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -81,6 +82,13 @@ type ocPart struct {
 		Title  string         `json:"title"`
 		Input  map[string]any `json:"input"`
 		Error  string         `json:"error"`
+		// Metadata carries the server's tool-side artifacts — a completed
+		// Edit part rides metadata.filediff{file,path?,patch,additions,
+		// deletions} (and sometimes a bare metadata.diff string); Write
+		// parts carry {diagnostics,filepath,exists} + the new file's body
+		// in input.content. Older serves omit the whole field; a tolerant
+		// parse keeps those silent (toolCallDiff degrades to no-op).
+		Metadata map[string]any `json:"metadata"`
 	} `json:"state"`
 	// ReasoningPart typing: start is always present; end set on completion.
 	Time struct {
@@ -205,14 +213,18 @@ type normCtx struct {
 	pendingPerms     map[string]permHold // permission request id -> hold
 	pendingQuestions map[string]permHold // question request id -> hold (mirror of pendingPerms; question replies free the PARKED turn)
 	diffSeen         map[string]bool     // sessionID|path -> already surfaced
-	reasoningParts   map[string]bool     // part id -> a message.part.updated said "reasoning"
-	reasoningAccum   map[string]string   // part id -> delta-accumulated transcript so far
-	deltaBuffer      map[string]string   // part id -> deltas seen BEFORE the part was classified
-	textParts        map[string]bool     // part id -> message.part.updated classified a STREAMING text part (primary/concierge)
-	textPartMsg      map[string]string   // text part id -> its messageID (deltas key the boss/office bubble)
-	textAccum        map[string]string   // messageID -> delta-accumulated answer text so far
-	textStart        map[string]int64    // messageID -> stream start (ms; Msg.At for every update of the bubble)
-	textSess         map[string]string   // messageID -> owning sessionID (primary vs concierge routing)
+	// callDiffSeen — sessionID|callID -> the per-call EvFileDiff already
+	// emitted (repeated completed frames of one tool call replace in the
+	// app's merge-by-ID anyway; the dedupe just keeps the wire quiet).
+	callDiffSeen   map[string]bool
+	reasoningParts map[string]bool   // part id -> a message.part.updated said "reasoning"
+	reasoningAccum map[string]string // part id -> delta-accumulated transcript so far
+	deltaBuffer    map[string]string // part id -> deltas seen BEFORE the part was classified
+	textParts      map[string]bool   // part id -> message.part.updated classified a STREAMING text part (primary/concierge)
+	textPartMsg    map[string]string // text part id -> its messageID (deltas key the boss/office bubble)
+	textAccum      map[string]string // messageID -> delta-accumulated answer text so far
+	textStart      map[string]int64  // messageID -> stream start (ms; Msg.At for every update of the bubble)
+	textSess       map[string]string // messageID -> owning sessionID (primary vs concierge routing)
 	// usageSeen — per-assistant-message usage counters already emitted
 	// (messageID -> last totals). Lets mapUsage ship DELTAS: repeated
 	// message.updated frames for the same id re-report absolute counters,
@@ -273,6 +285,7 @@ func newNormCtx(cfg *config.Config) *normCtx {
 		pendingPerms:     make(map[string]permHold),
 		pendingQuestions: make(map[string]permHold),
 		diffSeen:         make(map[string]bool),
+		callDiffSeen:     make(map[string]bool),
 		reasoningParts:   make(map[string]bool),
 		reasoningAccum:   make(map[string]string),
 		deltaBuffer:      make(map[string]string),
@@ -789,6 +802,151 @@ func mapToolPart(part ocPart, ctx *normCtx, primaryID string) (state.Event, bool
 	}, true
 }
 
+// toolCallDiff lifts the per-CALL patch a completed edit/write ToolPart
+// carries on the wire (state.metadata.filediff{file,path?,patch,
+// additions,deletions} — or a bare metadata.diff string) into ONE extra
+// EvFileDiff attributed to that call (CallID set), so the app can pin the
+// diff INSIDE the worker thread under its [tool] row. write/create parts
+// carry no patch (their metadata is diagnostics/filepath/exists) — their
+// new-file bodies synthesize a PRESENTATION-ONLY pseudo-diff from
+// state.input.content (never a git read, never a fetch). Rules:
+//
+//   - completed parts only, edit/write/create tools only — anything else
+//     is silent;
+//   - WORKER parts only: the boss's edits keep today's completion-time
+//     per-file fetch flow byte-identical (a per-call boss event would
+//     double it, so the boss emits nothing here and diffSeen stays clean);
+//   - per-callID dedupe: repeated completed frames of the same call emit
+//     once (the app's merge-by-ID would mask a repeat regardless);
+//   - ctx.diffSeen[sessionID|path] is marked the moment the per-call
+//     event emits: the per-call diff SUPERSEDES the completion-time
+//     per-file fetch (fetchDiffAndEmit) for that path;
+//   - older serves carry no metadata at all — nothing extra emits and
+//     the per-file flow below stays exactly today's.
+func toolCallDiff(part ocPart, ctx *normCtx, empID, empName string) (state.Event, bool) {
+	if part.State.Status != "completed" || empName == "" || empName == "boss" {
+		return state.Event{}, false
+	}
+	tool := strings.ToLower(part.Tool)
+	if tool != "edit" && tool != "write" && tool != "create" {
+		return state.Event{}, false
+	}
+	callID := part.CallID
+	if callID == "" {
+		callID = part.ID
+	}
+	if callID == "" {
+		return state.Event{}, false
+	}
+	dedupe := part.SessionID + "|" + callID
+	if ctx.callDiffSeen[dedupe] {
+		return state.Event{}, false
+	}
+	path := toolPath(part)
+	patch := ""
+	adds, dels := 0, 0
+	if fd, ok := part.State.Metadata["filediff"].(map[string]any); ok {
+		if f, _ := fd["file"].(string); f != "" {
+			path = f
+		} else if p, _ := fd["path"].(string); p != "" {
+			path = p
+		}
+		patch, _ = fd["patch"].(string)
+		adds, dels = metaInt(fd["additions"]), metaInt(fd["deletions"])
+	}
+	if patch == "" {
+		patch, _ = part.State.Metadata["diff"].(string)
+	}
+	if patch == "" && (tool == "write" || tool == "create") {
+		// Write/Create ride NO patch; state.input.content is the new
+		// file's whole body. Render it as a new-file pseudo-diff (the
+		// UI's "--- /dev/null" op detection reads it as a creation).
+		if content, _ := part.State.Input["content"].(string); content != "" && path != "" {
+			patch, adds = synthNewFilePatch(path, content)
+		}
+	}
+	if patch != "" && adds == 0 && dels == 0 {
+		adds, dels = countPatchLines(patch)
+	}
+	if path == "" || (strings.TrimSpace(patch) == "" && adds == 0 && dels == 0) {
+		return state.Event{}, false
+	}
+	ctx.callDiffSeen[dedupe] = true
+	ctx.diffSeen[part.SessionID+"|"+path] = true // per-call supersedes the per-file fetch
+	return state.Event{
+		Kind:         state.EvFileDiff,
+		SessionID:    part.SessionID,
+		EmployeeID:   empID,
+		EmployeeName: empName,
+		CallID:       callID,
+		DiffPath:     path,
+		DiffBody:     diffBody(patch),
+		DiffAdd:      adds,
+		DiffDel:      dels,
+	}, true
+}
+
+// toolPath resolves a tool part's target path: input.filePath first
+// (edit/write), then input.path, then the metadata's filepath (write
+// parts name it there).
+func toolPath(part ocPart) string {
+	for _, key := range []string{"filePath", "path"} {
+		if v, _ := part.State.Input[key].(string); strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
+	}
+	if v, _ := part.State.Metadata["filepath"].(string); strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
+// metaInt reads a number out of a map[string]any wire cell (JSON numbers
+// unmarshal to float64; tolerate ints and json.Number too). 0 on anything
+// else.
+func metaInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case json.Number:
+		i, _ := n.Int64()
+		return int(i)
+	}
+	return 0
+}
+
+// countPatchLines tallies +/- body rows of a unified patch (the ---/+++
+// file headers do not count).
+func countPatchLines(patch string) (adds, dels int) {
+	for _, ln := range strings.Split(patch, "\n") {
+		switch {
+		case strings.HasPrefix(ln, "--- ") || strings.HasPrefix(ln, "+++ "):
+		case strings.HasPrefix(ln, "+"):
+			adds++
+		case strings.HasPrefix(ln, "-"):
+			dels++
+		}
+	}
+	return adds, dels
+}
+
+// synthNewFilePatch renders a file Write's full body as a +only unified
+// patch (presentation only — the "--- /dev/null" head is what the UI's
+// new-file rendering keys on).
+func synthNewFilePatch(path, content string) (patch string, adds int) {
+	lines := strings.Split(strings.TrimRight(content, "\n"), "\n")
+	var b strings.Builder
+	b.WriteString("--- /dev/null\n")
+	b.WriteString("+++ b/" + path + "\n")
+	b.WriteString("@@ -0,0 +1," + strconv.Itoa(len(lines)) + " @@\n")
+	for _, ln := range lines {
+		b.WriteString("+" + ln + "\n")
+	}
+	return b.String(), len(lines)
+}
+
 // toolSummary is the one-liner under a tool glyph: the opencode title when
 // the state carries one (completed grep reads "N matches" etc.), else the
 // most specific input field — filePath, pattern, command, path, then any
@@ -1263,11 +1421,18 @@ func mapOCEvent(raw ocSSEEvent, ctx *normCtx, primaryID string, now int64) []sta
 			if !ok {
 				return nil
 			}
+			evs := []state.Event{ev}
+			// A completed edit/write may carry its per-call patch inline
+			// (metadata.filediff) — the worker-thread diff rides RIGHT
+			// AFTER its tool event (the app renders them adjacent).
+			if dev, dok := toolCallDiff(part, ctx, ev.EmployeeID, ev.EmployeeName); dok {
+				evs = append(evs, dev)
+			}
 			// A child running a tool also drives the typing pulse it always did.
 			if emp, isEmp := ctx.employees[part.SessionID]; isEmp && !ctx.returned[part.SessionID] {
-				return append([]state.Event{ev}, ctx.throttledWorking(emp.ID, ctx.tasks[part.SessionID].ID, now, false)...)
+				return append(evs, ctx.throttledWorking(emp.ID, ctx.tasks[part.SessionID].ID, now, false)...)
 			}
-			return []state.Event{ev}
+			return evs
 		}
 		emp, ok := ctx.employees[part.SessionID]
 		if !ok || ctx.returned[part.SessionID] {

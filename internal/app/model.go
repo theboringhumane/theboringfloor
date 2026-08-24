@@ -273,8 +273,8 @@ type Model struct {
 	// normalizeTermCapture keeps it from ever escaping its tab: leaving
 	// while captured auto-releases, and every (re-)entry starts RELEASED —
 	// explicit opt-in each visit.
-	termCaptured  bool
-	keys          KeyMap
+	termCaptured bool
+	keys         KeyMap
 
 	// plan/build agent mode (plan_mode.go), MODEL-side on purpose —
 	// state.Mode already means live/demo and stays untouched. agentMode
@@ -3307,14 +3307,47 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 					Meta: toolState + "\x1f" + strconv.Itoa(st.Tick),
 					At:   time.Now().UnixMilli(),
 				}
+				next := append([]state.ChatMsg(nil), st.Chat...)
+				merged := false
+				for i, msg := range next {
+					if msg.Kind == entry.Kind && msg.ID == entry.ID {
+						// birth stamp wins: a stream update replaces text/meta
+						// in place but NEVER re-stamps At — the first-seen
+						// stamp pins the entry's timeline slot (the merged
+						// thread sorts by it; re-stamping would swim it).
+						if msg.At != 0 {
+							entry.At = msg.At
+						}
+						next[i] = entry
+						merged = true
+						break
+					}
+				}
+				if !merged {
+					next = append(next, entry)
+				}
+				st.Chat = capChat(next)
+				return st
+			}
+			st.BossThinking = !ev.Done
+			id := "think-" + ev.CallID
+			if ev.CallID == "" {
+				// no id to key on — legacy emitters stay append-only
+				id = "think-" + nextMsgID()
+			}
+			entry := state.ChatMsg{
+				ID:   id,
+				From: "boss",
+				Kind: "think",
+				Text: ev.Text,
+				Meta: ev.CallID, // renderer reads the CallID back from Meta
+				At:   time.Now().UnixMilli(),
+			}
 			next := append([]state.ChatMsg(nil), st.Chat...)
 			merged := false
 			for i, msg := range next {
-				if msg.Kind == entry.Kind && msg.ID == entry.ID {
-					// birth stamp wins: a stream update replaces text/meta
-					// in place but NEVER re-stamps At — the first-seen
-					// stamp pins the entry's timeline slot (the merged
-					// thread sorts by it; re-stamping would swim it).
+				if msg.Kind == "think" && msg.ID == entry.ID {
+					// birth stamp wins (see the wthink merge above).
 					if msg.At != 0 {
 						entry.At = msg.At
 					}
@@ -3329,39 +3362,6 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 			st.Chat = capChat(next)
 			return st
 		}
-		st.BossThinking = !ev.Done
-			id := "think-" + ev.CallID
-			if ev.CallID == "" {
-				// no id to key on — legacy emitters stay append-only
-				id = "think-" + nextMsgID()
-			}
-			entry := state.ChatMsg{
-				ID:   id,
-				From: "boss",
-				Kind: "think",
-				Text: ev.Text,
-				Meta: ev.CallID, // renderer reads the CallID back from Meta
-				At:   time.Now().UnixMilli(),
-			}
-		next := append([]state.ChatMsg(nil), st.Chat...)
-		merged := false
-		for i, msg := range next {
-			if msg.Kind == "think" && msg.ID == entry.ID {
-				// birth stamp wins (see the wthink merge above).
-				if msg.At != 0 {
-					entry.At = msg.At
-				}
-				next[i] = entry
-				merged = true
-				break
-			}
-		}
-		if !merged {
-			next = append(next, entry)
-		}
-		st.Chat = capChat(next)
-		return st
-	}
 
 	case state.EvTool:
 		{
@@ -3397,19 +3397,19 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				Meta: meta,
 				At:   time.Now().UnixMilli(),
 			}
-		merged := false
-		next := append([]state.ChatMsg(nil), st.Chat...)
-		for i, msg := range next {
-			if msg.Kind == line.Kind && msg.ID == line.ID {
-				// birth stamp wins (see the wthink merge above).
-				if msg.At != 0 {
-					line.At = msg.At
+			merged := false
+			next := append([]state.ChatMsg(nil), st.Chat...)
+			for i, msg := range next {
+				if msg.Kind == line.Kind && msg.ID == line.ID {
+					// birth stamp wins (see the wthink merge above).
+					if msg.At != 0 {
+						line.At = msg.At
+					}
+					next[i] = line
+					merged = true
+					break
 				}
-				next[i] = line
-				merged = true
-				break
 			}
-		}
 			if !merged {
 				next = append(next, line)
 			}
@@ -3463,6 +3463,58 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 			name := ev.EmployeeName
 			if name == "" {
 				name = "boss"
+			}
+			// A per-CALL worker diff (the backend lifted the patch off one
+			// completed edit/write tool part) rides Kind "wdiff" INSIDE the
+			// agent's thread, adjacent to its [tool] row — not the flat
+			// flow. Merge-by-ID like the wtool entries (repeated completed
+			// frames replace in place, birth stamp preserved); at BIRTH the
+			// entry inserts right AFTER its tool call's own row when that
+			// row already exists, so the thread reads
+			// "[tool] Edit x ✓ · +A -D" then "↳ diff · x +A -D" in natural
+			// order. Boss/file-level diffs (no CallID, or the boss's own
+			// tools) keep the classic Kind "diff" flow below unchanged.
+			if ev.CallID != "" && name != "boss" {
+				line := state.ChatMsg{
+					ID:   "wdiff-" + name + "-" + ev.CallID,
+					From: name,
+					Kind: "wdiff",
+					Text: ev.DiffBody,
+					// same Meta carrier as the flat diff: path ␟ +adds ␟ -dels
+					Meta: fmt.Sprintf("%s\x1f+%d\x1f-%d", ev.DiffPath, ev.DiffAdd, ev.DiffDel),
+					At:   time.Now().UnixMilli(),
+				}
+				toolID := "wtool-" + name + "-" + ev.CallID
+				next := append([]state.ChatMsg(nil), st.Chat...)
+				merged := false
+				for i, msg := range next {
+					if msg.Kind == line.Kind && msg.ID == line.ID {
+						// birth stamp wins (see the wtool merge above).
+						if msg.At != 0 {
+							line.At = msg.At
+						}
+						next[i] = line
+						merged = true
+						break
+					}
+				}
+				if !merged {
+					inserted := false
+					for i, msg := range next {
+						if msg.Kind == "wtool" && msg.ID == toolID {
+							// fresh tail first — the insert never aliases
+							tail := append([]state.ChatMsg{line}, next[i+1:]...)
+							next = append(next[:i+1], tail...)
+							inserted = true
+							break
+						}
+					}
+					if !inserted {
+						next = append(next, line)
+					}
+				}
+				st.Chat = capChat(next)
+				return st
 			}
 			st.Chat = capChat(appendChat(st.Chat, state.ChatMsg{
 				ID:   "diff-" + nextMsgID(),

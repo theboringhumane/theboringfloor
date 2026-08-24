@@ -2475,11 +2475,11 @@ func runPlanProof() error {
 	fmt.Println(frame1)
 	fmt.Println("===== UI SHOT =====")
 	if err := assertPresent(frame1,
-		"[=BOSS=]",                     // the office floor still owns the slot
-		"[plan]",                       // statusbar agent badge
-		"plan · boss plans read-only",  // the idle plan hint prefix (statusline)
-		"[office] plan mode",           // the toggle's own notice — proof ctrl+p went through the REAL claim site
-		"plan the lobby gallery wall",  // the scripted chat round still runs in the sidebar
+		"[=BOSS=]",                    // the office floor still owns the slot
+		"[plan]",                      // statusbar agent badge
+		"plan · boss plans read-only", // the idle plan hint prefix (statusline)
+		"[office] plan mode",          // the toggle's own notice — proof ctrl+p went through the REAL claim site
+		"plan the lobby gallery wall", // the scripted chat round still runs in the sidebar
 	); err != nil {
 		return err
 	}
@@ -2502,11 +2502,11 @@ func runPlanProof() error {
 	fmt.Println(frame2)
 	fmt.Println("===== UI SHOT =====")
 	if err := assertPresent(frame2,
-		"PLAN · markdown",     // pane header in the floor slot
-		"azimuth",             // the boss's plan text, mirrored into the pane (unique marker)
-		"[plan]",              // statusbar agent badge
+		"PLAN · markdown",      // pane header in the floor slot
+		"azimuth",              // the boss's plan text, mirrored into the pane (unique marker)
+		"[plan]",               // statusbar agent badge
 		"plan · click to edit", // the pane-visible statusline hint prefix
-		"click to edit",       // pane footer hint — the pane is UNFOCUSED: focus visibly stays in the chat input
+		"click to edit",        // pane footer hint — the pane is UNFOCUSED: focus visibly stays in the chat input
 	); err != nil {
 		return err
 	}
@@ -3492,6 +3492,160 @@ func runThreadsProof() error {
 	return nil
 }
 
+// --- per-call inline thread diffs (--wdiff) ----------------------------------
+// The opencode wire carries the patch of every completed Edit tool part
+// (state.metadata.filediff); the backend lifts it into a CallID-keyed
+// EvFileDiff, the app pins it INSIDE the worker thread as Kind "wdiff",
+// and the panel shows it as (collapsed) a dim "· +A -D" suffix on the
+// thread's ↳ sneak and (expanded) a suffix on the matching "[tool] Edit"
+// row + a one-row "↳ diff · path +A -D" sub-row directly beneath that
+// row — a CLICK on the sub-row opens/closes the parsed line-numbered
+// body (the flat-diff machinery reused verbatim). Boss/fetch-level diffs
+// keep the flat ctrl+d world: this fixture is the per-call seam only.
+
+// focusDiff — the CallID-keyed EvFileDiff the backend emits right after
+// a completed edit/write EvTool (per-call worker diffs).
+func focusDiff(ownerID, ownerName, callID, path, body string, add, del int) state.Event {
+	return state.Event{Kind: state.EvFileDiff, EmployeeID: ownerID, EmployeeName: ownerName,
+		SessionID: ownerID, CallID: callID,
+		DiffPath: path, DiffBody: body, DiffAdd: add, DiffDel: del}
+}
+
+func runWdiffProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	d := newFocusDriver()
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — wdiff stub online"})
+	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"patch the chat panel rendering", false)})
+	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-m1", "boss",
+		"tekton-1 is on the patch — watch its thread.", false)})
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: "dev-1",
+		Task: state.BoardTask{ID: "t1", Title: "Patch the chat panel", At: time.Now().UnixMilli()}})
+	d.send(state.Event{Kind: state.EvWorking, EmployeeID: "dev-1", TaskID: "t1"})
+	d.send(focusTool("dev-1", "tekton-1", "call-t1", "read", "internal/panels/chat.go", "done"))
+	d.send(focusTool("dev-1", "tekton-1", "call-t2", "edit", "internal/panels/chat.go", "running"))
+	d.send(focusTool("dev-1", "tekton-1", "call-t2", "edit", "internal/panels/chat.go", "done"))
+	// the patch riding the completed edit call (what metadata.filediff
+	// normalizes into): the boss message above may interleave AFTER the
+	// tool rows in the timeline — adjacency lands it right under the
+	// edit row regardless
+	d.send(focusDiff("dev-1", "tekton-1", "call-t2", "internal/panels/chat.go",
+		"--- a/internal/panels/chat.go\n"+
+			"+++ b/internal/panels/chat.go\n"+
+			"@@ -1784,7 +1784,9 @@\n"+
+			" first = false\n"+
+			" m := item.Msg\n"+
+			" switch {\n"+
+			"-case m.Kind == thinkKind:\n"+
+			"+case m.Kind == thinkKind && !c.compactThreads:\n"+
+			"+	// compact threads keep thinking folded\n"+
+			" 	c.renderThink(&b, m)\n"+
+			"-case m.Kind == toolKind:\n"+
+			"+case m.Kind == toolKind || m.Kind == wdiffKind:\n"+
+			"+	// per-call diffs ride their tool row\n"+
+			" 	toolW := c.contentW() - 1\n",
+		8, 3))
+	// tekton-1 returns — the head settles to the dim ✓ glyph + rollup
+	d.send(state.Event{Kind: state.EvReturned, EmployeeID: "dev-1", TaskID: "t1",
+		Mail: mail("m1", "tekton-1", "boss", "return: chat panel", "patch is in.", state.MailReturn)})
+	d.pump(4)
+	fmt.Println("===== UI SHOT · WDIFF A — collapsed thread: the ↳ sneak of the newest tool gains the dim \"· +8 -3\" count suffix =====")
+	frameA := d.m.Frame()
+	fmt.Println(frameA)
+	fmt.Println("===== UI SHOT =====")
+	strippedA := ansi.Strip(frameA)
+	for _, want := range []string{
+		"Developer Task — Patch the chat panel (· 2 tool calls ✓ done)", // diff NOT a 3rd call
+		"↳ Edit internal/panels/chat.go · +8 -3",                        // sneak suffix
+	} {
+		if !strings.Contains(strippedA, want) {
+			return fail("wdiff A: frame missing %q", want)
+		}
+	}
+	if strings.Contains(strippedA, "↳ diff ·") || strings.Contains(strippedA, "compactThreads") {
+		return fail("wdiff A: the collapsed thread must not show the ↳ diff row or body")
+	}
+
+	// ctrl+g — expanded: the tool row suffix + the ↳ diff sub-row; body
+	// still closed
+	d.send(tea.KeyPressMsg(tea.Key{Code: 'g', Mod: tea.ModCtrl}))
+	fmt.Println("===== UI SHOT · WDIFF B — ctrl+g expanded: \"[tool] Edit … ✓ · +8 -3\" + the \"↳ diff · path +8 -3\" sub-row =====")
+	frameB := d.m.Frame()
+	fmt.Println(frameB)
+	fmt.Println("===== UI SHOT =====")
+	strippedB := ansi.Strip(frameB)
+	for _, want := range []string{
+		"  [tool] Read internal/panels/chat.go ✓",         // the suffix-free sibling
+		"  [tool] Edit internal/panels/chat.go ✓ · +8 -3", // the edited call's suffix
+		"  ↳ diff · internal/panels/chat.go +8 -3",        // the per-call sub-row
+	} {
+		if !strings.Contains(strippedB, want) {
+			return fail("wdiff B: frame missing %q", want)
+		}
+	}
+	if strings.Contains(strippedB, "compactThreads") {
+		return fail("wdiff B: the diff body stays closed until the ↳ row is clicked")
+	}
+	if err := assertChatLayout("wdiff B", frameB); err != nil {
+		return err
+	}
+
+	// click the ↳ diff sub-row — REAL mouse coords off the rendered frame
+	_, _, _, floorW := d.m.LayoutInfo()
+	diffY := -1
+	for i, ln := range strings.Split(strippedB, "\n") {
+		if strings.Contains(ln, "↳ diff · internal/panels/chat.go") {
+			diffY = i
+			break
+		}
+	}
+	if diffY < 0 {
+		return fail("wdiff C setup: the ↳ diff sub-row is not in the frame")
+	}
+	clickAt(d, floorW+5, diffY)
+	fmt.Println("===== UI SHOT · WDIFF C — clicked the ↳ diff row: the parsed line-numbered body opens IN THE THREAD =====")
+	frameC := d.m.Frame()
+	fmt.Println(frameC)
+	fmt.Println("===== UI SHOT =====")
+	strippedC := ansi.Strip(frameC)
+	for _, want := range []string{
+		"compactThreads",                        // an addition row's body text
+		"  [tool] Edit internal/panels/chat.go", // the thread itself stayed expanded
+		"  ↳ diff · internal/panels/chat.go +8 -3",
+	} {
+		if !strings.Contains(strippedC, want) {
+			return fail("wdiff C: frame missing %q after the ↳ click", want)
+		}
+	}
+	// click again — the body folds back, the ↳ sub-row survives
+	strippedC2 := strings.Split(ansi.Strip(d.m.Frame()), "\n")
+	diffY2 := -1
+	for i, ln := range strippedC2 {
+		if strings.Contains(ln, "↳ diff · internal/panels/chat.go") {
+			diffY2 = i
+			break
+		}
+	}
+	if diffY2 < 0 {
+		return fail("wdiff D setup: the ↳ diff row vanished under the open body")
+	}
+	clickAt(d, floorW+5, diffY2)
+	strippedD := ansi.Strip(d.m.Frame())
+	if strings.Contains(strippedD, "compactThreads") {
+		return fail("wdiff D: the second click did not close the diff body")
+	}
+	if !strings.Contains(strippedD, "  ↳ diff · internal/panels/chat.go +8 -3") {
+		return fail("wdiff D: the ↳ diff sub-row must survive the fold")
+	}
+	if err := assertChatLayout("wdiff C", frameC); err != nil {
+		return err
+	}
+	fmt.Println("asserts: OK — per-call diffs pin inside the worker thread (sneak/tool-row \"· +A -D\" suffix, \"↳ diff · path\" sub-row directly beneath its tool row, click opens/closes the line-numbered body, rollup counts the diff as neither tool nor think, boss/fetch-level flat diffs untouched)")
+	return nil
+}
+
 // --- clickable agents (--click) ----------------------------------------------
 // Scripted bubbletea v2 mouse clicks through the REAL model: (S) a click on
 // tekton-1's floor sprite selects it — activity tab opens, the agents tab
@@ -3683,6 +3837,7 @@ func main() {
 	slashpop := flag.Bool("slashpop", false, "slash-popover proof: type \"/th\" → filtered menu (/theme /themes /thinking), Enter pre-fills \"/theme \" → theme picker, arrows preview LIVE (two states printed), esc cancels back, Enter commits + persists via the plain slash path")
 	threadsThink := flag.Bool("threads-think", false, "employee-thinking-in-threads proof: tekton-1 EvThought merges per CallID into its work thread (collapsed rollup keeps the \"· 1 think\" count), ctrl+g expands tools + thoughts in natural order — boss path byte-identical")
 	threads := flag.Bool("threads", false, "thread-render fixture (opencode renderer): ONE chat frame with BOTH thread states — a LIVE collapsed thread (animated braille glyph, NO rollup while running, bare ↳ sneak, live-only ctrl+g hint row) beside a COMPLETED collapsed thread (dim ✓ glyph, \"✓ done\" rollup) — every message reducer-shaped (Kind wtool, \"<verb> · <summary>\" text, \"<state>␟<tick>\" meta stamped by the REAL app reducer; the display layer shapes it to \"<Verb> <rest>\")")
+	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
 	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) fires ONE red \"boss turn wedged\" row + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
@@ -3832,6 +3987,14 @@ func main() {
 
 	if *threads {
 		if err := runThreadsProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *wdiff {
+		if err := runWdiffProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
@@ -4362,7 +4525,7 @@ func runNotificationsProof() error {
 		ToolName: "bash", ToolSummary: "rm -rf", ToolState: "pending"})
 	d.send(tea.FocusMsg{})
 	d.send(tea.BlurMsg{})
-	typeIn("quiet boss")             // no y/a/n letters — the perm-4 popover owns them
+	typeIn("quiet boss")              // no y/a/n letters — the perm-4 popover owns them
 	drainCmd(d, key(tea.KeyEnter), 0) // answers perm-4 (popover front)
 	drainCmd(d, key(tea.KeyEnter), 0) // popover closed: the send lands
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-3", "boss", "silenced turn", false)})
