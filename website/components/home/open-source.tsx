@@ -30,7 +30,7 @@ const inspectable = [
   {
     id: '04',
     title: 'Company welcome',
-    body: 'Stars, watchers, and issues are all welcome. Tell us which part is boring in the wrong way.',
+    body: 'MIT licensed, and stars, watchers, and issues are all welcome. Tell us which part is boring in the wrong way.',
   },
 ]
 
