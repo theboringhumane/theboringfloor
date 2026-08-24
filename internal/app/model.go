@@ -268,10 +268,11 @@ type Model struct {
 	termTab       *termTabWrap // tab 2: the real OS-shell (lazy PTY, terminal.go)
 	// termCaptured — the terminal tab's OPT-IN keyboard state (wave-42):
 	// false = RELEASED (the default — office keys behave normally on the
-	// terminal tab), true = CAPTURED via ctrl+i (wave-41: every key goes
-	// to the shell until ctrl+o releases). normalizeTermCapture keeps it
-	// from ever escaping its tab: leaving while captured auto-releases,
-	// and every (re-)entry starts RELEASED — explicit opt-in each visit.
+	// terminal tab), true = CAPTURED via ctrl+space (wave-41: every key
+	// goes to the shell until ctrl+space toggles back or ctrl+o releases).
+	// normalizeTermCapture keeps it from ever escaping its tab: leaving
+	// while captured auto-releases, and every (re-)entry starts RELEASED —
+	// explicit opt-in each visit.
 	termCaptured  bool
 	keys          KeyMap
 
@@ -1598,14 +1599,16 @@ const quitArmWindow = 1500 * time.Millisecond
 // The terminal tab's keyboard is OPT-IN (wave-42). RELEASED (the default)
 // the office behaves NORMALLY on the terminal tab: tab/shift+tab cycle,
 // 1..7 jump, ctrl+p toggles, q/ctrl+c quit, and typed letters/enter are
-// consumed WITHOUT reaching the PTY or leaking to the chat. ctrl+i DIVES
-// INTO capture — then the terminal tab has the tightest claim (wave-41):
-// the ONLY keys the app keeps are ctrl+o (release back to the office keys)
-// and ctrl+q (double-press to quit — claimed above). Every other key, tab,
-// shift+tab, the digit jumps, q and ctrl+c INCLUDED, forwards to the REAL
-// shell (term maps ctrl+c to 0x03 → SIGINT of the shell's foreground
-// process, not an app quit; tab to 0x09 → the shell's completion;
-// shift+tab to "\x1b[Z" → reverse completion).
+// consumed WITHOUT reaching the PTY or leaking to the chat. ctrl+space
+// TOGGLES capture — ONE key, both ways, only while the terminal tab is
+// active — then the terminal tab has the tightest claim (wave-41): the
+// ONLY keys the app keeps are ctrl+space (toggle back out), ctrl+o
+// (release alias back to the office keys) and ctrl+q (double-press to
+// quit — claimed above). Every other key, tab, shift+tab, the digit jumps,
+// q and ctrl+c INCLUDED, forwards to the REAL shell (term maps ctrl+c to
+// 0x03 → SIGINT of the shell's foreground process, not an app quit; tab to
+// 0x09 → the shell's completion; shift+tab to "\x1b[Z" → reverse
+// completion).
 func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	chatActive := m.tabs.ActiveIndex() == 0
@@ -1656,11 +1659,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 
 	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
 	// shell keyboard is RELEASED (the default). In CAPTURED mode (opt-in
-	// via ctrl+i) tab/shift+tab are the shell's completion keys and the
+	// via ctrl+space) tab/shift+tab are the shell's completion keys and the
 	// digit keys its ordinary input: they break out of this switch and fall
-	// through to the shell forward below. The ctrl+i/ctrl+o toggle pair is
-	// app-kept (never forwarded) and fires only in its matching state:
-	// dive IN while released, release OUT while captured.
+	// through to the shell forward below. The ctrl+space toggle and the
+	// ctrl+o release alias are app-kept (never forwarded): the toggle flips
+	// capture BOTH ways, the alias releases OUT only (never a dive).
 	switch key {
 	case "tab":
 		if m.termCapturedNow() {
@@ -1676,14 +1679,20 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.tabs.Prev()
 		m.maybeSpawnTerminal()
 		return nil
-	case "ctrl+i":
-		// dive INTO shell capture — the released terminal's only kept key
-		if termActive && !m.termCapturedNow() {
-			m.setTermCaptured(true)
+	case "ctrl+space":
+		// THE one capture toggle: released ⇄ captured, BOTH ways, and only
+		// while the terminal tab is active. History: this used to be
+		// "ctrl+i" (dive-in only) — but ctrl+i is byte-identical to tab
+		// (both emit 0x09; no distinguishable encoding on non-kitty
+		// terminals), so the dive key smashed tab-to-leave. ctrl+space
+		// emits 0x00 — safe, distinct, reversible.
+		if termActive {
+			m.setTermCaptured(!m.termCapturedNow())
 			return nil
 		}
 	case "ctrl+o":
-		// release OUT of shell capture — stays on the tab, office keys live
+		// release OUT of shell capture (documented alias — never a dive):
+		// stays on the tab, office keys live; inert while released.
 		if m.termCapturedNow() {
 			m.setTermCaptured(false)
 			return nil

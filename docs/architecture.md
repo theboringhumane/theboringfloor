@@ -49,7 +49,7 @@ Floor physics (event -> sprite):
 | `internal/config` | one file to run the office: `~/.theboringoffice/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults) |
 | `internal/charter` | the oikonomos manager protocol as an embedded asset, copied into `<dir>/.opencode/` for the spawned server |
 | `internal/sound` | terminal-native office audio: eight pure-Go PCM chimes into `~/.theboringoffice/sounds/`, platform player / bell / off |
-| `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback; OPT-IN capture — released by default (office keys everywhere), `ctrl+i` dives into the shell (`tab`/`shift+tab`/digits go to the PTY), `ctrl+o` releases, capture auto-drops when the tab loses focus; only `ctrl+q` (quit-arm) stays app-global in both states |
+| `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback; OPT-IN capture — released by default (office keys everywhere), `ctrl+space` toggles capture both ways (`tab`/`shift+tab`/digits go to the PTY while captured; byte `0x00`, safe against the `ctrl+i` byte-identity with tab), `ctrl+o` releases as an alias; capture auto-drops when the tab loses focus; `ctrl+q` (quit-arm) stays app-global in both states |
 | `internal/version` | build-time stamp, one source of truth: `dev` in-tree, releases rewrite the vars via ldflags `-X`; drives `theboringoffice --version` and the topbar (`internal/chrome.AppVersion`) |
 
 ## Data flow

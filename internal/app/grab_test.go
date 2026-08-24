@@ -8,14 +8,20 @@
 //	    typed letters and enter are consumed (never the shell, never the
 //	    chat), the released hint rides the status bar;
 //	(b) the digit jump fires from a released terminal too ("3" → agents);
-//	(c) ctrl+i dives INTO capture: the toggle is swallowed (never the
-//	    shell), letters start reaching the PTY and the hint swaps;
+//	(c) ctrl+space is THE capture toggle BOTH ways: the toggle press is
+//	    swallowed (never the shell), letters start reaching the PTY and
+//	    the hint swaps — and a SECOND ctrl+space toggles back out in
+//	    place;
 //	(d) wave-41 while captured: tab forwards without a switch, shift+tab
 //	    forwards without a Prev, "3"/"7" forward without a jump;
-//	(e) ctrl+o releases OUT: swallowed, the app stays ON the terminal tab
-//	    (the office keys are live in place — the old "release → chat" hop
-//	    is gone), letters go quiet again and ctrl+i re-enters; a released
-//	    ctrl+o is inert;
+//	(e) ctrl+o releases OUT (the documented alias): swallowed, the app
+//	    stays ON the terminal tab (the office keys are live in place —
+//	    the old "release → chat" hop is gone), letters go quiet again and
+//	    ctrl+space re-enters; a released ctrl+o is inert (never a dive);
+//	(e2) REGRESSION PIN — a real TAB key event (tea.KeyPressMsg{Code:
+//	    tea.KeyTab}) NEVER toggles capture, and released-mode tab reaches
+//	    the panel-switch path (the old ctrl+i dive was byte-identical to
+//	    tab, 0x09; the ctrl+space toggle can never collide);
 //	(f) capture can never escape its tab: leaving while captured
 //	    auto-releases and every (re-)entry starts RELEASED (explicit opt-in
 //	    per visit — no memory of a prior capture);
@@ -74,12 +80,14 @@ func (f *grabFakeTerm) lastKey() string {
 }
 
 // grabKey constructors — bubbletea v2 Key{Code,Mod} → the exact String()
-// spellings handleKey switches on ("tab", "shift+tab", "ctrl+i", "ctrl+o").
-func grabTab() tea.KeyPressMsg      { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}) }
-func grabShiftTab() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}) }
-func grabCtrlI() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: 'i', Mod: tea.ModCtrl}) }
-func grabCtrlO() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl}) }
-func pressEnter() tea.KeyPressMsg   { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}) }
+// spellings handleKey switches on ("tab", "shift+tab", "ctrl+space",
+// "ctrl+o"). (ctrl+i is GONE: it was byte-identical to tab — 0x09 on
+// non-kitty terminals — so the toggle key is ctrl+space, 0x00.)
+func grabTab() tea.KeyPressMsg       { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}) }
+func grabShiftTab() tea.KeyPressMsg  { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}) }
+func grabCtrlSpace() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl}) }
+func grabCtrlO() tea.KeyPressMsg     { return tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl}) }
+func pressEnter() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}) }
 
 // grabSetupTerminal — a scratch-home model with the SpawnTerminal seam
 // wired to a recording fake, arrived at the terminal tab the REAL way (one
@@ -109,18 +117,18 @@ func grabSetupTerminal(t *testing.T) (Model, *grabFakeTerm) {
 	return m, fake
 }
 
-// grabSetupCaptured — the released default PLUS one ctrl+i dive (the
+// grabSetupCaptured — the released default PLUS one ctrl+space dive (the
 // toggle itself is swallowed — never the shell).
 func grabSetupCaptured(t *testing.T) (Model, *grabFakeTerm) {
 	t.Helper()
 	m, fake := grabSetupTerminal(t)
-	nm, _ := m.Update(grabCtrlI())
+	nm, _ := m.Update(grabCtrlSpace())
 	m = nm.(Model)
 	if !m.termCapturedNow() {
-		t.Fatalf("ctrl+i must dive INTO capture while the terminal is released")
+		t.Fatalf("ctrl+space must dive INTO capture while the terminal is released")
 	}
 	if len(fake.keys) != 0 {
-		t.Fatalf("ctrl+i is APP-KEPT — it must never reach the shell, got %v", fake.keys)
+		t.Fatalf("ctrl+space is APP-KEPT — it must never reach the shell, got %v", fake.keys)
 	}
 	if hint := m.hintLine(); hint != termHintCaptured {
 		t.Fatalf("the captured terminal's hint line must be termHintCaptured verbatim, got %q", hint)
@@ -187,10 +195,13 @@ func TestTerminalReleasedDigitsJump(t *testing.T) {
 	}
 }
 
-// (c) ctrl+i dives INTO capture: letters start reaching the shell.
-func TestTerminalCtrlIDivesIntoCapture(t *testing.T) {
+// (c) ctrl+space is THE capture toggle BOTH ways: it dives INTO capture
+// (letters start reaching the shell) and a second press toggles back OUT
+// in place (office keys live again, no tab hop).
+func TestTerminalCtrlSpaceTogglesCaptureBothWays(t *testing.T) {
 	m, fake := grabSetupCaptured(t)
 
+	// dive in (via the setup helper): letters reach the shell.
 	nm, _ := m.Update(pressKey('p'))
 	m = nm.(Model)
 	if got := fake.lastKey(); got != "p" {
@@ -198,6 +209,38 @@ func TestTerminalCtrlIDivesIntoCapture(t *testing.T) {
 	}
 	if hint := m.hintLine(); hint != termHintCaptured {
 		t.Fatalf("captured terminal must ride the captured hint, got %q", hint)
+	}
+
+	// the SAME key toggles back OUT — capture flips captured → released.
+	wantKeys := len(fake.keys)
+	nm, _ = m.Update(grabCtrlSpace())
+	m = nm.(Model)
+	if m.termCapturedNow() {
+		t.Fatalf("a second ctrl+space must toggle the capture back OFF")
+	}
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("ctrl+space releases IN PLACE — no tab hop, got index %d", idx)
+	}
+	if len(fake.keys) != wantKeys {
+		t.Fatalf("the toggle-out ctrl+space is APP-KEPT — never the shell, got %v", fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("post-toggle hint must be the released copy, got %q", hint)
+	}
+
+	// released again: the office keys are live right here.
+	nm, _ = m.Update(pressKey('z'))
+	m = nm.(Model)
+	if len(fake.keys) != wantKeys {
+		t.Fatalf("released again: the letter must not reach the shell, got %v", fake.keys)
+	}
+	nm, _ = m.Update(grabTab())
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("released again: a real tab event must cycle to agents, got index %d", idx)
+	}
+	if m.termCapturedNow() {
+		t.Fatalf("the tab cycle must not re-capture (toggle is ctrl+space only)")
 	}
 }
 
@@ -236,9 +279,9 @@ func TestTerminalCapturedWave41Keys(t *testing.T) {
 	}
 }
 
-// (e) ctrl+o releases OUT of capture: swallowed, the app stays ON the
-// terminal tab, office keys live again; ctrl+o while released is inert;
-// ctrl+i re-enters.
+// (e) ctrl+o releases OUT of capture (the documented alias): swallowed,
+// the app stays ON the terminal tab, office keys live again; ctrl+o while
+// released is inert (NEVER a dive — release-only); ctrl+space re-enters.
 func TestTerminalCtrlOReleasesCapture(t *testing.T) {
 	m, fake := grabSetupCaptured(t)
 	wantKeys := len(fake.keys)
@@ -272,26 +315,84 @@ func TestTerminalCtrlOReleasesCapture(t *testing.T) {
 	nm, _ = m.Update(grabShiftTab())
 	m = nm.(Model)
 
-	// a released ctrl+o is inert…
+	// a released ctrl+o is inert — RELEASE-ONLY, it must NEVER dive.
 	nm, _ = m.Update(grabCtrlO())
 	m = nm.(Model)
 	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
 		t.Fatalf("ctrl+o fires only while captured — released it must be a no-op, got index %d", idx)
 	}
+	if m.termCapturedNow() {
+		t.Fatalf("ctrl+o is a release alias, never a dive: a released ctrl+o must not capture")
+	}
 	if len(fake.keys) != wantKeys {
 		t.Fatalf("a released ctrl+o must never reach the shell, got %v", fake.keys)
 	}
 
-	// …and ctrl+i dives back in (the pair toggles indefinitely).
-	nm, _ = m.Update(grabCtrlI())
+	// …and ctrl+space dives back in (the toggle flips indefinitely).
+	nm, _ = m.Update(grabCtrlSpace())
 	m = nm.(Model)
 	if !m.termCapturedNow() {
-		t.Fatalf("ctrl+i must re-enter capture from the released state")
+		t.Fatalf("ctrl+space must re-enter capture from the released state")
 	}
 	nm, _ = m.Update(pressKey('k'))
 	m = nm.(Model)
 	if got := fake.lastKey(); got != "k" {
 		t.Fatalf("re-captured: the typed letter must reach the shell again, got %q", got)
+	}
+}
+
+// (e2) REGRESSION PIN — the tab-vs-toggle collision can never come back.
+// A REAL tab key event (tea.KeyPressMsg{Code: tea.KeyTab} — an event
+// literally named "tab", exactly what a hardware TAB press emits) must
+// NEVER toggle the capture, and released-mode tab must reach the
+// panel-switch path. ctrl+i is gone because it WAS this tab byte (0x09);
+// the toggle is ctrl+space (0x00), so no key shares tab's encoding.
+func TestTerminalTabKeyNeverTogglesCapture(t *testing.T) {
+	m, fake := grabSetupTerminal(t)
+
+	// released: the synthetic TAB event is an office panel switch, full stop.
+	nm, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = nm.(Model)
+	if m.termCapturedNow() {
+		t.Fatalf("a tab key event must NEVER toggle capture into life")
+	}
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("released-mode tab must reach the panel-switch path (agents), got index %d", idx)
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("released-mode tab must never reach the shell, got %v", fake.keys)
+	}
+
+	// back onto the terminal (shift+tab event — still released)…
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != terminalIndex {
+		t.Fatalf("shift+tab must return to the terminal, got index %d", idx)
+	}
+	if m.termCapturedNow() {
+		t.Fatalf("shift+tab must never toggle capture either")
+	}
+
+	// …dive via ctrl+space, toggle back out via ctrl+space, and the very
+	// same tab event leaves the tab again — no stale capture can make tab
+	// stick to the shell.
+	nm, _ = m.Update(grabCtrlSpace())
+	m = nm.(Model)
+	if !m.termCapturedNow() {
+		t.Fatalf("precondition: ctrl+space dives into capture")
+	}
+	nm, _ = m.Update(grabCtrlSpace())
+	m = nm.(Model)
+	if m.termCapturedNow() {
+		t.Fatalf("precondition: ctrl+space releases back out")
+	}
+	nm, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	m = nm.(Model)
+	if idx := m.tabs.ActiveIndex(); idx != 2 {
+		t.Fatalf("post-toggle released tab must leave the tab (the old ctrl+i/tab conflict), got index %d", idx)
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("post-toggle released tab must not reach the shell, got %v", fake.keys)
 	}
 }
 
@@ -472,10 +573,10 @@ func TestTerminalQuitKeysReleasedVsCaptured(t *testing.T) {
 
 // (k) the two frozen hint copies — hintLine swaps verbatim per state.
 func TestTerminalHintConstPinned(t *testing.T) {
-	if termHintReleased != "office keys · ctrl+i → shell · ctrl+q quit" {
+	if termHintReleased != "office keys · ctrl+space → shell · ctrl+q quit" {
 		t.Fatalf("termHintReleased copy is frozen to the toggle contract, got %q", termHintReleased)
 	}
-	if termHintCaptured != "typing → shell · ctrl+o release · ctrl+q quit" {
+	if termHintCaptured != "typing → shell · ctrl+space release · ctrl+q quit" {
 		t.Fatalf("termHintCaptured copy is frozen to the toggle contract, got %q", termHintCaptured)
 	}
 	if strings.Contains(termHintCaptured, "1-6/tab") || strings.Contains(termHintReleased, "1-6/tab") {
@@ -486,15 +587,27 @@ func TestTerminalHintConstPinned(t *testing.T) {
 	if hint := m.hintLine(); hint != termHintReleased {
 		t.Fatalf("the released terminal's hint line must be termHintReleased verbatim, got %q", hint)
 	}
-	nm, _ := m.Update(grabCtrlI())
+	nm, _ := m.Update(grabCtrlSpace())
 	m = nm.(Model)
 	if hint := m.hintLine(); hint != termHintCaptured {
 		t.Fatalf("the captured terminal's hint line must be termHintCaptured verbatim, got %q", hint)
 	}
+	// back via the SAME toggle key…
+	nm, _ = m.Update(grabCtrlSpace())
+	m = nm.(Model)
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("post-toggle-release the hint must swap back verbatim, got %q", hint)
+	}
+	// …and via the ctrl+o alias.
+	nm, _ = m.Update(grabCtrlSpace())
+	m = nm.(Model)
+	if hint := m.hintLine(); hint != termHintCaptured {
+		t.Fatalf("the re-captured terminal's hint must be termHintCaptured verbatim, got %q", hint)
+	}
 	nm, _ = m.Update(grabCtrlO())
 	m = nm.(Model)
 	if hint := m.hintLine(); hint != termHintReleased {
-		t.Fatalf("post-release the hint must swap back verbatim, got %q", hint)
+		t.Fatalf("post-ctrl+o-release the hint must swap back verbatim, got %q", hint)
 	}
 }
 

@@ -18,10 +18,11 @@
 //	delete               → "\x1b[3~"
 //	space                → " "
 //	ctrl+c/d/x (all ctrl+<letter>) → 0x01..0x1a pass-through
-//	ctrl+i / ctrl+o      → RESERVED by the app (the capture toggle: ctrl+i
-//	                       dives INTO shell capture — opt-in, released is
-//	                       the default — ctrl+o releases OUT); neither
-//	                       ever reaches the shell
+//	ctrl+space / ctrl+o  → RESERVED by the app (the capture pair: ctrl+space
+//	                       — 0x00 — TOGGLES shell capture BOTH ways, opt-in,
+//	                       released is the default; ctrl+o releases OUT as
+//	                       an alias); neither ever reaches the shell.
+//	                       ctrl+i can never be a binding: it IS tab (0x09).
 //	bracketed paste / F-keys / kitty modifiers → NOT forwarded in v1
 //
 // Process-group discipline: creack/pty's StartWithSize configures

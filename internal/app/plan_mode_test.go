@@ -214,7 +214,7 @@ func TestPlanModeToggleWithExclusions(t *testing.T) {
 
 	// EXCLUSION 1 — the terminal tab's keyboard is OPT-IN (wave-42):
 	// RELEASED the office keys behave normally (ctrl+p toggles), CAPTURED
-	// (ctrl+i dive) ctrl+p belongs to the shell.
+	// (ctrl+space dive) ctrl+p belongs to the shell.
 	m.tabs.SetActive(terminalIndex)
 	m = runMsg(t, m, ctrlP())
 	if m.agentMode != agentModePlan {
@@ -224,15 +224,15 @@ func TestPlanModeToggleWithExclusions(t *testing.T) {
 	if m.agentMode != agentModeBuild {
 		t.Fatalf("released terminal: ctrl+p must toggle back to build, got %q", m.agentMode)
 	}
-	m = runMsg(t, m, grabCtrlI()) // dive INTO capture (app-kept, no mode flip)
+	m = runMsg(t, m, grabCtrlSpace()) // dive INTO capture (app-kept, no mode flip)
 	if m.agentMode != agentModeBuild {
-		t.Fatalf("ctrl+i is the terminal's capture toggle — never a mode flip, got %q", m.agentMode)
+		t.Fatalf("ctrl+space is the terminal's capture toggle — never a mode flip, got %q", m.agentMode)
 	}
 	m = runMsg(t, m, ctrlP())
 	if m.agentMode != agentModeBuild {
 		t.Fatalf("ctrl+p belongs to the shell while the terminal is captured: %q", m.agentMode)
 	}
-	m = runMsg(t, m, grabCtrlO()) // release back out (stays on the tab)
+	m = runMsg(t, m, grabCtrlO()) // release back out via the alias (stays on the tab)
 	m.tabs.SetActive(0)
 
 	// EXCLUSION 2 — an open permission float keeps its keys

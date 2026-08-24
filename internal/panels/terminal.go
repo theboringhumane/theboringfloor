@@ -15,11 +15,12 @@
 //	         replaces the whole body when the shell dies.
 //
 // Keyboard contract (wave-42: capture is OPT-IN — the app flips Focus/Blur
-// via its ctrl+i/ctrl+o toggle; see internal/term/term.go for the full
-// byte-level matrix). Only while Focused do chars/enter/backspace/tab/esc/
-// arrows/home/end/pgup/pgdown/delete/ctrl+letter forward to the PTY;
-// ctrl+o is RESERVED (releases capture back to the app — never reaches the
-// shell). Mouse wheel scrolls the retained scrollback; a click focuses.
+// via its ctrl+space toggle (both ways) and ctrl+o release alias; see
+// internal/term/term.go for the full byte-level matrix). Only while Focused
+// do chars/enter/backspace/tab/esc/arrows/home/end/pgup/pgdown/delete/
+// ctrl+letter forward to the PTY; ctrl+space and ctrl+o are RESERVED
+// (release capture back to the app — never reach the shell). Mouse wheel
+// scrolls the retained scrollback; a click focuses.
 package panels
 
 import (
@@ -53,8 +54,8 @@ type TermPanel struct {
 // (one row reserved for the badge) and returns the ready panel. If the
 // shell can't spawn the panel still comes up, showing the spawn error in
 // the dead-shell body (r retries). The keyboard starts RELEASED — the app
-// opts into capture per visit with ctrl+i (Focus), so a fresh panel must
-// never assume the member wants the shell to own their keys.
+// opts into capture per visit with ctrl+space (Focus), so a fresh panel
+// must never assume the member wants the shell to own their keys.
 func NewTerminal(width, height int) (*TermPanel, error) {
 	p := &TermPanel{shell: term.DefaultShell()}
 	p.SetSize(width, height)
@@ -87,12 +88,13 @@ func (p *TermPanel) spawn() error {
 // Title implements Tab.
 func (p *TermPanel) Title() string { return "term" }
 
-// Focus CAPTURES the keyboard for the terminal (the app's ctrl+i dive);
+// Focus CAPTURES the keyboard for the terminal (the app's ctrl+space dive);
 // the badge flips to the focused hint.
 func (p *TermPanel) Focus() { p.focused = true }
 
-// Blur RELEASES the keyboard back to the office (the app's ctrl+o release /
-// auto-release on tab-leave; ctrl+o also blurs internally).
+// Blur RELEASES the keyboard back to the office (the app's ctrl+space
+// toggle-off / ctrl+o release alias / auto-release on tab-leave; ctrl+space
+// and ctrl+o also blur internally).
 func (p *TermPanel) Blur() { p.focused = false }
 
 // Focused reports whether keystrokes are forwarded to the shell.
@@ -157,8 +159,8 @@ func (p *TermPanel) SetState(st state.OfficeState) {
 }
 
 // Update implements Interactive. While focused every keypress goes to the
-// PTY (ctrl+o releases focus); while blurred only viewing keys work
-// (pgup/pgdn scroll) plus "r" to respawn a dead shell.
+// PTY (ctrl+space / ctrl+o release focus); while blurred only viewing keys
+// work (pgup/pgdn scroll) plus "r" to respawn a dead shell.
 func (p *TermPanel) Update(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -169,13 +171,15 @@ func (p *TermPanel) Update(msg tea.Msg) tea.Cmd {
 				p.spawnErr = p.spawn()
 				p.cached = ""
 			}
-			if key == "ctrl+o" && p.focused {
+			if (key == "ctrl+space" || key == "ctrl+o") && p.focused {
 				p.Blur()
 			}
 			return nil
 		}
 		if p.focused {
-			if key == "ctrl+o" {
+			if key == "ctrl+space" || key == "ctrl+o" {
+				// internal belt: the app gates both keeps before its own
+				// forward, but a directly-driven panel releases here too.
 				p.Blur()
 				p.cached = ""
 				return nil
@@ -352,7 +356,7 @@ func (p *TermPanel) View() string {
 	var badge string
 	switch {
 	case p.focused && p.Alive():
-		badge = chrome.TabActive.Render(" tty ") + chrome.DimText.Render(" focused · ctrl+o to release")
+		badge = chrome.TabActive.Render(" tty ") + chrome.DimText.Render(" focused · ctrl+space to release")
 	case p.Alive():
 		badge = chrome.TabInactive.Render(" tty ") + chrome.DimText.Render(" inactive")
 	default:

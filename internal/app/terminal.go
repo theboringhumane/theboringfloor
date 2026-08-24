@@ -22,13 +22,16 @@
 // Key contract (wave-42): OPT-IN capture. On the terminal tab the keyboard
 // is RELEASED by default — office keys behave normally (tab/shift+tab
 // cycle, 1..7 jump, q quits) and typed letters are consumed WITHOUT
-// reaching the PTY. ctrl+i dives INTO capture (wave-41 grab semantics:
-// everything forwards to the shell — tab is 0x09 completion, shift+tab is
-// \x1b[Z reverse completion, digits, q and ctrl+c included — term maps
-// ctrl+c to the 0x03 byte, i.e. SIGINT to the foreground process); ctrl+o
-// releases back out. The ONLY keys the app keeps while captured are ctrl+o
-// and ctrl+q (quit-arm). Capture can never escape its tab: leaving while
-// captured auto-releases, and every (re-)entry starts RELEASED — the opt-in
+// reaching the PTY. ctrl+space TOGGLES capture both ways (wave-41 grab
+// semantics while captured: everything forwards to the shell — tab is
+// 0x09 completion, shift+tab is \x1b[Z reverse completion, digits, q and
+// ctrl+c included — term maps ctrl+c to the 0x03 byte, i.e. SIGINT to the
+// foreground process); ctrl+o also releases back out (an alias, never a
+// dive). ctrl+space emits 0x00 — the retired ctrl+i dive was byte-
+// identical to tab (0x09), so it conflicted with tab-to-leave. The ONLY
+// keys the app keeps while captured are ctrl+space, ctrl+o and ctrl+q
+// (quit-arm). Capture can never escape its tab: leaving while captured
+// auto-releases, and every (re-)entry starts RELEASED — the opt-in
 // is explicit per visit.
 package app
 
@@ -132,9 +135,9 @@ func (t *termTabWrap) ensure() error {
 	return nil
 }
 
-// setCaptured flips the wrap's keyboard state (model-driven: ctrl+i dives
-// in, ctrl+o releases, tab-leave auto-releases) and mirrors it into the
-// spawned panel.
+// setCaptured flips the wrap's keyboard state (model-driven: ctrl+space
+// toggles BOTH ways, ctrl+o releases as an alias, tab-leave auto-releases)
+// and mirrors it into the spawned panel.
 func (t *termTabWrap) setCaptured(on bool) {
 	t.captured = on
 	t.applyCapture()
@@ -237,8 +240,9 @@ func fitTermPlain(s string, w int) string {
 }
 
 // Update implements panels.Interactive:
-//   - alive shell + CAPTURED (ctrl+i) → every byte goes to the PTY (the
-//     app's handleKey already filtered the ctrl+o / ctrl+q keeps).
+//   - alive shell + CAPTURED (ctrl+space dive) → every byte goes to the PTY
+//     (the app's handleKey already filtered the ctrl+space / ctrl+o /
+//     ctrl+q keeps).
 //   - alive shell + RELEASED (the default) → every key is swallowed: the
 //     office owns the keyboard on a released terminal tab.
 //   - dead/failed → r respawns (in either state); every other key is

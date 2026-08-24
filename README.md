@@ -197,12 +197,15 @@ Seven tabs with a real terminal in the middle:
   lazily spawned on first visit, resizes with the panel, mouse scrolls the
   scrollback, `r` respawns when dead. The terminal does NOT grab the
   keyboard by default: the office keys keep working on its tab (`tab`,
-  `shift+tab`, `1..7`, `q`). `ctrl+i` dives into shell capture (now every
-  key — `tab` completion, `shift+tab` sends `\x1b[Z`, digits, `q`,
-  `ctrl+c` SIGINT — goes to the shell), `ctrl+o` releases back to the
-  office keys in place, and leaving the tab auto-releases. The status bar
-  reads `office keys · ctrl+i → shell · ctrl+q quit` (released) /
-  `typing → shell · ctrl+o release · ctrl+q quit` (captured).
+  `shift+tab`, `1..7`, `q`). `ctrl+space` is the ONE capture toggle and
+  flips it BOTH ways — dive into shell capture (now every key — `tab`
+  completion, `shift+tab` sends `\x1b[Z`, digits, `q`, `ctrl+c` SIGINT —
+  goes to the shell) and the same key releases back to the office keys in
+  place. `ctrl+o` also releases (alias — release only, never a dive), and
+  leaving the tab auto-releases, so every visit starts released. (`ctrl+space`
+  emits `0x00`, a key of its own — nothing shares `tab`'s byte.) The status
+  bar reads `office keys · ctrl+space → shell · ctrl+q quit` (released) /
+  `typing → shell · ctrl+space release · ctrl+q quit` (captured).
 - **chat** — the boss conversation; **agents** / **board** / **mail** /
   **activity** — office telemetry.
 - **git** — live repo status: a header summary (modified / added /
@@ -228,7 +231,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 
 | key | does |
 |---|---|
-| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git — only inside shell capture (`ctrl+i`) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type) |
+| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git — only inside shell capture (`ctrl+space` toggle) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type) |
 | `enter` / click a file (git tab) | open its colored unified diff — `b` / `esc` back to the list, `r` refresh |
 | `↑` `↓` `pgup` `pgdn` / wheel | scroll the active panel |
 | `enter` | send to the boss (chat) |
@@ -240,7 +243,8 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not while shell-captured or with an open float) |
 | `ctrl+x` | plan mode: approve the presented/edited plan → sent to the build agent, mode flips back to build |
-| `ctrl+i` / `ctrl+o` | terminal tab: dive into / release shell keyboard capture (opt-in; released is the default and leaving auto-releases) |
+| `ctrl+space` | terminal tab: toggle shell keyboard capture BOTH ways (opt-in; released is the default and leaving auto-releases) |
+| `ctrl+o` | release shell capture (alias) |
 | `ctrl+q` | arm quit (works everywhere, embedded terminal included) |
 | `y` `a` `n` `esc` | answer a permission prompt |
 | `q` / `ctrl+c` | quit |

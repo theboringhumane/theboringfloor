@@ -17,16 +17,16 @@ import (
 // termHintReleased is the statusline hint while the terminal tab is active
 // and the keyboard is RELEASED (the DEFAULT): the office keys behave
 // exactly like on any other tab — tab/shift+tab cycle, 1..7 jump, q quits —
-// and ctrl+i is the one-key dive INTO shell capture. Frozen copy, pinned by
-// grab_test.go.
-const termHintReleased = "office keys · ctrl+i → shell · ctrl+q quit"
+// and ctrl+space is the ONE toggle INTO shell capture (and back out).
+// Frozen copy, pinned by grab_test.go.
+const termHintReleased = "office keys · ctrl+space → shell · ctrl+q quit"
 
 // termHintCaptured is the statusline hint while the terminal tab CAPTURED
-// the keyboard (opt-in via ctrl+i): typing — tab/shift+tab and the digit
-// keys INCLUDED — goes to the REAL shell; the only app-kept keys are ctrl+o
-// (release back to the office keys) and ctrl+q. Frozen copy, pinned by
-// grab_test.go.
-const termHintCaptured = "typing → shell · ctrl+o release · ctrl+q quit"
+// the keyboard (opt-in via ctrl+space): typing — tab/shift+tab and the
+// digit keys INCLUDED — goes to the REAL shell; the only app-kept keys are
+// ctrl+space (the toggle back out), ctrl+o (release alias) and ctrl+q.
+// Frozen copy, pinned by grab_test.go.
+const termHintCaptured = "typing → shell · ctrl+space release · ctrl+q quit"
 
 // quitArmToast — the high-visibility statusbar line swapped in while a
 // ctrl+q arm is live (the FIRST press arms instead of quitting; the
