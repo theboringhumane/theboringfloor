@@ -2,6 +2,11 @@
   "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
   // Cloudflare Pages project for the marketing site. Static export (next.config.mjs
   // sets output:'export') — no Worker code, no bindings, no compat date needed.
+  //
+  // Package manager: bun only (bun.lock). Do NOT add package-lock.json / pnpm-lock.yaml
+  // or Pages auto-install picks the wrong tool. Git build command should be:
+  //   bun install --frozen-lockfile && bun run build
+  // with SKIP_DEPENDENCY_INSTALL=true so Pages skips its lockfile detector.
   "name": "theboringoffice",
   "pages_build_output_dir": "./out"
 }
