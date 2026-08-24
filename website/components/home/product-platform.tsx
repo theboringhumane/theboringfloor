@@ -4,12 +4,12 @@ import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
 
 const forYouActions = [
-  { icon: MessageSquare, label: 'See which task is moving now' },
-  { icon: MessageCircle, label: 'Open the work thread behind a change' },
-  { icon: Mail, label: 'Keep the handoff in the mail tray' },
+  { icon: MessageSquare, label: 'See which task is moving across the floor' },
+  { icon: MessageCircle, label: 'Open the work thread behind any change' },
+  { icon: Mail, label: 'Catch the handoff in the mail tray' },
   { icon: MessageCircle, label: 'Approve the decision, not every step' },
-  { icon: MessageSquare, label: 'Return to the day’s activity in seconds' },
-  { icon: GitBranch, label: 'Route a backlog when you are ready' },
+  { icon: MessageSquare, label: 'Walk back in and catch up in seconds' },
+  { icon: GitBranch, label: 'Send the backlog out when you’re ready' },
 ]
 
 const agents = [
@@ -28,7 +28,7 @@ export function ProductPlatform() {
         <SectionTag>Built for the team you have today</SectionTag>
 
         <h2 className="mt-6 max-w-xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-          Start solo. Keep pace as work grows.
+          Start with one desk. Grow into a full floor.
         </h2>
       </div>
 
@@ -42,12 +42,13 @@ export function ProductPlatform() {
               </span>
             </div>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
-              Start with one terminal and a real opencode session. When work fans out, sub-agents
-              show up on the floor with the context you need to follow them.
+              Open one terminal and a real opencode session greets you. When work fans out,
+              sub-agents take desks on the floor with the context you need to follow them.
             </p>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
-              Six tabs, one cockpit: chat, terminal, agents, board, mail, and activity. No separate
-              dashboard to configure or status meeting to schedule.
+              Six tabs, one office: chat, terminal, agents, board, mail, and activity. No separate
+              dashboard to configure, no status meeting to schedule — you just look across the
+              floor.
             </p>
             <Link
               href="/get-started"
@@ -82,8 +83,8 @@ export function ProductPlatform() {
               </span>
             </div>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-white/60">
-              Keep the workflow that already works. Tour the office in demo mode, run it live, or
-              attach it to an opencode server you already have.
+              Keep the hours and habits that already work. Tour the office in demo mode, walk in
+              live, or attach the floor to an opencode server you already run.
             </p>
             <div className="mt-2 border border-white/10 bg-white/5 px-4 py-4 font-mono text-xs leading-relaxed">
               <p>theboringoffice --demo</p>

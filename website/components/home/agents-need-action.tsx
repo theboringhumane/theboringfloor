@@ -10,14 +10,14 @@ export function AgentsNeedAction() {
     >
       <div className="relative mx-auto max-w-7xl px-6 py-14">
         <p className="text-center font-mono text-xs uppercase tracking-wider text-muted-foreground">
-          A team that stays visible
+          A team that works in the open
         </p>
         <h2 className="mx-auto mt-4 max-w-2xl text-center text-3xl font-semibold tracking-tight md:text-4xl">
-          More hands on the work. One clear place to manage it.
+          More hands on the work. One floor where it all happens.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-center text-sm leading-relaxed text-muted-foreground">
-          Give the busywork to agents without trading away context. You stay
-          close to the decisions, not the terminal scrollback.
+          Hand the busywork to the team without handing over the context. You
+          stay close to the decisions — and out of the scrollback.
         </p>
 
         <div className="mx-auto my-10 aspect-video w-full max-w-5xl overflow-hidden border border-border bg-black">

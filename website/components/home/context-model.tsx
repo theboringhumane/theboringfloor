@@ -9,7 +9,7 @@ export function ContextModel() {
           direction="left"
           className="flex flex-col gap-6 border-b border-border px-6 py-14 md:border-b-0 md:border-r md:px-10"
         >
-          <h3 className="text-2xl font-semibold tracking-tight">Memory That Survives ctrl+q</h3>
+          <h3 className="text-2xl font-semibold tracking-tight">A Team That Remembers</h3>
 
           <div className="border border-border bg-card">
             <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
@@ -40,7 +40,7 @@ export function ContextModel() {
 
           <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
             The office runs on agentmemory. Decisions, lessons, and yesterday&apos;s batch survive
-            every ctrl+q — your agents never start from scratch.
+            every ctrl+q — nobody on your team ever starts from a blank slate.
           </p>
           <Link
             href="/docs"
@@ -81,8 +81,9 @@ export function ContextModel() {
 
           <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
             Swap the boss&apos;s model with <span className="font-mono text-foreground">/model</span>,
-            or attach to any running opencode server. No lock-in — run the whole office locally or
-            point it at your own backend.
+            or attach to any running opencode server. No lock-in — run the office locally or
+            point it at your own backend. Claude Code support is coming soon: same floor, more
+            coworkers.
           </p>
           <Link
             href="/docs"

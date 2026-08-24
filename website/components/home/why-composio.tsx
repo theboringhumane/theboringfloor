@@ -10,11 +10,11 @@ const tabs = [
     id: '01',
     label: 'The Floor',
     heading: 'A floor that lives',
-    body: "See work move from dispatch to return at a glance. The floor is driven by real opencode sub-agent events, so you get awareness without another dashboard.",
+    body: "tekton walks a ticket to the board; hemerodromos drops mail at the tray. Every sprite is a real opencode sub-agent event, so a glance at the floor replaces a dashboard.",
     points: [
       'Real opencode sub-agents behind every walk cycle',
       'Coffee steam, blinking rack LEDs, an uplink ripple — all tick-driven',
-      'Six tabs, one cockpit: chat, terminal, agents, board, mail, activity',
+      'Six tabs, one office: chat, terminal, agents, board, mail, activity',
     ],
     log: [
       { text: '> tekton-03 walking to board…', tone: 'muted' as const },
@@ -27,7 +27,7 @@ const tabs = [
     id: '02',
     label: 'Live Work Threads',
     heading: 'Every diff, out loud',
-    body: 'Sub-agent work renders as opencode-style threads right in the chat — no digging through logs to see what actually happened.',
+    body: 'Work comes back the way a coworker would report it: diffs, tool calls, and thinking rendered as opencode-style threads, right in the chat — nothing buried in a log.',
     points: [
       'Line-numbered diffs with full-row red/green tints and inline syntax',
       'Thinking transcripts stream in real time, then auto-collapse',
@@ -44,7 +44,7 @@ const tabs = [
     id: '03',
     label: 'Permission Queue',
     heading: 'Never locked out',
-    body: 'Permission asks stack instead of blocking. Boss questions open as classified popover pages you can answer in one keystroke.',
+    body: 'Permission asks wait their turn instead of stealing your screen. They stack 1 of N, and boss questions open as classified popovers you can answer in one keystroke — the office keeps working, and so do you.',
     points: [
       '"1 of N" queue with allow-once, always, or reject — y, a, n, esc',
       'Questions auto-classified: text, radio, checkbox, confirm',
@@ -61,7 +61,7 @@ const tabs = [
     id: '04',
     label: 'Concierge & Backlog',
     heading: 'Send anytime, blocked never',
-    body: 'Message the boss mid-task and the office concierge answers instantly. Idle prompts pile into a backlog the office manages, not a black hole.',
+    body: 'Message the boss mid-task the way you’d tap a coworker’s shoulder. The concierge answers instantly, and anything that has to wait piles into a backlog the office manages — not a black hole.',
     points: [
       'Concierge replies as a real turn — noted as "office routed: boss busy"',
       'Backlog flushes as one batch, decomposed into parallel sub-agents',
@@ -129,12 +129,12 @@ export function WhyComposio() {
     <section id="toolkits" className="border-b border-border">
       <div ref={wrapperRef} className="relative lg:h-[280vh]">
         <div ref={pinRef} className="mx-auto max-w-7xl px-6 py-20 lg:py-0 lg:min-h-svh lg:flex lg:flex-col lg:justify-center">
-          <SectionTag>Why theboringoffice</SectionTag>
+          <SectionTag>Why it feels human</SectionTag>
 
           <h2 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-            Your agents are smart.
+            A boss you can talk to.
             <br />
-            You should not have to hover.
+            A team you can watch work.
           </h2>
 
           <div className="mt-14 grid grid-cols-1 gap-10 lg:grid-cols-[240px_1fr_1fr]">

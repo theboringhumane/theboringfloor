@@ -5,13 +5,13 @@ const features = [
   {
     title: 'Permission Queue',
     description:
-      'Let agents keep moving while you stay in control. Requests queue up with clear allow-once, always, or reject choices when your attention is needed.',
+      'The office keeps moving while asks wait for your call. Requests stack as 1 of N with allow-once, always, or reject — your judgment requested, never hijacked.',
     visual: '/shots/permission-queue.png' as const,
   },
   {
     title: 'Work Threads',
     description:
-      'Know what changed before you review it. Diffs, tool calls, and thinking stay attached to the work instead of disappearing into a terminal log.',
+      'Hear what changed from the worker who changed it. Diffs, tool calls, and thinking stay attached to the work, so review feels like a handoff — not a log you have to dig through.',
     visual: '/shots/work-threads-diffs.png' as const,
   },
 ]
