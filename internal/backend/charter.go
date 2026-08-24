@@ -2,7 +2,7 @@
 // directory theboringoffice's live backend serves. On Start (live only) it:
 //
 //  1. writes the embedded charter text (internal/charter) byte-exact to
-//     <dir>/.opencode/oikonomos.md, and
+//     <dir>/.opencode/oikonomos.md,
 //  2. merges "./.opencode/oikonomos.md" into
 //     <dir>/.opencode/opencode.json's "instructions" array. VERIFIED
 //     against serve 1.18.19: opencode resolves relative instructions
@@ -10,7 +10,12 @@
 //     up to the worktree), NOT the config file's own directory — so the
 //     entry must name .opencode/ explicitly. Creates the config with
 //     {"instructions":["./.opencode/oikonomos.md"]} when absent and
-//     surgically adds the entry when present.
+//     surgically adds the entry when present, and
+//  3. wires the MCP prompt attachment (charter_mcp.go): generates
+//     <dir>/.opencode/mcp-servers.md listing the available MCP servers
+//     (discovered from the same config chain the serve reads) and merges
+//     it into instructions beside the charter, so the boss — and through
+//     her briefs the developers — know which MCP tools exist.
 //
 // Hard guarantees: AGENTS.md / CLAUDE.md and every other opencode.json
 // field are never touched; a second run is byte-identical (changed=false,
@@ -81,10 +86,10 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 	// 2. The config merge: read opencode.json when present, ensure the
 	//    instructions array contains the charter entry exactly once,
 	//    preserving every other key verbatim (map[string]any round-trip,
-	//    2-space indent; see mergeInstructions for field preservation).
+	//    2-space indent; see mergeInstruction for field preservation).
 	cfgRaw, err := os.ReadFile(cfgPath)
 	if err == nil {
-		merged, mergeChanged, mergeErr := mergeInstructions(cfgRaw)
+		merged, mergeChanged, mergeErr := mergeInstruction(cfgRaw, charterRelPath, charterAcceptedPaths)
 		if mergeErr != nil {
 			return changed, append(notes, "[theboringoffice] manager charter: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
 		}
@@ -102,6 +107,16 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 		changed = true
 	} else {
 		return changed, append(notes, "[theboringoffice] manager charter: failed (read "+cfgPath+": "+err.Error()+")")
+	}
+
+	// 3. The MCP prompt attachment (charter_mcp.go): list the serve's
+	//    configured MCP servers so the boss — and through her briefs the
+	//    developers — know which MCP tools exist. Its notes ride AHEAD of
+	//    the charter's final summary line (probes pattern-match the tail).
+	mcpChanged, mcpNotes := ensureMCPAttachment(dir)
+	notes = append(notes, mcpNotes...)
+	if mcpChanged {
+		changed = true
 	}
 
 	if changed {
@@ -129,16 +144,17 @@ func emitCharterNotes(emit func(state.Event), dir string) charterOutcome {
 	return out
 }
 
-// mergeInstructions is the pure half of the config merge: cfg is an: cfg is an
-// existing opencode.json. It returns cfg unchanged (changed=false) when the
-// instructions array already names the charter by any accepted spelling.
-// Otherwise it appends the canonical charterRelPath entry and re-marshals
-// with 2-space indent. Every foreign field survives (map[string]any round-trip); a
-// non-object instruction entry (a number, say) is left alone and the
-// charter is appended alongside it. A non-object top level, an explicit
-// JSON null instructions, or an instructions value that is not an array all
-// fail closed: the member's hand-rolled shape is never clobbered.
-func mergeInstructions(cfg []byte) (merged []byte, changed bool, err error) {
+// mergeInstruction is the pure half of the config merge for ONE
+// instructions entry: cfg is an existing opencode.json. It returns cfg
+// unchanged (changed=false) when the instructions array already names the
+// entry by any accepted spelling. Otherwise it appends the canonical
+// relPath entry and re-marshals with 2-space indent. Every foreign field
+// survives (map[string]any round-trip); a non-object instruction entry (a
+// number, say) is left alone and the entry is appended alongside it. A
+// non-object top level, an explicit JSON null instructions, or an
+// instructions value that is not an array all fail closed: the member's
+// hand-rolled shape is never clobbered.
+func mergeInstruction(cfg []byte, relPath string, accepted []string) (merged []byte, changed bool, err error) {
 	var doc map[string]any
 	if err := json.Unmarshal(cfg, &doc); err != nil {
 		return nil, false, fmt.Errorf("unparseable json: %w", err)
@@ -158,16 +174,16 @@ func mergeInstructions(cfg []byte) (merged []byte, changed bool, err error) {
 			if !ok {
 				continue
 			}
-			for _, accepted := range charterAcceptedPaths {
-				if s == accepted {
+			for _, spelling := range accepted {
+				if s == spelling {
 					return cfg, false, nil // already wired
 				}
 			}
 		}
-		arr = append(arr, charterRelPath)
+		arr = append(arr, relPath)
 		doc["instructions"] = arr
 	} else {
-		doc["instructions"] = []any{charterRelPath}
+		doc["instructions"] = []any{relPath}
 	}
 
 	out, err := json.MarshalIndent(doc, "", "  ")

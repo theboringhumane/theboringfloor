@@ -29,7 +29,21 @@ func TestCharterAssetSelfCheck(t *testing.T) {
 	}
 }
 
+// pinGlobalConfig exiles the opencode global config dir so the charter
+// pass's MCP discovery (charter_mcp.go) sees NO global servers: without
+// it, tests on a machine with real MCP servers configured (any
+// developer's ~/.config/opencode) would wire the MCP attachment into the
+// scratch dir and flip the changed/notes/file expectations under them.
+// XDG is honored first on every platform the office runs on; HOME is the
+// fallback root. Hermetic > realistic here.
+func pinGlobalConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+}
+
 func TestEnsureCharterCreatesFresh(t *testing.T) {
+	pinGlobalConfig(t)
 	dir := t.TempDir()
 	changed, notes := EnsureCharter(dir)
 	if !changed {
@@ -60,6 +74,7 @@ func TestEnsureCharterCreatesFresh(t *testing.T) {
 }
 
 func TestEnsureCharterIdempotentByteIdentical(t *testing.T) {
+	pinGlobalConfig(t)
 	dir := t.TempDir()
 	if _, notes := EnsureCharter(dir); !containsNote(notes, "manager charter: wired") {
 		t.Fatalf("first run: want wired note, got %v", notes)
@@ -83,6 +98,7 @@ func TestEnsureCharterIdempotentByteIdentical(t *testing.T) {
 }
 
 func TestEnsureCharterMergePreservesForeignFields(t *testing.T) {
+	pinGlobalConfig(t)
 	dir := t.TempDir()
 	ocDir := filepath.Join(dir, ".opencode")
 	if err := os.MkdirAll(ocDir, 0o755); err != nil {
@@ -147,6 +163,7 @@ func TestEnsureCharterMergePreservesForeignFields(t *testing.T) {
 }
 
 func TestEnsureCharterAcceptedSpellings(t *testing.T) {
+	pinGlobalConfig(t)
 	for _, spelling := range charterAcceptedPaths {
 		dir := t.TempDir()
 		ocDir := filepath.Join(dir, ".opencode")
@@ -175,6 +192,7 @@ func TestEnsureCharterAcceptedSpellings(t *testing.T) {
 }
 
 func TestEnsureCharterEnvOptOut(t *testing.T) {
+	pinGlobalConfig(t)
 	t.Setenv("THEBORINGOFFICE_NO_AUTOCHARTER", "1")
 	dir := t.TempDir()
 	changed, notes := EnsureCharter(dir)
@@ -191,6 +209,7 @@ func TestEnsureCharterEnvOptOut(t *testing.T) {
 }
 
 func TestEnsureCharterRefusesNullOrNonArrayInstructions(t *testing.T) {
+	pinGlobalConfig(t)
 	for _, body := range []string{
 		`{"instructions":null,"x":1}`,
 		`{"instructions":"docs/*.md","x":1}`,
@@ -215,6 +234,7 @@ func TestEnsureCharterRefusesNullOrNonArrayInstructions(t *testing.T) {
 }
 
 func TestEnsureCharterRefusesBrokenJson(t *testing.T) {
+	pinGlobalConfig(t)
 	dir := t.TempDir()
 	ocDir := filepath.Join(dir, ".opencode")
 	if err := os.MkdirAll(ocDir, 0o755); err != nil {
@@ -235,6 +255,7 @@ func TestEnsureCharterRefusesBrokenJson(t *testing.T) {
 }
 
 func TestEnsureCharterNeverTouchesAgentsMd(t *testing.T) {
+	pinGlobalConfig(t)
 	dir := t.TempDir()
 	agents := "# member repo rules\n"
 	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(agents), 0o644); err != nil {

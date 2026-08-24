@@ -1218,7 +1218,9 @@ func charterProbeMain() int {
 	check(err2 == nil, "opencode.json exists after run 1")
 	check(string(chart1) == charter.Text, "oikonomos.md is byte-exact the embedded charter")
 
-	// File dumps: the merged config in full, the charter's head.
+	// File dumps: the merged config in full, the charter's head, and the
+	// generated MCP prompt attachment when discovery found servers (the
+	// machine-conditional part of the pass — informational, never asserted).
 	fmt.Printf("--- %s ---\n%s\n", cfgPath, string(cfg1))
 	lines := strings.Split(string(chart1), "\n")
 	head := lines
@@ -1226,6 +1228,10 @@ func charterProbeMain() int {
 		head = append(head[:40], "... (truncated, "+fmt.Sprint(len(lines)-40)+" more lines)")
 	}
 	fmt.Printf("--- %s (head %d/%d lines) ---\n%s\n", chartPath, len(head), len(lines), strings.Join(head, "\n"))
+	mcpPath := filepath.Join(scratch, ".opencode", "mcp-servers.md")
+	if mcpDump, err := os.ReadFile(mcpPath); err == nil {
+		fmt.Printf("--- %s ---\n%s\n", mcpPath, string(mcpDump))
+	}
 
 	changed2, notes2 := backend.EnsureCharter(scratch)
 	fmt.Printf("[charter-probe] EnsureCharter #2 changed=%v notes=%v\n", changed2, notes2)
