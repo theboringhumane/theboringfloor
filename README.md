@@ -123,17 +123,28 @@ session and resends the batch.
     ↳ Read internal/panels/chat.go … running
   ```
 
-  a `  ↳` sneak row previews the latest action; click the header (or
-  `ctrl+g`) to expand the full thread. `ctrl+f` opens the whole thread as
-  a **fullscreen focus view** — the complete transcript (every tool call,
-  think body, and per-call `↳ diff` you can click open) scrolling at the
-  frame width with live pulses as it works; `esc`/`ctrl+f` leaves and the
-  office underneath returns byte-identical (scroll, expansions, draft
-  untouched). The main chat defers re-rendering while the view is open
-  and catches up in exactly one pass on return.
+  a `  ↳` sneak row previews the latest action; `ctrl+g` expands the
+  full thread inline in the chat. Clicking the thread's frame (the
+  header, its collapsed `  ↳` sneak, or an expanded thread's closing
+  summary) closes the transcript view and opens the whole thread as a
+  **nested focus pane** — the clicked agent's complete transcript (every
+  tool call, think body, and per-call `↳ diff` you can click open)
+  scrolling at the frame width with live pulses as it works; the
+  statusbar reads "esc · ctrl+f back to office" and leaving returns the
+  parent transcript underneath byte-identical (scroll, expansions, draft
+  untouched). `ctrl+f` opens the pane without the mouse (most recently
+  expanded thread wins, else any live thread). The main chat defers
+  re-rendering while the pane is open and catches up in exactly one
+  pass on return.
 - **`/stop` + free-send** — `enter` while the boss works never blocks: the
   prompt free-sends into the backlog and the status line reads "busy · N
   queued". `/stop` aborts current work (boss + workers).
+- **Long memory** — reaching the TOP of the transcript walks one page
+  further back in older history: one async page-walk per landing, spliced
+  byte-stable into the head, riding the same scroll keys (nothing new).
+  Drained top latches silently — no row — and failures back off without
+  banners; question and permission floats suppress the gesture. Demo walks
+  its canned 500-row history; real older history is live-only.
 - **Plan/build modes** — `ctrl+p` flips between **build** (default) and
   **plan** (`[plan]` on the statusbar): a mode toggle only — prompts ride
   the read-only plan agent, chat keeps focus, and the plan pane stays

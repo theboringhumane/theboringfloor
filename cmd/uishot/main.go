@@ -1977,28 +1977,53 @@ func runPowerProof(mode string) error {
 
 	// slash /power + /model leg: busy typing placeholder carries the custom
 	// boss short name; slash notices + brain.json write-through in-frame.
+	//
+	// Driven SYNCHRONOUSLY (the --slashpop idiom: focusDriver + drainCmd) —
+	// real KeyPress messages through the REAL app model with zero wall clock.
+	// The old version's real-sleep typing goroutines over a fixed 2400ms
+	// window flaked because Enter on a filtered fragment is claimed by the
+	// slash popover (slashPicked: pick + PREFILL, never auto-send), so which
+	// draft the next line's keys landed on was scheduling luck — the misses
+	// sent "/power /power saver" ("unknown mode") and no window, widened or
+	// not, repairs that. The picker's REAL path stays exercised here, in a
+	// fixed order: "/" opens the popover, the fragment filters it live,
+	// Enter prefills "/power " / "/model " (the human flow), the argument
+	// types next, and the second Enter commits through the plain slash send
+	// (onSend → slashMsg → applySlash). Every step lands before the next
+	// starts, so the asserts below are deterministic — without any window
+	// widening, let alone a 10s wall.
 	cfg := config.Default()
 	cfg.Boss.Name = "jorge (El Jefe)"
-	sb := &stubBackend{done: make(chan struct{}), powerDemo: true}
-	fm, err := runManualLoop(cfg, sb, "chat", 2400*time.Millisecond, func(send func(tea.Msg)) {
-		typeLine := func(at time.Duration, s string) {
-			go func() {
-				time.Sleep(at)
-				for _, r := range s {
-					send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
-					time.Sleep(8 * time.Millisecond)
-				}
-				send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
-			}()
-		}
-		typeLine(450*time.Millisecond, "/power")
-		typeLine(800*time.Millisecond, "/power saver")
-		typeLine(1200*time.Millisecond, "/model")
-		typeLine(1600*time.Millisecond, "/model anthropic/claude-haiku-4-5")
-	})
-	if err != nil {
-		return err
+	fm := app.New(&stubBackend{done: make(chan struct{})}, cfg)
+	if !fm.SelectTab("chat") {
+		return fmt.Errorf("slash leg: chat tab not found")
 	}
+	d := &focusDriver{m: fm}
+	d.send(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	// the powerDemo script's three payloads (status banner, one user line,
+	// the never-completing boss typing placeholder), fed without the clock.
+	(&stubBackend{}).scriptPowerDemo(func(_ int, ev state.Event) { d.send(ev) })
+	typeIn := func(s string) {
+		for _, r := range s {
+			d.send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+		}
+	}
+	key := func(code rune) tea.Cmd {
+		tm, c := d.m.Update(tea.KeyPressMsg(tea.Key{Code: code}))
+		if m, ok := tm.(app.Model); ok {
+			d.m = m
+		}
+		return c
+	}
+	typeIn("/power")
+	drainCmd(d, key(tea.KeyEnter), 0) // popover picks /power → draft prefilled "/power "
+	typeIn("saver")
+	drainCmd(d, key(tea.KeyEnter), 0) // sends "/power saver" → power=saver + persisted
+	typeIn("/model")
+	drainCmd(d, key(tea.KeyEnter), 0) // popover picks /model → draft prefilled "/model "
+	typeIn("anthropic/claude-haiku-4-5")
+	drainCmd(d, key(tea.KeyEnter), 0) // sends "/model <ref>" → boss.model set + persisted
+	fm = d.m
 	fmt.Println("===== UI SHOT · slash /power + /model (boss.name \"jorge (El Jefe)\", boss typing) =====")
 	fmt.Println(fm.Frame())
 	fmt.Println("===== UI SHOT =====")
