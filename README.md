@@ -151,7 +151,9 @@ session and resends the batch.
   hidden until it has content. Status line: `plan · boss plans read-only ·
   ctrl+p exits · ctrl+x approves a presented plan`. A completed boss reply
   mirrors into the floor slot passively (you keep typing; the hint swaps to
-  `plan · click to edit · ctrl+x approve → build · ctrl+p exits`), or click
+  `plan · click to edit · ctrl+x approve → build · ctrl+p exits`) — but only
+  when it looks like a plan: plan-shaped replies present; status chatter
+  doesn't (the pane keeps its last plan, one dim note explains), or click
   the pane region to scratch one from the starter template (`mermaid` block
   inside — captioned `╭─ mermaid diagram ─╮` in the read-only glamour
   render, `esc` back to chat). Edits latch the pane as yours — a fresh boss
@@ -159,7 +161,7 @@ session and resends the batch.
   kept`). `ctrl+x` approves → `Approved plan — implement it exactly as
   specified:` plus the plan body goes to the build agent and the mode flips
   back to build; an empty buffer or the untouched starter is refused with a
-  notice. A non-empty, non-starter plan persists across boots.
+  notice. A non-empty, non-starter, plan-shaped buffer persists across boots.
 - **Ambient floor** — coffee steam off the tea machine, blinking server-rack
   LEDs, and an uplink ripple along the server-room wall — all tick-driven
   (no timers), so an idle office stays cheap.

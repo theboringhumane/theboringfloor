@@ -6,11 +6,16 @@
 // The flow is CONVERSATION-FIRST: ctrl+p only flips the mode (chat keeps
 // focus, sends route per-mode as before) — the plan pane stays hidden
 // until it has content. A COMPLETED boss reply while plan mode is active
-// is mirrored passively into the pane (the member keeps typing); the pane
-// owns the floor slot exactly when plan mode is on AND the buffer is
-// non-empty (boss-presented, user-edited, or persisted-restored). A click
-// inside the pane arms the starter scaffold and focuses editing —
-// userDirty tracks those edits so a fresh boss reply never clobbers them.
+// is mirrored passively into the pane (the member keeps typing) ONLY when
+// it LOOKS like a plan — looksLikePlan: a markdown structure signal +
+// document heft. Boss chatter/status narration never presents: the pane
+// keeps its current content and a dim, debounced transcript note explains
+// (see notePlanShapeRejection). The pane owns the floor slot exactly when
+// plan mode is on AND the buffer is non-empty (boss-presented, user-
+// edited, or persisted-restored). A click inside the pane arms the
+// starter scaffold and focuses editing — userDirty tracks those edits so
+// a fresh boss reply never clobbers them. Persistence rides the same
+// gate: chatter-shaped buffers never survive a boot.
 //
 // State lives MODEL-side (never OfficeState — state.Mode already means
 // live/demo): m.agentMode is "plan"|"build", mirrored into the plan pane
@@ -26,8 +31,11 @@
 package app
 
 import (
+	"regexp"
 	"strings"
+	"sync"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -91,6 +99,22 @@ const (
 // arrived while the pane carries USER edits — the edits win, the pane is
 // not touched. Frozen copy — pinned by plan_mode_test.go.
 const planKeptNotice = "boss replied — your edited plan kept"
+
+// Shape-gate transcript copies (frozen — pinned by plan_shape_test.go):
+//
+//   - planNotPlanNotice: a completed boss reply FAILED the looksLikePlan
+//     gate while the pane carries real content — the pane keeps its last
+//     plan and the dim note says why. Debounced: at most once per boss
+//     turn (message ID) and never twice for the same chatter text.
+//   - planChatValveNotice: the escape valve — a chatter reply arrived
+//     while the pane shows NOTHING and no plan has presented yet this
+//     session (first-time plan mode: the boss is talking but hasn't
+//     planned). Fires ONCE per office session (the latch rides the
+//     pane-keyed gate state).
+const (
+	planNotPlanNotice   = "boss's reply didn't look like a plan — the pane kept its last plan (click to edit ¦ ctrl+p exits ¦ ctrl+x twice approves a presented plan)"
+	planChatValveNotice = "boss is chatting; when it writes a plan it lands on the left"
+)
 
 // approveArmToast — the high-visibility statusbar line swapped in while a
 // ctrl+x approve arm is live (the FIRST press arms instead of firing; the
@@ -228,9 +252,127 @@ func (m *Model) planPaneVisible() bool {
 		strings.TrimSpace(m.plan.Value()) != ""
 }
 
+// --- the presentation shape gate -----------------------------------------
+// Real plans are STRUCTURED markdown documents; boss chatter/status
+// narration isn't. A completed boss reply mirrors into the pane ONLY when
+// it (a) carries at least one markdown structure signal and (b) has
+// enough body to be a document (≥3 lines, ≥160 non-whitespace chars).
+// The gate reads SHAPE ONLY — sender metadata decides nothing here beyond
+// the existing From=="boss" guard (an "anonymized" gate: a chatter-shaped
+// bubble from the boss and a plan-shaped bubble get judged on their text,
+// never on a label the wire attached).
+var (
+	planShapeHeading  = regexp.MustCompile(`^#{1,4}\s`)
+	planShapeBullet   = regexp.MustCompile(`^\s*[-*]\s`)
+	planShapeNumbered = regexp.MustCompile(`^\s*\d+\.\s`)
+	planShapeBoldLbl  = regexp.MustCompile(`^\*\*[A-Za-z][^*]{2,40}\*\*\s*:?`)
+)
+
+// planShapeMinLines / planShapeMinNonWS — the document-heft floor: a one-
+// liner bullet or a bare "Goal" heading with nothing under it is not a
+// plan, it's a fragment.
+const (
+	planShapeMinLines = 3
+	planShapeMinNonWS = 160
+)
+
+// looksLikePlan reports whether the text is plan-SHAPED: at least one
+// markdown structure signal (heading, bullet, numbered list, fenced code
+// block, or a bold section label like "**Steps**:") riding a body of
+// ≥planShapeMinLines lines and ≥planShapeMinNonWS non-whitespace chars.
+// Small, pure, and deliberately heuristic — it errs on the side of NOT
+// presenting (the pane keeping its last plan is always safe).
+func looksLikePlan(text string) bool {
+	lines := strings.Split(text, "\n")
+	if len(lines) < planShapeMinLines {
+		return false
+	}
+	nonWS := 0
+	for _, r := range text {
+		if !unicode.IsSpace(r) {
+			nonWS++
+		}
+	}
+	if nonWS < planShapeMinNonWS {
+		return false
+	}
+	for _, ln := range lines {
+		if planShapeHeading.MatchString(ln) || planShapeBullet.MatchString(ln) ||
+			planShapeNumbered.MatchString(ln) || planShapeBoldLbl.MatchString(ln) ||
+			strings.HasPrefix(strings.TrimSpace(ln), "```") {
+			return true
+		}
+	}
+	return false
+}
+
+// planGateLatch — the shape gate's per-instance policy memory. It lives
+// OUT of Model's fields (the pane pointer is shared across every tea
+// value-copy of the model, so keying on it keeps ONE latch per app.New)
+// and carries exactly the debounce/once-per-session state the rejection
+// notices need.
+type planGateLatch struct {
+	valvePosted bool   // the empty-pane escape valve fired (once per office session)
+	noteMsgID   string // boss message id the "kept its last plan" note last fired for
+	noteText    string // chatter text that note fired for — identical repeats stay silent
+}
+
+// planGateLatches is keyed by the app's *panels.PlanEditor (stable for the
+// app's lifetime — /new reuses the pane). One entry per app instance;
+// test models each get a fresh pane, so latches never leak across tests.
+var planGateLatches sync.Map // *panels.PlanEditor → *planGateLatch
+
+// planGate returns this model's gate latch (creating it on first use).
+func (m *Model) planGate() *planGateLatch {
+	v, _ := planGateLatches.LoadOrStore(m.plan, &planGateLatch{})
+	return v.(*planGateLatch)
+}
+
+// notePlanShapeRejection — the chatter side of the gate: the reply did
+// NOT look like a plan, so the pane keeps its current content. What the
+// transcript hears about it is shaped by what the pane holds:
+//
+//   - pane shows content IDENTICAL to the reply → silence (dedupe: the
+//     same text is already where it would land).
+//   - pane is EMPTY → the escape valve, ONCE per office session: teach
+//     the first-time member that boss chatter is fine and plans land on
+//     the left. Never refires within the session (no note-spam while the
+//     boss narrates).
+//   - pane shows the untouched starter template → silence (the member
+//     just opened the scratch pane; nothing needs explaining).
+//   - pane shows a real last plan → the dim "kept its last plan" note,
+//     debounced to at most once per boss turn (message ID) and never
+//     twice for identical chatter text.
+func (m *Model) notePlanShapeRejection(msg state.ChatMsg) {
+	cur := strings.TrimSpace(m.plan.Value())
+	if cur != "" && cur == strings.TrimSpace(msg.Text) {
+		return
+	}
+	if cur == "" {
+		g := m.planGate()
+		if !g.valvePosted {
+			g.valvePosted = true
+			m.notice(planChatValveNotice)
+		}
+		return
+	}
+	if m.plan.IsStarter() {
+		return
+	}
+	g := m.planGate()
+	if g.noteMsgID == msg.ID || g.noteText == msg.Text {
+		return
+	}
+	g.noteMsgID, g.noteText = msg.ID, msg.Text
+	m.notice(planNotPlanNotice)
+}
+
 // presentBossPlan — the bossCompleted mirror for plan mode: a COMPLETED
 // boss markdown bubble is adopted as the pane content (passive — chat
-// keeps focus). Anti-clobber: a pane carrying USER edits (userDirty) is
+// keeps focus) IF it LOOKS like a plan (looksLikePlan). Boss chatter/
+// status narration never presents: the pane keeps its current content
+// and notePlanShapeRejection decides what (if anything) the transcript
+// says about it. Anti-clobber: a pane carrying USER edits (userDirty) is
 // untouched and the dim "kept" note rides the office notice channel; the
 // latch resets on each adoption. Error bubbles and empty finals never
 // present.
@@ -242,6 +384,10 @@ func (m *Model) presentBossPlan(msg state.ChatMsg) {
 		return
 	}
 	if strings.TrimSpace(msg.Text) == "" {
+		return
+	}
+	if !looksLikePlan(msg.Text) {
+		m.notePlanShapeRejection(msg)
 		return
 	}
 	if m.plan.UserDirty() {
@@ -355,14 +501,16 @@ func (m *Model) approvePlan() tea.Cmd {
 // planText is the persistence projection (session.json's planText field):
 // the buffer content worth keeping across boots. An empty or never-edited
 // starter template is NOTHING ("", and the omitempty tag drops it from
-// the file) — a pristine editor must not fake a saved plan. An approved
-// plan KEEPS persisting (its buffer is retained for restore).
+// the file) — a pristine editor must not fake a saved plan. The same
+// looksLikePlan gate as presentation applies: a buffer holding scratch
+// chatter never persists — only plan-shaped documents survive a boot. An
+// approved plan KEEPS persisting (its buffer is retained for restore).
 func (m *Model) planText() string {
 	if m.plan == nil {
 		return ""
 	}
 	v := m.plan.Value()
-	if strings.TrimSpace(v) == "" || m.plan.IsStarter() {
+	if strings.TrimSpace(v) == "" || m.plan.IsStarter() || !looksLikePlan(v) {
 		return ""
 	}
 	return v

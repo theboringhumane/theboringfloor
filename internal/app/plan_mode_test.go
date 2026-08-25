@@ -75,6 +75,17 @@ func bossReply(t *testing.T, m Model, id, text string) Model {
 		Msg: state.ChatMsg{ID: id, From: "boss", Text: text}})
 }
 
+// gatedPlan builds a boss reply that ALWAYS passes looksLikePlan
+// (heading + bullet signals, 4 lines, ≥160 non-whitespace chars): the
+// presentation gate's passing exemplar. marker rides the second line for
+// per-test identity.
+func gatedPlan(title, marker string) string {
+	return "# " + title + "\n" +
+		"- " + marker + " panels azimuth-washed along the long east wall of the lobby\n" +
+		"- glassmorphic kanban lanes for the return shelf by the tea machine\n" +
+		"- zero clerical chrome within sight of the entrance doors"
+}
+
 // approveDoublePress drives the F1 ctrl+x arm+fire pair end to end: the
 // ARMING press goes through Update DIRECTLY (never runMsg — its own
 // tea.Tick would sleep the window, then the expiry would clear the young
@@ -273,7 +284,7 @@ func TestPlanBossReplyPresents(t *testing.T) {
 		t.Fatal("a typing placeholder must NOT open the pane")
 	}
 
-	bossPlan := "# Lobby plan\n1. matte panels azimuth-washed\n2. kanban lanes"
+	bossPlan := gatedPlan("Lobby plan", "matte")
 	m = bossReply(t, m, "b1", bossPlan)
 
 	if got := m.plan.Value(); got != bossPlan {
@@ -324,7 +335,7 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	v1 := "# Plan v1\n- matte panels"
+	v1 := gatedPlan("Plan v1", "matte")
 	m = bossReply(t, m, "b1", v1)
 
 	// the user clicks into the pane and edits (the anti-clobber latch)
@@ -343,7 +354,7 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	t.Logf("user edited the pane → buffer tail %q (dirty=%t)", m.plan.Value(), m.plan.UserDirty())
 
 	// the boss replies again — the user's edit SURVIVES; the note lands
-	v2 := "# Plan v2\n- glassmorphic lanes"
+	v2 := gatedPlan("Plan v2", "glassmorphic")
 	m = bossReply(t, m, "b2", v2)
 	t.Logf("boss v2 arrived (%q) → pane kept %q", firstNonEmptyLine(v2), m.plan.Value())
 	if m.plan.Value() != edited {
@@ -384,7 +395,7 @@ func TestPlanApproveHappyPath(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	body := "Plan: plan/build modes for the office\n1. wire the agent seam\n2. swap the floor slot"
+	body := gatedPlan("Plan/build modes for the office", "agent-seam")
 	m = bossReply(t, m, "b1", body)
 
 	m = approveDoublePress(t, m) // chat-focused ctrl+x twice — F1 arm → fire
@@ -445,7 +456,7 @@ func TestPlanApproveFromEditorFocus(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	body := "# Plan\n- approve me from the editor"
+	body := gatedPlan("Editor-focused approve", "approve-me")
 	m = bossReply(t, m, "b1", body)
 	m = runMsg(t, m, paneClick())
 	if !m.plan.Focused() {
@@ -599,7 +610,7 @@ func TestPlanPersistenceRoundTrip(t *testing.T) {
 	}
 
 	// a presented plan persists and hydrates into the next boot's pane
-	plan := "Plan: relaunch me\n- still drafting"
+	plan := gatedPlan("Relaunch checklist", "still-drafting")
 	m.plan.SetValue(plan)
 	m.persistOfficeSession(true)
 	sf, ok = LoadSession(dir)
@@ -685,7 +696,7 @@ func TestPlanModeLayoutDesktopAndMobile(t *testing.T) {
 	}
 
 	// boss presents → the pane owns the floor slot (desktop)
-	m = bossReply(t, m, "b1", "# Lobby plan\n- matte panels azimuth-washed")
+	m = bossReply(t, m, "b1", gatedPlan("Lobby plan", "matte"))
 	// Frame BEFORE the marker read: it is Frame that Syncs the pane's
 	// size (SetSize on the concrete field) — View() measures against it.
 	frame = ansi.Strip(m.Frame())
@@ -757,7 +768,7 @@ func TestApproveArmFlow(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	body := "# Arm plan\n- first arms, second fires"
+	body := gatedPlan("Arm plan", "first-arms")
 	m = bossReply(t, m, "b1", body)
 
 	// (a) ARMING press — direct Update: runMsg would execute the arm's own
@@ -809,7 +820,7 @@ func TestApproveArmOtherKeyDisarms(t *testing.T) {
 	m := New(b, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
-	m = bossReply(t, m, "b1", "# Disarm plan\n- typing kills the arm")
+	m = bossReply(t, m, "b1", gatedPlan("Disarm plan", "typing-kills"))
 
 	nm, cmd := m.Update(ctrlX())
 	m = nm.(Model)
@@ -843,7 +854,7 @@ func TestApproveArmStaleReArms(t *testing.T) {
 	m := New(b, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
-	m = bossReply(t, m, "b1", "# Stale plan\n- old arms never pair")
+	m = bossReply(t, m, "b1", gatedPlan("Stale plan", "old-arms"))
 
 	nm, _ := m.Update(ctrlX())
 	m = nm.(Model)
@@ -881,7 +892,7 @@ func TestApproveArmTickExpiryClears(t *testing.T) {
 	m := New(b, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
-	m = bossReply(t, m, "b1", "# Expiry plan\n- ticks own windows")
+	m = bossReply(t, m, "b1", gatedPlan("Expiry plan", "ticks-own"))
 
 	// young arm: a stale tick landing early must NOT clear it.
 	nm, _ := m.Update(ctrlX())
@@ -985,7 +996,7 @@ func TestApproveRollbackOnSendError(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	body := "# Rollback plan\n- keep the wiring intact"
+	body := gatedPlan("Rollback plan", "wiring-intact")
 	m = bossReply(t, m, "b1", body)
 
 	nm, cmd := m.Update(ctrlX())
@@ -1093,7 +1104,7 @@ func TestPlanCompletionNoteOnMidTurnExit(t *testing.T) {
 	if m.planSendPending != 1 {
 		t.Fatalf("the second plan send tallies again, got %d", m.planSendPending)
 	}
-	m = bossReply(t, m, "b3", "# Threshold plan\n- flush")
+	m = bossReply(t, m, "b3", gatedPlan("Threshold plan", "flush"))
 	if n := countOfficeRows(m, planLandedInChat); n != 1 {
 		t.Fatalf("an in-plan completion never notes, got %d", n)
 	}
