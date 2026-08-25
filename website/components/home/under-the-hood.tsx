@@ -48,6 +48,28 @@ export function UnderTheHood() {
           interesting ones.
         </p>
 
+        <div className="mt-8 flex flex-wrap items-center gap-2 font-mono text-xs">
+          <span className="border border-border bg-card px-3 py-1.5 text-accent">
+            −25%
+            <span className="ml-2 text-muted-foreground">chat render hot path (4.07s → 3.06s)</span>
+          </span>
+          <span className="border border-border bg-card px-3 py-1.5 text-accent">
+            −61%
+            <span className="ml-2 text-muted-foreground">sampled CPU in the tick profile</span>
+          </span>
+          <span className="border border-border bg-card px-3 py-1.5 text-accent">
+            0
+            <span className="ml-2 text-muted-foreground">forced frames per second at idle</span>
+          </span>
+          <span className="border border-border bg-card px-3 py-1.5 text-accent">
+            −28%
+            <span className="ml-2 text-muted-foreground">per-delta inbox ingestion (74.5s → 53.2s)</span>
+          </span>
+        </div>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          measured on v0.2.11, this machine, full-suite runs
+        </p>
+
         <ScrollReveal
           stagger={0.06}
           className="mt-14 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2 lg:grid-cols-3"
