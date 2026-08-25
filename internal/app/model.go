@@ -2018,6 +2018,15 @@ func (m *Model) toggleThreadFocus() tea.Cmd {
 		m.notice("no worker threads yet")
 		return nil
 	}
+	m.mountThreadFocus(name)
+	return nil
+}
+
+// mountThreadFocus — the OPEN half of any focus enter (ctrl+f's resolved
+// winner, or a thread-row click naming its agent directly): the fullscreen
+// nested pane mounts at the LIVE state and the main chat's render saver
+// arms (ResumeFromFocus catches the office up in ONE pass at close).
+func (m *Model) mountThreadFocus(name string) {
 	m.threadFocus = panels.NewThreadFocus(name, m.width, m.middleH)
 	m.threadFocus.SetState(m.st)
 	m.focusThread = name
@@ -2025,7 +2034,6 @@ func (m *Model) toggleThreadFocus() tea.Cmd {
 	if m.chat != nil {
 		m.chat.SetDeferredRender(true)
 	}
-	return nil
 }
 
 // closeThreadFocus — esc/ctrl+f out (and the float-dismount path): the
@@ -2072,9 +2080,14 @@ const clickDblWindow = 400 * time.Millisecond
 // agent's work thread in chat (and jumps there). CHAT (sidebar, chat tab):
 // a click inside the open permission popover's card answers it on the spot
 // (PermClick owns the card's fixed hit-map — same response strings the
-// y/a/n keys send); a click on an expanded worker thread's "┌" header row
-// toggles that agent's thread too. Clicks landing in the 2-cell frame
-// chrome (topbar row / statusbar row) are ignored outright.
+// y/a/n keys send); a click on a worker thread's frame rows (the header,
+// a collapsed thread's ↳ sneak, an expanded thread's closing summary)
+// CLOSES the transcript view behind the thread-focus pane and opens THAT
+// agent's own transcript nested inside it (esc/ctrl+f back out returns
+// byte-identical). Every other row keeps its legacy seam (↳ diff sub-rows,
+// user fold rows — the inline-expansion toggle lives on ctrl+g and the
+// floor double-click below). Clicks landing in the 2-cell frame chrome
+// (topbar row / statusbar row) are ignored outright.
 func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	// an open thread-focus renders clicks inert app-side (mirroring the
 	// zen gate + the /model picker swallow): handlePress already routed
@@ -2133,6 +2146,12 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			if cmd := m.chat.PermClick(cx, cy); cmd != nil {
 				return cmd
 			}
+			// a thread's frame rows open the nested thread-focus pane for
+			// THAT agent (the clicked thread, not ctrl+f's resolved winner)
+			if name, ok := m.chat.ThreadRowAt(cx, cy); ok {
+				m.mountThreadFocus(name)
+				return nil
+			}
 			m.chat.ClickRow(cx, cy)
 			return nil
 		}
@@ -2159,6 +2178,12 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		// answer seam); outside it returns nil and thread rows take over
 		if cmd := m.chat.PermClick(cx, cy); cmd != nil {
 			return cmd
+		}
+		// a thread's frame rows open the nested thread-focus pane for
+		// THAT agent (the clicked thread, not ctrl+f's resolved winner)
+		if name, ok := m.chat.ThreadRowAt(cx, cy); ok {
+			m.mountThreadFocus(name)
+			return nil
 		}
 		m.chat.ClickRow(cx, cy)
 		return nil
@@ -2849,7 +2874,7 @@ func (m *Model) checkBossWedge() {
 		return
 	}
 	m.wedgeNoted = true
-	m.noticeErr("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own")
+	m.appendNotice("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own", bootWarnNoticeMeta)
 }
 
 // bossWedgeOverdue — the wall-clock wedge predicate, shared by the

@@ -215,6 +215,11 @@ const (
 	diffKind     = "diff"
 	officeFrom   = "office"
 	errMeta      = "error"
+	// bootWarnMeta — the wedge watchdog user's boot-scoped error class:
+	// renders EXACTLY like errMeta red, butSnapshot-/boot-scoped cleansing
+	// routes it (its real home is internal/app/sessions.go's
+	// bootWarnNoticeMeta, kept in lockstep).
+	bootWarnMeta = "boot-warn"
 	// officeKind — concierge chat bubbles (the EvChatOffice seam: From
 	// "office" + Kind "office"). A concierge answer is a REAL conversation
 	// turn — INFO-colored "office ›" label over glamour markdown, same
@@ -787,6 +792,27 @@ func (c *Chat) collapseLastThread() bool {
 	c.threadExpandOrder = order
 	c.ExpandThread(order[len(order)-1], false)
 	return true
+}
+
+// ThreadRowAt is ClickRow's READ-ONLY twin for the worker-thread frame
+// rows: it reports WHICH agent's thread claims content coords (x, y) —
+// the threadRows hit-map (collapsed: header + sneak rows; expanded:
+// header + closing-summary rows) — WITHOUT toggling anything. The
+// floating cards keep ClickRow's precedence (a point a question /
+// permission / picker card swallows never resolves to the thread
+// underneath), and out-of-viewport or unclaimed rows answer ("", false).
+// The app uses it to OPEN the clicked thread's transcript in the
+// thread-focus pane; the panel's own inline toggle (ClickRow, ctrl+g,
+// the floor double-click) is untouched.
+func (c *Chat) ThreadRowAt(x, y int) (string, bool) {
+	if c.cardClaims(x, y) {
+		return "", false
+	}
+	if y < 0 || y >= c.vp.Height() {
+		return "", false
+	}
+	name, ok := c.threadRows[y+c.vp.YOffset()]
+	return name, ok
 }
 
 // ClickRow handles a mouse click at (x, y) IN CHAT CONTENT COORDS
@@ -2891,7 +2917,7 @@ func (c *Chat) renderOffice(b *strings.Builder, m state.ChatMsg) {
 // dim by default, red when Meta == "error".
 func (c *Chat) renderNotice(b *strings.Builder, m state.ChatMsg) {
 	style := chrome.DimText
-	if m.Meta == errMeta {
+	if m.Meta == errMeta || m.Meta == bootWarnMeta {
 		style = chrome.ErrText
 	}
 	lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")

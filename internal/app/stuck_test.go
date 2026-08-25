@@ -88,7 +88,10 @@ func stale(m *Model, d time.Duration) {
 func countWedgeRows(m Model) int {
 	n := 0
 	for _, c := range m.st.Chat {
-		if c.Meta == "error" && strings.Contains(c.Text, "boss turn wedged") {
+		// boot-warn IS the wedge row's meta class post-wave-51 (boot-scoped
+		// and never persisted); keep "error" for the pre-wave-51 shape whose
+		// legacy tests/fixtures may still deliver.
+		if (c.Meta == "error" || c.Meta == "boot-warn") && strings.Contains(c.Text, "boss turn wedged") {
 			n++
 		}
 	}

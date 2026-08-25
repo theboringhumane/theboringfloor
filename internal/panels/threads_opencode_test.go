@@ -380,6 +380,73 @@ func TestThreadClickToggleSemantics(t *testing.T) {
 	tbAssertExpanded(t, c, "skopos-1", true, "after collapsed-sneak click")
 }
 
+// TestThreadRowAt — the app-level click seam (chat.go ThreadRowAt): a
+// READ-ONLY hit-test over the SAME threadRows hit-map ClickRow claims
+// from. A collapsed thread's header + sneak rows resolve to their agent,
+// an expanded thread's header + closing rows resolve too, its internal
+// tool rows do NOT (content, not a frame edge), and out-of-viewport /
+// unclaimed rows answer ("", false) — and NOTHING mutates (no toggle,
+// no fabrications in the expand ledger).
+func TestThreadRowAt(t *testing.T) {
+	c := newOpencodeChat(t, 60, 24)
+	rowsOf := func(agent string) []int {
+		var lines []int
+		for i := 0; i < 50; i++ {
+			if c.threadRows[i] == agent {
+				lines = append(lines, i)
+			}
+		}
+		return lines
+	}
+	// collapsed: header + sneak BOTH resolve to their own agent
+	scout := rowsOf("skopos-1")
+	if len(scout) != 2 {
+		t.Fatalf("precondition: a collapsed thread registers header + sneak, got %v", scout)
+	}
+	for _, y := range scout {
+		if name, ok := c.ThreadRowAt(3, y); !ok || name != "skopos-1" {
+			t.Fatalf("collapsed frame row %d must resolve to skopos-1, got (%q, %v)", y, name, ok)
+		}
+	}
+	// the done neighbor resolves its OWN agent — no cross-bleed
+	tekton := rowsOf("tekton-1")
+	if len(tekton) != 2 {
+		t.Fatalf("precondition: the done thread registers header + sneak, got %v", tekton)
+	}
+	if name, ok := c.ThreadRowAt(3, tekton[0]); !ok || name != "tekton-1" {
+		t.Fatalf("tekton-1's header must resolve to tekton-1, got (%q, %v)", name, ok)
+	}
+	// expanded: header + closing rows resolve, an internal tool row does NOT
+	c.ExpandThread("skopos-1", true)
+	scout = rowsOf("skopos-1")
+	if len(scout) != 2 {
+		t.Fatalf("an expanded thread registers header + closing, got %v", scout)
+	}
+	for _, y := range scout {
+		if name, ok := c.ThreadRowAt(3, y); !ok || name != "skopos-1" {
+			t.Fatalf("expanded frame row %d must resolve to skopos-1, got (%q, %v)", y, name, ok)
+		}
+	}
+	if _, ok := c.ThreadRowAt(3, scout[0]+1); ok {
+		t.Fatalf("an expanded internal tool row (line %d) must NOT resolve", scout[0]+1)
+	}
+	// out-of-viewport and unclaimed rows never resolve
+	if _, ok := c.ThreadRowAt(3, -1); ok {
+		t.Fatal("a negative row must not resolve")
+	}
+	if _, ok := c.ThreadRowAt(3, c.vp.Height()); ok {
+		t.Fatal("a row past the viewport must not resolve")
+	}
+	if _, ok := c.ThreadRowAt(3, 0); ok {
+		t.Fatal("an unclaimed row must not resolve")
+	}
+	// READ-ONLY: the hit-test toggles nothing — the explicitly-set
+	// expansion survives and the ledger gained no phantom overrides
+	if len(c.threadExpand) != 1 || !c.threadExpand["skopos-1"] {
+		t.Fatalf("ThreadRowAt must never touch the expand ledger, got %v", c.threadExpand)
+	}
+}
+
 // TestThreadClickExpandedMultiRowClosing — the closing summary folded
 // over MULTIPLE rows (narrow panel) registers EVERY one of its rows: a
 // folded summary row is part of the bubble's bottom frame edge, so each

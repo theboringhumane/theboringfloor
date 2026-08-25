@@ -66,6 +66,11 @@ const (
 	// strips it, so each boot shows exactly ONE restore line on screen
 	// and the file carries ZERO on subsequent cycles.
 	bootNoticeMeta = "boot"
+	// bootWarnNoticeMeta — the wedge watchdog's boot-scoped sibling: a
+	// red boot-ONLY warning row ("boss turn wedged …") that must never
+	// survive into session.json — a stale one reads as broken hours
+	// later, and every boot already re-watches the turn.
+	bootWarnNoticeMeta = "boot-warn"
 	// restoreNoticePrefix — the legacy self-clean marker: session.json
 	// files written before the boot-notice dedupe carry restore lines as
 	// PLAIN office notices (no Meta marker); hydrateSession drops them by
@@ -171,7 +176,7 @@ func (sf *SessionFile) Fresh() bool {
 func Snapshot(dir, primaryID string, st state.OfficeState) SessionFile {
 	chat := make([]state.ChatMsg, 0, len(st.Chat))
 	for _, c := range st.Chat {
-		if c.Meta == bootNoticeMeta {
+		if c.Meta == bootNoticeMeta || c.Meta == bootWarnNoticeMeta {
 			continue
 		}
 		chat = append(chat, c)
@@ -292,6 +297,11 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 			continue
 		}
 		if c.From == "office" && strings.HasPrefix(c.Text, restoreNoticePrefix) {
+			continue
+		}
+		// legacy wedge self-clean: prefixes committed before the wedge row
+		// became boot-scoped (boot-warn) would otherwise print forever.
+		if c.From == "office" && strings.HasPrefix(c.Text, "[theboringoffice] boss turn wedged") {
 			continue
 		}
 		chat = append(chat, c)
