@@ -414,6 +414,10 @@ func (m *Model) newOffice() {
 	m.st.Bubbles = nil
 	m.st.BossThinking = false
 	m.st.BossDelegating = false
+	// the older-history walk dies with the office: a minted-fresh primary
+	// gets a fresh pager (the next event re-seeds it — pagerKick), and an
+	// in-flight hop from the OLD session dies on its sid guard.
+	m.resetPager()
 	if m.chat != nil {
 		m.chat.ClearAttachments() // staged chips die with the office
 	}

@@ -14,6 +14,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -86,9 +87,23 @@ const (
 
 	// delegatingQuietTicks — boss-side quiet horizon for the delegation
 	// state: a pending boss placeholder with no stream/thought/primary-
-	// tool activity for MORE than this many ticks (and busy workers on the
-	// floor) flips BossDelegating on instead of the lonely "typing…" spin.
+	// tool activity for MORE than this many ticks (and busy workers on
+	// the floor) flips BossDelegating on instead of the lonely "typing…" spin.
 	delegatingQuietTicks = 6
+
+	// pagerFetchTimeout — one history hop's worst case: the scroll-to-top
+	// walk must never hang a gesture (sessionListTimeout's twin).
+	pagerFetchTimeout = 10 * time.Second
+	// pagerDemoSession — the demo walk's fixed session label: the demo
+	// backend reports no primary session id (it IS the fixture) and its
+	// MessagesPage ignores the id — the label exists so the pager's
+	// binding, stale-landing drops and /new resets stay uniform.
+	pagerDemoSession = "demo"
+	// streamReconnectedMarker — the backend's ONE recovery note
+	// (opencode.go's SSE ladder): a fresh stream re-arms the walk's
+	// failure backoff (pager.ResetFailures) AND re-opens seeding when the
+	// first seed hop died with the old stream.
+	streamReconnectedMarker = "[theboringoffice] event stream: reconnected"
 )
 
 // batchMarker prefixes the ONE composed batch prompt. Machine format (the
@@ -470,6 +485,54 @@ type Model struct {
 	sessDir  string
 	sessLast time.Time
 
+	// Older-history pagination (the state.SessionPager seam; the BOSS /
+	// primary thread only — employee-thread walks are a follow-up). The
+	// design rulings, made concrete here:
+	//   - ONE walk controller (panels.ThreadPager) bound at the FIRST
+	//     backend event: pagerSession comes from PrimarySessionID()
+	//     (live), falling back to pagerDemoSession in demo mode (the demo
+	//     backend reports no primary id and its MessagesPage ignores it).
+	//     A /new or a batch-respawn flips the primary id under us → the
+	//     next event rebinds a FRESH pager (Seed is idempotent, never
+	//     re-armed on a walked pager).
+	//   - SEEDING: hydrate (≤200 msgs from session.json) covers the tail
+	//     but only the serve can mint cursors — so the attach hop fetches
+	//     the NEWEST page ONCE, metadata-only: NextCursor + HasMore feed
+	//     pager.Seed, the page's ROWS ARE DISCARDED (never spliced):
+	//     the hydrated tail is already richer (the ruling: hydrate keeps
+	//     exact behavior, nothing is replaced). Overlap between the walk
+	//     and the hydrated region is eaten by the dedupe baseline below
+	//     instead — a walk never duplicates on screen.
+	//   - ID NORMALIZATION: fetched rows carry the serve's RAW message
+	//     id, but the transcript's stream conventions mint "bossmsg-"+id
+	//     (assistant) / "user-"+<local seq> (user). Rows splice under
+	//     "bossmsg-"+id / "user-"+id (pagerRowID), so an ASSISTANT row
+	//     already on screen dedupes by id verbatim. The USER echo id can
+	//     never collide (local seq), so user rows dedupe by TEXT
+	//     multiplicity against the baseline (live echoes round-trip the
+	//     prompt verbatim through the serve).
+	//   - BASELINE: pagerBaseIDs + pagerBaseUtext snapshot the transcript
+	//     AT SEED LANDING (hydrate + any pre-seed live echoes) and NEVER
+	//     re-capture — spliced pages stay out of them, and because pages
+	//     arrive strictly descending (rows ascending within), text
+	//     multiplicity consumption aligns with the hydrated region's own
+	//     occurrences before any genuinely-older same-text row arrives.
+	//     A same-text user message OLDER than the whole hydrated region
+	//     survives (its multiplicity is already zeroed).
+	//   - pagerSeedFailed: the seed hop died → the walk stays UNSEEDED /
+	//     unarmed (scroll-top inert) until a backend reconnect re-opens
+	//     it; pagerNoSeam latches a seam-less backend (harness stubs) so
+	//     the probe never repeats. Failures on older hops never banner —
+	//     the pager's 3-strike latch is the whole surface.
+	pager           *panels.ThreadPager
+	pagerSession    string
+	pagerSeeding    bool
+	pagerSeeded     bool
+	pagerSeedFailed bool
+	pagerNoSeam     bool
+	pagerBaseIDs    map[string]bool
+	pagerBaseUtext  map[string]int
+
 	// resumePin — an explicit opencode session id to boot into (main's
 	// -s/--session flag, threaded via WithResumeSession). Set pre-Start:
 	// it beats session.json's stored PrimaryID and skips the 4-day
@@ -718,6 +781,27 @@ type questionAnswerMsg struct{ ans panels.QuestionAnswer }
 // request defers (pages + recorded answers intact), re-openable with
 // /question.
 type questionLaterMsg struct{}
+
+// pagerSeedMsg — the eager attach-time seed hop's landing (METADATA-ONLY:
+// NextCursor + HasMore feed pager.Seed; the page's rows are DISCARDED —
+// the hydrated tail is already richer, and splicing them would fight the
+// hydrate/live content for the tail region). sid guards staleness: a
+// landing from a superseded binding (post-/new, post-respawn) drops.
+type pagerSeedMsg struct {
+	sid  string
+	page state.SessionMessagesPage
+	err  error
+}
+
+// pagerOlderMsg — one gesture-armed older-page hop's landing (the walk's
+// splice input; rows still carry the serve's RAW ids — normalization +
+// baseline dedupe happen app-side in applyOlderPage). sid guards
+// staleness exactly like pagerSeedMsg's.
+type pagerOlderMsg struct {
+	sid  string
+	page state.SessionMessagesPage
+	err  error
+}
 
 // stopWorkMsg fires on a DOUBLE-esc in the main chat input — the chat
 // panel's stop seam; handled exactly like /stop (abort + clean unwind).
@@ -1147,6 +1231,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd := m.tabs.Update(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
+		// TOP-GESTURE: a wheel-up that leaves the transcript on row 0 arms
+		// ONE older-history hop (maybeArmOlder owns every guard).
+		if msg.Button == tea.MouseWheelUp {
+			if cmd := m.maybeArmOlder(); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	case chatSentMsg:
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
 		// bubble) via the event stream — applying them here duplicated the bubbles.
@@ -1260,6 +1351,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.chat != nil {
 			m.chat.CloseSessionPicker()
 		}
+	case pagerSeedMsg:
+		// the eager attach hop landed: seed the walk (or stay unseeded and
+		// unarmed on failure — scroll-top simply never fetches). Rows are
+		// DISCARDED by design (the hydrated tail is richer); the dedupe
+		// baseline freezes onto the transcript as it stands NOW.
+		if m.pager != nil && msg.sid == m.pagerSession {
+			m.pagerSeeding = false
+			if msg.err != nil {
+				m.pagerSeedFailed = true
+			} else {
+				m.pager.Seed(msg.page.NextCursor, msg.page.HasMore)
+				m.pagerSeeded = true
+				m.capturePagerBaseline()
+			}
+		}
+	case pagerOlderMsg:
+		// the gesture-armed hop landed: splice + advance (or silently
+		// strike toward the backoff latch).
+		m.applyOlderPage(msg)
 	case modelsListMsg:
 		// the /model picker's async listing landed — picker + state field,
 		// both invisible to the digest, so cover the frame cache like slashMsg.
@@ -1870,7 +1980,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	return m.tabs.Update(msg)
+	cmd := m.tabs.Update(msg)
+	// TOP-GESTURE: an ↑/pgup that leaves the transcript on row 0 arms ONE
+	// older-history hop (maybeArmOlder owns every guard: the arm fires
+	// only when AtTranscriptTop still reads true after the panel settled).
+	if chatActive && (key == "up" || key == "pgup") {
+		if arm := m.maybeArmOlder(); arm != nil {
+			return tea.Batch(cmd, arm)
+		}
+	}
+	return cmd
 }
 
 // focusKey — the open thread-focus view owns every key: esc/ctrl+f leave
@@ -2147,7 +2266,17 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 
 // applyEvent reduces one backend event, feeds panels + activity log, and
 // re-arms the animation tick. Returns the next cmd when needed.
+// applyEvent routes ONE backend (or synthetic) event through the pager
+// kick + the core handler. The kick is the older-history walk's whole
+// attach surface: it rebinds/seeds the primary-session pager on the
+// first event, re-arms it on a stream reconnect, and no-ops O(1) on
+// every other event (the walk itself is gesture-driven, see
+// maybeArmOlder).
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
+	return tea.Batch(m.pagerKick(ev), m.applyEventCore(ev))
+}
+
+func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	// permission prompts + question holds are model-owned UI state (not
 	// chat history) — handle before the reducer (the reducer also uses
 	// the parked state: a question popover drops the typing placeholder).
@@ -2362,6 +2491,258 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------- older-history pagination (app wiring)
+//
+// The panel+backend seams (state.SessionPager, panels.ThreadPager /
+// PrependOlder / TranscriptRows / PreserveAnchor / AtTranscriptTop) are
+// frozen and proven in isolation; THIS section is the whole app loop
+// around them, four verbs:
+//
+//	pagerKick      — attach: bind the ONE primary-thread pager + fire the
+//	                 metadata-only seed hop (rides every applyEvent; O(1)
+//	                 early-exit once bound). Also the reconnect seam:
+//	                 streamReconnectedMarker re-arms the failure backoff
+//	                 (and re-opens a dead seed).
+//	maybeArmOlder  — gesture: wheel-up / ↑ / pgup landing on
+//	                 AtTranscriptTop fires ONE async hop through
+//	                 pager.StartOlder (its guards own single-flight,
+//	                 top-latch and the 3-strike backoff). Question /
+//	                 permission floats suppress the arm (a parked turn
+//	                 outranks a walk), the thread-focus view and the
+//	                 non-chat tabs keep their own scroll realms.
+//	applyOlderPage — landing: dedupe + normalize the page, splice it into
+//	                 the panel (PrependOlder) AND the reducer ledger
+//	                 (st.Chat — or the next SetState re-base would erase
+//	                 the splice), advance the walk (FinishOlder /
+//	                 FailOlder), and PreserveAnchor the reader's row.
+//	                 NO SetState call: the panel already holds the splice,
+//	                 and the next natural event re-bases onto identical
+//                 content (rev-gated render, offset untouched).
+//
+// Follow latch & scroll rulings: the splice never snaps a parked reader
+// to the tail (PrependOlder owns that purity), and a reader PARKED AT
+// THE TOP never gets auto-jumped on a landing — PreserveAnchor keeps
+// their row pinned, the fresh page materializes ABOVE their viewport,
+// and the NEXT wheel-up through it re-arms the walk at row 0.
+// Employee-thread pagination is a follow-up: the panel's thread view
+// owns no history walk, and ThreadPager binds to the primary session
+// only.
+
+// pagerKick — the attach surface, riding EVERY backend/synthetic event:
+// (a) a stream reconnect re-arms the walk's backoff + re-opens a dead
+// seed; (b) a backend without the state.SessionPager seam latches
+// pagerNoSeam (harness stubs degrade, never probe twice); (c) the first
+// event with a resolvable session id binds the pager and fires the ONE
+// seed hop (metadata-only — rows discarded, see pagerSeedMsg); (d) a
+// primary-id flip (/new, batch respawn) rebinds fresh on the next event.
+func (m *Model) pagerKick(ev state.Event) tea.Cmd {
+	if ev.Kind == state.EvStatus && ev.Text == streamReconnectedMarker {
+		if m.pager != nil {
+			m.pager.ResetFailures()
+		}
+		m.pagerSeedFailed = false
+	}
+	if m.pagerNoSeam || m.chat == nil || m.backend == nil {
+		return nil
+	}
+	sp, ok := m.backend.(state.SessionPager)
+	if !ok {
+		m.pagerNoSeam = true
+		return nil
+	}
+	sid := m.PrimarySessionID()
+	if sid == "" && m.st.Mode == state.ModeDemo {
+		sid = pagerDemoSession
+	}
+	if sid == "" {
+		return nil // live pre-attach (no primary resolved yet): try the next event
+	}
+	if m.pager != nil && m.pagerSession == sid {
+		if m.pagerSeeding || m.pagerSeeded || m.pagerSeedFailed {
+			return nil
+		}
+		// bound but never seeded (a reconnect re-opened the latch): re-seed.
+	} else {
+		m.pager = panels.NewThreadPager(sid)
+		m.pagerSession = sid
+		m.pagerBaseIDs, m.pagerBaseUtext = nil, nil
+	}
+	m.pagerSeeding, m.pagerSeeded, m.pagerSeedFailed = true, false, false
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), pagerFetchTimeout)
+		defer cancel()
+		page, err := sp.MessagesPage(ctx, sid, "", panels.ThreadOlderPageSize)
+		return pagerSeedMsg{sid: sid, page: page, err: err}
+	}
+}
+
+// resetPager drops the whole binding (/new): the NEXT event rebumps a
+// fresh pager for the minted session (pagerKick), and any in-flight
+// landing from the OLD session dies on the sid guard.
+func (m *Model) resetPager() {
+	m.pager = nil
+	m.pagerSession = ""
+	m.pagerSeeding, m.pagerSeeded, m.pagerSeedFailed = false, false, false
+	m.pagerBaseIDs, m.pagerBaseUtext = nil, nil
+}
+
+// capturePagerBaseline freezes the dedupe reference at SEED LANDING: the
+// transcript ids (assistant rows match normalized fetched ids verbatim)
+// plus user texts WITH multiplicity (the live echo's "user-"+<seq> ids
+// can never collide with a fetched "user-"+<serveID>, so user rows match
+// by text; see the Model field block for the ordering argument).
+func (m *Model) capturePagerBaseline() {
+	m.pagerBaseIDs = make(map[string]bool, len(m.st.Chat))
+	m.pagerBaseUtext = make(map[string]int, len(m.st.Chat)/2)
+	for _, c := range m.st.Chat {
+		if c.ID != "" {
+			m.pagerBaseIDs[c.ID] = true
+		}
+		if c.From == "user" {
+			m.pagerBaseUtext[c.Text]++
+		}
+	}
+}
+
+// maybeArmOlder — the scroll-to-top gesture's hook: called AFTER the
+// chat panel settled a wheel-up / ↑ / pgup. Every guard lives here (or
+// in the pager): chat tab active, no thread-focus pane, no
+// question/permission float, transcript AT row 0, and the pager's own
+// seeded / top / single-flight / backoff contract. True arms ONE async
+// hop through the same tea.Cmd plumbing the /session listing rides
+// (never synchronous in Update).
+func (m *Model) maybeArmOlder() tea.Cmd {
+	if m.chat == nil || m.pager == nil || !m.pagerSeeded {
+		return nil
+	}
+	if m.tabs.ActiveIndex() != 0 || m.threadFocus != nil {
+		return nil
+	}
+	if m.permQ.front() != nil || m.question != nil {
+		return nil
+	}
+	if !m.chat.AtTranscriptTop() {
+		return nil
+	}
+	cursor, ok := m.pager.StartOlder()
+	if !ok {
+		return nil
+	}
+	sp, ok := m.backend.(state.SessionPager)
+	if !ok {
+		return nil // impossible (the kick latched pagerNoSeam) — defensive
+	}
+	sid := m.pagerSession
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), pagerFetchTimeout)
+		defer cancel()
+		page, err := sp.MessagesPage(ctx, sid, cursor, panels.ThreadOlderPageSize)
+		return pagerOlderMsg{sid: sid, page: page, err: err}
+	}
+}
+
+// applyOlderPage — one hop's landing: fail silently into the pager's
+// backoff; on success DEDUPE + NORMALIZE (filterOlderRows), splice the
+// survivors panel-side AND ledger-side with byte-stable anchoring. The
+// ledger prepend deliberately bypasses capChat: its fuse drops the
+// OLDEST entries first, which would eat exactly the pages the walk
+// works for — history growth is gesture-bounded (and chatCap still
+// guards the live append stream).
+func (m *Model) applyOlderPage(msg pagerOlderMsg) {
+	if m.pager == nil || m.chat == nil || msg.sid != m.pagerSession {
+		return // superseded binding: drop the stale landing
+	}
+	if msg.err != nil {
+		m.pager.FailOlder() // silent — 3 strikes latch, never a banner
+		return
+	}
+	rows := m.filterOlderRows(msg.page.Rows)
+	if len(rows) > 0 {
+		before := m.chat.TranscriptRows()
+		m.chat.PrependOlder(rows)
+		m.st.Chat = append(pagerRowsToChat(rows), m.st.Chat...)
+		m.chat.PreserveAnchor(before)
+	}
+	m.pager.FinishOlder(msg.page.NextCursor, msg.page.HasMore)
+	// an all-overlap page (0 fresh rows) still advances the cursor — the
+	// walk skips the hydrated region without a pixel moving.
+}
+
+// filterOlderRows drops fetched rows already on screen and NORMALIZES
+// the survivors' ids into the transcript's stream conventions:
+// bossmsg-<id> for assistant, user-<id> for user, the raw id otherwise
+// ("reasoning"/serve-side tool rows don't round-trip — the office-note
+// namespace never collides). Dedupe: normalized id in the baseline, and
+// for user rows (whose live echoes mint unmatchable local-seq ids) the
+// TEXT multiplicity — consume one occurrence per dropped row.
+func (m *Model) filterOlderRows(rows []state.SessionMessageRow) []state.SessionMessageRow {
+	out := make([]state.SessionMessageRow, 0, len(rows))
+	for _, r := range rows {
+		id := pagerRowID(r)
+		if m.pagerBaseIDs[id] {
+			continue
+		}
+		if r.Role == "user" && m.pagerBaseUtext[pagerRowText(r)] > 0 {
+			m.pagerBaseUtext[pagerRowText(r)]--
+			continue
+		}
+		r.ID = id
+		out = append(out, r)
+	}
+	return out
+}
+
+// pagerRowID — the transcript id ONE fetched row splices under: the SAME
+// conventions the live stream mints (opencode.go's EvChatBoss
+// "bossmsg-"+info.ID; the user echo's "user-" prefix — with the serve id
+// where the stream used a local seq, the only colliding-safe choice).
+func pagerRowID(r state.SessionMessageRow) string {
+	switch r.Role {
+	case "assistant":
+		return "bossmsg-" + r.ID
+	case "user":
+		return "user-" + r.ID
+	default:
+		return r.ID
+	}
+}
+
+// pagerRowText — ONE row's spliced body: the text-bearing parts joined
+// exactly like the panel's sessionRowToChat (tool/reasoning-only rows
+// render empty — history splices for READING, never replaying calls).
+func pagerRowText(r state.SessionMessageRow) string {
+	var texts []string
+	for _, p := range r.Parts {
+		if p.Text != "" {
+			texts = append(texts, p.Text)
+		}
+	}
+	return strings.Join(texts, "\n\n")
+}
+
+// pagerRowsToChat — one filtered+normalized page's LEDGER form: field-
+// for-field identical to the panel's sessionRowToChat (both see the same
+// normalized ids), so the next SetState re-base paints byte-identical
+// rows over the splice. (wtool-*/wthink-* entries never occur: a session
+// message page carries user/assistant turns only — worker-thread rows
+// are derived from tool EVENTS, never from the message history.)
+func pagerRowsToChat(rows []state.SessionMessageRow) []state.ChatMsg {
+	out := make([]state.ChatMsg, 0, len(rows))
+	for _, r := range rows {
+		m := state.ChatMsg{ID: r.ID, Text: pagerRowText(r), At: r.Created}
+		switch r.Role {
+		case "user":
+			m.From, m.Kind = "user", "user"
+		case "assistant":
+			m.From, m.Kind = "boss", "boss"
+		default:
+			m.From = "office"
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // applyDelegation — P3: while the boss dispatched work to children the
