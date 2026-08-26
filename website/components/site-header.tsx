@@ -8,7 +8,7 @@ const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
 import { cn } from '@/lib/utils'
 
 const products = [
-  { name: 'The Office', description: 'Give any opencode agent a desk and a name' },
+  { name: 'The Office', description: 'Give any opencode or Claude Code agent a desk and a name' },
   { name: 'Work Threads', description: 'Real diffs and thinking, per task, per agent' },
   { name: 'Permission Queue', description: 'One inbox for every yes, no, and always' },
   { name: 'Concierge', description: 'Someone always answers, even when the boss is out' },

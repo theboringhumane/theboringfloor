@@ -42,9 +42,9 @@ export function Hero() {
         </h1>
 
         <p className="mt-10 max-w-lg text-pretty font-sans text-base leading-relaxed text-white/50 md:text-lg">
-          A terminal app where your opencode boss and sub-agents clock in as coworkers on a
-          living floor. See the work move, talk to the boss like a person, and come back tomorrow
-          to an office that remembers.
+          A terminal app where your opencode or Claude Code boss and sub-agents clock in as
+          coworkers on a living floor. See the work move, talk to the boss like a person, and
+          come back tomorrow to an office that remembers.
         </p>
 
         <div className="mt-12 flex max-w-xl items-stretch border border-white/15 bg-black/50 font-mono text-sm">

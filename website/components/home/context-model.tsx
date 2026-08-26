@@ -81,9 +81,9 @@ export function ContextModel() {
 
           <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
             Swap the boss&apos;s model with <span className="font-mono text-foreground">/model</span>,
-            or attach to any running opencode server. No lock-in — run the office locally or
-            point it at your own backend. Claude Code support is coming soon: same floor, more
-            coworkers.
+            or attach to any running opencode server. Two LLM transports, one floor: opencode by
+            default, or Claude Code on your own <span className="font-mono text-foreground">claude</span> CLI
+            — same roster, same board, no lock-in.
           </p>
           <Link
             href="/docs"

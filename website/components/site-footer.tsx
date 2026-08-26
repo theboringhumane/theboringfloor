@@ -28,7 +28,7 @@ const columns = [
     title: "For Agents",
     links: [
       "opencode",
-      "Claude Code (Coming Soon)",
+      "Claude Code",
       "Codex (Coming Soon)",
       "Cursor (Coming Soon)",
       "Pi (Coming Soon)",

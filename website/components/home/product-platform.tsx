@@ -42,8 +42,9 @@ export function ProductPlatform() {
               </span>
             </div>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
-              Open one terminal and a real opencode session greets you. When work fans out,
-              sub-agents take desks on the floor with the context you need to follow them.
+              Open one terminal and a real agent session — opencode or Claude Code — greets
+              you. When work fans out, sub-agents take desks on the floor with the context you
+              need to follow them.
             </p>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
               Six tabs, one office: chat, terminal, agents, board, mail, and activity. No separate
@@ -89,6 +90,7 @@ export function ProductPlatform() {
             <div className="mt-2 border border-white/10 bg-white/5 px-4 py-4 font-mono text-xs leading-relaxed">
               <p>theboringoffice --demo</p>
               <p className="mt-2">theboringoffice</p>
+              <p className="mt-2">theboringoffice --backend claudecode</p>
               <p className="mt-2">theboringoffice --server</p>
               <p className="pl-4">http://127.0.0.1:4096</p>
             </div>

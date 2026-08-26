@@ -11,7 +11,7 @@ export const metadata = {
 const sections = [
   {
     title: 'Quickstart',
-    items: ['Installation', 'Connecting opencode', 'Hiring your first agent'],
+    items: ['Installation', 'Choosing a transport (opencode, Claude Code)', 'Hiring your first agent'],
   },
   {
     title: 'Core Concepts',

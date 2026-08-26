@@ -21,8 +21,8 @@ export default function GetStartedPage() {
               Open the office in minutes
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-pretty leading-relaxed text-muted-foreground">
-              Install the native Go CLI, take a tour in demo mode, then run a live office with a real
-              opencode boss and working sub-agents.
+              Install the native Go CLI, take a tour in demo mode, then run a live office with a
+              real boss and working sub-agents — on opencode or Claude Code.
             </p>
 
             <div className="mx-auto mt-10 max-w-md border border-border bg-card p-6 text-left font-mono text-xs leading-relaxed">
@@ -32,9 +32,11 @@ export default function GetStartedPage() {
               <p className="pl-4">theboringoffice/main/install.sh | sh</p>
               <p className="mt-3 text-muted-foreground"># tour the office</p>
               <p>theboringoffice --demo</p>
-              <p className="mt-3 text-muted-foreground"># start a live office</p>
+              <p className="mt-3 text-muted-foreground"># start a live office (opencode is the default transport)</p>
               <p>theboringoffice</p>
-              <p className="mt-3 text-muted-foreground"># or attach to an existing server</p>
+              <p className="mt-3 text-muted-foreground"># same office, on your Claude Code CLI</p>
+              <p>theboringoffice --backend claudecode</p>
+              <p className="mt-3 text-muted-foreground"># or attach to an existing opencode server</p>
               <p>theboringoffice --server http://127.0.0.1:4096</p>
             </div>
 
@@ -61,7 +63,7 @@ export default function GetStartedPage() {
             </div>
             <div className="bg-background p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">02 / Run</p>
-              <p className="mt-3 text-sm leading-relaxed">Live mode starts <span className="font-mono text-foreground">opencode serve</span> and opens the boss chat.</p>
+              <p className="mt-3 text-sm leading-relaxed">Live mode starts <span className="font-mono text-foreground">opencode serve</span> by default — or one <span className="font-mono text-foreground">claude</span> CLI process per session with <span className="font-mono text-foreground">--backend claudecode</span> — and opens the boss chat.</p>
             </div>
             <div className="bg-background p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">03 / Resume</p>
@@ -71,6 +73,8 @@ export default function GetStartedPage() {
 
           <p className="mx-auto mt-8 max-w-2xl text-center font-mono text-xs leading-relaxed text-muted-foreground">
             Config lives at <span className="text-foreground">~/.theboringoffice/configs/brain.json</span>.
+            Pin the default transport with <span className="text-foreground">{`"backend": { "name": "claudecode" }`}</span> —
+            opencode stays the default otherwise; <span className="text-foreground">/backend</span> swaps mid-flight and persists.
             Inspect the defaults with <span className="text-foreground">theboringoffice --print-default-config</span>.
           </p>
         </section>

@@ -10,9 +10,9 @@ const tabs = [
     id: '01',
     label: 'The Floor',
     heading: 'A floor that lives',
-    body: "tekton walks a ticket to the board; hemerodromos drops mail at the tray. Every sprite is a real opencode sub-agent event, so a glance at the floor replaces a dashboard.",
+    body: "tekton walks a ticket to the board; hemerodromos drops mail at the tray. Every sprite is a real sub-agent event from your transport — opencode or Claude Code — so a glance at the floor replaces a dashboard.",
     points: [
-      'Real opencode sub-agents behind every walk cycle',
+      'Real sub-agents, opencode or Claude Code, behind every walk cycle',
       'Coffee steam, blinking rack LEDs, an uplink ripple — all tick-driven',
       'Six tabs, one office: chat, terminal, agents, board, mail, activity',
     ],

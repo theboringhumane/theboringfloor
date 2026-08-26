@@ -10,7 +10,7 @@ const cards = [
   {
     id: '02',
     title: 'The floor moves when work moves',
-    body: "Sprites walk when the opencode server's event stream says something happened — never on animation timers. Coffee steam and rack LEDs tick gently in the background, so an idle office stays cheap.",
+    body: "Sprites walk when the LLM transport says something happened — the opencode serve event stream, or a stream-json feed from your claude CLI — never on animation timers. Coffee steam and rack LEDs tick gently in the background, so an idle office stays cheap.",
   },
   {
     id: '03',

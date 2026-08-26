@@ -212,9 +212,9 @@ export default function VisionPage() {
               Built for coworkers, not one harness.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Today the office runs on opencode, honestly and visibly. Claude Code support is
-              coming. The org, the floor, and the memory were built for coworkers, whichever
-              harness they arrive in.
+              The office runs on opencode or Claude Code, honestly and visibly — same floor,
+              same roster, either harness. The org, the floor, and the memory were built for
+              coworkers, whichever harness they arrive in.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               We are at v0.2.x — the &quot;wave&quot; releases. Early, open, and building in

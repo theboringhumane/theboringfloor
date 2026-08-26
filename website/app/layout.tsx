@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     template: `%s · ${SITE_NAME}`,
   },
   description:
-    'A virtual office for AI agents. theboringoffice is a terminal UI for coding agents — an opencode TUI where sub-agents clock in as coworkers on a living floor, with an agent task board, work threads, and mail in one ChatOps terminal office.',
+    'A virtual office for AI agents. theboringoffice is a terminal UI for coding agents — an opencode or Claude Code TUI where sub-agents clock in as coworkers on a living floor, with an agent task board, work threads, and mail in one ChatOps terminal office.',
   keywords: [
     'AI coding agents',
     'opencode',
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
-      'Watch your opencode sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
+      'Watch your opencode or Claude Code sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
     url: SITE_URL,
     type: 'website',
     locale: 'en_US',
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
-      'Watch your opencode sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
+      'Watch your opencode or Claude Code sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
   },
   manifest: '/favicon_io/site.webmanifest',
   icons: {
