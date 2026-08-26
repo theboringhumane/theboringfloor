@@ -53,10 +53,112 @@ func TestSessionRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSessionPathProjectsLayout pins the canonical on-disk shape after the
+// projects/<hash> migration:
+// <home>/.theboringoffice/projects/<dirhash>/session.json.
+func TestSessionPathProjectsLayout(t *testing.T) {
+	home := scratchHome(t)
+	dir := t.TempDir()
+	want := filepath.Join(home, ".theboringoffice", "projects", SessionDirHash(dir), "session.json")
+	if got := SessionPath(dir); got != want {
+		t.Fatalf("SessionPath must live under .theboringoffice/projects/<hash>: got %q, want %q", got, want)
+	}
+}
+
+// TestSaveSessionWritesProjectsOnly pins the write side of the migration:
+// SaveSession creates projects/<hash>/session.json and NEVER a file under
+// the old ~/.theboringoffice/sessions or ~/.grafeio/sessions roots.
+func TestSaveSessionWritesProjectsOnly(t *testing.T) {
+	home := scratchHome(t)
+	dir := t.TempDir()
+	if err := SaveSession(dir, Snapshot(dir, "ses-x", state.OfficeState{})); err != nil {
+		t.Fatal(err)
+	}
+	hash := SessionDirHash(dir)
+	want := filepath.Join(home, ".theboringoffice", "projects", hash, "session.json")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("session.json must land at the projects path: %v", err)
+	}
+	for _, old := range []string{
+		filepath.Join(home, ".theboringoffice", "sessions", hash, "session.json"),
+		filepath.Join(home, ".grafeio", "sessions", hash, "session.json"),
+	} {
+		if _, err := os.Stat(old); !os.IsNotExist(err) {
+			t.Fatalf("no file may be written at the old path %q (stat err=%v)", old, err)
+		}
+	}
+}
+
+// TestLoadSession_SessionsDirFallback pins the migration-era read contract:
+// an office session stored under the pre-migration ~/.theboringoffice/sessions
+// root is still found when projects/<hash> has no file (that root is read
+// only), and in the fallback chain it outranks the pre-rename ~/.grafeio
+// root: projects > .theboringoffice/sessions > .grafeio/sessions.
+func TestLoadSession_SessionsDirFallback(t *testing.T) {
+	scratchHome(t)
+	dir := t.TempDir()
+	st := state.OfficeState{
+		Chat: []state.ChatMsg{{ID: "b1", From: "boss", Kind: "boss", Text: "old layout office", At: 4}},
+	}
+	sf := Snapshot(dir, "ses-oldlayout", st)
+
+	plant := func(base, id string) string {
+		path := filepath.Join(base, SessionDirHash(dir), "session.json")
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		s := sf
+		s.PrimaryID = id
+		b, err := json.Marshal(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+
+	// Leg 1: only the pre-migration same-home copy exists → found.
+	old := plant(legacySessionsBase(), "ses-oldlayout")
+	got, ok := LoadSession(dir)
+	if !ok {
+		t.Fatal("LoadSession must read the pre-migration ~/.theboringoffice/sessions copy when projects/ has none")
+	}
+	if got.PrimaryID != "ses-oldlayout" {
+		t.Fatalf("old-layout restore mismatch: primary=%q", got.PrimaryID)
+	}
+
+	// Leg 2: the grafeio-era copy ALSO exists → the same-home old layout
+	// still wins (fallback chain order: projects > sessions > .grafeio).
+	grafeio := plant(grafeioSessionsBase(), "ses-grafeio")
+	got, ok = LoadSession(dir)
+	if !ok || got.PrimaryID != "ses-oldlayout" {
+		t.Fatalf("the .theboringoffice/sessions copy must outrank the .grafeio one: %+v ok=%v", got, ok)
+	}
+
+	// Leg 3: a save lands ONLY under the projects root, wins the next load,
+	// and leaves BOTH old files byte-untouched.
+	sf.PrimaryID = "ses-new"
+	if err := SaveSession(dir, sf); err != nil {
+		t.Fatal(err)
+	}
+	got, ok = LoadSession(dir)
+	if !ok || got.PrimaryID != "ses-new" {
+		t.Fatalf("after save the projects root must win: %+v ok=%v", got, ok)
+	}
+	for path, id := range map[string]string{old: "ses-oldlayout", grafeio: "ses-grafeio"} {
+		if b, _ := os.ReadFile(path); !strings.Contains(string(b), id) {
+			t.Fatalf("old-layout file %q must stay untouched, got %s", path, b)
+		}
+	}
+}
+
 // TestLoadSession_LegacyFallback pins the rename-era read contract: an
 // office session stored under the pre-rename ~/.grafeio/sessions root is
-// still found (the new root is written only), so an upgrade relaunches
-// into the old transcript instead of silently starting over.
+// still found when BOTH newer roots have none (the grafeio root is read
+// only), so an upgrade relaunches into the old transcript instead of
+// silently starting over.
 func TestLoadSession_LegacyFallback(t *testing.T) {
 	scratchHome(t)
 	dir := t.TempDir()
@@ -65,8 +167,8 @@ func TestLoadSession_LegacyFallback(t *testing.T) {
 	}
 	sf := Snapshot(dir, "ses-legacy", st)
 
-	// Plant the file at the LEGACY path (SaveSession writes the new one).
-	legacy := filepath.Join(legacySessionsBase(), SessionDirHash(dir), "session.json")
+	// Plant the file at the PRE-RENAME path (SaveSession writes the new one).
+	legacy := filepath.Join(grafeioSessionsBase(), SessionDirHash(dir), "session.json")
 	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +182,7 @@ func TestLoadSession_LegacyFallback(t *testing.T) {
 
 	got, ok := LoadSession(dir)
 	if !ok {
-		t.Fatal("LoadSession must read the legacy ~/.grafeio copy when the new root has none")
+		t.Fatal("LoadSession must read the legacy ~/.grafeio copy when both newer roots have none")
 	}
 	if got.PrimaryID != "ses-legacy" {
 		t.Fatalf("legacy restore mismatch: primary=%q", got.PrimaryID)
@@ -321,8 +423,8 @@ func TestSaveLatestWins(t *testing.T) {
 	if got.PrimaryID != "ses-new" {
 		t.Fatalf("latest write did not win (primary=%q)", got.PrimaryID)
 	}
-	if !strings.HasSuffix(SessionPath(dir), "session.json") {
-		t.Fatalf("session path shape drifted: %q", SessionPath(dir))
+	if want := filepath.Join(".theboringoffice", "projects", SessionDirHash(dir), "session.json"); !strings.HasSuffix(SessionPath(dir), want) {
+		t.Fatalf("session path shape drifted: %q, want suffix %q", SessionPath(dir), want)
 	}
 	_ = first
 }
