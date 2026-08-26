@@ -327,6 +327,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+t` | expand/collapse completed thinking blocks |
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+f` | open the most recent worker thread as a fullscreen focus view (tool calls + thinks + per-call diffs, live-pulsed; most recently expanded thread wins, else any live thread) — `esc` / `ctrl+f` closes back, office state byte-identical |
+| `o` | chat: with a text selection (press/drag) live over a bubble wearing the dim `· o (open)` beacon — open its URL / on-disk file / media image in the OS browser (`open -g` on macOS, `xdg-open` on Linux); several targets float a small picker (`↑`/`↓` move, `enter` opens, `esc` cancels); no selection or no verified target and the key just types `o` |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not while shell-captured or with an open float) |
 | `ctrl+x` (plan mode) | selection live in the pane: cut the marked text; otherwise approve-toggles (double-press) the presented/edited plan → sent to the build agent, mode flips back to build |
 | `ctrl+space` | terminal tab: toggle shell keyboard capture BOTH ways (opt-in; released is the default and leaving auto-releases) |
@@ -352,7 +353,13 @@ the terminal's protocol lane — kitty → iterm2 → ASCII fallback, both
 native lanes fall back to ASCII in v1; `off` keeps chips only). Previews
 are boss-turn only, ≤4 per turn (extras degrade to chip rows), remote
 URLs are never fetched, and undecodable payloads degrade to a dim `🖼
-<name> · unsupported image · click txt link` row.
+<name> · unsupported image · click txt link` row. Any bubble — those image
+turns included — that carries an http(s) URL or a file path that actually
+exists on disk (a `.gitignore`-style strictness: `/abs`, `~/`, `./` tokens
+are `os.Stat`-verified, directories and dead tokens never qualify) wears the
+dim `· o (open)` beacon; mark it with a mouse press/drag and press `o` to
+open the target in the OS default browser, with the opened target logged to
+the **activity** tab as `→ opened: <name>`.
 
 ## Slash commands
 
