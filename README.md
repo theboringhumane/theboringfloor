@@ -331,7 +331,9 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 Attachments stage as dim `📎` chips above the input (cap 5 — the oldest
 drops past it), ride the message queue like text, and go out as prompt file
 parts; the echoed user bubble shows a `· 📎 N` suffix. `/clear` or a send
-clears the chips.
+clears the chips. The `@` picker honors the repo's `.gitignore` (plus
+built-in filters for `node_modules/`, `.venv/`, `__pycache__/` and other
+build output), so caches and dependency trees never crowd the list.
 
 ## Slash commands
 

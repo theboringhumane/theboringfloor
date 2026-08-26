@@ -30,8 +30,9 @@
 //
 //   - The @ picker lists the process cwd (the repo the TUI runs against).
 //     The walk also runs in a tea.Cmd, capped hard (depth 6, 500 entries,
-//     >8MB skipped, .git/node_modules pruned) — an attach popover is not
-//     a project index.
+//     >8MB skipped, .git pruned, .gitignore rules + built-in noise
+//     filters honored — see chat_attach_ignore.go) — an attach popover
+//     is not a project index.
 //
 // Cursor-at-tail assumption (documented v1): the picker tracks the "@" +
 // fragment as the LAST word of the draft. Typing at the tail is the 99%
@@ -346,10 +347,14 @@ func headSniff(data []byte) []byte {
 // ---------------------------------------------------------------- @ picker: walk + filter
 
 // walkAttachFiles lists attachable files under root (the process cwd):
-// recursive, pruning .git + node_modules, skipping binary-ish extensions
-// and >8MB files, capped at depth 6 / 500 entries — sized for a popover,
-// not a project index. Unreadable entries are skipped, never fatal.
+// recursive, honoring the repo's .gitignore rules (plus built-in noise
+// filters for venvs, node_modules, caches, build output — see
+// chat_attach_ignore.go), pruning .git unconditionally, skipping
+// binary-ish extensions and >8MB files, capped at depth 6 / 500 entries
+// — sized for a popover, not a project index. Unreadable entries are
+// skipped, never fatal.
 func walkAttachFiles(root string) []string {
+	rules, _, _ := loadIgnoreRules(root)
 	var out []string
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -360,12 +365,20 @@ func walkAttachFiles(root string) []string {
 		}
 		rel := strings.TrimPrefix(filepath.ToSlash(path), filepath.ToSlash(root)+"/")
 		if d.IsDir() {
-			if d.Name() == ".git" || d.Name() == "node_modules" {
+			if d.Name() == ".git" {
+				// the object store is never attachable — unconditional,
+				// no rule (not even `!.git/`) can re-include it
+				return fs.SkipDir
+			}
+			if isIgnoredPath(rules, rel, true) {
 				return fs.SkipDir
 			}
 			if strings.Count(rel, "/") >= atMaxDepth {
 				return fs.SkipDir
 			}
+			return nil
+		}
+		if isIgnoredPath(rules, rel, false) {
 			return nil
 		}
 		if binaryishExt[strings.ToLower(filepath.Ext(d.Name()))] {
