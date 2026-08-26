@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -484,6 +485,15 @@ type Model struct {
 	// persist), sessLast throttles the 5s cheap-write loop off EvTick.
 	sessDir  string
 	sessLast time.Time
+
+	// agentmemoryOK — the /memory header's probe-state latch: the live
+	// backend's boot status line announces the agentmemory probe verdict
+	// ("… | board: agentmemory (<winner>)" hot / "| board: in-memory …"
+	// offline — the same string-marker contract pattern as
+	// agentFieldStatusMarker), latched in applyEventCore's EvStatus hook.
+	// The additive MemoryLane seam, when implemented, overrules the latch.
+	// false default = "file-only" (degrade-open).
+	agentmemoryOK bool
 
 	// Older-history pagination (the state.SessionPager seam; the BOSS /
 	// primary thread only — employee-thread walks are a follow-up). The
@@ -2421,6 +2431,19 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 		m.noticeErr(ev.Text)
 	}
 
+	// memory probe latch: the live backend's boot line announces the board
+	// lane ("[theboringoffice] live - … | board: agentmemory (<winner>)" when
+	// the agentmemory probe is hot, "| board: in-memory …" when offline) —
+	// the /memory header reads this unless the additive AgentmemoryOK seam
+	// exists (degrade-open file-only otherwise).
+	if ev.Kind == state.EvStatus {
+		if strings.Contains(ev.Text, "| board: agentmemory (") {
+			m.agentmemoryOK = true
+		} else if strings.Contains(ev.Text, "| board: in-memory") {
+			m.agentmemoryOK = false
+		}
+	}
+
 	// Plan-mode presentation (plan_mode.go): a COMPLETED boss bubble
 	// while plan mode is active mirrors its markdown into the plan pane —
 	// passive, chat keeps focus; a user-edited buffer is never clobbered
@@ -2443,6 +2466,14 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	if ev.Kind != state.EvTick && !isStreamDelta && !isOfficeDelta {
 		m.activity.Add(m.describeEvent(ev))
 		m.activityAdds++
+		// [memory] fabric: a completed dispatch ALSO stamps the record's
+		// landing into the log (the ledger-core dev owns the write; this is
+		// the member-visible proof that it went down — same stamp seam as
+		// describeEvent).
+		if line, ok := m.describeMemoryRecorded(ev); ok {
+			m.activity.Add(line)
+			m.activityAdds++
+		}
 	}
 
 	if ev.Kind == state.EvTick {
@@ -4309,6 +4340,7 @@ const slashHelp = `commands:
                      the id + path; boot flag -s|--session <id> pins one)
   /status            office status
   /mcp [reconnect x] show MCP servers; reconnect one by name
+  /memory [filter]   the office ledger — completed dispatches, newest first
   /quit              exit theboringoffice`
 
 // applySlash dispatches one slash command. Slash input never echoes as
@@ -4616,6 +4648,13 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.notice(fmt.Sprintf("mode %s · theme %s · power %s · agents %d · board %d/%d/%d\n%s",
 			m.st.Mode, chrome.CurrentTheme().Name, PowerMode(m.cfg), len(m.st.Employees),
 			pend, doing, done, m.st.StatusLine))
+	case "/memory":
+		// Office memory: the project ledger (.opencode/office-ledger.md),
+		// newest first; an optional case-fold substring narrows rows over
+		// title/files. One small bounded file read on the spot — no
+		// backend hop, nothing queued — stream-safe like /queue (the
+		// outcome rides the same office-notice seam as every slash).
+		m.notice(m.memoryBody(strings.Join(fields[1:], " ")))
 	case "/quit":
 		m.persistOfficeSession(true) // final SYNC snapshot (live only)
 		m.closeTerminal()
@@ -4640,6 +4679,324 @@ func (m *Model) applyToggle(name string, fields []string, set func(bool)) {
 	}
 	m.tabs.SetState(m.st)
 	m.notice(name + " → " + stateWord)
+}
+
+// --- office memory (/memory + the [memory] activity breadcrumb) ------------
+//
+// The member-facing memory surfaces. The source of truth TODAY is the
+// project ledger the ledger-core dev appends on every completed dispatch —
+// <dir>/.opencode/office-ledger.md, newest-first records:
+//
+//	### 2026-08-25 · <title> — <worker> (<role>) · <verdict>
+//	files: internal/app/model.go, internal/app/memory_test.go
+//	verify: go test ./internal/app/ -run Memory ✓
+//
+// /memory reads the file FRESH on every invocation (a boot always sees the
+// dispatches that finished before it, across restarts — SessionFile.Ledger
+// stays an optional later seam; nothing about this surface needs it). A
+// missing/partial/empty ledger degrades OPEN: the honest dim notice, never
+// an error row and never invented rows.
+
+// ledgerPath — the project ledger's location for one working directory.
+func ledgerPath(dir string) string {
+	return filepath.Join(dir, ".opencode", "office-ledger.md")
+}
+
+// memoryDir — the directory /memory reads: the office's working directory,
+// falling back to the process wd exactly like projinfo does (harness/demo
+// models run with sessDir "").
+func (m *Model) memoryDir() string {
+	if m.sessDir != "" {
+		return m.sessDir
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
+}
+
+// memoryLaneBackend — THE additive probe seam the header reads (the
+// ledger-core's liveBackend.MemoryLane: "OK" while the agentmemory board
+// lane probed live, "file-only" otherwise; deliberately NOT on
+// state.Backend — harness stubs never implement it → degrade-open).
+type memoryLaneBackend interface {
+	MemoryLane() string
+}
+
+// memoryProbeState — the header's state word: the backend's MemoryLane
+// seam when implemented ("OK" surfaces as the brief's "agentmemory OK"),
+// else the boot-line latch (applyEventCore's EvStatus hook), else
+// "file-only". Never a guess beyond what the office observed.
+func (m *Model) memoryProbeState() string {
+	if pb, ok := m.backend.(memoryLaneBackend); ok {
+		if pb.MemoryLane() == "OK" {
+			return "agentmemory OK"
+		}
+		return "file-only"
+	}
+	if m.agentmemoryOK {
+		return "agentmemory OK"
+	}
+	return "file-only"
+}
+
+// officeMemoryEntry — one parsed ledger record: the
+// "### YYYY-MM-DD · title — worker (role) · verdict" header line plus the
+// optional "files:" body line and the "verify:" proof digest line. File
+// order is kept (the ledger is written newest-first).
+type officeMemoryEntry struct {
+	date    string
+	title   string
+	worker  string
+	role    string
+	verdict string // normalized: "✓ done" | "✗ <word>" | raw when unclassifiable
+	files   []string
+	verify  string
+}
+
+// parseLedgerHead parses one ledger header minus its "### " prefix.
+// nil = malformed (the caller counts the row dropped — the ledger keeps
+// showing whatever DID parse).
+func parseLedgerHead(head string) *officeMemoryEntry {
+	// " · " parts: the date leads, the verdict trails; the title itself
+	// may contain " · " (titles are prose), so the middle rejoins.
+	parts := strings.Split(head, " · ")
+	if len(parts) < 3 {
+		return nil
+	}
+	date := strings.TrimSpace(parts[0])
+	verdict := normalizeMemoryVerdict(parts[len(parts)-1])
+	mid := strings.TrimSpace(strings.Join(parts[1:len(parts)-1], " · "))
+	// the LAST " — " separates title from "worker (role)": the record
+	// contract, without it the row is not a record.
+	i := strings.LastIndex(mid, " — ")
+	if i < 0 {
+		return nil
+	}
+	title := strings.TrimSpace(mid[:i])
+	who := strings.TrimSpace(mid[i+len(" — "):])
+	worker, role := who, ""
+	if j := strings.Index(who, " ("); j >= 0 && strings.HasSuffix(who, ")") {
+		worker = strings.TrimSpace(who[:j])
+		role = strings.TrimSpace(who[j+len(" (") : len(who)-1])
+	}
+	if date == "" || title == "" || worker == "" || verdict == "" {
+		return nil
+	}
+	return &officeMemoryEntry{date: date, title: title, worker: worker, role: role, verdict: verdict}
+}
+
+// ledgerHeadShaped mirrors the ledger writer's block-open contract
+// ("### YYYY-MM-DD · …", internal/backend/ledger.go's ledgerBlockStartRe):
+// only those headings open a record — any other "### " line is prose
+// (the preamble, a member's hand note) and never counts as a dropped row.
+func ledgerHeadShaped(line string) bool {
+	if !strings.HasPrefix(line, "### ") {
+		return false
+	}
+	head := line[len("### "):]
+	if len(head) < len("2006-01-02")+3 || !strings.HasPrefix(head[10:], " · ") {
+		return false
+	}
+	for i := 0; i < 10; i++ {
+		c := head[i]
+		switch i {
+		case 4, 7:
+			if c != '-' {
+				return false
+			}
+		default:
+			if c < '0' || c > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// parseOfficeLedger parses the ledger body. dropped counts entry-SHAPED
+// headers that failed the record grammar (rendered as ONE dim note
+// afterwards); prose lines (the file's own preamble, non-shaped headings)
+// are tolerated, and body lines belong to the entry above them — the
+// writer bullets them ("- files: a, b"), a bare "files:" from a
+// hand-rolled record parses too.
+func parseOfficeLedger(body string) (entries []officeMemoryEntry, dropped int) {
+	var cur *officeMemoryEntry
+	flush := func() {
+		if cur != nil {
+			entries = append(entries, *cur)
+			cur = nil
+		}
+	}
+	for _, line := range strings.Split(body, "\n") {
+		if ledgerHeadShaped(line) {
+			flush()
+			cur = parseLedgerHead(strings.TrimSpace(strings.TrimPrefix(line, "### ")))
+			if cur == nil {
+				dropped++
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "### ") || cur == nil {
+			continue // non-entry headings + pre-first-entry body: prose
+		}
+		t := strings.TrimPrefix(strings.TrimSpace(line), "- ")
+		switch {
+		case strings.HasPrefix(t, "files:"):
+			if rest := strings.TrimSpace(t[len("files:"):]); rest != "" && rest != "(none)" {
+				for _, f := range strings.Split(rest, ",") {
+					if f = strings.TrimSpace(f); f != "" {
+						cur.files = append(cur.files, f)
+					}
+				}
+			}
+		case strings.HasPrefix(t, "verify:"):
+			if rest := strings.TrimSpace(t[len("verify:"):]); rest != "(none)" {
+				cur.verify = rest
+			}
+		}
+	}
+	flush()
+	return entries, dropped
+}
+
+// normalizeMemoryVerdict folds a ledger verdict into the office's glyph
+// contract (the terminal's own ✓/✗ from the thread rendering): done-ish →
+// "✓ done", issues/failed/partial → "✗ <word>"; anything else renders as
+// written. The writer wraps the verdict in backticks (`done`) — stripped.
+func normalizeMemoryVerdict(v string) string {
+	t := strings.Trim(strings.TrimSpace(v), "` ")
+	l := strings.ToLower(t)
+	switch {
+	case strings.Contains(l, "✗") || strings.Contains(l, "issue") || strings.Contains(l, "partial") || strings.HasPrefix(l, "fail") || strings.HasPrefix(l, "stopped"):
+		w := strings.TrimSpace(strings.ReplaceAll(t, "✗", ""))
+		if w == "" {
+			w = "issues"
+		}
+		return "✗ " + w
+	case strings.Contains(l, "✓") || strings.Contains(l, "done") || strings.Contains(l, "complete"):
+		w := strings.TrimSpace(strings.ReplaceAll(t, "✓", ""))
+		if w == "" {
+			w = "done"
+		}
+		return "✓ " + w
+	default:
+		return t
+	}
+}
+
+// renderMemoryRow — one entry's pinned row:
+//
+//	2026-08-25 · <title> — <worker> (<role>) · ✓ done  ▸ files: a.go, b.go
+//
+// The " ▸ files:" segment only when the ledger carried files.
+func renderMemoryRow(e officeMemoryEntry) string {
+	var sb strings.Builder
+	sb.WriteString("  " + e.date + " · " + e.title + " — " + e.worker)
+	if e.role != "" {
+		sb.WriteString(" (" + e.role + ")")
+	}
+	sb.WriteString(" · " + e.verdict)
+	if len(e.files) > 0 {
+		sb.WriteString("  ▸ files: " + strings.Join(e.files, ", "))
+	}
+	return sb.String()
+}
+
+// memoryRowMatches — the /memory <substr> filter: case-fold substring over
+// title/files (verified commands deliberately stay OUT of the filter so a
+// filter never hides an entry's own proof line).
+func memoryRowMatches(e officeMemoryEntry, lf string) bool {
+	if strings.Contains(strings.ToLower(e.title), lf) {
+		return true
+	}
+	for _, f := range e.files {
+		if strings.Contains(strings.ToLower(f), lf) {
+			return true
+		}
+	}
+	return false
+}
+
+// memoryBody — the /memory notice text: the header counts every record in
+// the file (not just the filtered rows) and names the probe state; rows
+// render newest-first exactly as written; a verify digest rides a dim
+// continuation line under its own row so the pinned row stays single.
+func (m *Model) memoryBody(filter string) string {
+	project := m.projInfo().Project
+	if project == "" || project == "." || project == "/" || project == string(filepath.Separator) {
+		project = filepath.Base(m.memoryDir())
+	}
+	if project == "" || project == "." {
+		project = "theboringoffice"
+	}
+	header := func(n int) string {
+		unit := "dispatches"
+		if n == 1 {
+			unit = "dispatch"
+		}
+		return fmt.Sprintf("office memory — %s · %d %s recorded (%s)", project, n, unit, m.memoryProbeState())
+	}
+	b, err := os.ReadFile(ledgerPath(m.memoryDir()))
+	if err != nil {
+		// Degrade-open every way (fresh office, concurrent first boot,
+		// ledger core still boarding): the honest empty state as ONE dim
+		// line — never an error row, never invented rows.
+		return header(0) + "\n" +
+			"no dispatches recorded yet — the office records every completed dispatch here once it finishes one."
+	}
+	entries, dropped := parseOfficeLedger(string(b))
+	lines := []string{header(len(entries))}
+	filter = strings.TrimSpace(filter)
+	lf := strings.ToLower(filter)
+	shown := 0
+	for _, e := range entries {
+		if filter != "" && !memoryRowMatches(e, lf) {
+			continue
+		}
+		lines = append(lines, renderMemoryRow(e))
+		if e.verify != "" {
+			lines = append(lines, "      verify: "+clipRunes(e.verify, 96))
+		}
+		shown++
+	}
+	switch {
+	case shown > 0:
+	case filter != "":
+		lines = append(lines, fmt.Sprintf("no dispatches match %q", filter))
+	default:
+		// The file exists but holds no records (or only malformed ones).
+		lines = append(lines,
+			"no dispatches recorded yet — the office records every completed dispatch here once it finishes one.")
+	}
+	if dropped > 0 {
+		// ONE dim note for partial parses (not a row per failure) — the
+		// ledger keeps serving.
+		unit := "row"
+		if dropped > 1 {
+			unit = "rows"
+		}
+		lines = append(lines, fmt.Sprintf("  (%d ledger %s skipped — malformed)", dropped, unit))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// describeMemoryRecorded — the completed-dispatch breadcrumb, companion to
+// describeEvent (same "[stamp] …" seam): a worker RETURN with a return-kind
+// mail (exactly one per completed dispatch, live AND demo twins) leaves
+// "[stamp] [memory] recorded: <title> → ledger" in the activity tab — the
+// member-visible proof the record went down. ok=false for every other
+// event: board-sync task upserts (EvTask) deliberately do NOT stamp —
+// a boot-time re-sync of pre-existing done rows is not a recording.
+func (m *Model) describeMemoryRecorded(ev state.Event) (string, bool) {
+	if ev.Kind != state.EvReturned || ev.Mail.Kind != state.MailReturn {
+		return "", false
+	}
+	title := strings.TrimSpace(strings.TrimPrefix(ev.Mail.Subject, "return: "))
+	if title == "" {
+		return "", false
+	}
+	return fmt.Sprintf("[%s] [memory] recorded: %s → ledger", chrome.OfficeClock(m.st.Tick), title), true
 }
 
 // persistCfg — brain.json write-through after an in-app mutation (/power,

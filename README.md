@@ -144,7 +144,31 @@ session and resends the batch.
   byte-stable into the head, riding the same scroll keys (nothing new).
   Drained top latches silently — no row — and failures back off without
   banners; question and permission floats suppress the gesture. Demo walks
-  its canned 500-row history; real older history is live-only.
+  its canned 500-row history; real older history is live-only. (This is
+  the boss's *scrollback*. The office's *completed-work* memory is the
+  ledger below.)
+- **Long memory ledger** — every completed dispatch (a returned worker or
+  a flushed queue item) lands in `<dir>/.opencode/office-ledger.md`:
+  newest-first, capped at 50, one `` ### date · title — worker (role) ·
+  `verdict` `` block per completion carrying the summary line, files,
+  verify digest, proof one-liner and a `ledgerId`. The record *also* rides
+  to agentmemory as an `office_dispatch_done` observation when that server
+  is up — file-only when it's not, and the boot splash's `memory:` line
+  (`memory: ledger armed` vs `memory: file-only (agentmemory :3111
+  refused)`) + the status line's `memory:` note say which lane got it.
+  The charter pass seeds the file and wires it into the boss's
+  instructions, so the NEXT session's boss reads what this project already
+  finished **before** re-dispatching it — no more "I don't have any
+  memory of a prior task".
+- **Office memory** — `/memory` shows what the office shipped, newest
+  first, straight from the project ledger (`.opencode/office-ledger.md`):
+  each completed dispatch lands a record with its title, worker, role,
+  verdict, touched files and proof command. The header counts the records
+  and names the memory state (`agentmemory OK` when the backend's
+  agentmemory probe is hot, `file-only` otherwise), a missing ledger reads
+  as an honest empty state, and every completed dispatch also stamps a
+  `[memory] recorded: <title> → ledger` line into the activity tab.
+  `/memory <substr>` narrows the rows case-folded over title/files.
 - **Plan/build modes** — `ctrl+p` flips between **build** (default) and
   **plan** (`[plan]` on the statusbar): a mode toggle only — prompts ride
   the read-only plan agent, chat keeps focus, and the plan pane stays
@@ -289,6 +313,7 @@ clears the chips.
 | `/tools on\|off` | show/hide tool one-liners |
 | `/status` | office status |
 | `/mcp [reconnect <name>]` | MCP server status; reconnect one server |
+| `/memory [filter]` | office memory — completed dispatches from the project ledger, newest first (a substring narrows rows over title/files) |
 | `/clear` | empty the chat |
 | `/queue [clear]` | show the backlog (`clear` drops it) |
 | `/route` | force-dispatch the backlog now |

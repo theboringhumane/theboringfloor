@@ -15,7 +15,14 @@
 //     <dir>/.opencode/mcp-servers.md listing the available MCP servers
 //     (discovered from the same config chain the serve reads) and merges
 //     it into instructions beside the charter, so the boss — and through
-//     her briefs the developers — know which MCP tools exist.
+//     her briefs the developers — know which MCP tools exist, and
+//  4. wires the office ledger (the charter-merge seam for the sibling
+//     ledger writer): seeds <dir>/.opencode/office-ledger.md with its
+//     header when ABSENT — never rewriting an existing file, because the
+//     ledger is append-only state the app records completed dispatches
+//     into — and merges "./.opencode/office-ledger.md" into instructions
+//     beside the charter + MCP attachment, so the boss consults the
+//     office's completed-work memory BEFORE re-dispatching.
 //
 // Hard guarantees: AGENTS.md / CLAUDE.md and every other opencode.json
 // field are never touched; a second run is byte-identical (changed=false,
@@ -33,6 +40,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/theboringhumane/theboringoffice/internal/charter"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -109,13 +117,24 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 		return changed, append(notes, "[theboringoffice] manager charter: failed (read "+cfgPath+": "+err.Error()+")")
 	}
 
-	// 3. The MCP prompt attachment (charter_mcp.go): list the serve's
-	//    configured MCP servers so the boss — and through her briefs the
-	//    developers — know which MCP tools exist. Its notes ride AHEAD of
-	//    the charter's final summary line (probes pattern-match the tail).
+// 	3. The MCP prompt attachment (charter_mcp.go): list the serve's
+// 	   configured MCP servers so the boss — and through her briefs the
+// 	   developers — know which MCP tools exist. Its notes ride AHEAD of
+// 	   the charter's final summary line (probes pattern-match the tail).
 	mcpChanged, mcpNotes := ensureMCPAttachment(dir)
 	notes = append(notes, mcpNotes...)
 	if mcpChanged {
+		changed = true
+	}
+
+	// 4. The office ledger: every served project learns about the office's
+	//    completed-work memory. The step seeds .opencode/office-ledger.md
+	//    when absent and merges its instructions entry beside the charter +
+	//    MCP attachment, reusing the same field-preserving mergeInstruction.
+	//    Notes ride AHEAD of the final summary line exactly like step 3's.
+	ledgerChanged, ledgerNotes := ensureLedgerAttachment(dir)
+	notes = append(notes, ledgerNotes...)
+	if ledgerChanged {
 		changed = true
 	}
 
@@ -201,4 +220,112 @@ func envOrLegacy(key, legacyKey string) string {
 		return v
 	}
 	return os.Getenv(legacyKey)
+}
+
+// ---------------------------------------------------------------- office ledger
+
+// ledgerRelPath is the office ledger's instructions entry spelling,
+// mirroring charterRelPath's verified ".opencode/"-explicit shape: opencode
+// resolves relative instructions against the PROJECT directory, not the
+// config file's own directory.
+const ledgerRelPath = "./.opencode/office-ledger.md"
+
+// ledgerAcceptedPaths are all spellings the pass treats as "already wired"
+// — a member hand-writing any of these must not get a duplicate (mirrors
+// charterAcceptedPaths / mcpAttachmentAcceptedPaths).
+var ledgerAcceptedPaths = []string{
+	ledgerRelPath,
+	".opencode/office-ledger.md",
+	"./office-ledger.md",
+	"office-ledger.md",
+}
+
+// ledgerEntriesMarker is the byte anchor beneath which the sibling ledger
+// writer (internal/backend/ledger.go's territory) inserts each completed
+// dispatch, NEWEST-FIRST, as "### YYYY-MM-DD · <title> — <worker> ·
+// <verdict>" entries. The charter pass owns seeding + instructions wiring;
+// the app owns appending. The marker is invisible markdown (ASCII comment)
+// and rides the seed so the writer never has to guess where the header ends.
+const ledgerEntriesMarker = "<!-- ledger:entries -->"
+
+// renderLedgerSeed is the ledger's empty-state markdown: the header that
+// teaches the boss WHAT the file is (the office's completed-work memory —
+// the exact memory paragraph, frozen copy) and WHERE entries land. Like
+// every prompt-visible artifact here it is LF-only, ASCII, deterministic,
+// and ends on a newline.
+func renderLedgerSeed() []byte {
+	var b strings.Builder
+	b.WriteString("# Office Ledger — completed work\n")
+	b.WriteString("\n")
+	b.WriteString("The ledger in ./.opencode/office-ledger.md is the office's own completed-work memory: before dispatching sub-agents, check it (and agentmemory if equipped) so already-completed work is not repeated. Newly completed dispatches are recorded there by the app automatically; quote its ledger IDs when the member asks whether something was done.\n")
+	b.WriteString("\n")
+	b.WriteString("Entries land newest-first below as `### YYYY-MM-DD · <title> — <worker> · <verdict>`,\n")
+	b.WriteString("recorded by the office app itself after each verified return. This file is\n")
+	b.WriteString("append-only state: the charter pass seeds it when absent and never rewrites it.\n")
+	b.WriteString("\n")
+	b.WriteString(ledgerEntriesMarker + "\n")
+	return []byte(b.String())
+}
+
+// ensureLedgerAttachment is the chartered step-4 pass for dir (see
+// charter.go's header): the charter-merge seam for the office ledger. It
+// seeds <dir>/.opencode/office-ledger.md with renderLedgerSeed when the
+// file is ABSENT — and ONLY then: unlike the MCP attachment (a
+// deterministic render refreshed byte-exact), the ledger is append-only
+// state accumulated by the app, so an existing file is never rewritten.
+// It then merges "./.opencode/office-ledger.md" into instructions beside
+// the charter + MCP attachment, reusing the same field-preserving
+// mergeInstruction, so a served project boots ledger-indoctrinated: the
+// boss consults completed work BEFORE re-dispatching. Idempotent like the
+// sibling steps (second run: changed=false, no bytes written); notes ride
+// AHEAD of the charter's final summary line.
+func ensureLedgerAttachment(dir string) (changed bool, notes []string) {
+	ocDir := filepath.Join(dir, ".opencode")
+	ledgerPath := filepath.Join(ocDir, "office-ledger.md")
+	cfgPath := filepath.Join(ocDir, "opencode.json")
+
+	// 1. The ledger markdown: seed when absent, NEVER rewrite an existing
+	//    file (member edits and app-recorded entries are sacred).
+	if _, err := os.Stat(ledgerPath); os.IsNotExist(err) {
+		if err := os.MkdirAll(ocDir, 0o755); err != nil {
+			return changed, append(notes, "[theboringoffice] office ledger: failed (mkdir "+ocDir+": "+err.Error()+")")
+		}
+		if err := os.WriteFile(ledgerPath, renderLedgerSeed(), 0o644); err != nil {
+			return changed, append(notes, "[theboringoffice] office ledger: failed (write "+ledgerPath+": "+err.Error()+")")
+		}
+		changed = true
+	} else if err != nil {
+		return changed, append(notes, "[theboringoffice] office ledger: failed (stat "+ledgerPath+": "+err.Error()+")")
+	}
+
+	// 2. The instructions entry rides beside the charter's and the MCP
+	//    attachment's through the same field-preserving merge. The
+	//    charter's step 2 guarantees the config exists by now; the
+	//    NotExist branch is defensive only.
+	cfgRaw, err := os.ReadFile(cfgPath)
+	if err == nil {
+		merged, mergeChanged, mergeErr := mergeInstruction(cfgRaw, ledgerRelPath, ledgerAcceptedPaths)
+		if mergeErr != nil {
+			return changed, append(notes, "[theboringoffice] office ledger: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
+		}
+		if mergeChanged {
+			if err := os.WriteFile(cfgPath, merged, 0o644); err != nil {
+				return changed, append(notes, "[theboringoffice] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
+			}
+			changed = true
+		}
+	} else if os.IsNotExist(err) {
+		fresh := []byte("{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"instructions\": [\n    \"" + ledgerRelPath + "\"\n  ]\n}\n")
+		if err := os.WriteFile(cfgPath, fresh, 0o644); err != nil {
+			return changed, append(notes, "[theboringoffice] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
+		}
+		changed = true
+	} else {
+		return changed, append(notes, "[theboringoffice] office ledger: failed (read "+cfgPath+": "+err.Error()+")")
+	}
+
+	if changed {
+		return true, append(notes, "[theboringoffice] office ledger: wired (.opencode/office-ledger.md)")
+	}
+	return false, append(notes, "[theboringoffice] office ledger: already wired (.opencode/office-ledger.md)")
 }

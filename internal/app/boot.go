@@ -61,16 +61,30 @@ var bootWordmark = []string{
 // bootSubtitle — the brand line under the wordmark.
 const bootSubtitle = "γραφείο · a startup office in your terminal"
 
-// bootLines — the fake boot cascade, typed out in order ("▸ " prefix is
-// render-owned). While a line types, a braille spinner rides the reveal
-// head; fully typed flips to a green OK.
+// bootLines — the fake boot cascade's line ids, typed out in order ("▸ "
+// prefix is render-owned). While a line types, a braille spinner rides the
+// reveal head; fully typed flips to a green OK. The memory row (index
+// bootMemoryLineIndex) is the one DYNAMIC line: its text depends on the
+// agentmemory probe verdict (Boot.memoryText); the static default below is
+// its pre-verdict (and demo-tour) shape.
 var bootLines = []string{
 	"uplink: opencode serve",
 	"agents: waking the floor",
 	"board: agentmemory sync",
 	"mail: signal router",
+	"memory: ledger armed",
 	"mcp: probing servers",
 }
+
+// bootMemoryLineIndex — the memory row sits as the third agentmemory-fed
+// line, behind the existing board/mail pair (both agentmemory lanes):
+// board syncs, mail routes, memory remembers.
+const bootMemoryLineIndex = 4
+
+// bootMemoryFileOnlyLine — the memory row when the agentmemory server
+// refused the probe (:3111 is the default lane the office probes; the
+// verdict's exact wording is a splash contract, pinned by tests).
+const bootMemoryFileOnlyLine = "memory: file-only (agentmemory :3111 refused)"
 
 // bootHint — the skip affordance at the bottom of the content block.
 const bootHint = "press any key to skip"
@@ -95,7 +109,11 @@ type Boot struct {
 	w, h  int  // last known frame size (Resize keeps centering fresh)
 	tick  int  // frames since start — the ONLY clock, drives everything
 	ready bool // backend online: double pace, and the Done() co-condition
-	sp    spinner.Model
+	// memoryLane — the backend's agentmemory probe verdict for the memory
+	// row ("OK" | "file-only"); "" before any verdict (or a seam-less
+	// backend, e.g. the demo tour) renders the armed default.
+	memoryLane string
+	sp         spinner.Model
 }
 
 // NewBoot builds the splash at the current size (Resize fixes it later;
@@ -143,6 +161,31 @@ func (b Boot) Done() bool {
 // completed cascade exits on the spot).
 func (b *Boot) SetReady() { b.ready = true }
 
+// SetMemoryLane applies the backend's agentmemory probe verdict to the
+// memory row: "file-only" (the backend's MemoryLane vocabulary) renders
+// the refused-port note; anything else — including the never-wired default
+// — renders "memory: ledger armed" (the office ledger file is armed on
+// every boot, server or not; the demo tour rides the default too).
+// Idempotent: the model re-asserts it as backend events land.
+func (b *Boot) SetMemoryLane(lane string) { b.memoryLane = lane }
+
+// memoryText — the memory row's live text for the current verdict.
+func (b Boot) memoryText() string {
+	if b.memoryLane == "file-only" {
+		return bootMemoryFileOnlyLine
+	}
+	return bootLines[bootMemoryLineIndex]
+}
+
+// lineText resolves cascade row i's CURRENT text: the static line id for
+// every row but the memory one, whose verdict arrives mid-boot.
+func (b Boot) lineText(i int) string {
+	if i == bootMemoryLineIndex {
+		return b.memoryText()
+	}
+	return bootLines[i]
+}
+
 // Resize recomputes centering for the next View (WindowSizeMsg-routed).
 func (b *Boot) Resize(w, h int) { b.w, b.h = w, h }
 
@@ -164,22 +207,25 @@ func (b Boot) stagger() int {
 }
 
 // progress — revealed chars of line i right now (0 while its stagger slot
-// is still ahead; clamps at the full text). Pure in (tick, ready).
+// is still ahead; clamps at the full text). Pure in (tick, ready). The
+// memory row's live text rides lineText, so a verdict landing mid-boot
+// re-fits its clamp on the spot.
 func (b Boot) progress(i int) int {
 	start := i * b.stagger()
 	if b.tick < start {
 		return 0
 	}
 	p := (b.tick - start + 1) * b.speed()
-	if p > len(bootLines[i]) {
-		p = len(bootLines[i])
+	if n := len(b.lineText(i)); p > n {
+		p = n
 	}
 	return p
 }
 
 // cascadeDone — every status line fully typed (the reveal finished).
 func (b Boot) cascadeDone() bool {
-	return b.progress(len(bootLines)-1) >= len(bootLines[len(bootLines)-1])
+	last := len(bootLines) - 1
+	return b.progress(last) >= len(b.lineText(last))
 }
 
 // statusLine renders cascade row i: "▸ " + typed text, then EITHER the
@@ -190,7 +236,7 @@ func (b Boot) statusLine(i int) (string, bool) {
 	if b.tick < i*b.stagger() {
 		return "", false
 	}
-	txt := bootLines[i]
+	txt := b.lineText(i)
 	p := b.progress(i)
 	line := chrome.DimText.Render("▸ ") + chrome.Fg(chrome.White, txt[:p])
 	if p >= len(txt) {
@@ -204,7 +250,7 @@ func (b Boot) statusLine(i int) (string, bool) {
 }
 
 // View — the full frame as one ANSI string, ALWAYS exactly w×h cells:
-// content (≤44 cols, 20 rows) centered with space fill, truncated
+// content (≤44 cols, 21 rows) centered with space fill, truncated
 // ANSI-aware when the terminal is smaller than the content.
 func (b Boot) View() string {
 	if b.w <= 0 || b.h <= 0 {
@@ -219,7 +265,7 @@ func (b Boot) View() string {
 	rows = append(rows, "", chrome.DimText.Render(bootSubtitle), "")
 	for i := range bootLines {
 		// unrevealed lines RESERVE their row anyway: the block keeps a
-		// constant 20 rows, so centering never drifts as the cascade grows.
+		// constant 21 rows, so centering never drifts as the cascade grows.
 		if line, ok := b.statusLine(i); ok {
 			rows = append(rows, line)
 		} else {

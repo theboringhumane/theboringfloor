@@ -56,6 +56,7 @@ var slashCommands = []slashCommand{
 	{"/tools", "show/hide tool one-liners", "/tools on|off"},
 	{"/status", "office status", ""},
 	{"/mcp", "mcp servers + reconnect", "/mcp [reconnect <name>]"},
+	{"/memory", "project memory — completed dispatches", "/memory [filter]"},
 	{"/clear", "empty the chat", ""},
 	{"/queue", "show the backlog (clear drops it)", ""},
 	{"/route", "force-dispatch the backlog now", ""},

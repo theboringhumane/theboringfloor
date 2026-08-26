@@ -78,10 +78,10 @@ func TestBootFrameZero(t *testing.T) {
 // (b) cascade: after enough ticks every line shows OK; Done() stays false
 // until SetReady; the 4s cap finishes the show even without it.
 func TestBootCascadeAndReady(t *testing.T) {
-	b := bootFeed(NewBoot(100, 30), 40) // full cold cascade lands at tick 33
+	b := bootFeed(NewBoot(100, 30), 40) // full cold cascade lands at tick 39
 	plain := ansi.Strip(b.View())
-	if n := strings.Count(plain, "OK"); n != 5 {
-		t.Fatalf("after 40 ticks all 5 lines must show OK, got %d", n)
+	if n := strings.Count(plain, "OK"); n != 6 {
+		t.Fatalf("after 40 ticks all 6 lines must show OK, got %d", n)
 	}
 	if b.Done() {
 		t.Fatalf("Done() must wait for SetReady once the cascade is up")
@@ -123,7 +123,7 @@ func TestBootSkipKey(t *testing.T) {
 // (d) Resize re-centers: the wordmark's left margin tracks the new width.
 func TestBootResizeRecenters(t *testing.T) {
 	b := NewBoot(120, 35)
-	row0 := strings.Split(ansi.Strip(b.View()), "\n")[7] // (35-20)/2 = 7
+	row0 := strings.Split(ansi.Strip(b.View()), "\n")[7] // (35-21)/2 = 7
 	if got := strings.Index(row0, "█"); got != 39 {      // (120-44)/2 = 38 pad + 1 wordmark space
 		t.Fatalf("wordmark must start at col 39 in 120 cols, got col %d", got)
 	}
@@ -135,7 +135,7 @@ func TestBootResizeRecenters(t *testing.T) {
 	if nb.w != 60 || nb.h != 20 {
 		t.Fatalf("resize must update the boot's size, got %dx%d", nb.w, nb.h)
 	}
-	row0 = strings.Split(ansi.Strip(nb.View()), "\n")[0] // (20-20)/2 = 0
+	row0 = strings.Split(ansi.Strip(nb.View()), "\n")[0] // (20-21)/2 < 0 → 0
 	if got := strings.Index(row0, "█"); got != 9 {       // (60-44)/2 = 8 + 1
 		t.Fatalf("wordmark must re-center to col 9 in 60 cols, got col %d", got)
 	}

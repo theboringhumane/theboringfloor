@@ -120,6 +120,66 @@ func (h *amHandle) postJSON(path string, body any) (any, bool) {
 	return v, true
 }
 
+// SaveWork records one completed office dispatch as an agentmemory
+// OBSERVATION — POST /agentmemory/observe with hookType
+// "office_dispatch_done", the exact lane and envelope agentmemory's own
+// plugin hooks use (proven shape: hookType/sessionId/project/timestamp/
+// data). The FROZEN LedgerEntry rides intact under data.ledger so the
+// memory server keeps the whole record; the flat sibling fields are the
+// search surface. This is the knowledge half the office never wrote (it
+// mirrored only queue ACTIONS); the file half lives in ledger.go.
+//
+// Best-effort exactly like CreateAction/MarkAction: "none" mode is a
+// no-op success, a failed round-trip is a returned error for the caller's
+// status line, and it NEVER throws — the bounded 2s postJSON client is
+// the only transport. Response error handling mirrors the existing
+// action helpers: ok=false from postJSON is the one failure class.
+func (h *amHandle) SaveWork(record LedgerEntry) error {
+	if h.kind != "actions" {
+		return nil
+	}
+	at := record.CompletedAt
+	if at <= 0 {
+		at = nowMs()
+	}
+	_, ok := h.postJSON("/agentmemory/observe", map[string]any{
+		"hookType":  "office_dispatch_done",
+		"sessionId": firstNonEmpty(record.PrimaryID, "theboringoffice"),
+		"project":   record.Project,
+		"timestamp": time.UnixMilli(at).UTC().Format(time.RFC3339),
+		"data": map[string]any{
+			"ledgerId":        record.LedgerID,
+			"dispatchTitle":   record.DispatchTitle,
+			"workerName":      record.WorkerName,
+			"workerRole":      record.WorkerRole,
+			"workerSessionID": record.WorkerSession,
+			"verdict":         record.Verdict,
+			"files":           record.Files,
+			"verifyDigest":    record.VerifyDigest,
+			"proofOneLiner":   record.ProofOneLiner,
+			"issues":          record.Issues,
+			"completedAt":     record.CompletedAt,
+			"ledger":          record, // the whole FROZEN record, json-tagged
+		},
+	})
+	if !ok {
+		return errors.New("agentmemory save work: POST /agentmemory/observe failed")
+	}
+	return nil
+}
+
+// memoryLaneText is the probe verdict surfaced to boot logs, the splash
+// and the headless probe: "OK" while the actions lane probed live
+// (SaveWork observations actually reach the memory server), "file-only"
+// otherwise — today the degrade is SILENT, and the point of the surfacing
+// is that a boot can say which memory lane the office is remembering on.
+func (h *amHandle) memoryLaneText() string {
+	if h != nil && h.kind == "actions" {
+		return "OK"
+	}
+	return "file-only"
+}
+
 // CreateAction mirrors a queued office item onto the agentmemory board as
 // a PENDING action (POST /agentmemory/actions — live probe 2026-08-21:
 // {"title","status":"pending","priority","tags":[...]} -> 201; provenance

@@ -67,6 +67,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -175,6 +176,18 @@ type liveBackend struct {
 	conciergeBooted bool
 	pendingOffice   []string
 	officeCompleted map[string]bool
+	// Office memory (the dispatch ledger): ledgerDone latches each
+	// completion key ("child:"+sessionID / "queue:"+boardID) so a replayed
+	// idle or a retried flush never double-records (the file's ledgerId
+	// dedupe is the crash-proof second gate); queueLedger remembers each
+	// QueueItemStart's title+stamp so QueueItemDone — which receives only
+	// the board row id — can shape the entry's halves (and a repeating
+	// Done keeps the SAME deterministic ledgerId); ledgerWG tracks the
+	// detached saver goroutines so Stop can bounded-drain them (a
+	// mid-flight memory write must never race the process out the door).
+	ledgerDone  map[string]bool
+	queueLedger map[string]queueLedgerSeed
+	ledgerWG    sync.WaitGroup
 }
 
 func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend {
@@ -184,12 +197,15 @@ func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend 
 		cfg:             cfg,
 		fl:              newFlow(),
 		ctx:             newNormCtx(cfg),
+		conciergeID:     "",
 		bossCompleted:   make(map[string]bool),
 		officeCompleted: make(map[string]bool),
 		thoughtSlots:    make(map[string]*thoughtSlot),
 		chatSlots:       make(map[string]*thoughtSlot),
 		amTasks:         make(map[string]string),
 		amMails:         make(map[string]bool),
+		ledgerDone:      make(map[string]bool),
+		queueLedger:     make(map[string]queueLedgerSeed),
 		client:          &http.Client{Timeout: 15 * time.Second},
 		sseClient:       &http.Client{},
 		net:             netwatch.New(nil, 0),
@@ -303,6 +319,16 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 		board = "agentmemory (" + b.am.winner + ")"
 	}
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live - " + u + " | board: " + board})
+
+	// The memory lane's probe verdict, surfaced — never the silent degrade
+	// of old: when agentmemory is unreachable the office's completed-work
+	// memory is the project ledger file alone (the ledger half is armed on
+	// every office, server or not).
+	memory := "memory lane file-only (.opencode/office-ledger.md armed)"
+	if b.am.kind == "actions" {
+		memory = "agentmemory OK"
+	}
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory: " + memory})
 
 	if m := b.bossModelRef(); m != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] boss model override: " + m})
@@ -708,6 +734,11 @@ func (b *liveBackend) Stop() error {
 
 	b.fl.stop() // seals emit, kills timers + pollers
 
+	// Drain in-flight ledger savers BEFORE tearing down: a memory write
+	// mid-flight stops being "best-effort" if Stop silently abandons it —
+	// and tests' TempDir cleanups must never race a live append.
+	b.drainLedger(3 * time.Second)
+
 	b.mu.Lock()
 	cancel := b.sseCancel
 	b.sseCancel = nil
@@ -1049,32 +1080,187 @@ func (b *liveBackend) sessionMessageCount(sessionID string) int {
 
 // ---------------------------------------------------------------- queue board + respawn
 
+// queueLedgerSeed is what QueueItemStart remembers for QueueItemDone: the
+// item's title + the start stamp (the ledger entry's CompletedAt — stamped
+// at Start so a repeated Done keeps the SAME deterministic ledgerId and
+// both dedupe gates hold).
+type queueLedgerSeed struct {
+	title string
+	at    int64
+}
+
 // QueueItemStart mirrors a queued office item onto the agentmemory board
-// as a pending action the office can watch. Best-effort: "" when the
-// agentmemory probe was "none" (offline) — QueueItemDone("") is a no-op.
-// Errors are dropped to the status line only when the server was
-// reachable and still failed. NOT part of state.Backend: the app side
-// type-asserts this seam.
+// as a pending action the office can watch, and ALWAYS returns a handle —
+// the board action id when agentmemory probed live, a "local-que-N" synth
+// when it didn't. Best-effort: a REACHABLE server that still fails the
+// create drops to the status line and returns "" (the app treats "" as
+// "no row" — QueueItemDone("") is a no-op). The synth handle matters: with
+// a dead agentmemory the old "" return taught the app the row never
+// existed and the completion left NO trace anywhere — the exact memory
+// amnesia this ledger wave fixes; with the handle the flush's
+// QueueItemDone still lands the completion in the office ledger file.
+// NOT part of state.Backend: the app side type-asserts this seam.
 func (b *liveBackend) QueueItemStart(index int, title string) string {
-	if b.am == nil || b.am.kind != "actions" {
-		return ""
+	b.mu.Lock()
+	kind := "none"
+	if b.am != nil {
+		kind = b.am.kind
+	}
+	b.mu.Unlock()
+	if kind != "actions" {
+		id := fmt.Sprintf("local-que-%d", index)
+		b.mu.Lock()
+		b.queueLedger[id] = queueLedgerSeed{title: strings.TrimSpace(title), at: nowMs()}
+		b.mu.Unlock()
+		return id
 	}
 	boardID, err := b.am.CreateAction(fmt.Sprintf("QUE-%d: %s", index, title), fmt.Sprintf("que-%d", index))
 	if err != nil {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] board action create failed: " + shortTitle(err.Error(), 100)})
 		return ""
 	}
+	b.mu.Lock()
+	b.queueLedger[boardID] = queueLedgerSeed{title: strings.TrimSpace(title), at: nowMs()}
+	b.mu.Unlock()
 	return boardID
 }
 
-// QueueItemDone marks a queue item's board action done. Empty id / offline
-// probe -> silent no-op; a failed round-trip is status-line only.
+// QueueItemDone marks a queue item's board action done (real board ids
+// only — "local-que-" synths and empty ids never hit the server) and then
+// records the completion in the office memory: ledger entry verdict=done,
+// worker "queue", riding BOTH lanes (agentmemory observation + the project
+// ledger file) regardless of the board lane's health. Safe to call twice:
+// the key latch no-ops the WHOLE repeat in-process (mark + record), and
+// the start-stamped deterministic ledgerId dedupes on disk across boots.
 func (b *liveBackend) QueueItemDone(boardID string) {
-	if boardID == "" || b.am == nil || b.am.kind != "actions" {
+	if boardID == "" {
 		return
 	}
-	if err := b.am.MarkAction(boardID, "done"); err != nil {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] board action mark done failed: " + shortTitle(err.Error(), 100)})
+	b.mu.Lock()
+	if b.ledgerDone["queue:"+boardID] {
+		b.mu.Unlock()
+		return
+	}
+	b.ledgerDone["queue:"+boardID] = true
+	seed, seeded := b.queueLedger[boardID]
+	b.mu.Unlock()
+	if !seeded {
+		// A row this process never started (hand-mirrored, or an older
+		// office's): the completion still belongs in memory, titled by id.
+		seed = queueLedgerSeed{title: "queued item " + boardID, at: nowMs()}
+	}
+	if !strings.HasPrefix(boardID, "local-que-") && b.am != nil && b.am.kind == "actions" {
+		if err := b.am.MarkAction(boardID, "done"); err != nil {
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] board action mark done failed: " + shortTitle(err.Error(), 100)})
+		}
+	}
+	e := LedgerEntry{
+		LedgerID:      LedgerID(seed.at, seed.title, "queue"),
+		DispatchTitle: seed.title,
+		WorkerName:    "queue",
+		WorkerRole:    "queue",
+		Verdict:       "done",
+		Summary:       "queued item completed: " + seed.title,
+		CompletedAt:   seed.at,
+		PrimaryID:     b.PrimaryID(),
+		Project:       filepath.Base(filepath.Clean(b.directory)),
+	}
+	b.saveLedgerLanes(e)
+}
+
+// MemoryLane — the probe-surface seam the boot splash and the headless
+// probe type-assert (ADDITIVE, deliberately NOT on state.Backend; harness
+// stubs never implement it): "OK" while the agentmemory board lane probed
+// live, "file-only" otherwise. Mirrors the Start status note.
+func (b *liveBackend) MemoryLane() string {
+	b.mu.Lock()
+	am := b.am
+	b.mu.Unlock()
+	return am.memoryLaneText()
+}
+
+// ---------------------------------------------------------------- office memory (dispatch ledger)
+
+// saveLedgerAsync latches a completion key (a replayed idle frame / a
+// retried flush never double-records — the file's ledgerId dedupe is the
+// crash-proof second gate) and hands the entry to saveLedgerLanes.
+func (b *liveBackend) saveLedgerAsync(key string, e LedgerEntry) {
+	b.mu.Lock()
+	if b.ledgerDone[key] {
+		b.mu.Unlock()
+		return
+	}
+	b.ledgerDone[key] = true
+	b.mu.Unlock()
+	b.saveLedgerLanes(e)
+}
+
+// saveLedgerLanes writes one completed-dispatch record to BOTH memory
+// lanes — agentmemory (am.SaveWork, the observe hook; a dead lane no-ops)
+// and the project's office-ledger.md (Append: ledgerId-deduped, capped,
+// byte-stable, atomic) — OFF the emit hot path: one goroutine per
+// completion, every fetch 2s-bounded, the file write local. Callers latch
+// the key FIRST (saveLedgerAsync / QueueItemDone). Failures surface on the
+// status line only — memory must never stall a return.
+func (b *liveBackend) saveLedgerLanes(e LedgerEntry) {
+	b.mu.Lock()
+	am := b.am
+	dir := b.directory
+	b.mu.Unlock()
+	b.ledgerWG.Add(1)
+	go func() {
+		defer b.ledgerWG.Done()
+		if am != nil {
+			if err := am.SaveWork(e); err != nil {
+				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory lane: agentmemory observe failed (" + shortTitle(err.Error(), 80) + ") — the file ledger still records it"})
+			}
+		}
+		if err := NewLedger(dir).Append(e); err != nil {
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory lane: office ledger append failed (" + shortTitle(err.Error(), 80) + ")"})
+		}
+	}()
+}
+
+// drainLedger waits out in-flight ledger savers with a hard cap: every
+// saver is already 2s-bounded transport + a local file write, so a 3s
+// window drains them without letting a pathological hang stall Stop.
+func (b *liveBackend) drainLedger(timeout time.Duration) {
+	done := make(chan struct{})
+	go func() { b.ledgerWG.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(timeout):
+	}
+}
+
+// ledgerEntryForReturn shapes the FROZEN completed-dispatch record out of
+// a returned child: the summary is the return text untruncated; FILES /
+// VERIFY / PROOF / ISSUES ride the developer return-contract sections when
+// the worker declared them (the oikonomos contract), degrading to empty
+// digests when it didn't. Verdict: "issues" when the ISSUES section
+// declares real ones, "done" otherwise ("none" spellings included).
+func (b *liveBackend) ledgerEntryForReturn(sessionID, title string, emp state.Employee, text string, at int64) LedgerEntry {
+	sections := parseLedgerSections(text)
+	issues := ledgerIssues(sections["ISSUES"])
+	verdict := "done"
+	if len(issues) > 0 {
+		verdict = "issues"
+	}
+	return LedgerEntry{
+		LedgerID:      LedgerID(at, title, emp.Name),
+		DispatchTitle: title,
+		WorkerName:    emp.Name,
+		WorkerRole:    string(emp.Role),
+		WorkerSession: sessionID,
+		Verdict:       verdict,
+		Summary:       strings.TrimSpace(text),
+		Files:         ledgerFilePaths(sections["FILES"]),
+		VerifyDigest:  ledgerLastLine(sections["VERIFY"], 140),
+		ProofOneLiner: ledgerFirstLine(sections["PROOF"], 140),
+		Issues:        issues,
+		CompletedAt:   at,
+		PrimaryID:     b.PrimaryID(),
+		Project:       filepath.Base(filepath.Clean(b.directory)),
 	}
 }
 
@@ -2372,6 +2558,13 @@ func (b *liveBackend) maybeChildReturned(sessionID string) {
 	for _, e := range review {
 		b.fl.emit(e)
 	}
+
+	// Office memory: the return is real and verified — record it on BOTH
+	// lanes (agentmemory observation + .opencode/office-ledger.md) so the
+	// NEXT session's boss knows this work is done before re-dispatching.
+	// Async + best-effort + deduped (the key latch AND the file's
+	// ledgerId): memory never stalls the return, never double-records.
+	b.saveLedgerAsync("child:"+sessionID, b.ledgerEntryForReturn(sessionID, prev.Title, emp, text, nowMs()))
 
 	// Tidy the org chart: delete the child 10s later (best effort).
 	b.fl.at(10*time.Second, func() { b.deleteChild(sessionID) })

@@ -395,6 +395,19 @@ func main() {
 		fail("start", err)
 	}
 
+	// Memory-lane probe report: the agentmemory verdict (OK | file-only —
+	// the backend's MemoryLane seam; the demo backend has no seam, which
+	// reads file-only) plus the office ledger's cardinality and newest
+	// ledgerId — the one-line "did the office remember" answer.
+	{
+		lane := "file-only"
+		if lb, ok := b.(interface{ MemoryLane() string }); ok {
+			lane = lb.MemoryLane()
+		}
+		dir, _ := os.Getwd()
+		fmt.Println(memoryReportLine(lane, backend.NewLedger(dir)))
+	}
+
 	// --batch-probe: queue-flush contract probe. Mirror the (hardcoded)
 	// queue onto the agentmemory board via the QueueItemStart/Done seam the
 	// app type-asserts, send ONE composed batch exactly like the app's
@@ -655,6 +668,20 @@ func staleReproChecks(turn1, turn2 []string) int {
 	}
 	check(!dups, "(4) no chat-boss body is byte-identical to an earlier one")
 	return failures
+}
+
+// memoryReportLine is the headless probe's one-line memory-lane summary:
+// "memory: agentmemory <OK|file-only>" (the backend's MemoryLane seam
+// verdict), then the office ledger's cardinality and the newest entry's
+// ledgerId — the exact "did the office remember this project" readout.
+// Pure (the ledger handle is passed in) so main_test pins the grammar.
+func memoryReportLine(lane string, led *backend.Ledger) string {
+	newest := "-"
+	if e, ok := led.Latest(); ok && e.LedgerID != "" {
+		newest = e.LedgerID
+	}
+	return fmt.Sprintf("[memory] memory: agentmemory %s | ledger %d dispatches | newest %s",
+		lane, led.Len(), newest)
 }
 
 // queueBoard is the board-mirror seam backends expose OUTSIDE

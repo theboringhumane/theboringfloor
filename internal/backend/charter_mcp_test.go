@@ -185,8 +185,8 @@ func TestEnsureMCPAttachmentWiresAndIsIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 	instr := cfg["instructions"].([]any)
-	if len(instr) != 2 || instr[0] != charterRelPath || instr[1] != mcpAttachmentRelPath {
-		t.Fatalf("charter + attachment ride instructions together: %v", instr)
+	if len(instr) != 3 || instr[0] != charterRelPath || instr[1] != mcpAttachmentRelPath || instr[2] != ledgerRelPath {
+		t.Fatalf("charter + attachment + ledger ride instructions together: %v", instr)
 	}
 	if cfg["theme"] != "nord" {
 		t.Fatalf("foreign fields survive the second merge: %v", cfg)
@@ -220,9 +220,10 @@ func TestEnsureMCPAttachmentAcceptsHandWiredSpellings(t *testing.T) {
 	}
 
 	// A member hand-writing ANY accepted spelling gets neither a
-	// duplicate entry nor a rewritten config on the next pass.
+	// duplicate entry nor a rewritten config on the next pass. The ledger
+	// entry rides pre-wired so the check stays isolated to MCP spellings.
 	for _, spelling := range mcpAttachmentAcceptedPaths {
-		body := `{"instructions":["` + spelling + `","./.opencode/oikonomos.md"]}`
+		body := `{"instructions":["` + spelling + `","./.opencode/oikonomos.md","` + ledgerRelPath + `"]}`
 		cfgPath := filepath.Join(ocDir, "opencode.json")
 		if err := os.WriteFile(cfgPath, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
@@ -253,7 +254,8 @@ func TestEnsureMCPAttachmentNoServersIsCleanNoop(t *testing.T) {
 	if err := json.Unmarshal([]byte(mustRead(t, filepath.Join(dir, ".opencode", "opencode.json"))), &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg["instructions"].([]any)) != 1 {
+	// Charter + ledger entries only — no MCP attachment entry.
+	if len(cfg["instructions"].([]any)) != 2 {
 		t.Fatalf("no attachment entry when nothing is configured: %v", cfg["instructions"])
 	}
 }
