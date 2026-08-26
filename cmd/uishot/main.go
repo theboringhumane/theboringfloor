@@ -181,6 +181,17 @@
 //	                                fires the URL through the STUBBED runner;
 //	                                activity logs "→ opened: opencode.ai/docs";
 //	                                the no-mark leg types "o"; byte-identical)
+//	                    [--openurl] (terminal-browser candidate-lane proof
+//	                                (synchronous, REAL fake binaries): a
+//	                                scratch fixture dir carries a logging
+//	                                `terminal-browser` (+ `open`/`xdg-open`)
+//	                                on a pinned PATH + hermetic ghostty env;
+//	                                leg A resolves terminal-browser and a
+//	                                press+`o` logs its call (system log
+//	                                EMPTY); leg B (fake exits 1) cascades the
+//	                                SAME URL to the system opener — one
+//	                                attempt each, "→ opened:" intact;
+//	                                byte-identical twice)
 package main
 
 import (
@@ -4625,6 +4636,257 @@ func runLinksProof() error {
 	return nil
 }
 
+// --- terminal-browser candidate lane (--openurl) ----------------------------
+// The `o` open's OPTIONAL browser lane, RESOLVER + REAL-BINARY proof (the
+// pure matrix + frame contracts live in internal/app's open_url_test.go):
+// a scratch fixture dir carries POSIX FAKES — `terminal-browser` (logs
+// "terminal-browser pwd=… args=…" to a capture file, exits $FAKE_TB_EXIT)
+// and `open`/`xdg-open` (the system-opener capture, exit 0). PATH pins
+// "<fixture>:<orig>" (fixture FIRST shadows any real binary on the host)
+// and the terminal env is hermetically stubbed (TERM_PROGRAM=ghostty, TMUX
+// + KITTY_WINDOW_ID + the kill-switch cleared — the host's real env can
+// never leak a lane in). Leg A: the resolver prefers terminal-browser
+// ("resolve=terminal-browser prefer-over-system-open" printed), a press +
+// `o` on a single-URL bubble fires the fake straight (no card — ONE
+// target), tb.log captured exactly "open https://opencode.ai/docs", the
+// system log stayed ABSENT, the activity tab logged "→ opened:", and NO
+// "could not open" row rendered. Leg B (FAKE_TB_EXIT=1): the SAME URL
+// cascades to the system opener — tb.log holds exactly ONE attempt (never
+// a retry), system.log captured the URL, the verdict STILL reads "→
+// opened:". Every leg's frames + logs byte-identical across two drives.
+
+// openURLEnvKeys — every env the fixture drive touches, snapshotted +
+// restored per drive (a drive pair shares the process).
+var openURLEnvKeys = []string{
+	"PATH", "TERM_PROGRAM", "TMUX", "KITTY_WINDOW_ID",
+	panels.TerminalBrowserOffEnv, "FAKE_TB_EXIT", "FAKE_OPEN_LOG_DIR",
+}
+
+// openURLFrameOut — ONE drive's observed artifacts.
+type openURLFrameOut struct {
+	resolved     string   // the resolver's pick BEFORE the press
+	frameOpened  string   // after `o`: the open landed
+	activityOpen string   // the "→ opened:" activity row
+	tbLog        []string // the fake terminal-browser's captured calls
+	sysLog       []string // the system-opener fakes' captured calls
+}
+
+// openURLDrive — ONE hermetic drive at the fake's exit code.
+func openURLDrive(tbExit string) (openURLFrameOut, error) {
+	var out openURLFrameOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range openURLEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() { // restore EVERY key (the drive pair shares the process)
+		for _, k := range openURLEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-openurl-")
+	if err != nil {
+		return out, fmt.Errorf("openurl fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	fakes := map[string]string{
+		"terminal-browser": "#!/bin/sh\n" +
+			"printf 'terminal-browser pwd=%s args=%s\n' \"$(pwd)\" \"$*\" >> \"$FAKE_OPEN_LOG_DIR/tb.log\"\n" +
+			"exit \"${FAKE_TB_EXIT:-0}\"\n",
+		"open": "#!/bin/sh\n" +
+			"printf 'system-open pwd=%s args=%s\n' \"$(pwd)\" \"$*\" >> \"$FAKE_OPEN_LOG_DIR/system.log\"\n" +
+			"exit 0\n",
+		"xdg-open": "#!/bin/sh\n" +
+			"printf 'system-open pwd=%s args=%s\n' \"$(pwd)\" \"$*\" >> \"$FAKE_OPEN_LOG_DIR/system.log\"\n" +
+			"exit 0\n",
+	}
+	for name, body := range fakes {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(body), 0o755); err != nil {
+			return out, fmt.Errorf("openurl fixture %s: %w", name, err)
+		}
+	}
+	os.Setenv("FAKE_OPEN_LOG_DIR", root)
+	os.Setenv("FAKE_TB_EXIT", tbExit)
+	os.Setenv("TERM_PROGRAM", "ghostty") // the hermetic kitty-capable host stub
+	os.Setenv("TMUX", "")                // tmux's default-miss never sneaks in
+	os.Setenv("KITTY_WINDOW_ID", "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
+
+	// the resolver's pick is pinned BEFORE the press (the live env read).
+	out.resolved = app.ResolveBrowserTool().String()
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	// the exact breadth-first drain runLinksProof runs (heartbeats
+	// dropped; every other landing re-feeds — the open's browserOpenMsg
+	// verdict lands synchronously inside the `o` press).
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — terminal-browser lane fixture online"})
+	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "where is the spec?", false)})
+	// a completed boss bubble carrying exactly ONE URL → the straight-
+	// through open (the multi-target card is --links' contract).
+	runExec(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m1", From: "boss", Kind: "boss",
+		Text: "Spec: https://opencode.ai/docs — read it.", At: 1, Pending: false}})
+
+	// the press: find the body row wearing the URL in the frame and click
+	// INSIDE the chat panel there (sidebar 80 on the left; +10 into the
+	// panel region — linksDrive's exact geometry).
+	frameBeacon := m.Frame()
+	row, pressX := -1, (shotCols-80)+10
+	for i, ln := range strings.Split(frameBeacon, "\n") {
+		if strings.Contains(ln, "opencode.ai/docs") {
+			row = i
+			break
+		}
+	}
+	if row < 0 {
+		return out, fmt.Errorf("openurl: the URL bubble must render pre-press")
+	}
+	runExec(tea.MouseClickMsg(tea.Mouse{X: pressX, Y: row, Button: tea.MouseLeft}))
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'o', Text: "o"}))
+	out.frameOpened = m.Frame()
+	for _, ln := range m.ActivityLines() {
+		if strings.Contains(ln, "→ opened:") {
+			out.activityOpen = ln
+		}
+	}
+	readLog := func(name string) []string {
+		raw, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return nil // never written == the leg never ran
+		}
+		var lines []string
+		for _, ln := range strings.Split(string(raw), "\n") {
+			if ln != "" {
+				lines = append(lines, ln)
+			}
+		}
+		return lines
+	}
+	out.tbLog, out.sysLog = readLog("tb.log"), readLog("system.log")
+	return out, nil
+}
+
+// openURLIdentical — the two-drives byte-identity gate.
+func openURLIdentical(a, b openURLFrameOut) bool {
+	return a.resolved == b.resolved && a.frameOpened == b.frameOpened &&
+		a.activityOpen == b.activityOpen &&
+		strings.Join(a.tbLog, "\n") == strings.Join(b.tbLog, "\n") &&
+		strings.Join(a.sysLog, "\n") == strings.Join(b.sysLog, "\n")
+}
+
+// openURLAssertLeg — BOTH legs' shared surface: resolved lane, log pins,
+// the activity landing, and the clean transcript.
+func openURLAssertLeg(tag string, out openURLFrameOut, wantSysLines int) error {
+	if out.resolved != "terminal-browser" {
+		return fmt.Errorf("%s: resolve=terminal-browser prefer-over-system-open expected, got %q", tag, out.resolved)
+	}
+	if len(out.tbLog) != 1 || !strings.HasSuffix(out.tbLog[0], "args=open https://opencode.ai/docs") {
+		return fmt.Errorf("%s: EXACTLY ONE terminal-browser attempt logged with the URL (no retry): %v", tag, out.tbLog)
+	}
+	if len(out.sysLog) != wantSysLines {
+		return fmt.Errorf("%s: the system opener captured %d calls, want %d: %v", tag, len(out.sysLog), wantSysLines, out.sysLog)
+	}
+	for _, ln := range out.sysLog {
+		if !strings.HasSuffix(ln, "https://opencode.ai/docs") {
+			return fmt.Errorf("%s: the cascaded call carried the SAME URL: %v", tag, out.sysLog)
+		}
+	}
+	if !strings.Contains(out.activityOpen, "→ opened: opencode.ai/docs") {
+		return fmt.Errorf("%s: the activity tab logs \"→ opened: opencode.ai/docs\", got %q", tag, out.activityOpen)
+	}
+	if strings.Contains(ansi.Strip(out.frameOpened), "could not open:") {
+		return fmt.Errorf("%s: a cascaded/absorbed failure never paints the dim row", tag)
+	}
+	return nil
+}
+
+func runOpenURLProof() error {
+	// leg A — the happy lane: exit-0 candidate, the whole open lands there.
+	a1, err := openURLDrive("0")
+	if err != nil {
+		return err
+	}
+	a2, err := openURLDrive("0")
+	if err != nil {
+		return err
+	}
+	if err := openURLAssertLeg("openurl A", a1, 0); err != nil {
+		return err
+	}
+	if !openURLIdentical(a1, a2) {
+		return fmt.Errorf("openurl A: two drives must be byte-identical")
+	}
+	fmt.Printf("leg A (resolve=terminal-browser prefer-over-system-open): captured %q — system-opener log ABSENT\n", a1.tbLog[0])
+	fmt.Println("===== UI SHOT · OPENURL A — press+`o` painted the page IN-terminal via terminal-browser (exit 0) =====")
+	fmt.Println(a1.frameOpened)
+	fmt.Println("===== UI SHOT =====")
+
+	// leg B — the cascade: an exit-1 candidate hands the SAME URL to the
+	// system opener, ONE attempt each, the verdict intact.
+	b1, err := openURLDrive("1")
+	if err != nil {
+		return err
+	}
+	b2, err := openURLDrive("1")
+	if err != nil {
+		return err
+	}
+	if err := openURLAssertLeg("openurl B", b1, 1); err != nil {
+		return err
+	}
+	if !openURLIdentical(b1, b2) {
+		return fmt.Errorf("openurl B: two drives must be byte-identical")
+	}
+	fmt.Printf("leg B (cascade on exit 1): candidate attempt %q → system-opener captured %q\n", b1.tbLog[0], b1.sysLog[0])
+	fmt.Println("===== UI SHOT · OPENURL B — the candidate's exit-1 cascaded the SAME URL to the system opener (\"→ opened:\" intact) =====")
+	fmt.Println(b1.frameOpened)
+	fmt.Println("===== UI SHOT =====")
+
+	fmt.Println("asserts: OK — resolve=terminal-browser prefer-over-system-open on the hermetic ghostty fixture (PATH pinned \"<fixture>:<orig>\", TMUX/KITTY_WINDOW_ID/kill-switch cleared); leg A: press+`o` fired `terminal-browser open https://opencode.ai/docs` EXACTLY once (system log absent, `→ opened: opencode.ai/docs` logged); leg B (exit 1): the SAME URL cascaded to the system opener — ONE attempt per leg, no retry, no \"could not open\" row, the verdict intact; every leg byte-identical across two drives (real app drive, real fake binaries, real exec)")
+	return nil
+}
+
 // --- clickable agents (--click) ----------------------------------------------
 // Scripted bubbletea v2 mouse clicks through the REAL model: (S) a click on
 // tekton-1's floor sprite selects it — activity tab opens, the agents tab
@@ -4832,6 +5094,7 @@ func main() {
 	images := flag.Bool("images", false, "inbound boss-turn image preview proof (synchronous): the stub pins a completed boss turn carrying the 8×8 checker PNG as a data-URL file part (Meta carrier + Event.Media payload — opencode.go's pin shape); the lazy rasterize must land with the 🖼 chip + the pinned half-block truecolor rows in the frame; /images off leg proves chips-only; two drives byte-identical. The base legs run under a hermetic neutral-terminal env stub so the host's real lane never leaks in")
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
+	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
 	flag.Parse()
 
 	if *persist {
@@ -5037,6 +5300,14 @@ func main() {
 
 	if *links {
 		if err := runLinksProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *openurl {
+		if err := runOpenURLProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

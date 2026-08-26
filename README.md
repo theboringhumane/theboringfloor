@@ -312,6 +312,12 @@ Layout lives in the config *and* in the app:
 
 Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 
+Browser lane for `o`: on kitty-capable terminals (kitty, ghostty, WezTerm
+— never inside tmux) an installed
+[`terminal-browser`](https://github.com/zenbu-labs/terminal-browser) binary
+opens targets in-terminal first, cascading to the system opener on any
+failure; `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1` disables the lane.
+
 ## Keys
 
 | key | does |
@@ -327,7 +333,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+t` | expand/collapse completed thinking blocks |
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+f` | open the most recent worker thread as a fullscreen focus view (tool calls + thinks + per-call diffs, live-pulsed; most recently expanded thread wins, else any live thread) — `esc` / `ctrl+f` closes back, office state byte-identical |
-| `o` | chat: with a text selection (press/drag) live over a bubble wearing the dim `· o (open)` beacon — open its URL / on-disk file / media image in the OS browser (`open -g` on macOS, `xdg-open` on Linux); several targets float a small picker (`↑`/`↓` move, `enter` opens, `esc` cancels); no selection or no verified target and the key just types `o` |
+| `o` | chat: with a text selection (press/drag) live over a bubble wearing the dim `· o (open)` beacon — open its URL / on-disk file / media image in the browser (kitty-capable terminals: opens with zenbu `terminal-browser` when present; otherwise the system default browser — `open -g` on macOS, `xdg-open` on Linux); several targets float a small picker (`↑`/`↓` move, `enter` opens, `esc` cancels); no selection or no verified target and the key just types `o` |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not while shell-captured or with an open float) |
 | `ctrl+x` (plan mode) | selection live in the pane: cut the marked text; otherwise approve-toggles (double-press) the presented/edited plan → sent to the build agent, mode flips back to build |
 | `ctrl+space` | terminal tab: toggle shell keyboard capture BOTH ways (opt-in; released is the default and leaving auto-releases) |
