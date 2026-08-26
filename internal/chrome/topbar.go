@@ -95,7 +95,10 @@ func rightSeg(clock, fallback string, infos []projinfo.Info) string {
 
 // TopBar renders the full-width top bar for one frame. Zero infos renders
 // exactly the pre-project layout; one Info swaps the cwd segment for the
-// caller-resolved project + branch.
+// caller-resolved project + branch. st.BackendName (the backend's boot
+// EvStatus name hint, latched reducer-side) inserts a dim segment between
+// mode and agents — the compact bar (TopBarCompact) drops it exactly like
+// it drops mode, so a narrow terminal never buys it at the clock's expense.
 func TopBar(st state.OfficeState, width int, infos ...projinfo.Info) string {
 	mode := strings.ToUpper(string(st.Mode))
 	agents := fmt.Sprintf("%d", len(st.Employees))
@@ -103,8 +106,11 @@ func TopBar(st state.OfficeState, width int, infos ...projinfo.Info) string {
 
 	left := OnBarBold(White, " theboringoffice "+AppVersion) +
 		OnBar(White, " | ") +
-		OnBar(ModeColor(st.Mode), mode) +
-		OnBar(White, " | agents ") +
+		OnBar(ModeColor(st.Mode), mode)
+	if st.BackendName != "" {
+		left += OnBar(White, " | ") + OnBar(Dim, st.BackendName)
+	}
+	left += OnBar(White, " | agents ") +
 		OnBar(Info, agents)
 	right := rightSeg(clock, cwdBase(), infos)
 

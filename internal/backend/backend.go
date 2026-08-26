@@ -1,6 +1,8 @@
-// Package backend — the two state.Backend implementations for theboringoffice:
-// a scripted demo (demo.go) and the live opencode+agentmemory backend
-// (opencode.go, events.go, agentmemory.go). Ports of node-legacy/src/backend/*.
+// Package backend — the state.Backend implementations for theboringoffice:
+// a scripted demo (demo.go) and the live transports selected by brain.json
+// backend.name: opencode+agentmemory (opencode.go, events.go,
+// agentmemory.go) and the claude code CLI (claude.go). The opencode and
+// demo paths are ports of node-legacy/src/backend/*.
 package backend
 
 import (

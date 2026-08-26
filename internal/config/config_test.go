@@ -471,3 +471,122 @@ func TestLoad_UnreadableFile(t *testing.T) {
 		t.Errorf("error = %q, want prefix \"config: read\"", err.Error())
 	}
 }
+
+// --- backend.name selector codec (install-seeded / /backend-persisted) ----
+
+// TestDefaultBackendName pins Default()'s transport: "opencode" is the
+// stock selection (the name every silent config resolves to).
+func TestDefaultBackendName(t *testing.T) {
+	cfg := Default()
+	if cfg.Backend.Name != BackendNameDefault {
+		t.Errorf("Default().Backend.Name = %q, want %q", cfg.Backend.Name, BackendNameDefault)
+	}
+	// Round-trip: the printed default brain.json (main's
+	// --print-default-config) decodes straight back with the name intact.
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var back Config
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if back.Backend.Name != BackendNameDefault {
+		t.Errorf("round-trip Backend.Name = %q, want %q", back.Backend.Name, BackendNameDefault)
+	}
+}
+
+// TestLoad_BackendNameBackfill covers a brain.json written BEFORE the
+// selector schema: no "name" key under backend must decode and backfill to
+// "opencode" — the file keeps meaning exactly what it always meant.
+func TestLoad_BackendNameBackfill(t *testing.T) {
+	home := useHome(t)
+	writeBrain(t, home, `{
+  "version": 1,
+  "backend": {"agentmemoryUrl": "http://am:9999", "server": "", "agentmemoryPollS": 9}
+}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.Backend.Name != BackendNameDefault {
+		t.Errorf("backend name backfill = %q, want %q", cfg.Backend.Name, BackendNameDefault)
+	}
+	if cfg.Backend.AgentmemoryURL != "http://am:9999" || cfg.Backend.AgentmemoryPollS != 9 {
+		t.Errorf("neighbor fields must survive the backfill untouched, got %+v", cfg.Backend)
+	}
+}
+
+// TestLoad_BackendNamePreserved: an explicit selection (install.sh
+// --backend claudecode's seed, or a /backend swap's persist) comes back
+// verbatim — Load never normalizes a set value.
+func TestLoad_BackendNamePreserved(t *testing.T) {
+	home := useHome(t)
+	writeBrain(t, home, `{"version": 1, "backend": {"name": "claudecode"}}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.Backend.Name != BackendNameClaude {
+		t.Errorf("Backend.Name = %q, want %q", cfg.Backend.Name, BackendNameClaude)
+	}
+}
+
+// TestBackendNameHelpers pins the two-name whitelist + the empty
+// normalization (validation lives in config so both cmd flags and the
+// /backend slash gate on one spelling).
+func TestBackendNameHelpers(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		valid bool
+		want  string
+	}{
+		{"opencode", true, "opencode"},
+		{"claudecode", true, "claudecode"},
+		{"", false, "opencode"}, // ResolvedName's whole job
+		{"zephyr", false, "zephyr"},
+	} {
+		if got := ValidBackendName(tc.name); got != tc.valid {
+			t.Errorf("ValidBackendName(%q) = %v, want %v", tc.name, got, tc.valid)
+		}
+		if got := (BackendConfig{Name: tc.name}).ResolvedName(); got != tc.want {
+			t.Errorf("ResolvedName(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestLoad_BackendShapeUnchanged pins the pre-schema fixture shape: the
+// boss/url/poll block must decode EXACTLY as before — the selector is
+// additive omitempty (existing fixture bodies untouched).
+func TestLoad_BackendShapeUnchanged(t *testing.T) {
+	home := useHome(t)
+	writeBrain(t, home, `{
+  "version": 7,
+  "boss": {"name": "chief", "model": "anthropic/claude-sonnet-4-5", "concierge": false},
+  "ui": {"theme": "noir"},
+  "backend": {"agentmemoryUrl": "http://am:9999", "server": "http://oc:7777", "agentmemoryPollS": 9}
+}`)
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if cfg.Boss.Name != "chief" || cfg.UI.Theme != "noir" {
+		t.Errorf("unrelated sections must decode verbatim, got boss=%+v ui=%+v", cfg.Boss, cfg.UI)
+	}
+	if cfg.Backend.AgentmemoryURL != "http://am:9999" || cfg.Backend.Server != "http://oc:7777" ||
+		cfg.Backend.AgentmemoryPollS != 9 || cfg.Backend.Name != BackendNameDefault {
+		t.Errorf("pre-schema backend block: %+v", cfg.Backend)
+	}
+	// And a save writes the explicit name back next to those fields.
+	cfg.Backend.Name = BackendNameClaude
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Backend.Name != BackendNameClaude || got.Backend.AgentmemoryURL != "http://am:9999" {
+		t.Errorf("saved round trip = %+v", got.Backend)
+	}
+}

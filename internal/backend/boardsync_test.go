@@ -106,9 +106,9 @@ func TestBoardSyncReconcileWorkerCollisionNoFlip(t *testing.T) {
 	plantBoardDoing(ctx2, "ses-a", "task-ses-a", "Registry rot cleanup", "tekton-1", 100)
 	plantBoardDoing(ctx2, "ses-b", "task-ses-b", "Registry rot cleanup sweep", "skopos-1", 200)
 	flipped2 := reconcileBoardDone(ctx2, state.Event{
-		Kind:  state.EvReturned,
-		Task:  state.BoardTask{ID: "task-elsewhere", Title: "Registry rot cleanup — pass 2", Status: state.TaskDone, Owner: "manager"},
-		Mail:  state.MailItem{Subject: "return: Registry rot cleanup — pass 2"},
+		Kind: state.EvReturned,
+		Task: state.BoardTask{ID: "task-elsewhere", Title: "Registry rot cleanup — pass 2", Status: state.TaskDone, Owner: "manager"},
+		Mail: state.MailItem{Subject: "return: Registry rot cleanup — pass 2"},
 	})
 	if len(flipped2) != 0 {
 		t.Fatalf("cross-worker ambiguity must flip NOTHING, got %v", flipTitles(flipped2))
@@ -321,7 +321,13 @@ func TestBoardSyncChildReturnFlipsAndNotesOnce(t *testing.T) {
 	})
 	if len(doneTasks) != 2 {
 		t.Fatalf("expected exact-path + reconcile flip = 2 done upserts, got %d: %v",
-			len(doneTasks), flipTitles(func() []state.BoardTask { var r []state.BoardTask; for _, e := range doneTasks { r = append(r, e.Task) }; return r }()))
+			len(doneTasks), flipTitles(func() []state.BoardTask {
+				var r []state.BoardTask
+				for _, e := range doneTasks {
+					r = append(r, e.Task)
+				}
+				return r
+			}()))
 	}
 	if doneTasks[1].Task.ID != "task-ses-ghost" {
 		t.Fatalf("the reconcile flip must be the stranded row, got %q", doneTasks[1].Task.ID)

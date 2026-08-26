@@ -117,10 +117,10 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 		return changed, append(notes, "[theboringoffice] manager charter: failed (read "+cfgPath+": "+err.Error()+")")
 	}
 
-// 	3. The MCP prompt attachment (charter_mcp.go): list the serve's
-// 	   configured MCP servers so the boss — and through her briefs the
-// 	   developers — know which MCP tools exist. Its notes ride AHEAD of
-// 	   the charter's final summary line (probes pattern-match the tail).
+	// 	3. The MCP prompt attachment (charter_mcp.go): list the serve's
+	// 	   configured MCP servers so the boss — and through her briefs the
+	// 	   developers — know which MCP tools exist. Its notes ride AHEAD of
+	// 	   the charter's final summary line (probes pattern-match the tail).
 	mcpChanged, mcpNotes := ensureMCPAttachment(dir)
 	notes = append(notes, mcpNotes...)
 	if mcpChanged {
