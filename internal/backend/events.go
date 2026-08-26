@@ -6,7 +6,12 @@
 package backend
 
 import (
+	"bytes"
 	"encoding/json"
+	"image"
+	_ "image/gif"  // imageDims: header sniffs ride content, not names
+	_ "image/jpeg" // "
+	_ "image/png"  // "
 	"sort"
 	"strconv"
 	"strings"
@@ -67,13 +72,22 @@ type ocTokens struct {
 }
 
 // ocPart covers the Part union fields the mapping reads (ReasoningPart /
-// ToolPart / TextPart — see @opencode-ai/sdk gen/types.gen.d.ts).
+// ToolPart / TextPart / FilePart — see @opencode-ai/sdk gen/types.gen.d.ts).
 type ocPart struct {
 	ID        string `json:"id"`
 	SessionID string `json:"sessionID"`
 	MessageID string `json:"messageID"`
 	Type      string `json:"type"`
 	Text      string `json:"text"`
+	// FilePart — url/mime/filename (type "file", or the assistant-side
+	// "image" variant). The chat image preview reads EXACTLY these three:
+	// url carries either a "data:image/...;base64,..." payload (previewable
+	// inline) or a remote http(s) link (chip only — never fetched client-
+	// side). Tolerant parse: serves without file parts simply leave them
+	// empty and the preview degrades to today's behavior.
+	URL      string `json:"url"`
+	Mime     string `json:"mime"`
+	Filename string `json:"filename"`
 	// ToolPart
 	CallID string `json:"callID"`
 	Tool   string `json:"tool"`
@@ -230,6 +244,11 @@ type normCtx struct {
 	// message.updated frames for the same id re-report absolute counters,
 	// and only the growth becomes an EvUsage.
 	usageSeen map[string]ocUsageLast
+	// mediaSeen — sessionID|partID of file/image parts already surfaced
+	// as EvChatMedia (message.part.updated repeats frames for a part;
+	// the app dedupes payloads by hash regardless — this just keeps the
+	// wire quiet).
+	mediaSeen map[string]bool
 	// conciergeID — the office concierge's session id, set by the live
 	// backend's registerConcierge ("" until the first SendConcierge creates
 	// the session lazily). The concierge is a PSEUDO-DESK: it sits in
@@ -295,6 +314,7 @@ func newNormCtx(cfg *config.Config) *normCtx {
 		textStart:        make(map[string]int64),
 		textSess:         make(map[string]string),
 		usageSeen:        make(map[string]ocUsageLast),
+		mediaSeen:        make(map[string]bool),
 	}
 }
 
@@ -687,6 +707,116 @@ func mapTextDelta(d ocPartDelta, ctx *normCtx) []state.Event {
 // so later deltas append cleanly; the prefix cap simply freezes growth.
 func capBossText(text string) string {
 	return sliceMax(text, bossTextCapRunes)
+}
+
+// ---------------- boss-turn image previews (file/image parts) ----------------
+
+// mediaTurnCap — a single boss turn renders at most this many inline
+// previews; extras degrade to plain chip rows (the transcript stays a
+// conversation, not a gallery).
+const mediaTurnCap = 4
+
+// mediaFromParts lifts image file/image parts out of a message's part
+// list into MediaItems — state.MediaMeta's contract (the EvChatBoss pin
+// carries the result on Meta + Event.Media, one sighting per turn). Gates:
+//
+//   - type "file" or "image", with an image/* mime (the declared part
+//     mime, else the data-URL head's);
+//   - data: URLs carry the payload inline: header-only DecodeConfig
+//     sniffs dims (full pixels decode lazily app-side); a payload the
+//     header rejects (truncated, wrong type inside an .png name, over the
+//     8 MiB cap) degrades to a chip-only row;
+//   - remote http(s) URLs degrade to chip-only rows: no Hash, no URL,
+//     NEVER fetched client-side (the security cap);
+//   - at most mediaTurnCap items keep a runnable payload per turn;
+//     extras ride as chip rows with dims but no Hash/URL.
+func mediaFromParts(parts []ocPart) []state.MediaItem {
+	var items []state.MediaItem
+	runnable := 0
+	for _, p := range parts {
+		if p.Type != "file" && p.Type != "image" {
+			continue
+		}
+		mime := strings.ToLower(strings.TrimSpace(p.Mime))
+		raw, rawOK := []byte(nil), false
+		if strings.HasPrefix(p.URL, "data:") {
+			if dm, r, err := state.ParseDataImageURL(p.URL); err == nil {
+				// MIME re-sniff of the payload head: a DECLARED mime that
+				// mismatches the URL's own head is a lie (an "image/png"
+				// name over html bytes) — never preview it.
+				switch {
+				case mime == "":
+					mime = dm
+					raw, rawOK = r, true
+				case mime == dm:
+					raw, rawOK = r, true
+				default:
+					continue
+				}
+			}
+		}
+		if !strings.HasPrefix(mime, "image/") {
+			continue
+		}
+		it := state.MediaItem{
+			Mime:     mime,
+			Filename: strings.TrimSpace(p.Filename),
+		}
+		if rawOK {
+			if w, h, ok := imageDims(raw); ok {
+				it.W, it.H = w, h
+				if runnable < mediaTurnCap {
+					runnable++
+					it.Hash = state.DataURLHash(p.URL)
+					it.URL = p.URL
+				}
+			}
+		}
+		items = append(items, it)
+	}
+	return items
+}
+
+// imageDims reads just the header of decoded image bytes (DecodeConfig —
+// the dims WITHOUT the pixel allocation the rasterizer pays later).
+func imageDims(raw []byte) (w, h int, ok bool) {
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(raw))
+	if err != nil || cfg.Width < 1 || cfg.Height < 1 {
+		return 0, 0, false
+	}
+	return cfg.Width, cfg.Height, true
+}
+
+// mapMediaPart: a file/image part on the PRIMARY session is an inbound
+// boss-turn image — surface it as EvChatMedia (Msg.ID = the owning
+// "bossmsg-"+messageID bubble identity; the completion pin re-announces
+// the same payload, both dedupe by MediaItem.Hash). Children sessions
+// stay on their working pulse (tool previews are v∞). Per-part dedupe:
+// message.part.updated repeats frames for one part.
+func mapMediaPart(part ocPart, ctx *normCtx) (state.Event, bool) {
+	if part.MessageID == "" {
+		return state.Event{}, false
+	}
+	items := mediaFromParts([]ocPart{part})
+	if len(items) == 0 {
+		return state.Event{}, false
+	}
+	dedupe := part.SessionID + "|" + part.ID
+	if ctx.mediaSeen[dedupe] {
+		return state.Event{}, false
+	}
+	ctx.mediaSeen[dedupe] = true
+	return state.Event{
+		Kind:      state.EvChatMedia,
+		SessionID: part.SessionID,
+		CallID:    part.ID,
+		Msg: state.ChatMsg{
+			ID:   "bossmsg-" + part.MessageID,
+			From: "boss",
+			Kind: "boss",
+		},
+		Media: items,
+	}, true
 }
 
 // interruptedStreamEvents flushes every open text stream as a final
@@ -1433,6 +1563,16 @@ func mapOCEvent(raw ocSSEEvent, ctx *normCtx, primaryID string, now int64) []sta
 				return append(evs, ctx.throttledWorking(emp.ID, ctx.tasks[part.SessionID].ID, now, false)...)
 			}
 			return evs
+		case "file", "image":
+			// An image file part on the PRIMARY session is an inbound
+			// boss-turn preview (the EvChatMedia lane; the completion pin
+			// re-announces it). Children keep the working pulse below.
+			if part.SessionID == primaryID {
+				if ev, ok := mapMediaPart(part, ctx); ok {
+					return []state.Event{ev}
+				}
+				return nil
+			}
 		}
 		emp, ok := ctx.employees[part.SessionID]
 		if !ok || ctx.returned[part.SessionID] {

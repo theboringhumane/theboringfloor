@@ -164,10 +164,20 @@
 //	                                own row — skopos-1's lookalike NEVER flips.
 //	                                Frame A 3 doing / frame B done counts +
 //	                                note; two drives byte-identical)
+//	                    [--images]  (inbound boss-turn image preview proof
+//	                                (synchronous): the stub pins a completed
+//	                                boss turn carrying the 8×8 checker PNG as
+//	                                a data-URL file part (Meta carrier +
+//	                                Event.Media payload); the lazy rasterize
+//	                                lands the 🖼 chip + 4 pinned half-block
+//	                                truecolor rows in the frame; the /images
+//	                                off leg paints chips only; two drives
+//	                                byte-identical)
 package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -177,6 +187,8 @@ import (
 	"sync"
 	"time"
 
+	"charm.land/bubbles/v2/cursor"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
@@ -4050,6 +4062,158 @@ func runBoardSyncProof() error {
 	return nil
 }
 
+// --- inbound image previews (--images) ---------------------------------------
+// The boss-turn image preview, RENDER proof (the unit contracts live in
+// internal/panels' chat_raster tests + internal/app's model_image tests):
+// the stub pins a completed boss turn EXACTLY the way opencode.go emits
+// it — Msg.Meta the small "attach␟…␟hash" carrier, Event.Media the
+// data-URL payload — over the shared gold fixture
+// (internal/panels/testdata/checker-8x8.png). The drive feeds the REAL
+// model synchronously AND executes the returned cmd tree breadth-first
+// (the lazy rasterize probe is a tea.Cmd — spinner blinks and cursor
+// heartbeats are dropped, everything else re-feeds, which is how the
+// probe lands inside a synchronous proof). Asserts: the 🖼 chip reads
+// "🖼 paste-diagram.png · 8×8 · image/png", the pinned half-block
+// truecolor rows ride the frame verbatim, the /images off leg paints the
+// chip alone, and the whole drive repeated is byte-identical.
+
+// imagesDrive — ONE synchronous image-preview run (off==true drives the
+// /images-posture-off leg). Returns the final frame.
+func imagesDrive(off bool) (string, error) {
+	backend := &stubBackend{done: make(chan struct{})}
+	cfg := config.Default()
+	if off {
+		cfg.UI.Images = "off"
+	}
+	m := app.New(backend, cfg)
+	// runExec mirrors internal/app/attach_queue_test.go's runMsg: feed the
+	// msg, then drain the returned cmd tree breadth-first, dropping the
+	// self-re-arming heartbeats (spinner tick, cursor blink). Every OTHER
+	// landing msg re-feeds — the image probe's landing included.
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			out := c()
+			if out == nil {
+				continue
+			}
+			switch out := out.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, out...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(out)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — image-preview stub online"})
+	runExec(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"what does the diagram look like?", false)})
+	runExec(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+
+	raw, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		return "", fmt.Errorf("image fixture: %w", err)
+	}
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw)
+	it := state.MediaItem{Mime: "image/png", Filename: "paste-diagram.png", W: 8, H: 8,
+		Hash: state.DataURLHash(dataURL), URL: dataURL}
+	runExec(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m1", From: "boss", Kind: "boss",
+		Text: "Red and blue squares, alternating — the classic checker.",
+		At:   1, Pending: false,
+		Meta: state.MediaMeta([]state.MediaItem{it}),
+	}, Media: []state.MediaItem{it}})
+	// NOTE: no EvTick pump here — a tick re-arms the model's tickCmd
+	// (tea.Tick → EvTick → …) and a breadth-first drain would chase it
+	// forever. The raster probe is synchronous INSIDE the pin's own cmd
+	// tree (imageRasterMsg lands, SetImageRaster repaints) — the frame is
+	// settled the moment runExec returns.
+	return m.Frame(), nil
+}
+
+// imagesPinnedRow — the checker's EXACT pinned raster row (panels'
+// TestRasterCheckerExactPin contract: fg=top pixel, bg=bottom pixel,
+// red|blue alternating, reset tail) — all four half-block rows are this
+// string (parities repeat every two pixel rows).
+func imagesPinnedRow() string {
+	var b strings.Builder
+	for x := 0; x < 8; x++ {
+		if x%2 == 0 {
+			b.WriteString("\x1b[38;2;255;0;0m\x1b[48;2;0;0;255m▀")
+		} else {
+			b.WriteString("\x1b[38;2;0;0;255m\x1b[48;2;255;0;0m▀")
+		}
+	}
+	b.WriteString("\x1b[m")
+	return b.String()
+}
+
+func runImagesProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	frame, err := imagesDrive(false)
+	if err != nil {
+		return err
+	}
+	fmt.Println("===== UI SHOT · IMAGES — completed boss turn carrying the 8×8 checker file part: 🖼 chip + inline half-block truecolor preview =====")
+	fmt.Println(frame)
+	fmt.Println("===== UI SHOT =====")
+
+	stripped := ansi.Strip(frame)
+	if !strings.Contains(stripped, "🖼 paste-diagram.png · 8×8 · image/png") {
+		return fail("images: the 🖼 chip with dims + mime must render")
+	}
+	if n := strings.Count(stripped, "▀"); n != 32 {
+		return fail("images: an 8-col × 4-row checker paints 32 half-blocks, got %d", n)
+	}
+	if c := strings.Count(frame, imagesPinnedRow()); c != 4 {
+		return fail("images: the pinned checker row must ride the frame verbatim ×4, got %d", c)
+	}
+
+	// the /images off leg: chips alone — the probe never fired.
+	offFrame, err := imagesDrive(true)
+	if err != nil {
+		return err
+	}
+	offStripped := ansi.Strip(offFrame)
+	if !strings.Contains(offStripped, "🖼 paste-diagram.png · 8×8 · image/png") {
+		return fail("images: the off leg still paints the chip")
+	}
+	if strings.Contains(offStripped, "▀") {
+		return fail("images: the off leg must paint ZERO half-blocks")
+	}
+
+	// determinism: the same synchronous drive, byte-for-byte.
+	frame2, err := imagesDrive(false)
+	if err != nil {
+		return err
+	}
+	if frame != frame2 {
+		return fail("images: two synchronous drives must produce byte-identical frames")
+	}
+	fmt.Println("asserts: OK — the completed boss turn's file part previews inline: \"🖼 paste-diagram.png · 8×8 · image/png\" chip + 4 pinned half-block rows (32 ▀ cells, red-over-blue truecolor SGR); the /images off leg paints the chip alone (the probe never fires); two drives byte-identical")
+	return nil
+}
+
 // --- clickable agents (--click) ----------------------------------------------
 // Scripted bubbletea v2 mouse clicks through the REAL model: (S) a click on
 // tekton-1's floor sprite selects it — activity tab opens, the agents tab
@@ -4254,6 +4418,7 @@ func main() {
 	notifications := flag.Bool("notifications", false, "OS desktop notification proof (synchronous): recording NotifyBus at the app seam — focused startup silent; blur opens the window; ONE boss-ask cohort ping (child coalesces, generic agent+tool copy); front-answer keeps the cohort silent; ONE completion ping (clipped reply); refocus silent; re-blur re-nudges; /notify off → zero captures + persisted brain.json")
 
 	claudeMode := flag.Bool("claude", false, "claude-backend shot: the REAL live claude backend against the compiled cmd/claudestub binary (stream-json). With --planshot (or alone): the plan-mode + permission/dialog control round-trip proof — chatter never presents, plan-shaped reply presents into the pane, req-owl-1/req-q-1 round-trips byte-pinned, subagent Task run returns, two drives byte-identical")
+	images := flag.Bool("images", false, "inbound boss-turn image preview proof (synchronous): the stub pins a completed boss turn carrying the 8×8 checker PNG as a data-URL file part (Meta carrier + Event.Media payload — opencode.go's pin shape); the lazy rasterize must land with the 🖼 chip + the pinned half-block truecolor rows in the frame; /images off leg proves chips-only; two drives byte-identical")
 	flag.Parse()
 
 	if *persist {
@@ -4443,6 +4608,14 @@ func main() {
 
 	if *claudeMode {
 		if err := runClaudePlanProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *images {
+		if err := runImagesProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

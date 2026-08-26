@@ -62,6 +62,7 @@ var slashCommands = []slashCommand{
 	{"/route", "force-dispatch the backlog now", ""},
 	{"/perm", "re-open an esc'd permission prompt", ""},
 	{"/diffs", "expand/collapse file diffs", "/diffs on|off"},
+	{"/images", "boss-turn image previews (persists)", "/images auto|ascii|off"},
 	{"/question", "re-open a deferred boss question", ""},
 	{"/power", "power governor", "/power auto|performance|saver"},
 	{"/notify", "desktop notifications while unfocused", "/notify on|off"},

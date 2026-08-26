@@ -78,9 +78,20 @@ type UIConfig struct {
 	TickMs         int       `json:"tickMs"`         // 0 = power-mode default base (180/500)
 	AmbientChatter bool      `json:"ambientChatter"` // office banter bubbles
 	Sounds         string    `json:"sounds"`         // "on" | "bell" (terminal bell only) | "off"
-	Notifications  string    `json:"notifications"` // "on" | "off" — OS desktop pings while the terminal is unfocused
+	Notifications  string    `json:"notifications"`  // "on" | "off" — OS desktop pings while the terminal is unfocused
+	Images         string    `json:"images"`         // "auto" (detect lane, ASCII fallback) | "ascii" (half-block raster always) | "off" (chips only)
 	SidebarWidth   int       `json:"sidebarWidth"`   // right panel cols, 0 = default 80 (26..100)
 	Compact        bool      `json:"compact"`        // compact layout mode
+}
+
+// ImagesDefault — the image-preview posture every brain.json resolves to
+// when ui.images is absent/empty (pre-schema files keep meaning exactly
+// what they meant: previews on).
+const ImagesDefault = "auto"
+
+// ValidImagesMode reports whether mode names a real image lane posture.
+func ValidImagesMode(mode string) bool {
+	return mode == "auto" || mode == "ascii" || mode == "off"
 }
 
 type BackendConfig struct {
@@ -157,15 +168,16 @@ func Default() *Config {
 			AmbientChatter: true,
 			Sounds:         "on",
 			Notifications:  "on",
+			Images:         ImagesDefault,
 			SidebarWidth:   0,
 			Compact:        false,
 		},
-	Backend: BackendConfig{
-		Name:             BackendNameDefault,
-		AgentmemoryURL:   "http://localhost:3111",
-		Server:           "",
-		AgentmemoryPollS: 5,
-	},
+		Backend: BackendConfig{
+			Name:             BackendNameDefault,
+			AgentmemoryURL:   "http://localhost:3111",
+			Server:           "",
+			AgentmemoryPollS: 5,
+		},
 	}
 }
 
@@ -208,6 +220,12 @@ func Load() (*Config, error) {
 	// must keep meaning — the opencode transport.
 	if cfg.Backend.Name == "" {
 		cfg.Backend.Name = BackendNameDefault
+	}
+	// Images backfill (same house rule as the backend name): a brain.json
+	// written before the image preview landed carries no images key — it
+	// means, and keeps meaning, previews on in auto mode.
+	if cfg.UI.Images == "" {
+		cfg.UI.Images = ImagesDefault
 	}
 	return cfg, nil
 }

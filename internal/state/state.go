@@ -5,6 +5,11 @@ package state
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/base64"
+	"encoding/hex"
+	"errors"
+	"strconv"
 	"strings"
 )
 
@@ -46,6 +51,121 @@ func AttachMeta(names []string) string {
 		return ""
 	}
 	return AttachMetaPrefix + AttachMetaSep + strings.Join(names, AttachMetaSep)
+}
+
+// MediaItem — ONE inbound image riding a completed boss turn (the wire's
+// file/image part, reduced to what a transcript preview needs). The
+// Meta carrier below holds the SMALL fields (mime/filename/dims/hash);
+// the heavy URL (usually a base64 data URL) rides ONLY state.Event.Media
+// — ChatMsg.Meta stays snapshot-sized (an 8 MiB payload must never land
+// in the persisted session transcript).
+type MediaItem struct {
+	Mime     string `json:"mime"`               // image/* (required — anything else is dropped at the gate)
+	Filename string `json:"filename,omitempty"` // display name for the 🖼 chip
+	W        int    `json:"w,omitempty"`        // decoded pixel width (0 = dims unknown)
+	H        int    `json:"h,omitempty"`        // decoded pixel height (0 = dims unknown)
+	Hash     string `json:"hash,omitempty"`     // DataURLHash(URL) — the payload lookup key; "" means chip-only (remote URL / undecodable)
+	URL      string `json:"url,omitempty"`      // the data URL — Event.Media payload carrier only; mirrors must never fetch a remote URL
+}
+
+// MediaMetaPrefix tags a BOSS bubble's Meta as the image-attachment
+// carrier. Reads distinguishable from AttachMetaPrefix ("att") at the
+// separator: "att\x1f" vs "attach\x1f" never collide.
+const MediaMetaPrefix = "attach"
+
+// MediaMetaSep re-uses the attach carrier's unit separator.
+const MediaMetaSep = AttachMetaSep
+
+// MediaMaxPayloadBytes — the image payload cap EVERY layer enforces
+// (8 MiB, the repo's atMaxSize-scale contract): the URL gate rejects
+// bigger decoded payloads, and the rasterizer refuses bigger byte
+// slices.
+const MediaMaxPayloadBytes = 8 << 20
+
+// ParseDataImageURL splits a "data:<mime>;base64,<payload>" URL into the
+// declared mime and the decoded bytes. The gate is strict on purpose —
+// the URL arrived off the wire, so never trust the filename: only
+// "data:" URLs, only "image/" mimes, only ";base64" encodings, and only
+// payloads that decode inside MediaMaxPayloadBytes. A remote http(s) URL
+// never reaches here (callers skip external fetches — the security cap).
+func ParseDataImageURL(u string) (mime string, raw []byte, err error) {
+	if !strings.HasPrefix(u, "data:") {
+		return "", nil, errors.New("not a data URL")
+	}
+	comma := strings.Index(u, ",")
+	if comma < 0 {
+		return "", nil, errors.New("data URL without a payload separator")
+	}
+	head := strings.ToLower(strings.TrimPrefix(u[:comma], "data:"))
+	if !strings.HasSuffix(head, ";base64") {
+		return "", nil, errors.New("data URL not base64-encoded")
+	}
+	mime = strings.TrimSuffix(head, ";base64")
+	if !strings.HasPrefix(mime, "image/") {
+		return "", nil, errors.New("data URL mime is not an image")
+	}
+	raw, err = base64.StdEncoding.DecodeString(u[comma+1:])
+	if err != nil {
+		return "", nil, errors.New("data URL bad base64")
+	}
+	if len(raw) > MediaMaxPayloadBytes {
+		return "", nil, errors.New("image payload over the 8 MiB cap")
+	}
+	return mime, raw, nil
+}
+
+// DataURLHash — the deterministic payload key the chat carrier speaks:
+// sha1(url)[:12] hex. It keys BOTH the backend's emit dedupe touches and
+// the app's payload buffer + the panel's raster store (collisions across
+// one transcript are inconsequential: same hash ⇒ same URL ⇒ same image).
+func DataURLHash(u string) string {
+	sum := sha1.Sum([]byte(u))
+	return hex.EncodeToString(sum[:6])
+}
+
+// MediaMeta builds the ChatMsg.Meta carrier from image MediaItems:
+// "attach" ␟ N ␟ (mime ␟ filename ␟ W ␟ H ␟ hash)… — N image groups, in
+// wire order. "" when there are none. The URL rides the Event.Media
+// sibling, keyed by Hash (deterministic: sha1(url)[:12]).
+func MediaMeta(items []MediaItem) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(MediaMetaPrefix + MediaMetaSep + strconv.Itoa(len(items)))
+	for _, it := range items {
+		b.WriteString(MediaMetaSep + it.Mime + MediaMetaSep + it.Filename + MediaMetaSep +
+			strconv.Itoa(it.W) + MediaMetaSep + strconv.Itoa(it.H) + MediaMetaSep + it.Hash)
+	}
+	return b.String()
+}
+
+// ParseMediaMeta decodes the image carrier back into MediaItems (URL/hash
+// lookups only — the heavy payload never rides Meta). ok is false when
+// Meta isn't an image carrier at all (plain boss turns parse false).
+func ParseMediaMeta(meta string) (items []MediaItem, ok bool) {
+	if !strings.HasPrefix(meta, MediaMetaPrefix+MediaMetaSep) {
+		return nil, false
+	}
+	fields := strings.Split(meta, MediaMetaSep)
+	// attach, N, then N×5 fields (a truncated carrier degrades-silently).
+	if len(fields) < 2 {
+		return nil, false
+	}
+	n, err := strconv.Atoi(fields[1])
+	if err != nil || n < 1 || len(fields) < 2+5*n {
+		return nil, false
+	}
+	items = make([]MediaItem, 0, n)
+	for i := 0; i < n; i++ {
+		base := 2 + 5*i
+		w, _ := strconv.Atoi(fields[base+2])
+		h, _ := strconv.Atoi(fields[base+3])
+		items = append(items, MediaItem{
+			Mime: fields[base], Filename: fields[base+1], W: w, H: h, Hash: fields[base+4],
+		})
+	}
+	return items, true
 }
 
 // ParseAttachMeta decodes the carrier back into names; ok is false when
@@ -328,6 +448,17 @@ const (
 	// owns (primary, concierge pseudo-desk, hired children) and only when
 	// the delta is non-zero.
 	EvUsage EventKind = "usage"
+	// EvChatMedia — an inbound IMAGE file/image part sighted on the
+	// primary ("boss") session's message stream (ADDITIVE). Never a chat
+	// row: the reducer passes it through untouched (unknown-kind default)
+	// and the APP buffers the payload model-side (same ownership shape as
+	// EvPermission/EvQuestion's model-owned UI state). Msg.ID carries the
+	// owning boss bubble's identity ("bossmsg-"+messageID) — the bubble's
+	// own completion pin (EvChatBoss) re-announces the same media on its
+	// Meta carrier + Event.Media, so a missed SSE frame still previews
+	// (both paths dedupe by MediaItem.Hash). CallID carries the wire
+	// partID (dedupe + the lazy-rasterize probe key).
+	EvChatMedia EventKind = "chat-media"
 	// EvOffline/EvOnline — network connectivity transitions from the
 	// backend's watcher (pure-Go probe). Emit once per transition.
 	EvOffline EventKind = "offline"
@@ -386,6 +517,12 @@ type Event struct {
 	// surfaces these so the operator can verify prompt caching is live.
 	TokensCacheRead  int64 `json:"tokensCacheRead,omitempty"`  // wire tokens.cache.read growth
 	TokensCacheWrite int64 `json:"tokensCacheWrite,omitempty"` // wire tokens.cache.write growth
+	// Media — inbound boss-turn images (EvChatBoss completion pin /
+	// EvChatMedia): the ONE payload channel for image bytes (the data
+	// URLs). Kept OFF ChatMsg so the session snapshot never threads
+	// multi-KB blobs; the app buffers them on receipt, keyed by
+	// MediaItem.Hash, and drops the event copy. nil on every other kind.
+	Media []MediaItem `json:"media,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the
@@ -496,6 +633,13 @@ type SessionAborter interface {
 type SessionMessagePart struct {
 	Type string `json:"type"`
 	Text string `json:"text,omitempty"`
+	// File-part retention ("file"/"image" types): URL + mime + filename
+	// ride verbatim off the wire so a future history-side image lane can
+	// preview without re-fetching; splicers that don't know them ignore
+	// them (empty for text/tool/reasoning parts).
+	URL      string `json:"url,omitempty"`
+	Mime     string `json:"mime,omitempty"`
+	Filename string `json:"filename,omitempty"`
 }
 
 // SessionMessageRow — ONE message of a fetched history page: the

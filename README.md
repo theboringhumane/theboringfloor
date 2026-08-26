@@ -203,6 +203,13 @@ one dim `[office] board sync: flipped N rows to done` note when anything moved.
   specified:` plus the plan body goes to the build agent and the mode flips
   back to build; an empty buffer or the untouched starter is refused with a
   notice. A non-empty, non-starter, plan-shaped buffer persists across boots.
+  The focused pane is a real editor: `shift+arrows`/`shift+home`/`shift+end`
+  mark a selection, `ctrl+a` marks the whole buffer, and with a live mark
+  `ctrl+c` copies / `ctrl+x` cuts it (no mark: `ctrl+x` keeps its
+  approve-toggle, `ctrl+c` keeps its quit claim), `ctrl+v`/`super+v`/`cmd+v`
+  paste over it, and a mouse drag marks + copies with the same
+  `Copied N chars` statusbar note — `esc` clears a live mark first, then
+  blurs.
 - **Ambient floor** — coffee steam off the tea machine, blinking server-rack
   LEDs, and an uplink ripple along the server-room wall — all tick-driven
   (no timers), so an idle office stays cheap.
@@ -321,7 +328,7 @@ Sounds: `ui.sounds = on | bell | off` (or `THEBORINGOFFICE_MUTE=1`).
 | `ctrl+d` | expand/collapse diff blocks |
 | `ctrl+f` | open the most recent worker thread as a fullscreen focus view (tool calls + thinks + per-call diffs, live-pulsed; most recently expanded thread wins, else any live thread) — `esc` / `ctrl+f` closes back, office state byte-identical |
 | `ctrl+p` | toggle plan/build mode — chat keeps focus, the pane opens only once a plan has content (not while shell-captured or with an open float) |
-| `ctrl+x` | plan mode: approve the presented/edited plan → sent to the build agent, mode flips back to build |
+| `ctrl+x` (plan mode) | selection live in the pane: cut the marked text; otherwise approve-toggles (double-press) the presented/edited plan → sent to the build agent, mode flips back to build |
 | `ctrl+space` | terminal tab: toggle shell keyboard capture BOTH ways (opt-in; released is the default and leaving auto-releases) |
 | `ctrl+o` | release shell capture (alias) |
 | `ctrl+q` | arm quit (works everywhere, embedded terminal included) |
@@ -334,6 +341,18 @@ parts; the echoed user bubble shows a `· 📎 N` suffix. `/clear` or a send
 clears the chips. The `@` picker honors the repo's `.gitignore` (plus
 built-in filters for `node_modules/`, `.venv/`, `__pycache__/` and other
 build output), so caches and dependency trees never crowd the list.
+
+Images work the other way too: when a **boss turn carries an image** (a
+file part the serve stored — e.g. a diagram it read back), the reply
+transcript shows a `🖼 paste-diagram.png · 8×8 · image/png` chip above the
+answer, followed by an inline preview — v1 paints a half-block truecolor
+raster (`▀` cells, fg = top pixel / bg = bottom pixel) that renders in any
+color terminal; `/images auto|ascii|off` picks the posture (`auto` probes
+the terminal's protocol lane — kitty → iterm2 → ASCII fallback, both
+native lanes fall back to ASCII in v1; `off` keeps chips only). Previews
+are boss-turn only, ≤4 per turn (extras degrade to chip rows), remote
+URLs are never fetched, and undecodable payloads degrade to a dim `🖼
+<name> · unsupported image · click txt link` row.
 
 ## Slash commands
 
@@ -356,6 +375,7 @@ build output), so caches and dependency trees never crowd the list.
 | `/route` | force-dispatch the backlog now |
 | `/perm` | re-open an esc'd permission prompt |
 | `/diffs on\|off` | expand/collapse file diffs |
+| `/images [auto\|ascii\|off]` | boss-turn image previews — bare reports the posture + detected lane; with a mode it persists to brain.json (`auto` = detect, ASCII fallback; `off` = chips only) |
 | `/question` | re-open a deferred boss question |
 | `/power auto\|performance\|saver` | power governor |
 | `/model provider/model` | boss model |

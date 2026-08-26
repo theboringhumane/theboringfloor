@@ -476,6 +476,17 @@ type Chat struct {
 
 	diffCache map[string]diffCacheEntry // parsed+hilighted diff rows by msg ID
 
+	// Inbound boss-turn image previews (chat_raster.go owns the paint;
+	// the app's lazy rasterize pushes through SetImageRaster /
+	// SetImageFailed): media[msgID][hash] is that bubble's view row —
+	// the raster rows, or the failed latch (the chip drops to the dim
+	// "unsupported image" copy). mediaRev counts arrivals per bubble:
+	// folded into that bubble's block-cache key (renderMsgBlock), exactly
+	// one re-render per landing — the cached block for a bubble whose
+	// media set NEVER changed stays borrowed.
+	media    map[string]map[string]chatMediaView
+	mediaRev map[string]uint64
+
 	// Transcript mouse selection (chat_selection.go): a left-press over
 	// the transcript viewport arms a pending selection, drag-motion moves
 	// its head, a dragged release extracts the visible plain text (the
@@ -1081,6 +1092,57 @@ func (c *Chat) refreshPlaceholder() {
 		return
 	}
 	c.ta.Placeholder = base
+}
+
+// chatMediaView — ONE inbound boss-turn image as the bubble renders it:
+// the painted raster rows (nil until the lazy probe lands — the chip
+// alone meanwhile), or failed=true (the dim "unsupported image" copy).
+type chatMediaView struct {
+	rows   []string
+	failed bool
+}
+
+// SetImageRaster pushes ONE image's finished raster rows into the panel
+// (the app's rasterize landing). Keyed by msgID+hash — the carrier's own
+// identity (state.ParseMediaMeta reads the same hash at render). Push is
+// idempotent, and the media-revision bump re-renders exactly the owning
+// bubble's block.
+func (c *Chat) SetImageRaster(msgID, hash string, rows []string) {
+	if msgID == "" || hash == "" || len(rows) == 0 {
+		return
+	}
+	if c.media == nil {
+		c.media = map[string]map[string]chatMediaView{}
+	}
+	if c.mediaRev == nil {
+		c.mediaRev = map[string]uint64{}
+	}
+	if c.media[msgID] == nil {
+		c.media[msgID] = map[string]chatMediaView{}
+	}
+	c.media[msgID][hash] = chatMediaView{rows: append([]string(nil), rows...)}
+	c.mediaRev[msgID]++
+	c.forceRender()
+}
+
+// SetImageFailed latches ONE image as undecodable (the rasterize probe
+// came back empty): the chip swaps to the dim "unsupported image" copy.
+func (c *Chat) SetImageFailed(msgID, hash string) {
+	if msgID == "" || hash == "" {
+		return
+	}
+	if c.media == nil {
+		c.media = map[string]map[string]chatMediaView{}
+	}
+	if c.mediaRev == nil {
+		c.mediaRev = map[string]uint64{}
+	}
+	if c.media[msgID] == nil {
+		c.media[msgID] = map[string]chatMediaView{}
+	}
+	c.media[msgID][hash] = chatMediaView{failed: true}
+	c.mediaRev[msgID]++
+	c.forceRender()
 }
 
 // SetShowThinking shows/hides collected thinking blocks (/thinking on|off).
@@ -2106,6 +2168,12 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// rebuild for exactly this block kind)
 		k.num(uint64(uint32(c.tick)))
 	}
+	// image-media arrivals re-shape ONLY carrier bubbles: fold that
+	// bubble's media revision in — a landing re-renders the one owning
+	// block, every other block's cache stays borrowed.
+	if _, carrier := state.ParseMediaMeta(m.Meta); carrier {
+		k.num(c.mediaRev[m.ID])
+	}
 	key := k.done()
 	if old := c.borrowMsgBlock(m, key); old != nil {
 		return old
@@ -2183,6 +2251,9 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// caret, no extra row: the typing row below the divider is the
 		// liveness signal for the whole pending period.
 		lines = foldStyledLines(lines, c.mdWidth)
+		// Inbound image previews slot the chip + raster ABOVE the body
+		// (completed bubbles only — a pending stream never previews).
+		lines = append(c.renderMediaRows(m), lines...)
 		writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(bossPrefix)), lines)
 	}
 	blk := &chatBlock{id: m.ID, key: key, text: b.String(), hits: hits, src: m, unstable: streaming}
@@ -2987,6 +3058,49 @@ func writePrefixed(b *strings.Builder, prefix, indent string, lines []string) {
 			b.WriteString(indent + ln)
 		}
 	}
+}
+
+// renderMediaRows — the boss bubble's inbound image rows (the v1 preview):
+// ONE dim chip per image ("🖼 name · WxH · mime", or the dim
+// "unsupported image · click txt link" copy when the payload is remote,
+// undecodable, or failed the rasterize) followed by its half-block
+// truecolor raster rows when the lazy probe landed them. Cards stack in
+// carrier order, all folded to the bubble's mdWidth budget (the rows are
+// pre-folded paint — foldStyledRows refolds the ANSI atoms, never bursts
+// mid-glyph). Empty for plain turns: no carrier Meta, or the bubble is
+// still pending (the pin alone previews).
+func (c *Chat) renderMediaRows(m state.ChatMsg) []string {
+	if m.Pending {
+		return nil
+	}
+	items, ok := state.ParseMediaMeta(m.Meta)
+	if !ok {
+		return nil
+	}
+	var lines []string
+	for _, it := range items {
+		lines = append(lines, mediaChipLine(it, c.media[m.ID][it.Hash]))
+		if v, vok := c.media[m.ID][it.Hash]; vok && !v.failed {
+			for _, row := range v.rows {
+				lines = append(lines, foldStyledRows(row, c.mdWidth, c.mdWidth)...)
+			}
+		}
+	}
+	return lines
+}
+
+// mediaChipLine — the ONE dim chip row per inbound image. The unsupported
+// copy covers remote URLs (never fetched), header-rejected payloads, and
+// rasterize failures — anything the office could not paint itself.
+func mediaChipLine(it state.MediaItem, v chatMediaView) string {
+	name := it.Filename
+	if name == "" {
+		name = "image"
+	}
+	if v.failed || it.W < 1 || it.H < 1 {
+		return chrome.DimText.Render("🖼 " + clipPlain(name, 40) + " · unsupported image · click txt link")
+	}
+	return chrome.DimText.Render(fmt.Sprintf("🖼 %s · %d×%d · %s", clipPlain(name, 40), it.W, it.H, it.Mime))
 }
 
 // wrapPlain greedy word-wraps text to w cells. No semantics — just a

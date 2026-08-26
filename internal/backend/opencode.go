@@ -1938,13 +1938,16 @@ func (b *liveBackend) latestAssistantText(sessionID string) string {
 // (or previous day's) reply, which is exactly the stale-bubble bug. The
 // returned finish stamp ("stop", "tool-calls", ...) lets the caller tell a
 // mid-turn tool-call message (legitimately no text) from a real empty end.
-func (b *liveBackend) messageText(sessionID, messageID string) (text string, finish string, err error) {
+// The third return lifts the message's IMAGE file parts into MediaItems
+// (mediaFromParts — same gate the SSE lane uses; nil when the turn is
+// text-only, which is every turn on a serve without file parts).
+func (b *liveBackend) messageText(sessionID, messageID string) (text string, finish string, media []state.MediaItem, err error) {
 	var row struct {
 		Info  ocMessage `json:"info"`
 		Parts []ocPart  `json:"parts"`
 	}
 	if err := b.doJSON(http.MethodGet, "/session/"+sessionID+"/message/"+messageID, nil, &row); err != nil {
-		return "", "", err
+		return "", "", nil, err
 	}
 	var parts []string
 	for _, part := range row.Parts {
@@ -1955,7 +1958,7 @@ func (b *liveBackend) messageText(sessionID, messageID string) (text string, fin
 			parts = append(parts, t)
 		}
 	}
-	return strings.Join(parts, "\n\n"), row.Info.Finish, nil
+	return strings.Join(parts, "\n\n"), row.Info.Finish, mediaFromParts(row.Parts), nil
 }
 
 // deleteChild best-effort deletes a returned child session; success fires
@@ -2698,7 +2701,7 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 	primaryID := b.primaryID
 	b.mu.Unlock()
 
-	text, finish, err := b.messageText(primaryID, info.ID)
+	text, finish, media, err := b.messageText(primaryID, info.ID)
 	if err != nil {
 		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
 	} else if text == "" {
@@ -2734,8 +2737,9 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 	b.mu.Unlock()
 
 	b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
-		ID: "bossmsg-" + info.ID, From: "boss", Kind: "boss", Text: text, At: nowMs(), Pending: false,
-	}})
+		ID: "bossmsg-" + info.ID, From: "boss", Kind: "boss", Text: text, At: nowMs(),
+		Pending: false, Meta: state.MediaMeta(media),
+	}, Media: media})
 }
 
 // maybeOfficeCompleted: the concierge replied — emit an EvChatOffice bubble
@@ -2764,7 +2768,7 @@ func (b *liveBackend) maybeOfficeCompleted(info ocMessage) {
 	conciergeID := b.conciergeID
 	b.mu.Unlock()
 
-	text, finish, err := b.messageText(conciergeID, info.ID)
+	text, finish, _, err := b.messageText(conciergeID, info.ID)
 	if err != nil {
 		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
 	} else if text == "" {
@@ -2993,6 +2997,13 @@ func sessionMessageRow(info ocMessage, parts []ocPart) state.SessionMessageRow {
 			row.Parts = append(row.Parts, state.SessionMessagePart{Type: p.Type, Text: p.Text})
 		case "tool":
 			row.Parts = append(row.Parts, state.SessionMessagePart{Type: p.Type})
+		case "file", "image":
+			// file-part retention: URL + mime + filename ride verbatim
+			// (the splice keeps history READABLE — previews stay a
+			// live-lane story, but nothing about the wire shape is lost).
+			row.Parts = append(row.Parts, state.SessionMessagePart{
+				Type: p.Type, URL: p.URL, Mime: p.Mime, Filename: p.Filename,
+			})
 		}
 	}
 	return row

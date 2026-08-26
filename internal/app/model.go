@@ -374,6 +374,18 @@ type Model struct {
 	copyNoteAt  time.Time
 	copyNoteBad bool
 
+	// mouse plan-pane drag-select (plan_editor_selection.go): a left-press
+	// inside the plan pane's body ARMS the pane's own selection
+	// (planSelArmed pins the flight; planSelDragged flips on the first
+	// motion — a motionless release is caret placement ONLY, never a copy).
+	planSelArmed   bool
+	planSelDragged bool
+
+	// Inbound boss-turn image previews (images.go): the probe-once
+	// rasterize latch keyed msgID|hash — the lazy rasterize rides ONE
+	// tea.Cmd per new payload, never re-running on repeated pins.
+	imgProbed map[string]bool
+
 	// frameNonce — bumped on every message that can mutate panel ephemera
 	// the state digest can't see (textarea draft, scroll, spinner, theme
 	// toggles). Part of the frame cache key (digest.go).
@@ -1242,10 +1254,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// clicks mutate the same panel ephemera (thread toggles, tab
 		// switches, roster highlight) — same cache invalidation as keys.
 		m.frameNonce++
+		// The plan pane owns presses inside its own body region: the
+		// pane's text selection ARMS here (the release decides the fate —
+		// caret click vs copy-drag; the transcript's press-fate seam, one
+		// surface down). Out-of-region presses fall through to the legacy
+		// routing untouched.
+		if msg.Button == tea.MouseLeft && m.planPaneRegionHit(msg.X, msg.Y) {
+			if m.chat != nil {
+				m.chat.ClearSelection() // webpage rule: a press elsewhere clears the transcript mark
+			}
+			m.sel = mselIdle
+			col, vrow := m.planBodyCoords(msg.X, msg.Y)
+			m.openPlanForEdit()
+			m.plan.SelectionBeginAt(col, vrow)
+			m.planSelArmed = true
+			m.planSelDragged = false
+			break
+		}
 		if cmd := m.handlePress(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	case tea.MouseReleaseMsg:
+		// an armed plan-pane drag owns releases first (never both marks
+		// live — the chat's region and the pane's region are disjoint).
+		// A dragged release finalizes + copies through the same
+		// verdict/toast seam as ctrl+c; a MOTIONLESS release decided
+		// caret placement at the press and claims nothing further.
+		if m.planSelArmed {
+			m.planSelArmed = false
+			if m.planSelDragged {
+				m.frameNonce++
+				col, vrow := m.planBodyCoords(msg.X, msg.Y)
+				text, n, err := m.plan.SelectionFinish(col, vrow)
+				if n == 0 && err == nil {
+					m.plan.ClearSelection() // the drag decided nothing (transcript rule)
+				}
+				if cmd := m.planCopyVerdictCmd(text, n, err); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+			break
+		}
 		// only an armed selection drag cares about releases — anything
 		// else drops release events silently (no repaint, no forward).
 		if m.sel == mselArmed {
@@ -1269,6 +1318,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// CellMotion reports motion ONLY while a button is pressed — that
 		// is the selection drag's lifeblood. Battery rule: without an
 		// armed drag the event is dropped with zero repaint cost.
+		if m.planSelArmed {
+			col, vrow := m.planBodyCoords(msg.X, msg.Y)
+			if m.plan.SelectionDragTo(col, vrow) { // cheap compare per event
+				m.frameNonce++ // the mark's pixels moved — repaint
+				m.planSelDragged = true
+			}
+			break
+		}
 		if m.sel == mselArmed {
 			m.frameNonce++
 			m.handleMotion(msg)
@@ -1635,6 +1692,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case state.Event:
 		cmds = append(cmds, m.applyEvent(msg))
+	case imageRasterMsg:
+		// the lazy image rasterize landed back on the UI goroutine
+		// (images.go): rows into the chat panel, one owning-block repaint.
+		m.frameNonce++
+		if cmd := m.applyImageRaster(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case tea.PasteMsg:
+		// Terminal.app's cmd+v (bracketed paste): the FOCUSED plan pane
+		// owns it in plan mode (paste-over-selection lives inside the
+		// pane); everywhere else the chat keeps today's routing exactly.
+		m.frameNonce++
+		if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
+			m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+			if cmd := m.plan.Update(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			break
+		}
+		if cmd := m.tabs.Update(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case panels.PlanPasteMsg:
+		// the plan pane's own async clipboard read landed back (ctrl+v /
+		// super+v while the editor was focused): deliver it to the pane
+		// ONLY — a plan paste must never fall into the chat draft. A tool
+		// miss degrades to ONE dim note (never silently).
+		m.frameNonce++
+		if msg.Err != nil {
+			m.notice("paste failed: " + msg.Err.Error())
+			break
+		}
+		if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() {
+			if cmd := m.plan.Update(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
 	default:
 		// spinner ticks, mouse wheel, etc. → active tab (panel ephemera →
 		// frame-cache nonce, same reasoning as keypresses)
@@ -1977,6 +2071,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// that can't happen.
 	if key == "ctrl+x" && m.agentMode == agentModePlan &&
 		m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+		// A live editor selection turns ctrl+x into CUT (the textarea
+		// classic) — the approve arm's keyguard pauses while text is
+		// marked, and a cut retires even a stale arm outright (a mouse
+		// drag can arm a mark without any keypress clearing the arm).
+		if m.plan.Focused() && m.plan.SelectionActive() {
+			m.approveArmAt = time.Time{}
+			return m.planCopySelectionCmd(true)
+		}
 		if refused := m.approveRefusal(); refused != "" {
 			m.approveArmAt = time.Time{}
 			m.notice(refused)
@@ -2004,12 +2106,24 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.permQ.front() == nil && m.question == nil {
 		switch key {
 		case "esc":
-			// done editing for now — typing lands in the chat input again
-			// (the plan buffer keeps; the editor just blurs).
+			// the selection owns esc first (webpage rule): clear the mark,
+			// keep the pane focused; a bare esc blurs back to the chat
+			// input (the plan buffer keeps; the editor just blurs).
+			if m.plan.SelectionActive() {
+				m.plan.ClearSelection()
+				return nil
+			}
 			m.plan.Blur()
 			return nil
 		case "ctrl+c":
-			// the quit path below keeps its claim
+			// a live selection turns ctrl+c into COPY (the textarea
+			// classic — the quit path below keeps its claim only when no
+			// text is marked); a copy NEVER arms the approve pair and
+			// retires a stale one outright.
+			if m.plan.SelectionActive() {
+				m.approveArmAt = time.Time{}
+				return m.planCopySelectionCmd(false)
+			}
 		default:
 			return m.plan.Update(msg)
 		}
@@ -2065,6 +2179,78 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return cmd
+}
+
+// planCopySelectionCmd — the focused plan pane's copy/cut verdict effect
+// (the ctrl+c/ctrl+x selection claims above ride it): the panel's stubbed
+// clipboardCopyText seam already ran inside Copy/CutSelection; this wraps
+// the OSC52 fallback + the toast around the shared verdict.
+func (m *Model) planCopySelectionCmd(cut bool) tea.Cmd {
+	var (
+		text string
+		n    int
+		err  error
+	)
+	if cut {
+		text, n, err = m.plan.CutSelection()
+	} else {
+		text, n, err = m.plan.CopySelection()
+	}
+	return m.planCopyVerdictCmd(text, n, err)
+}
+
+// planCopyVerdictCmd — the copy verdict for EVERY plan-pane copy path
+// (ctrl+c, ctrl+x-cut, the mouse-drag release): success toasts the frozen
+// "Copied N chars" on the statusbar seam (its own tick retires it) with
+// tea.SetClipboard riding as the ssh fallback; a missing platform tool
+// degrades to ONE dim note with the OSC52 channel still warm; an empty
+// mark decides nothing (no toast, like the transcript).
+func (m *Model) planCopyVerdictCmd(text string, n int, err error) tea.Cmd {
+	if err != nil {
+		m.notice("no os clipboard tool — copy rode the terminal escape (" + err.Error() + ")")
+		return tea.SetClipboard(text)
+	}
+	if n == 0 {
+		return nil
+	}
+	return tea.Batch(tea.SetClipboard(text), m.armCopyNote(n))
+}
+
+// planBodyCoords translates a screen point into the plan pane's BODY-space
+// (col 0 at the pane's left edge, vrow 0 at the body's first row): the
+// topbar row and the pane's own header row are subtracted; desktop measures
+// against the floor slot, mobile against the panel slot under the band.
+// Values may leave the body (header/footer/overhang) — the panel clamps.
+func (m *Model) planBodyCoords(x, y int) (col, vrow int) {
+	if m.mobile() {
+		return x, y - (1 + m.floorBandH() + 1)
+	}
+	return x, y - 2
+}
+
+// planPaneRegionHit reports whether a screen point is INSIDE the plan
+// pane's body rectangle (a press gate — motions/releases clamp instead):
+// plan mode + a visible pane, the pane's own column lanes, body rows only.
+// Floats keep their click claims (a parked turn outranks an editor press).
+func (m *Model) planPaneRegionHit(x, y int) bool {
+	if m.agentMode != agentModePlan || m.plan == nil || !m.planPaneVisible() ||
+		m.permQ.front() != nil || m.question != nil || m.modelPick != nil ||
+		m.threadFocus != nil || m.zen || m.height == 0 {
+		return false
+	}
+	col, vrow := m.planBodyCoords(x, y)
+	bw, paneH := m.floorW, m.middleH
+	if m.mobile() {
+		bw, paneH = m.width, m.middleH-m.floorBandH()
+	}
+	if col < 0 || col >= bw {
+		return false
+	}
+	bodyH := paneH - 2 // the pane reserves its header + footer rows
+	if bodyH < 1 {
+		bodyH = 1
+	}
+	return vrow >= 0 && vrow < bodyH
 }
 
 // focusKey — the open thread-focus view owns every key: esc/ctrl+f leave
@@ -2367,13 +2553,15 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // applyEvent reduces one backend event, feeds panels + activity log, and
 // re-arms the animation tick. Returns the next cmd when needed.
 // applyEvent routes ONE backend (or synthetic) event through the pager
-// kick + the core handler. The kick is the older-history walk's whole
-// attach surface: it rebinds/seeds the primary-session pager on the
-// first event, re-arms it on a stream reconnect, and no-ops O(1) on
-// every other event (the walk itself is gesture-driven, see
-// maybeArmOlder).
+// kick + the media probe + the core handler. The kick is the older-
+// history walk's whole attach surface: it rebinds/seeds the primary-
+// session pager on the first event, re-arms it on a stream reconnect,
+// and no-ops O(1) on every other event (the walk itself is gesture-
+// driven, see maybeArmOlder). The media probe (images.go) buffers
+// inbound boss-turn image payloads and fires the lazy rasterize cmd —
+// model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyEventCore(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev))
 }
 
 func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
@@ -4431,8 +4619,9 @@ const slashHelp = `commands:
   /route             force-dispatch the backlog now (bypasses the busy gate)
   /stop              abort current work (boss + workers); queue sends next turn
   @<file>            attach file (popover picker) · cmd+v pastes images (ctrl+v too)
-  /perm              re-open an esc'd permission prompt
-  /question          re-open a deferred boss question
+   /perm              re-open an esc'd permission prompt
+   /question          re-open a deferred boss question
+   /images [mode]     boss-turn image previews: auto|ascii|off (persists)
   /new               fresh office (previous transcript archived on disk)
   /session           pick a past session to resume live (fallback prints
                      the id + path; boot flag -s|--session <id> pins one)
@@ -4573,6 +4762,23 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.applyToggle("/diffs", fields, func(on bool) {
 			m.chat.SetDiffsExpanded(on)
 		})
+	case "/images":
+		// boss-turn image previews: bare form reports the posture (incl.
+		// the detect layer's lane read), an argument cycles AND persists
+		// (same write-through as /power — /tools-style toggles stay
+		// session-only, this one is a member preference).
+		if len(fields) < 2 {
+			m.notice(fmt.Sprintf("images %s (detected lane: %s) — /images auto|ascii|off",
+				m.cfg.UI.Images, panels.DetectImageSupport()))
+			return nil
+		}
+		mode := strings.ToLower(fields[1])
+		if !config.ValidImagesMode(mode) {
+			m.noticeErr(fmt.Sprintf("/images: unknown mode %q (auto|ascii|off)", fields[1]))
+			return nil
+		}
+		m.cfg.UI.Images = mode
+		m.notice(fmt.Sprintf("images → %s · %s", mode, m.persistCfg()))
 	case "/compact":
 		// live toggle — session override only (/mode persists the choice)
 		if len(fields) < 2 || (fields[1] != "on" && fields[1] != "off") {
