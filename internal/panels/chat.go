@@ -422,6 +422,14 @@ type Chat struct {
 	pasteUnsupported bool                      // non-darwin notice latch (fire once)
 	onNotice         func(text string) tea.Cmd // office-notice seam (cap/drop/platform)
 
+	// Open-in-browser float (links.go): `o` over a selected bubble with
+	// MULTIPLE verified targets floats this centered card (the /session
+	// picker's shape — no filter, the count is tiny); enter/esc fire the
+	// app's ferried handlers, the mark underneath stays esc-lawful.
+	openPick     *linkPickState
+	onLinkPick   func(t LinkTarget) tea.Cmd
+	onLinkCancel func() tea.Cmd
+
 	// Slash popover (popover.go): "/" at a word start opens the command
 	// menu; "/theme " flips it into the live-preview theme picker.
 	slashOpen      bool
@@ -898,6 +906,12 @@ func (c *Chat) cardClaims(x, y int) bool {
 			return true // the picker card swallows clicks (keys-only picker)
 		}
 	}
+	if c.openPick != nil {
+		top, left, cardW, rows := c.linkCardGeom()
+		if y >= top && y < top+len(rows) && x >= left && x < left+cardW {
+			return true // the target card swallows clicks (keys-only picker)
+		}
+	}
 	return false
 }
 
@@ -1096,10 +1110,15 @@ func (c *Chat) refreshPlaceholder() {
 
 // chatMediaView — ONE inbound boss-turn image as the bubble renders it:
 // the painted raster rows (nil until the lazy probe lands — the chip
-// alone meanwhile), or failed=true (the dim "unsupported image" copy).
+// alone meanwhile), a native-lane escape frame (kitty strip / OSC 1337 —
+// the frame bytes ride OUTSIDE the stateful half-block view: they paint
+// at the cursor, never inside grid cells, and are NEVER folded), or
+// failed=true (the dim "unsupported image" copy).
 type chatMediaView struct {
-	rows   []string
-	failed bool
+	rows     []string // ASCII lane: the half-block truecolor rows
+	frame    string   // native lane: ONE atomic escape frame
+	cellRows int      // native lane: the reserved cell-box height (frame row included)
+	failed   bool
 }
 
 // SetImageRaster pushes ONE image's finished raster rows into the panel
@@ -1121,6 +1140,31 @@ func (c *Chat) SetImageRaster(msgID, hash string, rows []string) {
 		c.media[msgID] = map[string]chatMediaView{}
 	}
 	c.media[msgID][hash] = chatMediaView{rows: append([]string(nil), rows...)}
+	c.mediaRev[msgID]++
+	c.forceRender()
+}
+
+// SetImageFrame pushes ONE image's native-lane escape frame into the
+// panel (the kitty placeholder strip or the OSC 1337 sequence — the
+// probe's lane pick landed). cellRows is the reserved cell-box height the
+// frame visually spends (the SAME box the ASCII lane would occupy), so
+// renderMediaRows pads the bubble identically on every lane. The frame
+// is stored VERBATIM and never folded; push is idempotent and bumps the
+// owning bubble's media revision, exactly like SetImageRaster.
+func (c *Chat) SetImageFrame(msgID, hash, frame string, cellRows int) {
+	if msgID == "" || hash == "" || frame == "" || cellRows < 1 {
+		return
+	}
+	if c.media == nil {
+		c.media = map[string]map[string]chatMediaView{}
+	}
+	if c.mediaRev == nil {
+		c.mediaRev = map[string]uint64{}
+	}
+	if c.media[msgID] == nil {
+		c.media[msgID] = map[string]chatMediaView{}
+	}
+	c.media[msgID][hash] = chatMediaView{frame: frame, cellRows: cellRows}
 	c.mediaRev[msgID]++
 	c.forceRender()
 }
@@ -1588,6 +1632,14 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 		if c.sessPick != nil && c.question == nil && c.perm == nil {
 			return c.sessKey(msg)
 		}
+		// The `o` target card owns EVERY key while open (the /session
+		// picker's contract) and claims at the same rank: a parked turn's
+		// modal outranks browsing, so it yields to the floats above. Its
+		// own `o` presses are swallowed (the card, not the mark, owns
+		// keys now); enter fires the app's open ferry, esc cancels.
+		if c.openPick != nil && c.question == nil && c.perm == nil {
+			return c.linkPickKey(msg)
+		}
 		// The @ popover owns its nav/attach keys while open (the question-
 		// modal precedence pattern: claimed FIRST, nothing reaches the
 		// textarea); every other key still goes to the textarea below.
@@ -1907,14 +1959,19 @@ func (c *Chat) View() string {
 	}
 	b.WriteString(c.ta.View())
 	out := b.String()
-	if c.permVisible() || c.question != nil || c.sessPick != nil {
+	if c.permVisible() || c.question != nil || c.sessPick != nil || c.openPick != nil {
 		// each open FLOAT splices its card rows over the assembled lines
 		// (textarea rows included): cells are replaced, never lines —
 		// the layout never jumps. Only one alert float renders at a time:
 		// permVisible is false while a question owns the slot. The session
 		// picker splices FIRST (bottom) — a permission/question card
-		// popping over it wins the top while it waits underneath.
+		// popping over it wins the top while it waits underneath. The `o`
+		// target card sits at the very bottom of the stack (a browse can
+		// never bury a parked turn's modal, nor a peer picker).
 		bg := strings.Split(out, "\n")
+		if c.openPick != nil {
+			bg = c.linkOverlay(bg)
+		}
 		if c.sessPick != nil {
 			bg = c.sessOverlay(bg)
 		}
@@ -2208,6 +2265,14 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 	case m.From == "user":
 		prefix := chrome.Fg(chrome.Info, userPrefix)
 		lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
+		// the open-in-browser beacon: a verified-target bubble wears a
+		// dim " · o (open)" on its FIRST row (folded bubbles keep their
+		// head rows, so the beacon survives the fold). Extraction is THE
+		// gate (os.Stat-verified paths only) — the beacon never advertises
+		// a target `o` could not fire.
+		if len(ExtractChatTargets(m)) > 0 {
+			lines[0] += chrome.DimText.Render(" · o (open)")
+		}
 		attachSuffix := ""
 		if names, ok := state.ParseAttachMeta(m.Meta); ok && len(names) > 0 {
 			// the backend's chat-user echo carries the attachment
@@ -2250,6 +2315,14 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// a streaming reply is just the bubble itself growing — no
 		// caret, no extra row: the typing row below the divider is the
 		// liveness signal for the whole pending period.
+		// the open-in-browser beacon rides the FIRST body row THROUGH the
+		// fold (the 📎 suffix's contract: a full row wraps it to the
+		// continuation row, ANSI-aware, never clipped — and the media
+		// chip prepends clean ABOVE it with the raster rows untouched).
+		// The extract gate guarantees only verified targets advertise it.
+		if len(lines) > 0 && len(ExtractChatTargets(m)) > 0 {
+			lines[0] += chrome.DimText.Render(" · o (open)")
+		}
 		lines = foldStyledLines(lines, c.mdWidth)
 		// Inbound image previews slot the chip + raster ABOVE the body
 		// (completed bubbles only — a pending stream never previews).
@@ -3079,11 +3152,28 @@ func (c *Chat) renderMediaRows(m state.ChatMsg) []string {
 	}
 	var lines []string
 	for _, it := range items {
-		lines = append(lines, mediaChipLine(it, c.media[m.ID][it.Hash]))
-		if v, vok := c.media[m.ID][it.Hash]; vok && !v.failed {
-			for _, row := range v.rows {
-				lines = append(lines, foldStyledRows(row, c.mdWidth, c.mdWidth)...)
+		v := c.media[m.ID][it.Hash]
+		lines = append(lines, mediaChipLine(it, v))
+		if v.failed {
+			continue
+		}
+		// The lane routing hook: the probe already picked the transport
+		// (kitty/ghostty → the kitty strip, the iterm family → OSC 1337,
+		// else → ASCII). A native frame is ONE atomic row written
+		// VERBATIM (folding could burst the escape mid-sequence and
+		// corrupt the terminal — seqLen knows OSC but a kitty strip's
+		// base64 payload is opaque to it) plus cellRows-1 reservation
+		// rows: the SAME cell-box ledger the ASCII paint's row count
+		// spends, so the bubble layout is lane-independent.
+		if v.frame != "" {
+			lines = append(lines, v.frame)
+			for i := 1; i < v.cellRows; i++ {
+				lines = append(lines, "")
 			}
+			continue
+		}
+		for _, row := range v.rows {
+			lines = append(lines, foldStyledRows(row, c.mdWidth, c.mdWidth)...)
 		}
 	}
 	return lines

@@ -27,11 +27,12 @@ package panels
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"image"
 	_ "image/gif"  // register gif (first frame flattens)
 	_ "image/jpeg" // register jpeg
-	_ "image/png"  // register png
+	"image/png"    // register png + re-encode for the kitty strip
 	"strings"
 
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -58,6 +59,19 @@ const halfBlockGlyph = "▀"
 // header-detected giant dimensions (no allocation ever happens for
 // those) — the caller degrades every one of them into a chip row.
 func RasterFromBytes(src []byte, maxCols, maxRows int) ([]string, error) {
+	maxCols, maxRows = clampRasterBudget(maxCols, maxRows)
+	img, w, h, err := decodeMediaImage(src)
+	if err != nil {
+		return nil, err
+	}
+	cols, cellRows := rasterCells(w, h, maxCols, maxRows)
+	return ByteToAnsiCells(img, cols, cellRows*2), nil
+}
+
+// clampRasterBudget — the transcript's raster budget defaults + caps,
+// shared by every lane (the native lanes reserve the SAME cell box the
+// ASCII lane would paint, so a lane pick never shifts the layout).
+func clampRasterBudget(maxCols, maxRows int) (int, int) {
 	if maxCols <= 0 {
 		maxCols = RasterMaxCols
 	}
@@ -70,43 +84,82 @@ func RasterFromBytes(src []byte, maxCols, maxRows int) ([]string, error) {
 	if maxRows > RasterMaxRows {
 		maxRows = RasterMaxRows
 	}
+	return maxCols, maxRows
+}
+
+// decodeMediaImage — the shared safe-decode gate every lane passes
+// through: the byte caps, the header-first dimension check, then the
+// decode itself. Same contract (and same errors) RasterFromBytes has
+// always carried: oversized bytes, undecodable content, and
+// header-detected giant dimensions all land as errors, which the caller
+// degrades into a dim chip row.
+func decodeMediaImage(src []byte) (img image.Image, w, h int, err error) {
 	if len(src) > state.MediaMaxPayloadBytes {
-		return nil, fmt.Errorf("image payload over the 8 MiB cap (%d bytes)", len(src))
+		return nil, 0, 0, fmt.Errorf("image payload over the 8 MiB cap (%d bytes)", len(src))
 	}
 	if len(src) == 0 {
-		return nil, fmt.Errorf("empty image payload")
+		return nil, 0, 0, fmt.Errorf("empty image payload")
 	}
 	// Header-first bounds check: DecodeConfig reads the headers ONLY —
 	// a 20000×20000 claim costs a few bytes of parse, never an image
 	// allocation (image.Decode would happily build the pixel buffer).
 	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
 	if err != nil {
-		return nil, fmt.Errorf("unsupported image: %v", err)
+		return nil, 0, 0, fmt.Errorf("unsupported image: %v", err)
 	}
 	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > rasterMaxDim || cfg.Height > rasterMaxDim {
-		return nil, fmt.Errorf("image %dx%d outside the 1..%d dimension budget", cfg.Width, cfg.Height, rasterMaxDim)
+		return nil, 0, 0, fmt.Errorf("image %dx%d outside the 1..%d dimension budget", cfg.Width, cfg.Height, rasterMaxDim)
 	}
-	img, _, err := image.Decode(bytes.NewReader(src))
+	img, _, err = image.Decode(bytes.NewReader(src))
 	if err != nil {
-		return nil, fmt.Errorf("unsupported image: %v", err)
+		return nil, 0, 0, fmt.Errorf("unsupported image: %v", err)
 	}
-	// Aspect from the PIXEL side: cols ≤ width, pixel rows = 2 × cell
-	// rows (a cell paints a 1×2 pixel column). The row count is what a
-	// terminal spends, so rows clamp first, then width.
-	cols := cfg.Width
+	return img, cfg.Width, cfg.Height, nil
+}
+
+// rasterCells — the transcript cell box for ONE image, shared by ALL
+// lanes. Aspect from the PIXEL side: cols ≤ width, pixel rows = 2 × cell
+// rows (the ASCII cell paints a 1×2 pixel column; the native lanes
+// reserve the same box so the bubble layout is lane-independent). The
+// row count is what a terminal spends, so rows clamp first, then width.
+func rasterCells(w, h, maxCols, maxRows int) (cols, cellRows int) {
+	cols = w
 	if cols > maxCols {
 		cols = maxCols
 	}
-	pxRows := cfg.Height * cols / cfg.Width
+	pxRows := h * cols / w
 	if pxRows < 1 {
 		pxRows = 1
 	}
-	cellRows := (pxRows + 1) / 2
+	cellRows = (pxRows + 1) / 2
 	if cellRows > maxRows {
 		cellRows = maxRows
 	}
-	pxRows = cellRows * 2
-	return ByteToAnsiCells(img, cols, pxRows), nil
+	return cols, cellRows
+}
+
+// PlaceholderStrip — ONE kitty graphics-protocol transmit-and-display
+// frame (kitty terminals; ghostty speaks the same protocol):
+//
+//	ESC_G a=T,t=d,f=100,i=<id8>,q=2;<base64(png)> ESC\
+//
+// a=T transmits AND displays at the cursor, t=d inlines the payload
+// (direct — no temp-file medium), f=100 marks the payload PNG (the
+// protocol's only inline raster format — non-PNG sources re-encode,
+// deterministic under the stdlib encoder), i= is the image id rendered
+// as 8 lowercase hex digits (the caller's sha1[:8] of the source bytes —
+// full-length hash, never a truncated-prefix guess), q=2 hushes kitty's
+// response escape. cellW/cellH document the cell box the CALLER reserves
+// for the paint (the transcript row ledger lives in renderMediaRows) —
+// the strip itself stays exactly the pinned wire shape. Base64 rides in
+// its standard 4-octet groups, encoded once per image; the probe's
+// hash-keyed store caches the finished strip, so a re-render never
+// re-encodes.
+func PlaceholderStrip(img image.Image, cellW, cellH int, id uint32) string {
+	var buf bytes.Buffer
+	_ = png.Encode(&buf, img) // a decoded stdlib image always re-encodes
+	return fmt.Sprintf("\x1b_Ga=T,t=d,f=100,i=%08x,q=2;", id) +
+		base64.StdEncoding.EncodeToString(buf.Bytes()) + "\x1b\\"
 }
 
 // ByteToAnsiCells downsamples img to (cols × cellH) destination pixels

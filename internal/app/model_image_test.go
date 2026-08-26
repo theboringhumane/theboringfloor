@@ -51,7 +51,11 @@ func imageModel(t *testing.T, cfg *config.Config) Model {
 // TestBossImageRendersChipAndRaster — the happy path (auto posture): the
 // completion pin lands, the probe runs through the real cmd tree, and the
 // frame shows the 🖼 chip + the half-block raster rows EXACTLY ONCE.
+// (pinNeutralImageEnv: auto routes the DETECT chain — on a kitty/ghostty
+// host the probe would paint the kitty strip instead; the stub folds the
+// lane to the universal ASCII paint this test asserts.)
 func TestBossImageRendersChipAndRaster(t *testing.T) {
+	pinNeutralImageEnv(t)
 	dataURL, hash := imageFixture(t)
 	m := imageModel(t, config.Default())
 	m = runMsg(t, m, bossMediaPin(dataURL, hash, "bossmsg-m1"))
@@ -112,8 +116,10 @@ func TestBossImageASCIILane(t *testing.T) {
 // TestBossImageSSEMediaLane — the EvChatMedia SSE sighting buffers the
 // payload even when the completion pin's own Event.Media is empty (an
 // older serve's fetch missed it) — the raster still lands, keyed by the
-// pin's Meta carrier.
+// pin's Meta carrier. (pinNeutralImageEnv: same detect-chain stub as the
+// happy-path raster test.)
 func TestBossImageSSEMediaLane(t *testing.T) {
+	pinNeutralImageEnv(t)
 	dataURL, hash := imageFixture(t)
 	m := imageModel(t, config.Default())
 	m = runMsg(t, m, state.Event{Kind: state.EvChatMedia,

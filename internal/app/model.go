@@ -384,7 +384,13 @@ type Model struct {
 	// Inbound boss-turn image previews (images.go): the probe-once
 	// rasterize latch keyed msgID|hash — the lazy rasterize rides ONE
 	// tea.Cmd per new payload, never re-running on repeated pins.
-	imgProbed map[string]bool
+	// imgLaneDet/imgLaneDetOK memoize the terminal's image-lane detect
+	// read per Model (per boot): probes cost zero env traffic, and a
+	// harness stubbing the terminal env per drive (uishot lane legs)
+	// gets a fresh read per Model.
+	imgProbed    map[string]bool
+	imgLaneDet   panels.ImageLane
+	imgLaneDetOK bool
 
 	// frameNonce — bumped on every message that can mutate panel ephemera
 	// the state digest can't see (textarea draft, scroll, spinner, theme
@@ -757,6 +763,24 @@ type conciergeSentMsg struct{ text string }
 // cap eviction, backspace removal, image-paste platform gaps).
 type chatNoticeMsg struct{ text string }
 
+// linkOpenMsg — the `o` target card's ferried choice (sessionPickMsg's
+// twin): the model closes the card and runs the open through the verdict
+// seam.
+type linkOpenMsg struct{ target panels.LinkTarget }
+
+// linkOpenCancelMsg — esc on the `o` target card: zero side effects, only
+// the card closes (the transcript mark underneath stays).
+type linkOpenCancelMsg struct{}
+
+// browserOpenMsg — the exec verdict's landing (clipboardResultMsg's
+// twin): a nil error rides the activity log as "→ opened: <name>"; an
+// error becomes a dim "could not open: <reason>" transcript row — a
+// browser hiccup is never fatal.
+type browserOpenMsg struct {
+	target panels.LinkTarget
+	err    error
+}
+
 // sendErrMsg fires when the backend rejects a prompt.
 type sendErrMsg struct{ err error }
 
@@ -1009,6 +1033,17 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			return func() tea.Msg { return sessionPickCancelMsg{} }
 		},
 	)
+	// `o` target-card seams: enter fires the pick (the model closes the
+	// card and runs the open; the exec verdict lands as browserOpenMsg),
+	// esc cancels with zero side effects (the transcript mark survives).
+	chat.SetLinkPickHandlers(
+		func(t panels.LinkTarget) tea.Cmd {
+			return func() tea.Msg { return linkOpenMsg{target: t} }
+		},
+		func() tea.Cmd {
+			return func() tea.Msg { return linkOpenCancelMsg{} }
+		},
+	)
 	// Double-esc seam: esc-esc in the main chat input aborts the running
 	// turn. The panel owns the key timing (500ms window, modal/picker esc's
 	// never count); the model owns stopWork — the same /stop path.
@@ -1242,7 +1277,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// The thread-focus view's esc claims BEFORE the selection's though —
 		// it is the view's ONE leave key, and the main chat's selection
 		// (a) is behind a fullscreen pane and (b) must not swallow it.
-		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && m.chat != nil && m.chat.SelectionActive() {
+		// The `o` target card's esc ALSO claims before the selection's —
+		// the card floats ABOVE the mark like the focus pane: its esc
+		// closes the card first, the mark's esc comes after.
+		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && m.chat != nil && !m.chat.LinkPickerOpen() && m.chat.SelectionActive() {
 			m.chat.ClearSelection()
 			m.sel = mselIdle
 			break
@@ -1469,6 +1507,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.frameNonce++
 		if m.chat != nil {
 			m.chat.CloseSessionPicker()
+		}
+	case linkOpenMsg:
+		// the `o` target card submitted a target: the card closes and the
+		// open rides the verdict seam (async — the UI goroutine never
+		// shell-outs mid-frame).
+		m.frameNonce++
+		if m.chat != nil {
+			m.chat.CloseLinkPicker()
+		}
+		cmds = append(cmds, m.openTargetCmd(msg.target))
+	case linkOpenCancelMsg:
+		// esc cancels with zero side effects: only the card closes, the
+		// transcript mark stays (the esc-laws layer underneath).
+		m.frameNonce++
+		if m.chat != nil {
+			m.chat.CloseLinkPicker()
+		}
+	case browserOpenMsg:
+		// the exec verdict landed: success rides the activity tab
+		// ("→ opened: <name>"), failure posts a dim transcript row
+		// ("could not open: <reason>") — never fatal.
+		m.frameNonce++
+		if msg.err != nil {
+			m.notice("could not open: " + msg.err.Error())
+		} else {
+			m.activity.Add(fmt.Sprintf("[%s] → opened: %s", chrome.OfficeClock(m.st.Tick), msg.target.Name))
+			m.activityAdds++
 		}
 	case pagerSeedMsg:
 		// the eager attach hop landed: seed the walk (or stay unseeded and
@@ -2159,6 +2224,29 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		if chatActive {
 			return m.toggleThreadFocus()
 		}
+	case "o":
+		// open-in-browser (links.go owns the panel half): `o` claims ONLY
+		// while (a) the chat tab is focused, (b) a transcript mark is live
+		// over a bubble carrying ≥1 VERIFIED target, and (c) no floating
+		// modal is up (permission/question/model picker — a parked turn
+		// outranks browsing; the /model picker already claimed every key
+		// above). While the target card itself is open IT owns the keys
+		// (its claim sits inside the chat panel): re-opening must not
+		// reset a browsed cursor. ONE target fires straight through the
+		// verdict seam; MULTIPLE float the card. With no mark or no
+		// verified target the key falls through untouched and types "o"
+		// into the draft — the claim rule keeps plain typing safe.
+		if chatActive && m.chat != nil && !m.chat.LinkPickerOpen() &&
+			m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+			targets := m.chat.OpenTargets()
+			switch {
+			case len(targets) > 1:
+				m.chat.OpenLinkPicker(targets)
+				return nil
+			case len(targets) == 1:
+				return m.openTargetCmd(targets[0])
+			}
+		}
 	}
 	if termActive {
 		// Terminal active but RELEASED: every unclaimed key (typed letters,
@@ -2179,6 +2267,16 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return cmd
+}
+
+// openTargetCmd — the open-in-browser exec rides a tea.Cmd (the UI
+// goroutine never shell-outs mid-frame; the clipboardResultMsg pattern).
+// The VERDICT lands back as browserOpenMsg: success logs the activity
+// tab's "→ opened: <name>", failure posts a dim "could not open:" row.
+func (m *Model) openTargetCmd(t panels.LinkTarget) tea.Cmd {
+	return func() tea.Msg {
+		return browserOpenMsg{target: t, err: panels.OpenInBrowser(t)}
+	}
 }
 
 // planCopySelectionCmd — the focused plan pane's copy/cut verdict effect
@@ -4778,6 +4876,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 			return nil
 		}
 		m.cfg.UI.Images = mode
+		m.onImagesLaneChanged() // additive seam: future lanes re-probe there
 		m.notice(fmt.Sprintf("images → %s · %s", mode, m.persistCfg()))
 	case "/compact":
 		// live toggle — session override only (/mode persists the choice)

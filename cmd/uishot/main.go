@@ -173,6 +173,14 @@
 //	                                truecolor rows in the frame; the /images
 //	                                off leg paints chips only; two drives
 //	                                byte-identical)
+//	                    [--links]   (open-in-browser proof (synchronous): a
+//	                                boss bubble wears the · o (open) beacon; a
+//	                                press marks it, `o` floats the OPEN IN
+//	                                BROWSER card over BOTH verified targets
+//	                                (URL + on-disk media filename), enter
+//	                                fires the URL through the STUBBED runner;
+//	                                activity logs "→ opened: opencode.ai/docs";
+//	                                the no-mark leg types "o"; byte-identical)
 package main
 
 import (
@@ -183,6 +191,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -197,6 +206,7 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/office"
+	"github.com/theboringhumane/theboringoffice/internal/panels"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -4077,9 +4087,54 @@ func runBoardSyncProof() error {
 // truecolor rows ride the frame verbatim, the /images off leg paints the
 // chip alone, and the whole drive repeated is byte-identical.
 
+// stubTermEnv — the HERMETIC terminal-env stub for the image drives:
+// EVERY detect-layer input (termstub's checklist: TMUX, KITTY_WINDOW_ID,
+// TERM_PROGRAM(+VERSION), WEZTERM_UNIX_SOCKET, VSCODE_PID,
+// ITERM_SESSION_ID, TERM, COLORTERM) is owned by the drive, so the host
+// terminal's markers (this repo's dev box runs ghostty — unstubbed, the
+// "auto" posture would route the kitty lane and the ASCII base proof
+// would pick the host's lane) never leak in. pairs override per leg.
+// Returns the restore closure (every leg defers it).
+func stubTermEnv(pairs ...[2]string) func() {
+	keys := []string{
+		"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
+		"WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID", "TERM", "COLORTERM",
+	}
+	type saved struct {
+		v  string
+		ok bool
+	}
+	prev := map[string]saved{}
+	for _, k := range keys {
+		v, ok := os.LookupEnv(k)
+		prev[k] = saved{v, ok}
+		os.Setenv(k, "")
+	}
+	for _, p := range pairs {
+		os.Setenv(p[0], p[1])
+	}
+	return func() {
+		for k, s := range prev {
+			if s.ok {
+				os.Setenv(k, s.v)
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}
+}
+
+// asciiTermEnv — the plain-xterm stub: "auto" resolves the universal
+// ASCII lane, the v1 base proof's paint on ANY host.
+func asciiTermEnv() [][2]string {
+	return [][2]string{{"TERM_PROGRAM", "Apple_Terminal"}, {"TERM", "xterm-256color"}}
+}
+
 // imagesDrive — ONE synchronous image-preview run (off==true drives the
-// /images-posture-off leg). Returns the final frame.
-func imagesDrive(off bool) (string, error) {
+// /images-posture-off leg) under the HERMETIC stub env (nil = neutral
+// ascii — the base legs are host-independent). Returns the final frame.
+func imagesDrive(off bool, env [][2]string) (string, error) {
+	defer stubTermEnv(env...)()
 	backend := &stubBackend{done: make(chan struct{})}
 	cfg := config.Default()
 	if off {
@@ -4168,9 +4223,95 @@ func imagesPinnedRow() string {
 	return b.String()
 }
 
-func runImagesProof() error {
+// imagesLaneEnvs — the --lane legs' hermetic terminal envs (EVERY
+// detect-layer input stubbed, per-leg overrides — the host's real
+// terminal never participates):
+var imagesLaneEnvs = map[string][][2]string{
+	"kitty": {{"TERM_PROGRAM", "ghostty"}, {"TERM", "xterm-ghostty"}},
+	"iterm": {{"TERM_PROGRAM", "iTerm.app"}, {"ITERM_SESSION_ID", "w0t0p0:uishot-stub"}, {"TERM", "xterm-256color"}},
+	"ascii": {{"TERM_PROGRAM", "Apple_Terminal"}, {"TERM", "xterm-256color"}},
+}
+
+// runImagesLaneLeg — ONE native-lane leg of the --lane list: the same
+// checker drive under the lane's stub env, byte-pinning the lane's
+// escape frame (kitty strip / OSC 1337) or — ascii — the v1 pinned
+// rows. Every leg drives TWICE (byte-determinism).
+func runImagesLaneLeg(fail func(string, ...any) error, lane string) error {
+	env, ok := imagesLaneEnvs[lane]
+	if !ok {
+		return fail("images --lane: unknown lane %q (kitty|iterm|ascii)", lane)
+	}
+	frame, err := imagesDrive(false, env)
+	if err != nil {
+		return err
+	}
+	frame2, err := imagesDrive(false, env)
+	if err != nil {
+		return err
+	}
+	if frame != frame2 {
+		return fail("images --lane %s: two drives must produce byte-identical frames", lane)
+	}
+	raw, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		return fmt.Errorf("image fixture: %w", err)
+	}
+	b64 := base64.StdEncoding.EncodeToString(raw)
+	stripped := ansi.Strip(frame)
+	switch lane {
+	case "kitty":
+		// the kitty placeholder strip: ESC_G a=T,t=d,f=100,i=<sha1
+		// of the full source bytes, 8 hex>,q=2; + base64 payload + ESC\
+		id8 := panels.KittyIDHash8(panels.KittyImageID(raw))
+		wantStart := "\x1b_Ga=T,t=d,f=100,i=" + id8 + ",q=2;"
+		if !strings.Contains(frame, wantStart) {
+			return fail("images --lane kitty: the frame must carry the exact strip start %q", wantStart)
+		}
+		if !strings.Contains(frame, b64+"\x1b\\") {
+			return fail("images --lane kitty: the base64 payload + the ESC\\ terminator must ride the frame")
+		}
+		if strings.Contains(stripped, "▀") {
+			return fail("images --lane kitty: the kitty lane paints ZERO half-blocks")
+		}
+		if strings.Contains(frame, imagesPinnedRow()) {
+			return fail("images --lane kitty: no ASCII rows ride the kitty drive")
+		}
+		fmt.Printf("lane leg kitty: OK — ghostty env routed the kitty placeholder strip (i=%s, %d b64 octets, ESC\\-terminated), zero half-blocks\n", id8, len(b64))
+	case "iterm":
+		// OSC 1337: ESC ] 1337 ;File=inline=1;width=8:height=4;base64,<b64> ^G
+		wantPin := "\x1b]1337;File=inline=1;width=8:height=4;base64,"
+		if !strings.Contains(frame, wantPin) {
+			return fail("images --lane iterm: the frame must carry the OSC 1337 marker (inline=1, width=8:height=4, base64,)")
+		}
+		if !strings.Contains(frame, b64+"\x07") {
+			return fail("images --lane iterm: the inline payload + the BEL (^G) terminator must ride the frame")
+		}
+		if strings.Contains(stripped, "▀") {
+			return fail("images --lane iterm: the OSC 1337 lane paints ZERO half-blocks")
+		}
+		fmt.Printf("lane leg iterm: OK — iTerm-stub env routed OSC 1337 inline (width=8:height=4, %d b64 octets, BEL-terminated), zero half-blocks\n", len(b64))
+	case "ascii":
+		if c := strings.Count(frame, imagesPinnedRow()); c != 4 {
+			return fail("images --lane ascii: the pinned checker row ×4, got %d", c)
+		}
+		if strings.Contains(frame, "\x1b_Ga=T") || strings.Contains(frame, "\x1b]1337;") {
+			return fail("images --lane ascii: NO native-lane escapes ride the ascii drive")
+		}
+		fmt.Println("lane leg ascii: OK — neutral env kept the 4 pinned half-block rows, zero native escapes")
+	}
+	// every lane keeps the 🖼 chip + the chip→body ordering.
+	if !strings.Contains(stripped, "🖼 paste-diagram.png · 8×8 · image/png") {
+		return fail("images --lane %s: the 🖼 chip with dims + mime must render", lane)
+	}
+	if !strings.Contains(stripped, "Red and blue squares, alternating") {
+		return fail("images --lane %s: the boss body must render below the preview", lane)
+	}
+	return nil
+}
+
+func runImagesProof(lanes []string) error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
-	frame, err := imagesDrive(false)
+	frame, err := imagesDrive(false, asciiTermEnv())
 	if err != nil {
 		return err
 	}
@@ -4190,7 +4331,7 @@ func runImagesProof() error {
 	}
 
 	// the /images off leg: chips alone — the probe never fired.
-	offFrame, err := imagesDrive(true)
+	offFrame, err := imagesDrive(true, asciiTermEnv())
 	if err != nil {
 		return err
 	}
@@ -4203,7 +4344,7 @@ func runImagesProof() error {
 	}
 
 	// determinism: the same synchronous drive, byte-for-byte.
-	frame2, err := imagesDrive(false)
+	frame2, err := imagesDrive(false, asciiTermEnv())
 	if err != nil {
 		return err
 	}
@@ -4211,6 +4352,276 @@ func runImagesProof() error {
 		return fail("images: two synchronous drives must produce byte-identical frames")
 	}
 	fmt.Println("asserts: OK — the completed boss turn's file part previews inline: \"🖼 paste-diagram.png · 8×8 · image/png\" chip + 4 pinned half-block rows (32 ▀ cells, red-over-blue truecolor SGR); the /images off leg paints the chip alone (the probe never fires); two drives byte-identical")
+
+	// the --lane legs: native-lane proofs under hermetic stub envs.
+	for _, lane := range lanes {
+		lane = strings.TrimSpace(lane)
+		if lane == "" {
+			continue
+		}
+		if err := runImagesLaneLeg(fail, lane); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// --- open-in-browser (--links) ---------------------------------------------
+// The transcript's `o` hotkey, IN-APP KEY RECEIPT proof (the unit contracts
+// live in internal/panels' links tests + internal/app's model_browser
+// tests): a completed boss bubble carries (a) a URL in its body and (b) a
+// media item whose filename is the shared checker FIXTURE — a REAL file, so
+// the os.Stat gate verifies it (the proof runs from the repo root, like the
+// --images fixture read). The member PRESSES on the bubble (a click's press
+// half — the armed one-cell mark resolves the bubble; NO release, so the
+// clipboard seam never runs in a shot), then presses `o`: TWO verified
+// targets float the centered target card, enter picks the first (appear
+// order: the body scan ahead of the media row), and the exec rides the
+// STUBBED panels runner (SetOpenRunnerForShot — the real `open -g` would
+// push a browser at the USER's screen mid-proof). Asserts: the · o (open)
+// beacon rides the bubble, the card paints both rows, the runner captured
+// EXACTLY the URL, the activity tab logs "→ opened: opencode.ai/docs", the
+// no-mark leg types "o" into the draft (claim refusal), and the whole drive
+// repeated is byte-identical.
+
+// linksFixtureRel — the media filename the boss bubble claims, RELATIVE to
+// the repo root (the proof's cwd): the os.Stat gate verifies it there.
+const linksFixtureRel = "internal/panels/testdata/checker-8x8.png"
+
+// linksFixtureAbs — the same fixture ABSOLUTE (what the resolver hands the
+// runner): the capture asserts the delivered value, never the raw token.
+func linksFixtureAbs() (string, error) {
+	abs, err := filepath.Abs(linksFixtureRel)
+	if err != nil {
+		return "", fmt.Errorf("links fixture abs: %w", err)
+	}
+	if _, err := os.Stat(abs); err != nil {
+		return "", fmt.Errorf("links fixture must verify on disk: %w", err)
+	}
+	return abs, nil
+}
+
+// linksFrameOut — ONE synchronous drive's observed artifacts.
+type linksFrameOut struct {
+	frameBeacon  string // frame A: the bubble wearing the beacon, before the press
+	frameCard    string // frame B: the target card floated over the transcript
+	frameOpened  string // frame C: after enter — the card gone, the verdict logged
+	opened       []panels.LinkTarget
+	activityOpen string // the "→ opened:" activity row
+	frameNoMark  string // frame D: the no-mark leg — `o` typed into the draft
+}
+
+func linksDrive() (linksFrameOut, error) {
+	var out linksFrameOut
+	restore := panels.SetOpenRunnerForShot(func(t panels.LinkTarget) error {
+		out.opened = append(out.opened, t)
+		return nil
+	})
+	defer restore()
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	// runExec — the exact breadth-first drain the --images proof runs
+	// (self-re-arming heartbeats dropped; every other landing re-feeds,
+	// which is how the open's browserOpenMsg verdict lands synchronously).
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — open-in-browser stub online"})
+	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+		"what did the doc + diagram say?", false)})
+	// The completed boss bubble: URL in the body + the media item named at
+	// the REAL checker fixture (chip-only — no data URL, the open half has
+	// nothing to rasterize). TWO verified targets: the URL (body scan)
+	// ahead of the media filename (the attach carrier).
+	if _, err := linksFixtureAbs(); err != nil {
+		return out, err
+	}
+	it := state.MediaItem{Mime: "image/png", Filename: linksFixtureRel, W: 8, H: 8}
+	runExec(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m1", From: "boss", Kind: "boss",
+		Text: "Spec: https://opencode.ai/docs — the diagram sits in the repo.",
+		At:   1, Pending: false,
+		Meta: state.MediaMeta([]state.MediaItem{it}),
+	}})
+
+	out.frameBeacon = m.Frame()
+
+	// the press: find the bubble's first transcript row in the frame (the
+	// 🖼 chip rides above the body) and click INSIDE the chat panel there
+	// (the sidebar is the rightmost panel: floorW = shotCols − sidebar 80,
+	// +10 cells inside its viewport region).
+	chipRow, pressX := -1, (shotCols-80)+10
+	for i, ln := range strings.Split(out.frameBeacon, "\n") {
+		if strings.Contains(ln, "checker-8x8.png") {
+			chipRow = i
+			break
+		}
+	}
+	if chipRow < 0 {
+		return out, fmt.Errorf("links: the 🖼 chip row must render in the beacon frame")
+	}
+	runExec(tea.MouseClickMsg(tea.Mouse{X: pressX, Y: chipRow, Button: tea.MouseLeft}))
+
+	// `o` — TWO verified targets float the target card.
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'o', Text: "o"}))
+	out.frameCard = m.Frame()
+
+	// enter picks the first target (appear order: URL before media).
+	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	out.frameOpened = m.Frame()
+	for _, ln := range m.ActivityLines() {
+		if strings.Contains(ln, "→ opened:") {
+			out.activityOpen = ln
+		}
+	}
+	// the no-mark leg: a FRESH model pressing `o` with nothing marked —
+	// the claim refuses and the key types into the draft.
+	m2 := app.New(&stubBackend{done: make(chan struct{})}, config.Default())
+	runExec2 := func(msg tea.Msg) { // the same drain, over m2
+		tm, cmd := m2.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m2 = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+			default:
+				tm2, next := m2.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m2 = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	runExec2(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec2(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u2", "user", "hi", false)})
+	runExec2(tea.KeyPressMsg(tea.Key{Code: 'o', Text: "o"}))
+	out.frameNoMark = m2.Frame()
+	return out, nil
+}
+
+func runLinksProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	fixtureAbs, err := linksFixtureAbs()
+	if err != nil {
+		return err
+	}
+	out, err := linksDrive()
+	if err != nil {
+		return err
+	}
+	fmt.Println("===== UI SHOT · LINKS A — the boss bubble wearing the · o (open) beacon (🖼 chip above the URL body) =====")
+	fmt.Println(out.frameBeacon)
+	fmt.Println("===== UI SHOT =====")
+	stripped := ansi.Strip(out.frameBeacon)
+	if !strings.Contains(stripped, "🖼 internal/panels/testdata/checker-8x8.png · 8×8 · image/png") {
+		return fail("links A: the chip row renders with dims + mime")
+	}
+	if n := strings.Count(stripped, "o (open)"); n != 1 {
+		return fail("links A: exactly ONE bubble wears the · o (open) beacon, got %d", n)
+	}
+
+	fmt.Println("===== UI SHOT · LINKS B — press on the bubble + `o`: the OPEN IN BROWSER card floats both verified targets =====")
+	fmt.Println(out.frameCard)
+	fmt.Println("===== UI SHOT =====")
+	cardStripped := ansi.Strip(out.frameCard)
+	for _, want := range []string{"OPEN IN BROWSER", "opencode.ai/docs", "checker-8x8.png", "enter: open"} {
+		if !strings.Contains(cardStripped, want) {
+			return fail("links B: the card paints %q:\n%s", want, cardStripped)
+		}
+	}
+
+	fmt.Println("===== UI SHOT · LINKS C — enter: the runner fired ONCE (the URL), the card is gone, the activity tab logged the open =====")
+	fmt.Println(out.frameOpened)
+	fmt.Println("===== UI SHOT =====")
+	if len(out.opened) != 1 || out.opened[0].Kind != panels.LinkURL || out.opened[0].Value != "https://opencode.ai/docs" {
+		return fail("links C: the runner captured EXACTLY the appear-order-first URL target, got %+v", out.opened)
+	}
+	if !strings.Contains(out.activityOpen, "→ opened: opencode.ai/docs") {
+		return fail("links C: the activity tab logs \"→ opened: opencode.ai/docs\", got %q", out.activityOpen)
+	}
+	if strings.Contains(ansi.Strip(out.frameOpened), "OPEN IN BROWSER") {
+		return fail("links C: the card closed on the pick landing")
+	}
+	// the media target stayed UNOPENED (the member picked one of two);
+	// the verified file path is exactly what the resolver WOULD have handed
+	// over — proves the fixture is the second target, not a dropped token.
+	targets := panels.ExtractTargets("Spec: https://opencode.ai/docs — the diagram sits in the repo.")
+	if len(targets) != 1 {
+		return fail("links C: the body scan yields the URL alone (media rides the carrier): %+v", targets)
+	}
+	if !filepath.IsAbs(fixtureAbs) {
+		return fail("links C: the fixture resolves absolute")
+	}
+
+	// the no-mark leg: `o` with NO selection types into the draft (claim
+	// refusal), and the runner captured NOTHING new.
+	if len(out.opened) != 1 {
+		return fail("links D: the no-mark leg opened nothing new, got %+v", out.opened)
+	}
+	noMark := ansi.Strip(out.frameNoMark)
+	if !strings.Contains(noMark, "› o") {
+		return fail("links D: the unclaimed `o` typed into the draft:\n%s", noMark)
+	}
+
+	// determinism: the same synchronous drive, byte-for-byte.
+	out2, err := linksDrive()
+	if err != nil {
+		return err
+	}
+	if out.frameBeacon != out2.frameBeacon || out.frameCard != out2.frameCard ||
+		out.frameOpened != out2.frameOpened || out.activityOpen != out2.activityOpen ||
+		out.frameNoMark != out2.frameNoMark {
+		return fail("links: two synchronous drives must produce byte-identical frames + verdicts")
+	}
+	fmt.Println("asserts: OK — the boss bubble wore the · o (open) beacon (extraction gate = os.Stat-verified paths + schemed URLs only); a press marked the bubble, `o` floated the OPEN IN BROWSER card with BOTH verified targets (https://opencode.ai/docs + internal/panels/testdata/checker-8x8.png), enter fired the appear-order-first URL through the STUBBED runner; activity logged \"→ opened: opencode.ai/docs\"; the no-mark leg typed \"o\" into the draft (claim refusal); two drives byte-identical")
 	return nil
 }
 
@@ -4418,7 +4829,9 @@ func main() {
 	notifications := flag.Bool("notifications", false, "OS desktop notification proof (synchronous): recording NotifyBus at the app seam — focused startup silent; blur opens the window; ONE boss-ask cohort ping (child coalesces, generic agent+tool copy); front-answer keeps the cohort silent; ONE completion ping (clipped reply); refocus silent; re-blur re-nudges; /notify off → zero captures + persisted brain.json")
 
 	claudeMode := flag.Bool("claude", false, "claude-backend shot: the REAL live claude backend against the compiled cmd/claudestub binary (stream-json). With --planshot (or alone): the plan-mode + permission/dialog control round-trip proof — chatter never presents, plan-shaped reply presents into the pane, req-owl-1/req-q-1 round-trips byte-pinned, subagent Task run returns, two drives byte-identical")
-	images := flag.Bool("images", false, "inbound boss-turn image preview proof (synchronous): the stub pins a completed boss turn carrying the 8×8 checker PNG as a data-URL file part (Meta carrier + Event.Media payload — opencode.go's pin shape); the lazy rasterize must land with the 🖼 chip + the pinned half-block truecolor rows in the frame; /images off leg proves chips-only; two drives byte-identical")
+	images := flag.Bool("images", false, "inbound boss-turn image preview proof (synchronous): the stub pins a completed boss turn carrying the 8×8 checker PNG as a data-URL file part (Meta carrier + Event.Media payload — opencode.go's pin shape); the lazy rasterize must land with the 🖼 chip + the pinned half-block truecolor rows in the frame; /images off leg proves chips-only; two drives byte-identical. The base legs run under a hermetic neutral-terminal env stub so the host's real lane never leaks in")
+	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
+	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	flag.Parse()
 
 	if *persist {
@@ -4615,7 +5028,15 @@ func main() {
 	}
 
 	if *images {
-		if err := runImagesProof(); err != nil {
+		if err := runImagesProof(strings.Split(*laneList, ",")); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *links {
+		if err := runLinksProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
