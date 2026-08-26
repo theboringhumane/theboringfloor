@@ -151,6 +151,19 @@
 //	                                refocus = silence; re-blur on the live cohort
 //	                                re-nudges at once; /notify off → zero
 //	                                captures + persisted brain.json proof)
+//	                    [--boardsync] (completion board-sync proof (synchronous):
+//	                                THREE DOING rows staged — tekton-1 twice
+//	                                (older/newer), skopos-1 once sharing a
+//	                                title with a LATER distinct-owner return —
+//	                                then TWO returns drive it the way the live
+//	                                backend emits them (boardsync.go): return 1
+//	                                closes its exact row + the sweep flips
+//	                                tekton-1's OLDEST row, ONE "[office] board
+//	                                sync: flipped 1 rows to done" note; return 2
+//	                                (tekton-2, distinct owner) closes only its
+//	                                own row — skopos-1's lookalike NEVER flips.
+//	                                Frame A 3 doing / frame B done counts +
+//	                                note; two drives byte-identical)
 package main
 
 import (
@@ -3835,6 +3848,173 @@ func runThreadFocusProof() error {
 	return nil
 }
 
+// --- completion board sync (--boardsync) -----------------------------------
+// The wave's board reconcile, shown the way the live backend emits it
+// (internal/backend/boardsync.go — its rules are go-test-proven there; the
+// uishot is the RENDER proof). THREE DOING rows staged with fixed stamps
+// (byte determinism): tekton-1 owns t1 (older) + t2 (newer), skopos-1 owns
+// t3 "Wire R17 Razorpay mandate". TWO returns drive the flip story:
+//
+//	return 1 — tekton-1 returns t2 (the NEWER brief): the exact-path
+//	  EvTask-done, then the sweep's output — the OLDEST same-owner row
+//	  (t1) flips + the ONE dim note "[office] board sync: flipped 1 rows
+//	  to done" (exactly one note per flipped batch);
+//	return 2 — tekton-2 (a DISTINCT owner) returns "Wire R17 Razorpay
+//	  mandate" — skopos-1's doing row shares the title verbatim but a
+//	  named completion only matches its own worker: t3 NEVER flips, and
+//	  no second note fires.
+//
+// Frame A shows the three DOING rows + "board 0/3/0"; frame B shows the
+// settled board (t1/t2/the exact row of return 2 DONE, skopos-1's t3 STILL
+// DOING) + "board 0/1/3" + the note. The whole synchronous drive runs twice
+// and both frame pairs must be byte-identical.
+
+func boardSyncDrive(rep int) (frameA, frameB string, err error) {
+	d := newFocusDriver()
+	if !d.m.SelectTab("board") {
+		return "", "", fmt.Errorf("unknown tab %q", "board")
+	}
+	// Package-global office plan + walker state (internal/office/floor*.go)
+	// outlives ONE drive inside a process: the FIRST Frame() locks the real
+	// floor-sized plan — hiring before it would seat on the 120x28 default
+	// (rep 1) and the locked plan (rep 2), diverging. So: lock the plan
+	// FIRST (newSocialDriver's step), and rep-prefix employee IDs against
+	// the walkers map (identical names/seats/glyphs — the frame never shows
+	// the IDs). dev-2 lands the "floor-0" overflow spot on the narrow shot
+	// plan — deterministic, and the sprites are ambient to a BOARD proof.
+	pref := fmt.Sprintf("bsc%d", rep)
+	_ = d.m.Frame() // lock the floor plan before any sprite advance/seat assign
+	hire := func(id, name string, role state.EmployeeRole) {
+		d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+			ID: pref + "-" + id, Name: name, Role: role, Sprite: state.SpriteAtDesk}})
+	}
+	task := func(id, title, owner string, status state.TaskStatus, at int64) state.BoardTask {
+		return state.BoardTask{ID: id, Title: title, Status: status, Owner: owner, At: at}
+	}
+	retMail := func(id, from, subject string) state.MailItem {
+		return state.MailItem{ID: id, From: from, To: "manager", At: 500,
+			Subject: subject, Body: "done.", Kind: state.MailReturn}
+	}
+
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — boardsync stub online"})
+	hire("dev-1", "tekton-1", state.RoleDeveloper)
+	hire("dev-2", "tekton-2", state.RoleDeveloper)
+	hire("sco-1", "skopos-1", state.RoleScout)
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: pref + "-dev-1",
+		Task: task("t1", "Audit morning side", "tekton-1", state.TaskInProgress, 100)})
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: pref + "-dev-1",
+		Task: task("t2", "Audit lints", "tekton-1", state.TaskInProgress, 200)})
+	d.send(state.Event{Kind: state.EvDispatch, EmployeeID: pref + "-sco-1",
+		Task: task("t3", "Wire R17 Razorpay mandate", "skopos-1", state.TaskInProgress, 300)})
+	d.pump(2)
+	frameA = d.m.Frame()
+
+	// return 1 — tekton-1 closes t2 (exact path), the sweep drains his
+	// OLDEST stranded row (t1) behind it; ONE note for the flipped batch.
+	d.send(state.Event{Kind: state.EvTask,
+		Task: task("t2", "Audit lints", "tekton-1", state.TaskDone, 200)})
+	d.send(state.Event{Kind: state.EvReturned, EmployeeID: pref + "-dev-1", TaskID: "t2",
+		Mail: retMail("m1", "tekton-1", "return: Audit lints")})
+	d.send(state.Event{Kind: state.EvTask,
+		Task: task("t1", "Audit morning side", "tekton-1", state.TaskDone, 100)})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[office] board sync: flipped 1 rows to done"})
+
+	// return 2 — tekton-2 (distinct owner, title twin of skopos-1's row):
+	// his own exact row closes — the reconcile emits NOTHING for skopos-1
+	// (worker collision = never flip with doubt) and stays silent.
+	d.send(state.Event{Kind: state.EvTask,
+		Task: task("task-ses-dev-2", "Wire R17 Razorpay mandate", "tekton-2", state.TaskDone, 400)})
+	d.send(state.Event{Kind: state.EvReturned, EmployeeID: pref + "-dev-2", TaskID: "task-ses-dev-2",
+		Mail: retMail("m2", "tekton-2", "return: Wire R17 Razorpay mandate")})
+	d.pump(2)
+	frameB = d.m.Frame()
+	return frameA, frameB, nil
+}
+
+func runBoardSyncProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	frameA, frameB, err := boardSyncDrive(1)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("===== UI SHOT · BOARDSYNC A — before the returns: THREE doing rows (tekton-1 ×2 oldest-first 100→200, skopos-1), done lane empty, \"board 0/3/0\" =====")
+	fmt.Println(frameA)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("===== UI SHOT · BOARDSYNC B — after the two returns: t2 closed by its exact path, the sweep flipped tekton-1's OLDEST (t1) + the ONE note; skopos-1's title-twin row NEVER flipped (tekton-2's own row closed instead); \"board 0/1/3\" =====")
+	fmt.Println(frameB)
+	fmt.Println("===== UI SHOT =====")
+
+	strippedA := ansi.Strip(frameA)
+	strippedB := ansi.Strip(frameB)
+
+	// frame A — the DOING pile, before the sweep. (Owner tags clip off the
+	// 25-char twin title's row at this sidebar width — the twin is pinned
+	// by lane + ansi state below; "Audit lints" shows its owner fully.)
+	for _, want := range []string{
+		"Audit morning side", "Audit lints tekton-1", "Wire R17 Razorpay mandate",
+		"board 0/3/0", // three DOING, zero DONE (the statusbar's counts)
+	} {
+		if !strings.Contains(strippedA, want) {
+			return fail("boardsync A: frame missing %q", want)
+		}
+	}
+	if strings.Contains(strippedA, "board sync: flipped") {
+		return fail("boardsync A: the sync note fired before any completion")
+	}
+
+	// frame B — the settled board.
+	// the reconcile note lands EXACTLY once (the status line) — one note
+	// per flipped batch, and return 2 adds none (a flipless sweep is silent).
+	if n := strings.Count(strippedB, "[office] board sync: flipped 1 rows to done"); n != 1 {
+		return fail("boardsync B: the sync note must appear exactly once, got %d", n)
+	}
+	if !strings.Contains(strippedB, "board 0/1/3") {
+		return fail("boardsync B: expected the post-flip counts \"board 0/1/3\"")
+	}
+	// the distinct-owner pair: skopos-1's DOING row and tekton-2's DONE row
+	// share the title — both render, each in its lane's paint (plain Info
+	// cyan for the DOING twin, faint OK green for the DONE one).
+	if n := strings.Count(strippedB, "Wire R17 Razorpay mandate"); n != 2 {
+		return fail("boardsync B: the title-twin pair must both render (doing twin + done twin), got %d rows", n)
+	}
+	if n := strings.Count(frameB, "\x1b[36mWire R17 Razorpay mandate\x1b[m"); n != 1 {
+		return fail("boardsync B: skopos-1's twin must STILL be DOING (plain lane paint), got %d", n)
+	}
+	if n := strings.Count(frameB, "\x1b[2;32mWire R17 Razorpay mandate\x1b[m"); n != 1 {
+		return fail("boardsync B: tekton-2's exact-path twin must be DONE (faint paint), got %d", n)
+	}
+	// the reconciled OLDEST flip (t1) rides the same visual row as the
+	// surviving DOING twin — the sweep never touched the other worker.
+	mixed := false
+	for _, ln := range strings.Split(strippedB, "\n") {
+		if strings.Contains(ln, "Wire R17 Razorpay mandate") && strings.Contains(ln, "Audit morning side") {
+			mixed = true
+			break
+		}
+	}
+	if !mixed {
+		return fail("boardsync B: the surviving DOING twin must sit beside tekton-1's reconciled DONE row")
+	}
+	// tekton-1's two rows both settled (his return + the sweep's flip).
+	if !strings.Contains(frameB, "\x1b[2;32mAudit lints\x1b[m") || !strings.Contains(frameB, "\x1b[2;32mAudit morning side\x1b[m") {
+		return fail("boardsync B: tekton-1's exact AND oldest-flip rows must both be DONE (faint paint)")
+	}
+
+	// determinism: the same synchronous drive, byte-for-byte (rep-prefixed
+	// employee ids + the plan locked pre-hire — see boardSyncDrive).
+	frameA2, frameB2, err := boardSyncDrive(2)
+	if err != nil {
+		return err
+	}
+	if frameA != frameA2 || frameB != frameB2 {
+		return fail("boardsync: two synchronous drives must produce byte-identical frames")
+	}
+
+	fmt.Println("asserts: OK — 3 DOING rows staged; return 1 closed its exact row and the sweep flipped tekton-1's OLDEST stranded row (owner-name, oldest-first) + ONE \"[office] board sync: flipped 1 rows to done\" note; return 2 (tekton-2, distinct owner, title twin) flipped NOTHING of skopos-1's — worker collision never flips, no second note; counts 0/3/0 → 0/1/3; two drives byte-identical")
+	return nil
+}
+
 // --- clickable agents (--click) ----------------------------------------------
 // Scripted bubbletea v2 mouse clicks through the REAL model: (S) a click on
 // tekton-1's floor sprite selects it — activity tab opens, the agents tab
@@ -4027,6 +4207,7 @@ func main() {
 	threadsThink := flag.Bool("threads-think", false, "employee-thinking-in-threads proof: tekton-1 EvThought merges per CallID into its work thread (collapsed rollup keeps the \"· 1 think\" count), ctrl+g expands tools + thoughts in natural order — boss path byte-identical")
 	threads := flag.Bool("threads", false, "thread-render fixture (opencode renderer): ONE chat frame with BOTH thread states — a LIVE collapsed thread (animated braille glyph, NO rollup while running, bare ↳ sneak, live-only ctrl+g hint row) beside a COMPLETED collapsed thread (dim ✓ glyph, \"✓ done\" rollup) — every message reducer-shaped (Kind wtool, \"<verb> · <summary>\" text, \"<state>␟<tick>\" meta stamped by the REAL app reducer; the display layer shapes it to \"<Verb> <rest>\")")
 	threadfocus := flag.Bool("threadfocus", false, "thread-focus view proof (synchronous): two threads, ctrl+f mounts tekton-1's thread fullscreen — header glyph + title + counters, FULL body rows, the ↳ diff sub-row clicked open through the REAL mouse seam, the \"esc · ctrl+f back to office\" hint bar; esc closes back to the office byte-for-byte")
+	boardsync := flag.Bool("boardsync", false, "completion board-sync proof (synchronous): 3 DOING rows staged (tekton-1 ×2, skopos-1 title twin); return 1 flips tekton-1's OLDEST stranded row + ONE \"[office] board sync\" note, return 2 (tekton-2, distinct owner) flips NONE of skopos-1's — frames before/after + counts, two drives byte-identical")
 	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
@@ -4056,6 +4237,14 @@ func main() {
 
 	if *threadfocus {
 		if err := runThreadFocusProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *boardsync {
+		if err := runBoardSyncProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

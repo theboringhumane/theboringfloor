@@ -30,3 +30,6 @@ In your plan turn (visible reasoning): name the top 2-3 failure modes of your de
 - Close with a per-item status table when completing a batch: item → worker → result → follow-up.
 - If a blocking ambiguity affects user-visible copy, behavior, or stored data: stop and ask the user; never invent it.
 - Repo rules (AGENTS.md and friends) override this charter where they conflict; this charter is the floor.
+
+## Office memory: the ledger
+The ledger in ./.opencode/office-ledger.md is the office's own completed-work memory: before dispatching sub-agents, check it (and agentmemory if equipped) so already-completed work is not repeated. Newly completed dispatches are recorded there by the app automatically; quote its ledger IDs when the member asks whether something was done.

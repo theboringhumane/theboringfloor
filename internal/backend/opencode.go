@@ -1166,6 +1166,35 @@ func (b *liveBackend) QueueItemDone(boardID string) {
 		Project:       filepath.Base(filepath.Clean(b.directory)),
 	}
 	b.saveLedgerLanes(e)
+
+	// Board sync (ADDITIVE, boardsync.go): the queue completion is the
+	// other completion-path hook. Owner "queue" owns no office rows, so
+	// this is deliberately quiet today — the flip surface stays exactly
+	// as conservative as the return path's when queue items later carry
+	// office-owned rows. Runs AFTER the latch+record so a replayed Done
+	// never double-sweeps.
+	b.mu.Lock()
+	syncFlips := reconcileBoardDone(b.ctx, state.Event{
+		Kind:         state.EvReturned,
+		EmployeeName: "queue",
+		Task:         state.BoardTask{Title: seed.title},
+	})
+	b.mu.Unlock()
+	b.emitBoardSyncFlips(syncFlips)
+}
+
+// emitBoardSyncFlips ships the board-sync sweep's result: ONE EvTask-done
+// per reconciled row (the reducer upserts by id, so a replayed flip is a
+// no-op replace) and exactly ONE dim status note per flipped batch — the
+// member sees the sync as it happens, and headless tests assert the swap.
+func (b *liveBackend) emitBoardSyncFlips(flipped []state.BoardTask) {
+	for _, t := range flipped {
+		b.fl.emit(state.Event{Kind: state.EvTask, Task: t})
+	}
+	if n := len(flipped); n > 0 {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+			"[office] board sync: flipped %d rows to done", n)})
+	}
 }
 
 // MemoryLane — the probe-surface seam the boot splash and the headless
@@ -2547,6 +2576,22 @@ func (b *liveBackend) maybeChildReturned(sessionID string) {
 
 	b.fl.emit(state.Event{Kind: state.EvTask, Task: done})
 	b.fl.emit(state.Event{Kind: state.EvReturned, EmployeeID: sessionID, TaskID: done.ID, Mail: mail})
+
+	// Board sync (ADDITIVE, boardsync.go): this return may also account
+	// for DOING rows whose own close-out never arrived (work the boss did
+	// directly, dead flows) — sweep them BEFORE the review counts the
+	// board, so reconciled rows read done in it too. Conservative rules,
+	// agentmemory rows untouched; one dim note if anything flipped.
+	b.mu.Lock()
+	syncFlips := reconcileBoardDone(b.ctx, state.Event{
+		Kind:         state.EvReturned,
+		EmployeeID:   sessionID,
+		EmployeeName: emp.Name,
+		Task:         done,
+		Mail:         mail,
+	})
+	b.mu.Unlock()
+	b.emitBoardSyncFlips(syncFlips)
 
 	// Board-drain review: when THIS return was the last open brief of the
 	// batch (zero child-session tasks left in non-done states), the CTO
