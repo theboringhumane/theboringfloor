@@ -7,6 +7,55 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-26 · Dev: docs screenshot pipeline (@developer sub... — tekton-4 (developer) · `issues`
+- summary: freeze setup: `freeze version v0.2.2` already on PATH (`/Users/theboringhumane/go/bin/freeze`); pilot `--tab agents` → ANSI file (SGR colors intact) → `freeze -
+- files: `website/scripts/docs-shots.sh`, `website/public/shots/docs/office-overview.png`, `website/public/shots/docs/first-run-chat.png`, `website/public/shots/docs/backend-claude.png`, `website/public/shots/docs/chat-thinking.png`, `website/public/shots/docs/work-threads.png`, `website/public/shots/docs/thread-focus.png`, `website/public/shots/docs/permission-modal.png`, `website/public/shots/docs/question-modal.png`, `website/public/shots/docs/concierge.png`, `website/public/shots/docs/plan-gated.png`, `website/public/shots/docs/plan-presented.png`
+- verify: ```
+- proof: | shot | uishot command | frame | dims | what the frame shows (verified from extracted ANSI / rendered PNG) |
+- ledgerId: led-1787761090907-18cd5208
+
+### 2026-08-26 · Dev: gitignore-aware @ file picker (@general... — tekton-8 (developer) · `issues`
+- summary: # Developer Return — @ picker gitignore-aware filtering
+- files: | path | why |, |---|---|, | `internal/panels/chat_attach_ignore.go` | NEW, | `internal/panels/chat_attach_ignore_test.go` | NEW, | `internal/panels/chat_attach.go` | walker consults the rule set; header comment updated |, | `README.md` | one line: the picker honors `.gitignore` + built-in noise filters |, |
+- verify: (14/14 packages ok — app, backend, charter, chrome, config, gitx, netwatch, notify, office, panels, projinfo, sound, state, term, version.)
+- proof: ```
+- ledgerId: led-1787761026578-1258e5fc
+
+### 2026-08-26 · Dev: queue/terminal/layout/keys docs pages (@... — tekton-7 (developer) · `issues`
+- summary: All gates green. Final return:
+- files: `website/app/docs/queue-board-memory/page.tsx`, `website/app/docs/terminal-and-git-tabs/page.tsx`, `website/app/docs/layout-themes-power/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`, Nothing else touched
+- verify: ```
+- proof: ### `/docs/queue-board-memory` — *Queue, board & memory | theboringoffice*
+- ledgerId: led-1787759503769-67ef9115
+
+### 2026-08-26 · Dev: chat/permissions/plan docs pages (@devel... — tekton-6 (developer) · `issues`
+- summary: All gates green. Final return:
+- files: `website/app/docs/chat-and-threads/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`, `website/app/docs/plan-mode/page.tsx`
+- verify: All 8 contracted paths present; no images created (parallel worker owns the PNGs).
+- proof: ### `/docs/chat-and-threads` — *Chat and work threads · theboringoffice*
+- ledgerId: led-1787759411332-f3422f15
+
+### 2026-08-26 · Dev: docs index + getting-started + backends... — tekton-5 (developer) · `issues`
+- summary: All clean. Return per the contract:
+- files: `website/app/docs/page.tsx`, `website/app/docs/getting-started/page.tsx`, `website/app/docs/backends/page.tsx`, `website/app/sitemap.ts`
+- verify: (plus line 12 `{ path: '/docs', priority: 0.8, ... }` — doesn't match the `docs/` literal but is present exactly once; `grep -c "'/docs"` →
+- proof: ### `/docs` (hub)
+- ledgerId: led-1787759278680-7d8df82e
+
+### 2026-08-26 · Scout: uishot + docs architecture (@explore s... — theboringcto-1 (cto) · `issues`
+- summary: Recon complete. Zero files modified — everything below is read-only evidence. Here is the full map.
+- files: (none)
+- verify: Read-only brief — no builds run, no files written (confirmed: `git status` untouched by this survey; only `read/grep/glob` plus two `git log
+- proof: (none)
+- ledgerId: led-1787759024983-4df13957
+
+### 2026-08-26 · Commit + push pending work (@developer subagent) — tekton-3 (developer) · `issues`
+- summary: `6e7455c` — wave 60: /stop UI-freeze regression pins (async abort cmd + bounded teardown deadlines) — 3 test files
+- files: **wave 60 (`6e7455c`)**, **wave 61 (`05cc1b5`)**, **wave 62 (`8138424`)**, **wave 63 (`b199255`)**, **wave 64 (`4e23b95`)**, **wave 65 (`e0ca320`)**
+- verify: ```
+- proof: *`git log --oneline -8` (final, after push):**
+- ledgerId: led-1787758760611-ef94d97f
+
 ### 2026-08-26 · Dev A: claude backend stdio core (@general su... — tekton-1 (developer) · `issues`
 - summary: All verification is green. The final state of the work:
 - files: | path | why |, |---|---|, | `cmd/uishot/main.go` | **Edited this session:** dispatch branch for the pre-declared `*claudeMode`, | `cmd/uishot/claude_proof.go` | **Edited this session:** `sendDeep`/`drainDeep` recursive cmd pump;, | `internal/backend/claude.go` | pre-existing this wave, | `internal/backend/claude_events.go` | pre-existing, | `internal/backend/claude_events_test.go` | pre-existing, | `internal/backend/claude_spawn_test.go` | pre-existing, | `internal/backend/claude_send_test.go` | pre-existing, | `internal/backend/claude_usage_test.go` | pre-existing, | `internal/backend/claude_abort_test.go` | pre-existing, | `internal/backend/claude_perm_test.go` | pre-existing
