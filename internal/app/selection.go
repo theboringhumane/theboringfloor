@@ -87,6 +87,14 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 		m.selDragged = false
 		return nil
 	}
+	// The terminal tab claims presses inside ITS panel box first-wave: a
+	// left press over body rows arms the terminal's own drag-select and
+	// must never reach the legacy click path (or a hidden-chat arm — the
+	// chat gate above already refuses ActiveIndex!=0). A press OUTSIDE the
+	// box falls through unchanged (floor picks, popover, thread rows).
+	if cmd, ok := m.sendTermMouse(msg); ok {
+		return cmd
+	}
 	// a press anywhere else clears a finished selection (webpage rule)
 	if m.chat != nil {
 		m.chat.ClearSelection()

@@ -174,6 +174,52 @@ func (t *termTabWrap) alive() bool {
 	return t.inner != nil && t.inner.Alive()
 }
 
+// sendTermMouse — the terminal tab's mouse router (the terminal drag-select
+// wave): forwards ONE mouse message to the tab adjusted into SIDEBAR-BOX
+// space — the git-click precedent one branch over: the model strips the
+// screen's floor cols / topbar row here and TermPanel's cellAt subtracts
+// Tabs.ContentOffset itself.
+//
+// PRESSES region-gate: ok=false when the point is outside the panel box
+// (floor cols / above the mobile panel), so the caller falls through to
+// its normal path (floor picks etc). Motion and release forward
+// unconditionally while the terminal tab is active — an in-flight drag
+// clamps at the panel edge (TermPanel.motion) and unarmed landings are
+// cheap no-ops. Wheel does NOT ride this seam: the shared wheel arm in
+// Update already hands every wheel msg to tabs.Update (coords are unused
+// by the panel's scroll).
+func (m *Model) sendTermMouse(msg tea.Msg) (tea.Cmd, bool) {
+	if m.tabs.ActiveIndex() != terminalIndex {
+		return nil, false
+	}
+	// translate strips the screen chrome down to sidebar-box space.
+	translate := func(x, y int) (int, int) {
+		if m.mobile() {
+			return x, y - (1 + m.floorBandH())
+		}
+		return x - m.floorW, y - 1
+	}
+	switch msg := msg.(type) {
+	case tea.MouseClickMsg:
+		if m.mobile() {
+			if msg.Y < 1+m.floorBandH() {
+				return nil, false
+			}
+		} else if msg.X < m.floorW {
+			return nil, false
+		}
+		msg.X, msg.Y = translate(msg.X, msg.Y)
+		return m.tabs.Update(msg), true
+	case tea.MouseReleaseMsg:
+		msg.X, msg.Y = translate(msg.X, msg.Y)
+		return m.tabs.Update(msg), true
+	case tea.MouseMotionMsg:
+		msg.X, msg.Y = translate(msg.X, msg.Y)
+		return m.tabs.Update(msg), true
+	}
+	return nil, false
+}
+
 // View implements panels.Tab: the shell surface while alive; otherwise a
 // small instruction card (spawning / spawn-failed / respawn prompt).
 func (t *termTabWrap) View() string {
@@ -250,6 +296,19 @@ func fitTermPlain(s string, w int) string {
 //     intent is obvious).
 func (t *termTabWrap) Update(msg tea.Msg) tea.Cmd {
 	if t.alive() {
+		// Mouse is capture-INDEPENDENT (terminal drag-select/copy wave):
+		// press/drag/release/wheel ALWAYS forward to the panel — routed in
+		// sidebar-box space by Model.sendTermMouse (clicks/motion/release)
+		// or the shared wheel arm. Keys alone obey the capture gate. The
+		// panel's legacy press→Focus idiom must not fight the model's
+		// opt-in capture: re-assert the model-owned state after every
+		// forward (released stays released, badge truthful).
+		switch msg.(type) {
+		case tea.MouseClickMsg, tea.MouseReleaseMsg, tea.MouseMotionMsg, tea.MouseWheelMsg:
+			cmd := t.inner.Update(msg)
+			t.applyCapture()
+			return cmd
+		}
 		if !t.captured {
 			return nil // released: the office owns the keys (wave-42 D1)
 		}
