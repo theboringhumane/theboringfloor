@@ -84,6 +84,12 @@ type UIConfig struct {
 }
 
 type BackendConfig struct {
+	// Name selects the LLM transport the office boots on: "opencode" (the
+	// default — `opencode serve` + SSE) or "claudecode" (the claude CLI in
+	// headless stream-json mode). install.sh --backend seeds it, /backend
+	// swaps and persists it mid-flight. "" backfills to "opencode" on Load
+	// (pre-schema brain.json files keep meaning exactly what they meant).
+	Name             string `json:"name,omitempty"`   // opencode|claudecode (default opencode)
 	AgentmemoryURL   string `json:"agentmemoryUrl"`   // default localhost:3111
 	Server           string `json:"server"`           // pinned opencode serve URL (else spawn)
 	AgentmemoryPollS int    `json:"agentmemoryPollS"` // board sync seconds (default 5)
@@ -100,6 +106,28 @@ type BackendConfig struct {
 	// child sessions as the CTO). "" = server default. Same validation-lite
 	// rule as BossModel.
 	CTOModel string `json:"ctoModel,omitempty"`
+}
+
+// BackendNameDefault is the transport every brain.json resolves to when
+// backend.name is absent/empty (pre-schema files, hand-trimmed configs).
+const BackendNameDefault = "opencode"
+
+// BackendNameClaude is the claude-code transport name (backend.NewClaude).
+const BackendNameClaude = "claudecode"
+
+// ValidBackendName reports whether name names a real transport.
+func ValidBackendName(name string) bool {
+	return name == BackendNameDefault || name == BackendNameClaude
+}
+
+// ResolvedName normalizes the selected transport: "" (and any omission)
+// means the default. Callers that only DISPLAY the name use this; the
+// constructor gate (ValidBackendName) validates the non-empty case.
+func (c BackendConfig) ResolvedName() string {
+	if c.Name == "" {
+		return BackendNameDefault
+	}
+	return c.Name
 }
 
 type Config struct {
@@ -132,11 +160,12 @@ func Default() *Config {
 			SidebarWidth:   0,
 			Compact:        false,
 		},
-		Backend: BackendConfig{
-			AgentmemoryURL:   "http://localhost:3111",
-			Server:           "",
-			AgentmemoryPollS: 5,
-		},
+	Backend: BackendConfig{
+		Name:             BackendNameDefault,
+		AgentmemoryURL:   "http://localhost:3111",
+		Server:           "",
+		AgentmemoryPollS: 5,
+	},
 	}
 }
 
@@ -173,6 +202,12 @@ func Load() (*Config, error) {
 	}
 	if cfg.Backend.AgentmemoryURL == "" {
 		cfg.Backend.AgentmemoryURL = "http://localhost:3111"
+	}
+	// Backend-name backfill: pre-schema brain.json files (written before
+	// the install selector existed) carry no name key; they mean — and
+	// must keep meaning — the opencode transport.
+	if cfg.Backend.Name == "" {
+		cfg.Backend.Name = BackendNameDefault
 	}
 	return cfg, nil
 }

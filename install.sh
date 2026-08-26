@@ -7,6 +7,8 @@
 #   --dry-run            Print every action without executing it
 #   --prefix DIR         Binary install prefix (default: /usr/local/bin if writable,
 #                        else ~/.local/bin with a PATH hint)
+#   --backend NAME       LLM transport the office boots on: opencode (default)
+#                        or claudecode (needs the claude CLI; warn-only when absent)
 #   --skip-agentmemory   Do not install/start the agentmemory background service
 #   --uninstall          Remove the theboringoffice binary and the agentmemory service
 #
@@ -35,6 +37,8 @@ SKIP_AGENTMEMORY=0
 UNINSTALL=0
 PREFIX=""
 PATH_HINT=0
+BACKEND="opencode"
+BACKEND_STATE=""
 STAGE_NUM=0
 OS=""
 ARCH=""
@@ -125,6 +129,7 @@ Flags:
   --prefix DIR         Install prefix for the theboringoffice binary
                        (default: /usr/local/bin if writable, else ~/.local/bin)
   --skip-agentmemory   Do not install/start the agentmemory background service
+  --backend NAME       LLM transport: opencode (default) | claudecode
   --uninstall          Remove the theboringoffice binary and the agentmemory service
 USAGE
 }
@@ -620,6 +625,113 @@ do_uninstall() {
     info "    note: the agentmemory npm package itself is left installed; remove with: npm rm -g agentmemory"
 }
 
+# ---------------------------------------------------------------- backend
+
+# brain_path — the brain.json the office will boot on: honors the
+# THEBORINGOFFICE_HOME / GRAFEIO_HOME scratch-root overrides exactly like the
+# binary's own config.Path (install.sh --dry-run proofs point one at a
+# scratch home; a real install almost always lands on $HOME).
+brain_path() {
+    home="${THEBORINGOFFICE_HOME:-${GRAFEIO_HOME:-$HOME}}"
+    printf '%s/.theboringoffice/configs/brain.json\n' "$home"
+}
+
+# seed_brain_backend — writes backend.name=<BACKEND> into brain.json for the
+# default AND the explicit pick alike (an explicit name makes later /backend
+# swaps' persisted state legible). An EXISTING backend.name key always wins:
+# the installer never silently re-selects a member's transport. Toolchain
+# ladder (zero-jq landscape): jq → python3 (append only when the key is
+# missing) → plain JSON overwrite from `theboringoffice --print-default-config`
+# + sed insert — and every step narrates in dry-run, mutates nothing.
+seed_brain_backend() {
+    brain="$(brain_path)"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        info "  [dry-run] seed ${brain} with backend.name=${BACKEND} (existing key preserved; jq > python3 > print-default-config+sed)"
+        return 0
+    fi
+    run mkdir -p "$(dirname "$brain")"
+    if [ -f "$brain" ]; then
+        if command -v jq >/dev/null 2>&1; then
+            cur="$(jq -r '.backend.name // ""' "$brain" 2>/dev/null || true)"
+            if [ -n "$cur" ]; then
+                info "    brain.json backend.name already set (${cur}) — preserved"
+                return 0
+            fi
+            tmp="${brain}.tmp.$$"
+            jq --arg n "$BACKEND" '.backend.name = $n' "$brain" >"$tmp" \
+                && mv -f "$tmp" "$brain" \
+                && info "    brain.json backend.name → ${BACKEND} (jq)"
+            return 0
+        fi
+        if command -v python3 >/dev/null 2>&1; then
+            python3 - "$brain" "$BACKEND" <<'PYEOF'
+import json, sys
+path, name = sys.argv[1], sys.argv[2]
+doc = json.load(open(path))
+backend = doc.setdefault("backend", {})
+if not backend.get("name"):
+    backend["name"] = name
+    with open(path, "w") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+PYEOF
+            info "    brain.json backend.name → ${BACKEND} when missing (python3)"
+            return 0
+        fi
+        # No safe in-place editor on this box and a brain.json already
+        # exists: it is NEVER overwritten by the fallback (the file wins
+        # over an uneditable key — same degrade-open shape as agentmemory).
+        warn "no jq/python3 on PATH and brain.json exists — not touching it"
+        warn "set \"backend\": { \"name\": \"${BACKEND}\" } by hand, or run /backend ${BACKEND} in-app"
+        return 0
+    fi
+    # No brain.json yet: write the stock default with the name injected.
+    cfg="$("${PREFIX}/theboringoffice" --print-default-config 2>/dev/null || true)"
+    if [ -z "$cfg" ]; then
+        warn "could not read the default brain.json (theboringoffice --print-default-config failed) — first boot writes one; /backend ${BACKEND} switches then"
+        return 0
+    fi
+    if command -v python3 >/dev/null 2>&1; then
+        printf '%s\n' "$cfg" | python3 -c 'import json,sys; d=json.load(sys.stdin); d.setdefault("backend",{})["name"]=sys.argv[1]; json.dump(d,sys.stdout,indent=2); sys.stdout.write("\n")' "$BACKEND" >"$brain"
+        info "    wrote ${brain} with backend.name=${BACKEND} (python3)"
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        printf '%s\n' "$cfg" | jq --arg n "$BACKEND" '.backend.name = $n' >"$brain"
+        info "    wrote ${brain} with backend.name=${BACKEND} (jq)"
+        return 0
+    fi
+    # sed insert (zero-jq AND zero-python): inject into the "backend": {
+    # block of the stock JSON — the printed default's shape is stable.
+    printf '%s\n' "$cfg" | sed 's/^  "backend": {$/  "backend": {\n    "name": "'"$BACKEND"'",/' >"$brain"
+    info "    wrote ${brain} with backend.name=${BACKEND} (sed insert)"
+}
+
+setup_backend() {
+    stage "Backend selection"
+    case "$BACKEND" in
+        opencode|claudecode) : ;;
+        *) die "--backend must be opencode|claudecode" ;;
+    esac
+    info "    backend: ${BACKEND}   (brain.json backend.name — swap live with /backend in-app)"
+    if [ "$BACKEND" = "claudecode" ]; then
+        # warn-only detection (never die): the office itself reports the
+        # missing CLI on boot and /backend opencode recovers instantly.
+        CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
+        if [ -n "$CLAUDE_BIN" ]; then
+            info "    claude CLI: ${CLAUDE_BIN}"
+            BACKEND_STATE="claude CLI at ${CLAUDE_BIN}"
+        else
+            warn "--backend claudecode but the claude CLI is not on PATH"
+            warn "install claude code first, or run theboringoffice with /backend opencode until then"
+            BACKEND_STATE="claude CLI NOT on PATH (install claude code; office degrades loudly until then)"
+        fi
+    else
+        BACKEND_STATE="default"
+    fi
+    seed_brain_backend
+}
+
 # ---------------------------------------------------------------- summary
 
 box_hr() { info '+----------------------------------------------------------------------------'; }
@@ -648,6 +760,7 @@ print_install_summary() {
     fi
     box_row ""
     box_row "  agentmemory : ${AM_SERVICE_STATE}"
+    box_row "  backend   : ${BACKEND} (${BACKEND_STATE})"
     box_row "  check       : agentmemory status"
     box_hr
 }
@@ -677,12 +790,18 @@ main() {
             --prefix)           [ $# -ge 2 ] || die "--prefix requires a DIR argument"
                                 PREFIX=$2; shift ;;
             --prefix=*)         PREFIX=${1#--prefix=} ;;
+            --backend)          [ $# -ge 2 ] || die "--backend requires a NAME argument"
+                                BACKEND=$2; shift ;;
+            --backend=*)        BACKEND=${1#--backend=} ;;
             -h|--help)          usage; exit 0 ;;
             *)                  usage; die "unknown flag: $1" ;;
         esac
         shift
     done
     [ -n "$PREFIX" ] || PREFIX=""
+    # fail fast — a mistyped transport should die HERE, not after downloads.
+    [ "$BACKEND" = "opencode" ] || [ "$BACKEND" = "claudecode" ] \
+        || die "--backend must be opencode|claudecode"
 
     print_banner
 
@@ -699,6 +818,7 @@ main() {
     verify_checksum
     install_binary
     setup_agentmemory
+    setup_backend
     print_install_summary
 }
 

@@ -2,7 +2,7 @@
 // in the same folder and the previous transcript + roster + board come back;
 // /new starts a fresh office whenever the member wants one.
 //
-// Layout: <THEBORINGOFFICE_HOME|HOME>/.theboringoffice/sessions/<dirhash>/session.json,
+// Layout: <THEBORINGOFFICE_HOME|HOME>/.theboringoffice/projects/<dirhash>/session.json,
 // dirhash = sha1 of the canonical working directory (symlinks resolved
 // best-effort). The file carries the primary ("boss") session id plus the
 // office surfaces (transcript, roster, board, mail) trimmed to the last 200
@@ -82,10 +82,21 @@ const (
 type SessionFile struct {
 	Dir       string            `json:"dir"`
 	PrimaryID string            `json:"primaryID"`
-	Agents    []state.Employee  `json:"agents"`
-	Tasks     []state.BoardTask `json:"tasks"`
-	Mails     []state.MailItem  `json:"mails"`
-	Chat      []state.ChatMsg   `json:"chat"`
+	// Backend names the transport the CURRENT PrimaryID belongs to
+	// ("opencode"|"claudecode") — informational; always-latest-wins like
+	// every other field. PrimaryIDs is the per-backend pin map the
+	// /backend swap + boot restore read: writing fills PrimaryIDs[active]
+	// (and PRESERVES the other transports' entries via a disk merge);
+	// reading treats the legacy PrimaryID as the opencode entry, so a
+	// pre-schema session.json from before this bump decodes to the exact
+	// same boot ("fallback-literacy"). omitempty: the old bytes stay
+	// byte-shaped on disk until a swap happens.
+	Backend    string            `json:"backend,omitempty"`
+	PrimaryIDs map[string]string `json:"primaryIDs,omitempty"`
+	Agents     []state.Employee  `json:"agents"`
+	Tasks      []state.BoardTask `json:"tasks"`
+	Mails      []state.MailItem  `json:"mails"`
+	Chat       []state.ChatMsg   `json:"chat"`
 	// PlanText — the plan editor's drafted-but-unapproved buffer
 	// (live-only; see plan_mode.go). A drafted plan survives quit and
 	// relaunch; an empty or never-edited starter template writes nothing
@@ -95,27 +106,39 @@ type SessionFile struct {
 	SavedAt  int64  `json:"savedAt"` // unix millis
 }
 
-// sessionsBase — <THEBORINGOFFICE_HOME|HOME>/.theboringoffice/sessions (the
-// home override is the test/harness scratch root, consistent with
-// config.Path(); it also honors the pre-rename GRAFEIO_HOME).
-func sessionsBase() string {
+// sessionsHome — the scratch-root override first (THEBORINGOFFICE_HOME,
+// falling back to the pre-rename GRAFEIO_HOME), else $HOME. Shared by the
+// canonical base and the two read-only fallbacks below.
+func sessionsHome() string {
 	home := config.HomeOverride()
 	if home == "" {
 		home = os.Getenv("HOME")
 	}
-	return filepath.Join(home, ".theboringoffice", "sessions")
+	return home
 }
 
-// legacySessionsBase — the pre-rename ("grafeio") sessions root. Read
-// fallback only: LoadSession consults it when the new file is absent, so an
-// upgrade restores the old office transcript instead of silently starting
-// over. Writes always go to sessionsBase().
+// sessionsBase — <THEBORINGOFFICE_HOME|HOME>/.theboringoffice/projects (the
+// canonical per-project session root: one dir-hash folder per working
+// directory). Writes land ONLY here; the two bases below are read fallbacks.
+func sessionsBase() string {
+	return filepath.Join(sessionsHome(), ".theboringoffice", "projects")
+}
+
+// legacySessionsBase — the pre-migration sessions root under the same home
+// (<home>/.theboringoffice/sessions, before session state moved under
+// projects/<hash>). Read fallback ONLY: LoadSession consults it when the
+// projects path has no file, so an upgrade restores the old office
+// transcript instead of silently starting over. Writes always go to
+// sessionsBase().
 func legacySessionsBase() string {
-	home := config.HomeOverride()
-	if home == "" {
-		home = os.Getenv("HOME")
-	}
-	return filepath.Join(home, ".grafeio", "sessions")
+	return filepath.Join(sessionsHome(), ".theboringoffice", "sessions")
+}
+
+// grafeioSessionsBase — the pre-RENAME ("grafeio") sessions root
+// (<home>/.grafeio/sessions). The second read fallback, consulted last;
+// never written to (same contract as config.legacyPath for brain.json).
+func grafeioSessionsBase() string {
+	return filepath.Join(sessionsHome(), ".grafeio", "sessions")
 }
 
 // SessionDirHash — sha1 of the canonical directory path (EvalSymlinks
@@ -141,13 +164,21 @@ func SessionPath(dir string) string {
 // file" and "malformed/unreadable file" — a corrupt session degrades
 // silently to the normal fresh boot (never an error dialog, never a crash).
 func LoadSession(dir string) (*SessionFile, bool) {
+	hash := SessionDirHash(dir)
 	b, err := os.ReadFile(SessionPath(dir))
 	if err != nil {
-		// rename-era read fallback: the session may live under the old
-		// ~/.grafeio root (see legacySessionsBase — never written to).
-		b, err = os.ReadFile(filepath.Join(legacySessionsBase(), SessionDirHash(dir), "session.json"))
+		// migration-era read fallback (a): the session may live under the
+		// pre-projects same-home root (see legacySessionsBase — never
+		// written to).
+		b, err = os.ReadFile(filepath.Join(legacySessionsBase(), hash, "session.json"))
 		if err != nil {
-			return nil, false
+			// rename-era read fallback (b): the session may live under the
+			// old ~/.grafeio root (see grafeioSessionsBase — never written
+			// to).
+			b, err = os.ReadFile(filepath.Join(grafeioSessionsBase(), hash, "session.json"))
+			if err != nil {
+				return nil, false
+			}
 		}
 	}
 	var sf SessionFile
@@ -164,6 +195,57 @@ func LoadSession(dir string) (*SessionFile, bool) {
 func (sf *SessionFile) Fresh() bool {
 	return sf != nil && sf.SavedAt > 0 &&
 		time.Since(time.UnixMilli(sf.SavedAt)) < sessionFreshWindow
+}
+
+// primaryIDFor resolves the resume pin for ONE transport name. Precedence:
+// the per-backend PrimaryIDs entry, else the legacy PrimaryID — which the
+// codec ruling treats as the opencode entry (a "claudecode" lookup on an
+// old file returns "", never the serve's id: one transport's session must
+// never pin another's). "" name normalizes to opencode.
+func (sf *SessionFile) primaryIDFor(name string) string {
+	if sf == nil {
+		return ""
+	}
+	if name == "" {
+		name = config.BackendNameDefault
+	}
+	if id := sf.PrimaryIDs[name]; id != "" {
+		return id
+	}
+	if name == config.BackendNameDefault {
+		return sf.PrimaryID
+	}
+	return ""
+}
+
+// mergeBackendPins fills the outgoing snapshot's per-backend pin map: the
+// on-disk sibling entries survive (two sequential persists on different
+// transports keep BOTH pins), and the active transport's current primary
+// stamps ITS entry. Reads the file back BEST-EFFORT — a fresh directory
+// (or an unreadable file) just starts the map.
+func mergeBackendPins(sf *SessionFile, dir, backendName, primaryID string) {
+	if backendName == "" {
+		backendName = config.BackendNameDefault
+	}
+	pins := map[string]string{}
+	if old, ok := LoadSession(dir); ok {
+		for k, v := range old.PrimaryIDs {
+			if v != "" {
+				pins[k] = v
+			}
+		}
+	}
+	if primaryID != "" {
+		pins[backendName] = primaryID
+		// the legacy slot tracks the ACTIVE pin too, so a pre-schema
+		// reader still resumes the last-used session (opencode or not —
+		// reads through primaryIDFor stay transport-correct either way).
+		sf.PrimaryID = primaryID
+	}
+	sf.Backend = backendName
+	if len(pins) > 0 {
+		sf.PrimaryIDs = pins
+	}
 }
 
 // Snapshot builds the file body from the live office state, trimmed to the
@@ -344,7 +426,7 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 
 // persistOfficeSession snapshots the office (LIVE mode ONLY — the demo
 // floor is a scripted tour; persisting it would fake a real transcript on
-// the next boot) and writes ~/.theboringoffice/sessions/<dirhash>/session.json.
+// the next boot) and writes ~/.theboringoffice/projects/<dirhash>/session.json.
 //
 //   - force=false — the cheap-write loop (one EvTick check per render
 //     cycle, throttled to sessionWriteMinGap): the disk write itself runs
@@ -367,6 +449,11 @@ func (m *Model) persistOfficeSession(force bool) {
 	dir := m.sessDir
 	sf := Snapshot(dir, primaryID, m.st)
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	// Per-backend pins: the active transport's session stamps
+	// PrimaryIDs[name]; the OTHER transports' pins ride back from disk so
+	// a /backend swap + quit never clobbers them (schema note on
+	// SessionFile). pre-schema files simply gain the map.
+	mergeBackendPins(&sf, dir, m.backendName(), primaryID)
 	if force {
 		_ = SaveSession(dir, sf) // quit path — best effort, bounded + sync
 		return
@@ -393,7 +480,8 @@ func (m *Model) persistOfficePin(primaryID string) {
 	}
 	m.sessLast = time.Now()
 	sf := Snapshot(m.sessDir, primaryID, m.st)
-	sf.PlanText = m.planText()     // plan editor buffer, "" when pristine
+	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	mergeBackendPins(&sf, m.sessDir, m.backendName(), primaryID)
 	_ = SaveSession(m.sessDir, sf) // quit path — best effort, bounded + sync
 }
 

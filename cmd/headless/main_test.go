@@ -9,7 +9,30 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/backend"
+	"github.com/theboringhumane/theboringoffice/internal/config"
 )
+
+// the boot summary's transport row: demo names itself, live names the
+// brain.json resolution ("" backfills to opencode), explicit names ride.
+func TestBackendNameLine(t *testing.T) {
+	cfg := config.Default()
+	if got, want := backendNameLine(false, cfg), "[backend] demo"; got != want {
+		t.Errorf("demo run: got %q want %q", got, want)
+	}
+	if got, want := backendNameLine(true, cfg), "[backend] opencode"; got != want {
+		t.Errorf("live default: got %q want %q", got, want)
+	}
+	cfg2 := config.Default()
+	cfg2.Backend.Name = "" // pre-schema brain.json: the backfill must name it
+	if got, want := backendNameLine(true, cfg2), "[backend] opencode"; got != want {
+		t.Errorf("live empty name: got %q want %q", got, want)
+	}
+	cfg3 := config.Default()
+	cfg3.Backend.Name = config.BackendNameClaude
+	if got, want := backendNameLine(true, cfg3), "[backend] claudecode"; got != want {
+		t.Errorf("live claudecode: got %q want %q", got, want)
+	}
+}
 
 func TestMemoryReportLine(t *testing.T) {
 	dir := t.TempDir()

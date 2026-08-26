@@ -4252,6 +4252,8 @@ func main() {
 	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")
 	at := flag.Int("at", 0, "capture the standard-script frame at ms-from-start instead of the usual 4s — e.g. 2920 catches the permission queue modal OPEN (the always-on queue typing's enter keys answer it from ~3.06s on, so the 4s frame has already advanced past it)")
 	notifications := flag.Bool("notifications", false, "OS desktop notification proof (synchronous): recording NotifyBus at the app seam — focused startup silent; blur opens the window; ONE boss-ask cohort ping (child coalesces, generic agent+tool copy); front-answer keeps the cohort silent; ONE completion ping (clipped reply); refocus silent; re-blur re-nudges; /notify off → zero captures + persisted brain.json")
+
+	claudeMode := flag.Bool("claude", false, "claude-backend shot: the REAL live claude backend against the compiled cmd/claudestub binary (stream-json). With --planshot (or alone): the plan-mode + permission/dialog control round-trip proof — chatter never presents, plan-shaped reply presents into the pane, req-owl-1/req-q-1 round-trips byte-pinned, subagent Task run returns, two drives byte-identical")
 	flag.Parse()
 
 	if *persist {
@@ -4433,6 +4435,14 @@ func main() {
 
 	if *layout {
 		if err := runLayoutProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *claudeMode {
+		if err := runClaudePlanProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

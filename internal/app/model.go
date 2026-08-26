@@ -28,6 +28,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/gitx"
@@ -550,6 +551,16 @@ type Model struct {
 	// restore path.
 	resumePin string
 
+	// serverURL — the attach target main booted on (--server / env);
+	// re-used by the /backend swap's backendFor re-construction
+	// ("" = each transport spawns/resolves its own).
+	serverURL string
+	// emitFn — main's tea-loop bridge, injected post-construction via
+	// SetEventSink (the same function the boot backend's Start drains
+	// into). The /backend swap goroutine-starts the new transport on it.
+	// nil in harnesses: swap still flips m.backend, starts nothing.
+	emitFn func(state.Event)
+
 	// execSession — the /session picker accept's exec-replace intent:
 	// accept = quit + relaunch as `theboringoffice -s <id>` (recorded by
 	// acceptSessionPick in session_picker.go, read by cmd's post-Run path
@@ -818,6 +829,13 @@ type pagerOlderMsg struct {
 // The ferry keeps the model value copy in Update the single writer.
 type stopWorkMsg struct{}
 
+// stopAbortResultMsg ferries the async /stop abort round trip back to the
+// UI goroutine (the mcpStatusMsg twin): AbortSessions is the NETWORK half
+// of /stop, so it rides a tea.Cmd — the office unwound synchronously
+// already; here only the remote verdict lands (one dim note on failure,
+// silence on success — the G1 contract, off the UI goroutine).
+type stopAbortResultMsg struct{ err error }
+
 // armClearMsg — the ctrl+q quit arm's own expiry tick landed (scheduled
 // with quitArmWindow by the arming press): retires the arm + its toast.
 type armClearMsg struct{}
@@ -834,6 +852,19 @@ type Option func(*Model)
 func WithResumeSession(id string) Option {
 	return func(m *Model) { m.resumePin = id }
 }
+
+// WithServerURL records the attach target main resolved for this boot
+// (--server flag / THEBORINGOFFICE_SERVER): the /backend swap re-constructs
+// transports through backendFor with the same baseURL. "" = spawn mode.
+func WithServerURL(u string) Option {
+	return func(m *Model) { m.serverURL = u }
+}
+
+// SetEventSink injects the tea-loop bridge main hands the boot backend's
+// Start (goroutine → tea.Program.Send). The /backend swap starts the NEW
+// transport on the same sink, so swapped-in events arrive through exactly
+// the lane the loop already drains. nil = swap starts nothing (harnesses).
+func (m *Model) SetEventSink(fn func(state.Event)) { m.emitFn = fn }
 
 // New builds the app around a backend + the brain.json config. cfg is
 // nil-tolerant (config.Default() substituted — headless stubs and harnesses).
@@ -1012,7 +1043,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 					// A live harness stub without the seam: never fake the
 					// resume (that would be a silent substitution).
 					m.noticeErr("-s/--session: this backend cannot pin a session — starting normally")
-				case sfOK && sf.PrimaryID == m.resumePin:
+				case sfOK && sf.primaryIDFor(cfg.Backend.ResolvedName()) == m.resumePin:
 					// Pin == the stored id: hydrate as today (the skip
 					// guard below fires only on a DIFFERENT stored
 					// transcript).
@@ -1026,9 +1057,13 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 					m.appendNotice(fmt.Sprintf("resumed session %s (explicit pin) · /new for a fresh office", m.resumePin), "boot")
 				}
 			} else if sf, ok := LoadSession(dir); ok && sf.Fresh() {
-				if sf.PrimaryID != "" {
+				// Per-backend restore pin: opencode rides the legacy
+				// PrimaryID entry, claudecode its own primaryIDs entry —
+				// a claude session must NEVER pin an opencode serve id
+				// (fallback-literacy lives in primaryIDFor).
+				if pin := sf.primaryIDFor(cfg.Backend.ResolvedName()); pin != "" {
 					if ps, ok := b.(primarySeamBackend); ok {
-						ps.PrimaryOverride(sf.PrimaryID)
+						ps.PrimaryOverride(pin)
 					}
 				}
 				m.hydrateSession(sf)
@@ -1218,6 +1253,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd := m.handleRelease(msg); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
+			break
+		}
+		// The terminal tab's drag-select owns releases on its turf (the
+		// chat's armed drag claims them first above — never both live).
+		// Unarmed landings are cheap panel no-ops; the copy on a dragged
+		// release paints, hence the nonce.
+		if cmd, ok := m.sendTermMouse(msg); ok {
+			m.frameNonce++
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 	case tea.MouseMotionMsg:
 		// CellMotion reports motion ONLY while a button is pressed — that
@@ -1226,6 +1272,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.sel == mselArmed {
 			m.frameNonce++
 			m.handleMotion(msg)
+			break
+		}
+		// Same lifeblood for the terminal tab's own drag (panel-side arm;
+		// motion without one is a cheap no-op there).
+		if _, ok := m.sendTermMouse(msg); ok {
+			m.frameNonce++
 		}
 	case tea.MouseWheelMsg:
 		// wheel scrolls the active panel (the default-arm's twin) — except
@@ -1532,7 +1584,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// double-esc in the main chat input == /stop (abort + unwind);
 		// idle-safe: nothing runs → the abort seam no-ops, the unwind is
 		// empty and only the status line reports like /stop would.
-		m.stopWork()
+		if cmd := m.stopWork(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case stopAbortResultMsg:
+		// the /stop abort hop landed back on the UI goroutine (it rode a
+		// tea.Cmd — the network never parked the input). The unwind +
+		// statusline are long done; on failure the office surfaces ONE dim
+		// note, exactly like the old synchronous path (G1). Success is
+		// silent. A late landing (office already moved on — /clear, a new
+		// send) just appends the note, never a second unwind.
+		if msg.err != nil {
+			qdebugf("/stop: AbortSessions failed (unwound anyway): %v", msg.err)
+			m.notice("/stop: abort signal failed remotely — office unwound anyway (the turn may still finish server-side; its reply lands as a fresh bubble)")
+		}
 	case armClearMsg:
 		// the quit arm's expiry tick landed: a still-live arm old enough
 		// retires (a YOUNGER re-arm survives — its own tick owns its
@@ -3060,26 +3125,34 @@ func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 // items send on the next turn), permission/question roadblocks stay put,
 // and the whole thing plays no sound — a stop is not an error.
 //
-// G1 — the abort RPC is best-effort now: a dead serve or a dead transport
+// G1 — the abort RPC is best-effort: a dead serve or a dead transport
 // makes AbortSessions fail, and the old early-return LEFT THE OFFICE
 // STRANDED on the wedged turn (placeholder forever "typing…", the wedge
 // watchdog's advice literally not working). The OFFICE always recovers:
-// on failure we log + print one dim note and CONTINUE into the exact same
-// unwind as success. The turn may still finish server-side later — its
-// late completion then appends as a fresh bubble: the placeholder is
-// already collapsed, so the reducer's (c) branch takes the non-pending
-// "bossmsg-"+id append path and nothing double-pops.
-func (m *Model) stopWork() {
+// on failure the result landing (stopAbortResultMsg) logs + prints one
+// dim note; the unwind below already ran. The turn may still finish
+// server-side later — its late completion then appends as a fresh bubble:
+// the placeholder is already collapsed, so the reducer's (c) branch takes
+// the non-pending "bossmsg-"+id append path and nothing double-pops.
+//
+// G5 (the UI-freeze fix) — the abort RPC is ALSO off the UI goroutine: it
+// rides the returned tea.Cmd (bubbletea runs cmds on their own goroutine)
+// and lands as stopAbortResultMsg. A wedged serve/network can therefore
+// never park /stop — the unwind + statusline below happen synchronously
+// and the input stays live while the hop is out. The abort seam stays
+// AbortSessions() error: per-call bounding is the BACKEND's job
+// (internal/backend's abortCallTimeout ctx), so harness stubs compile
+// untouched.
+func (m *Model) stopWork() tea.Cmd {
+	var abortCmd tea.Cmd
 	if ab, ok := m.backend.(state.SessionAborter); ok {
-		if err := ab.AbortSessions(); err != nil {
-			qdebugf("/stop: AbortSessions failed (unwinding anyway): %v", err)
-			m.notice("/stop: abort signal failed remotely — office unwound anyway (the turn may still finish server-side; its reply lands as a fresh bubble)")
-		}
+		abortCmd = func() tea.Msg { return stopAbortResultMsg{err: ab.AbortSessions()} }
 	}
 	m.unwindStoppedWork()
 	m.resetServerTurn()
 	m.st.StatusLine = fmt.Sprintf("stopped current work — queue intact (%d items)", len(m.queue))
 	m.tabs.SetState(m.st)
+	return abortCmd
 }
 
 // unwindStoppedWork is the /stop clean unwind (this wave's CX):
@@ -4271,6 +4344,14 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 
 	case state.EvStatus:
 		st.StatusLine = ev.Text
+		// Backend-name latch (string-marker contract): every transport's
+		// boot emits "[theboringoffice] backend: <name>" first, and the
+		// /backend swap line ("… <old> → <new> (turn #N archived)")
+		// re-latches through the same grammar — the topbar renders
+		// st.BackendName between mode and agents.
+		if name, ok := backendNameFromStatus(ev.Text); ok {
+			st.BackendName = name
+		}
 		return st
 
 	case state.EvOffline:
@@ -4355,6 +4436,8 @@ const slashHelp = `commands:
   /new               fresh office (previous transcript archived on disk)
   /session           pick a past session to resume live (fallback prints
                      the id + path; boot flag -s|--session <id> pins one)
+  /backend [name]    show the LLM transport; /backend opencode|claudecode
+                     swaps mid-flight (idle office only · persists)
   /status            office status
   /mcp [reconnect x] show MCP servers; reconnect one by name
   /memory [filter]   the office ledger — completed dispatches, newest first
@@ -4603,7 +4686,9 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// abort the primary + every live child session, then unwind the
 		// in-flight UI (placeholders collapse, tools ✗ aborted, threads ✗
 		// stopped). The queue is untouched — it sends on the next turn.
-		m.stopWork()
+		// The abort RPC rides the returned cmd (never the UI goroutine);
+		// the unwind + statusline inside are already done.
+		return m.stopWork()
 	case "/perm":
 		// re-open the most recent esc'd ask: it jumps the queue to the
 		// front (the popover displays it next). Nothing esc'd means either
@@ -4643,6 +4728,10 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.chat.SetQuestion(m.questionView(m.question))
 	case "/new":
 		m.newOffice() // sessions.go — clear surfaces + fresh "theboringoffice office"
+	case "/backend":
+		// install-seeded brain.json backend.name's in-app twin: show the
+		// active transport or swap it mid-flight (idle-office gate inside).
+		return m.applyBackendSlash(fields)
 	case "/session":
 		// Interactive picker of the server's ROOT sessions (accept
 		// re-anchors the office LIVE, esc cancels); a backend without the
@@ -5027,6 +5116,209 @@ func (m *Model) persistCfg() string {
 		return "brain.json save failed: " + err.Error()
 	}
 	return "saved to brain.json"
+}
+
+// --- backend selection (install-seeded brain.json backend.name + /backend) --
+
+// backendStatusMarker — the EvStatus prefix every transport's boot emits
+// FIRST ("[theboringoffice] backend: opencode" / "… claudecode"); the
+// reducer latches OfficeState.BackendName off it (topbar segment), and the
+// /backend swap line ("[theboringoffice] backend: <old> → <new> (turn #N
+// archived)") re-latches through the very same grammar. String-marker
+// contract, same pattern as agentFieldStatusMarker.
+const backendStatusMarker = "[theboringoffice] backend: "
+
+// backendNameFromStatus parses the marker grammar: "… backend: <name>" at
+// boot, "… backend: <old> → <new> (…)" on swap — the arrow's RIGHT side is
+// always the latched name. Only the two real transport names latch
+// (whitelist: a refusal copy deliberately avoids this marker anyway).
+func backendNameFromStatus(text string) (string, bool) {
+	rest, ok := strings.CutPrefix(text, backendStatusMarker)
+	if !ok {
+		return "", false
+	}
+	if i := strings.LastIndex(rest, " → "); i >= 0 {
+		rest = rest[i+len(" → "):]
+	}
+	if i := strings.IndexAny(rest, " (|"); i >= 0 {
+		rest = rest[:i]
+	}
+	switch rest {
+	case config.BackendNameDefault, config.BackendNameClaude:
+		return rest, true
+	}
+	return "", false
+}
+
+// backendFor — the SINGLE transport resolver: boot (main, via BackendFor),
+// the headless name display, and the mid-flight /backend swap all construct
+// through this one call. "" resolves to opencode (config's own backfill
+// contract — the only honest silence-proof default). baseURL is the
+// opencode serve attach target ONLY: the claude transport spawns its own
+// CLI (its first param is a bin OVERRIDE, which the office leaves to
+// THEBORINGOFFICE_CLAUDE_BIN / PATH resolution).
+func backendFor(name, baseURL, dir string, cfg *config.Config) state.Backend {
+	switch name {
+	case config.BackendNameClaude:
+		return backend.NewClaude("", dir, cfg)
+	default:
+		return backend.NewLive(baseURL, dir, cfg)
+	}
+}
+
+// BackendFor — cmd/*'s exported view of the resolver (main constructs the
+// boot transport, headless names the resolved one). backendFor stays the
+// package-internal spelling used by the swap itself.
+func BackendFor(name, baseURL, dir string, cfg *config.Config) state.Backend {
+	return backendFor(name, baseURL, dir, cfg)
+}
+
+// BackendFactory — the swap-time constructor hook: swapBackend builds the
+// new transport via this var (never backendFor directly) so tests can
+// substitute a stub (parity with app.SpawnTerminal). Production leaves it.
+var BackendFactory = backendFor
+
+// backendName — the office's view of the ACTIVE transport: the reducer's
+// boot-hint latch first, the brain.json resolution as the boot-early
+// fallback (pre-hint frames read the same value either way).
+func (m *Model) backendName() string {
+	if m.st.BackendName != "" {
+		return m.st.BackendName
+	}
+	if m.cfg != nil {
+		return m.cfg.Backend.ResolvedName()
+	}
+	return config.BackendNameDefault
+}
+
+// backendSwapBlockers — the IDLE gate for /backend <name> (the ruling: a
+// transport swap is ERROR-PRONE, so it runs only when nothing is in
+// flight). One short stable reason per blocker; the refusal notice joins
+// them verbatim. Idle surfaces checked: boss/office typing, live worker
+// sessions, unanswered permission/question floats, the backlog queue.
+func (m *Model) backendSwapBlockers() []string {
+	var why []string
+	if hasPendingBoss(m.st) {
+		why = append(why, "boss turn in flight")
+	}
+	for _, c := range m.st.Chat {
+		if c.Pending && c.From != "boss" {
+			why = append(why, "office reply in flight")
+			break
+		}
+	}
+	workers := 0
+	for _, e := range m.st.Employees {
+		if e.Role == state.RoleManager || e.Role == state.RoleHR || e.Role == state.RoleCTO {
+			continue // fixed seats are always-seated, never "live work"
+		}
+		switch e.Sprite {
+		case state.SpriteWorking, state.SpriteToManager, state.SpriteMeeting:
+			workers++
+		}
+	}
+	if workers > 0 {
+		why = append(why, fmt.Sprintf("%d worker(s) live", workers))
+	}
+	if len(m.permQ.pending)+len(m.permQ.escd) > 0 {
+		why = append(why, "unanswered permission prompt")
+	}
+	if m.question != nil || m.questionEscd != nil || m.questionParked {
+		why = append(why, "unanswered boss question")
+	}
+	if len(m.queue) > 0 {
+		why = append(why, fmt.Sprintf("queue non-empty (%d items)", len(m.queue)))
+	}
+	if m.batchInFlight {
+		why = append(why, "batch flush in flight")
+	}
+	return why
+}
+
+// applyBackendSlash — /backend [opencode|claudecode]: bare prints the
+// active transport, a validated name swaps it mid-flight (IDLE ONLY — the
+// busy path is a refusal with the blocker list, never a forced tear-down:
+// esc-esc//stop the turn first, then retry).
+func (m *Model) applyBackendSlash(fields []string) tea.Cmd {
+	if len(fields) < 2 {
+		m.notice(fmt.Sprintf("backend: %s — /backend opencode|claudecode swaps (idle office only · persists to brain.json)", m.backendName()))
+		return nil
+	}
+	name := strings.ToLower(strings.TrimSpace(fields[1]))
+	if !config.ValidBackendName(name) {
+		m.noticeErr(fmt.Sprintf("/backend: unknown backend %q (opencode|claudecode)", fields[1]))
+		return nil
+	}
+	if m.st.Mode != state.ModeLive {
+		m.noticeErr("/backend: swap is live-only — the scripted tour's demo backend is fixed")
+		return nil
+	}
+	if name == m.backendName() {
+		m.notice("backend already on " + name + " · /session resumes a past one instead")
+		return nil
+	}
+	if why := m.backendSwapBlockers(); len(why) > 0 {
+		msg := fmt.Sprintf("backend swap %s → %s refused — office busy: %s · wait for the turn to finish (esc-esc / /stop first), then /backend %s again",
+			m.backendName(), name, strings.Join(why, "; "), name)
+		m.noticeErr(msg)
+		// statusline twin: the same verdict on the transient surface (the
+		// marker grammar is deliberately NOT used — nothing re-latches).
+		return m.applyEvent(state.Event{Kind: state.EvStatus, Text: msg})
+	}
+	return m.swapBackend(name)
+}
+
+// swapBackend — the drain-first transport swap. Order is BINDING: stop the
+// old transport (its own teardown is bounded), persist the archive (the
+// chat transcript AND the per-backend session pins survive), construct the
+// new one, pin ITS last session id for this directory, re-Start on main's
+// tea-loop sink (same goroutine→Send pattern as boot), land the ONE
+// EvStatus swap line — which is also the reducer latch that re-names the
+// topbar segment — and persist the choice to brain.json.
+func (m *Model) swapBackend(name string) tea.Cmd {
+	oldName := m.backendName()
+	if old := m.backend; old != nil {
+		_ = old.Stop() // bounded internally (stopDrainTimeout/stopKillGrace)
+	}
+	m.PersistSession() // quit-path twin — the chat archive is preserved
+
+	m.backend = BackendFactory(name, m.serverURL, m.sessDir, m.cfg)
+
+	// Per-backend resume pin: the archived session id the NEW transport
+	// last used in this directory ("" = its first fresh boot here).
+	if ps, ok := m.backend.(primarySeamBackend); ok && m.sessDir != "" {
+		if sf, ok := LoadSession(m.sessDir); ok {
+			if id := sf.primaryIDFor(name); id != "" {
+				ps.PrimaryOverride(id)
+			}
+		}
+	}
+	if m.cfg != nil {
+		m.cfg.Backend.Name = name
+	}
+	m.resetPager() // the older-history walk belonged to the old transport
+	if m.emitFn != nil && m.backend != nil {
+		emit, nb := m.emitFn, m.backend
+		go func() {
+			if err := nb.Start(emit); err != nil {
+				emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend failed: " + err.Error()})
+			}
+		}()
+	}
+	turns := 0
+	for _, c := range m.st.Chat {
+		if c.From == "boss" && !c.Pending {
+			turns++
+		}
+	}
+	msg := fmt.Sprintf("%s%s → %s (turn #%d archived)", backendStatusMarker, oldName, name, turns)
+	cmd := m.applyEvent(state.Event{Kind: state.EvStatus, Text: msg})
+	if m.cfg != nil {
+		if save := m.persistCfg(); strings.HasPrefix(save, "brain.json save failed") {
+			m.noticeErr("backend swap: " + save + " — the swap holds for this session only")
+		}
+	}
+	return cmd
 }
 
 // notice appends a dim local notice (From "office") to the chat.

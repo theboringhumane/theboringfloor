@@ -23,6 +23,17 @@ curl -fsSL \
   https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
 ```
 
+Pick the LLM transport at install time with `--backend opencode|claudecode`
+(opencode is the default; claudecode needs the
+[claude](https://docs.anthropic.com/en/docs/claude-code) CLI on PATH — a
+missing one is a warning, not a failure). The choice is seeded into
+`brain.json`'s `backend.name` and the summary box shows it:
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh -s -- --backend claudecode
+```
+
 Then `theboringoffice --demo` for touring mode.
 
 Pin the version you want — every tagged release gets stamped into the binary.
@@ -220,9 +231,18 @@ working as fallbacks for the new `THEBORINGOFFICE_*` ones.
                "reviewer": { "namePrefix": "dikastes" }, "runner": { "namePrefix": "hemerodromos" } },
   "ui":      { "theme": "noir", "power": "auto", "tickMs": 0, "ambientChatter": true,
                "sounds": "on", "sidebarWidth": 0, "compact": false },
-  "backend": { "agentmemoryUrl": "http://localhost:3111", "server": "", "agentmemoryPollS": 5 }
+  "backend": { "name": "opencode", "agentmemoryUrl": "http://localhost:3111", "server": "", "agentmemoryPollS": 5 }
 }
 ```
+
+`backend.name` selects the LLM transport: `opencode` (the default —
+`opencode serve` + SSE, what pre-existing brain.json files silently mean) or
+`claudecode` (the claude CLI in headless stream-json mode, one process per
+turn). `install.sh --backend` seeds it, `--backend` overrides it for one
+boot, `/backend` swaps it mid-flight and persists it — the topbar shows the
+active name between mode and agents, and session.json pins session ids PER
+TRANSPORT (`primaryIDs`), so swapping back later resumes that transport's
+own session instead of cross-pinning ids.
 
 Boss model rides every prompt as `{"model":{"providerID","modelID"}}` (serve
 1.18.19 `/doc`-verified). Role models are noted as best-effort (sub-agent model
@@ -258,6 +278,12 @@ Seven tabs with a real terminal in the middle:
   emits `0x00`, a key of its own — nothing shares `tab`'s byte.) The status
   bar reads `office keys · ctrl+space → shell · ctrl+q quit` (released) /
   `typing → shell · ctrl+space release · ctrl+q quit` (captured).
+  **Mouse select** — drag over terminal text (live screen or scrolled-up
+  scrollback, focused or released) highlights it in reverse video; on release
+  it copies to the system clipboard (pbcopy / wl-copy / xclip / xsel, plus
+  OSC52 best-effort) and a dim `· Copied N chars` note rides the badge row.
+  `esc` or typing cancels the highlight. Shell-side mouse modes never fight
+  it: the grid ignores `?1000/?1006` and no mouse bytes reach the PTY.
 - **chat** — the boss conversation; **agents** / **board** / **mail** /
   **activity** — office telemetry.
 - **git** — live repo status: a header summary (modified / added /
@@ -338,6 +364,7 @@ clears the chips.
 | `/focus floor` | alias of `/zen` |
 | `/stop` | abort current work (boss + workers) |
 | `/new` | fresh office (transcript archived) |
+| `/backend [opencode\|claudecode]` | bare prints the active LLM transport; with a name it swaps mid-flight — but only while the office is IDLE (a boss turn, queued backlog, live workers, or an unanswered question/permission gets a refusal naming the blockers). The swap archives the turn, persists the name to brain.json, and lands one `[theboringoffice] backend: <old> → <new>` status line |
 | `/session` | past-sessions picker — accept to switch the office live (sticks to the next boot); no server list → prints the current id + where it lives |
 | `/quit` | exit theboringoffice |
 

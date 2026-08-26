@@ -260,7 +260,9 @@ func main() {
 		if err != nil {
 			fail("getwd", err)
 		}
-		b = backend.NewLive("", dir, cfg)
+		// the install-selected transport (brain.json backend.name) boots
+		// through the same one resolver the UI binaries use.
+		b = app.BackendFor(cfg.Backend.ResolvedName(), "", dir, cfg)
 		runFor = 3 * time.Second
 	} else if *demo {
 		b = backend.NewDemo(cfg)
@@ -269,6 +271,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "either --demo or --live is required")
 		os.Exit(2)
 	}
+	fmt.Println(backendNameLine(*live, cfg))
 
 	var mu sync.Mutex
 	ticks := 0
@@ -790,7 +793,7 @@ func runPersistProbe(cfgPath string, demo, restore, fresh bool) {
 	// Scratch home: run 1 creates one when THEBORINGOFFICE_HOME is unset (and
 	// prints it — runs 2/3 MUST be invoked with that same home exported);
 	// runs 2/3 hard-require it so a stray run cannot read/write the real
-	// ~/.theboringoffice/sessions.
+	// ~/.theboringoffice/projects.
 	home := config.HomeOverride() // THEBORINGOFFICE_HOME, GRAFEIO_HOME fallback
 	if home == "" {
 		if !demo {
@@ -2046,6 +2049,18 @@ func (s *sseSimServer) evaluate(streamNotes []string) int {
 	}
 	fmt.Printf("SSE-SIM: FAIL (%d check(s) failed)\n", failures)
 	return 1
+}
+
+// backendNameLine — the boot summary's transport row ("[backend] <name>",
+// one status line complement to the [cfg] dump above): the scripted tour
+// reports demo; a live run reports brain.json backend.name's resolution
+// ("" → opencode) — the same name the topbar latches off the boot hint.
+func backendNameLine(liveMode bool, cfg *config.Config) string {
+	name := "demo"
+	if liveMode && cfg != nil {
+		name = cfg.Backend.ResolvedName()
+	}
+	return "[backend] " + name
 }
 
 func fail(stage string, err error) {
