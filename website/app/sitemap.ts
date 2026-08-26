@@ -11,9 +11,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/vision', priority: 0.8, changeFrequency: 'monthly' as const },
     { path: '/docs', priority: 0.8, changeFrequency: 'weekly' as const },
     { path: '/blog', priority: 0.9, changeFrequency: 'daily' as const },
-  ].map(({ path, priority, changeFrequency }) => ({
+    {
+      path: '/sounds',
+      priority: 0.7,
+      changeFrequency: 'monthly' as const,
+      lastModified: new Date('2026-08-26'),
+    },
+  ].map(({ path, priority, changeFrequency, lastModified }) => ({
     url: `${SITE_URL}${path}`,
-    lastModified: new Date('2026-08-24'),
+    lastModified: lastModified ?? new Date('2026-08-24'),
     changeFrequency,
     priority,
   }))

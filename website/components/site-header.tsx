@@ -148,6 +148,9 @@ export function SiteHeader({
           <Link href="/vision" className="py-2 transition-colors hover:text-foreground">
             Vision
           </Link>
+          <Link href="/sounds" className="py-2 transition-colors hover:text-foreground">
+            Sounds
+          </Link>
           <Link href="/docs" className="py-2 transition-colors hover:text-foreground">
             Docs
           </Link>
@@ -202,6 +205,9 @@ export function SiteHeader({
           </Link>
           <Link href="/vision" className="py-2" onClick={() => setMobileOpen(false)}>
             Vision
+          </Link>
+          <Link href="/sounds" className="py-2" onClick={() => setMobileOpen(false)}>
+            Sounds
           </Link>
           <Link href="/docs" className="py-2" onClick={() => setMobileOpen(false)}>
             Docs

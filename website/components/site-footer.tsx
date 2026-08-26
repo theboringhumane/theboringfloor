@@ -36,13 +36,18 @@ const columns = [
   },
   {
     title: "Resources",
-    links: ["Docs", "Blog", "Floor Plan", "Vision", "Setup Guides"],
+    links: ["Docs", "Blog", "Floor Plan", "Vision", "Setup Guides", "Sounds"],
   },
   // {
   //   title: 'Company',
   //   links: ['Careers', 'Trust', 'Contact Us', 'Support', 'Terms', 'Privacy Policy'],
   // },
 ];
+
+// Real routes for the footer entries that have one; the rest stay "#".
+const linkHrefs: Record<string, string> = {
+  Sounds: "/sounds",
+};
 
 export function SiteFooter() {
   return (
@@ -81,7 +86,7 @@ export function SiteFooter() {
                   {col.links.map((link) => (
                     <li key={link}>
                       <Link
-                        href="#"
+                        href={linkHrefs[link] ?? "#"}
                         className="font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
                       >
                         {link}
