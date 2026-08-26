@@ -3,15 +3,16 @@
 //
 //	W1 — the wedge watchdog: a pending boss turn with NO wall-clock
 //	     SERVER-SIDE traffic for bossWedgeAfter fires exactly ONCE (one
-//	     red transcript row + the hint-seam swap). The send-side typing
-//	     placeholder ("boss-N", Pending, empty text) is the UI's own
-//	     staging, so it NEITHER arms the clock NOR re-arms the latch —
-//	     only real server-side traffic (stream deltas, thoughts, tools,
-//	     completions) does; a wedged turn can therefore never print one
-//	     red row per send again. A parked question hold NEVER fires (the
-//	     boss is waiting on the USER's answer — user-owned silence is
-//	     not a wedge). Silence is wall clock only, never st.Tick (the
-//	     governor cadence varies 180ms–3s);
+//	     ACTIVITY-TAB line + the hint-seam swap — NEVER a transcript
+//	     row). The send-side typing placeholder ("boss-N", Pending,
+//	     empty text) is the UI's own staging, so it NEITHER arms the
+//	     clock NOR re-arms the latch — only real server-side traffic
+//	     (stream deltas, thoughts, tools, completions) does; a wedged
+//	     turn can therefore never note one line per send again. A
+//	     parked question hold NEVER fires (the boss is waiting on the
+//	     USER's answer — user-owned silence is not a wedge). Silence
+//	     is wall clock only, never st.Tick (the governor cadence varies
+//	     180ms–3s);
 //	W2 (G1) — /stop with a FAILING AbortSessions must NOT strand the
 //	     office: one dim note + the exact same clean unwind as success
 //	     (placeholder collapse, statusline, watchdog re-armed);
@@ -29,6 +30,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -83,23 +87,32 @@ func stale(m *Model, d time.Duration) {
 	m.lastBossActivityAt = time.Now().Add(-d)
 }
 
-// countWedgeRows tallies red (Meta "error") transcript rows carrying the
-// frozen wedge copy.
-func countWedgeRows(m Model) int {
+// countWedgeLines tallies ACTIVITY-TAB lines carrying the frozen wedge
+// copy — the note's ONLY home since the transcript-off wave (a wedge
+// never lands in st.Chat; assertNoWedgeInChat pins that invariant).
+func countWedgeLines(m Model) int {
 	n := 0
-	for _, c := range m.st.Chat {
-		// boot-warn IS the wedge row's meta class post-wave-51 (boot-scoped
-		// and never persisted); keep "error" for the pre-wave-51 shape whose
-		// legacy tests/fixtures may still deliver.
-		if (c.Meta == "error" || c.Meta == "boot-warn") && strings.Contains(c.Text, "boss turn wedged") {
+	for _, ln := range m.activity.Lines() {
+		if strings.Contains(ln, "boss turn wedged") {
 			n++
 		}
 	}
 	return n
 }
 
-// W1(a) — fires exactly ONCE at a fake-stale clock: the red row, the
-// latch, the hint-seam swap; a second tick says nothing new.
+// assertNoWedgeInChat — the transcript-off invariant: NO chat row ever
+// carries the wedge copy, in any meta class, boot-scoped or not.
+func assertNoWedgeInChat(t *testing.T, m Model) {
+	t.Helper()
+	for _, c := range m.st.Chat {
+		if strings.Contains(c.Text, "boss turn wedged") {
+			t.Fatalf("the wedge note must never land in the transcript, found %q (meta %q)", c.Text, c.Meta)
+		}
+	}
+}
+
+// W1(a) — fires exactly ONCE at a fake-stale clock: the activity line,
+// the latch, the hint-seam swap; a second tick says nothing new.
 func TestWedgeWatchdogFiresOnce(t *testing.T) {
 	m, _ := wedgeFixture(t)
 	stale(&m, bossWedgeAfter+time.Second)
@@ -108,20 +121,92 @@ func TestWedgeWatchdogFiresOnce(t *testing.T) {
 	if !m.wedgeNoted {
 		t.Fatal("a placeholder idle past bossWedgeAfter must latch the wedge note")
 	}
-	if n := countWedgeRows(m); n != 1 {
-		t.Fatalf("the wedge row must print exactly once, got %d", n)
+	if n := countWedgeLines(m); n != 1 {
+		t.Fatalf("the wedge note must land exactly once, got %d activity lines", n)
 	}
+	assertNoWedgeInChat(t, m)
 	if hint := m.hintLine(); !strings.Contains(hint, wedgeHint) {
 		t.Fatalf("the latch must swap the hint seam: hint = %q, want %q", hint, wedgeHint)
 	}
-	if !strings.Contains(m.st.Chat[len(m.st.Chat)-1].Text, "/stop unwinds it (queue intact)") {
-		t.Fatalf("the wedge row must offer /stop with the queue intact, got %q", m.st.Chat[len(m.st.Chat)-1].Text)
+	var wedgeLine string
+	for _, ln := range m.activity.Lines() {
+		if strings.Contains(ln, "boss turn wedged") {
+			wedgeLine = ln
+		}
+	}
+	if !strings.Contains(wedgeLine, "/stop unwinds it (queue intact)") {
+		t.Fatalf("the wedge line must offer /stop with the queue intact, got %q", wedgeLine)
 	}
 
 	m = pumpTicks(m, 3)
-	if n := countWedgeRows(m); n != 1 {
-		t.Fatalf("the watchdog is one-shot per wedge — %d rows after more ticks", n)
+	if n := countWedgeLines(m); n != 1 {
+		t.Fatalf("the watchdog is one-shot per wedge — %d lines after more ticks", n)
 	}
+	assertNoWedgeInChat(t, m)
+}
+
+// W1(h) — the notice lives OFF the transcript: a fired wedge renders as
+// ONE dim-timestamped line in the activity VIEW (same "[stamp] …" seam as
+// every other entry), ZERO rows in st.Chat, and the hint seam reads the
+// warn swap while armed — re-ticking duplicates nothing.
+func TestWedgeNoticeLivesOffTranscript(t *testing.T) {
+	m, _ := wedgeFixture(t)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 160, Height: 40})
+	stale(&m, bossWedgeAfter+time.Second)
+
+	m = pumpTicks(m, 1)
+	if !m.wedgeNoted {
+		t.Fatal("setup: the wedge must latch past the threshold")
+	}
+
+	// st.Chat carries ZERO wedge rows.
+	assertNoWedgeInChat(t, m)
+
+	// the activity tab carries exactly ONE line, timestamped through the
+	// same "[stamp] …" seam as describeEvent / [memory] recorded entries.
+	if n := countWedgeLines(m); n != 1 {
+		t.Fatalf("the activity tab must hold the wedge note exactly once, got %d", n)
+	}
+	var wedgeLine string
+	for _, ln := range m.activity.Lines() {
+		if strings.Contains(ln, "boss turn wedged") {
+			wedgeLine = ln
+		}
+	}
+	if !strings.HasPrefix(wedgeLine, "[") || !strings.Contains(wedgeLine, "] boss turn wedged: ") {
+		t.Fatalf("the wedge line must ride the [stamp] activity format, got %q", wedgeLine)
+	}
+	if !strings.Contains(wedgeLine, "/stop unwinds it (queue intact); the turn may still complete on its own") {
+		t.Fatalf("the /stop advice must survive verbatim in the activity line, got %q", wedgeLine)
+	}
+
+	// the activity VIEW renders it once, dim-timestamped like every entry
+	// (the pane clips long lines to width, so the full copy is asserted
+	// on the raw line above).
+	raw := m.activity.View()
+	plain := ansi.Strip(raw)
+	if n := strings.Count(plain, "boss turn wedged"); n != 1 {
+		t.Fatalf("the activity view must render the wedge line exactly once, got %d:\n%s", n, plain)
+	}
+	if !strings.Contains(raw, "\x1b[") {
+		t.Fatalf("the wedge line must render through the dim-timestamp style, raw view has no styling:\n%s", plain)
+	}
+	if i := strings.Index(raw, "boss turn wedged"); i < 8 || !strings.Contains(raw[max(0, i-40):i], "\x1b[") {
+		t.Fatalf("the wedge line's [stamp] prefix must render dim-styled, raw view:\n%s", raw)
+	}
+
+	// the status bar reads the red swap while the latch is armed.
+	if hint := m.hintLine(); !strings.Contains(hint, wedgeHint) {
+		t.Fatalf("the status bar must read the wedge hint while armed, got %q", hint)
+	}
+
+	// the next tick fires nothing — one activity line per episode.
+	adds := m.activityAdds
+	m = pumpTicks(m, 1)
+	if m.activityAdds != adds {
+		t.Fatalf("a further tick must never duplicate the note (activityAdds %d → %d)", adds, m.activityAdds)
+	}
+	assertNoWedgeInChat(t, m)
 }
 
 // W1(b) — quiet on activity: a fresh wall clock keeps the watchdog silent.
@@ -131,9 +216,10 @@ func TestWedgeWatchdogQuietOnActivity(t *testing.T) {
 	if m.wedgeNoted {
 		t.Fatal("fresh boss activity must keep the watchdog quiet")
 	}
-	if n := countWedgeRows(m); n != 0 {
-		t.Fatalf("no wedge row for a live turn, got %d", n)
+	if n := countWedgeLines(m); n != 0 {
+		t.Fatalf("no wedge line for a live turn, got %d", n)
 	}
+	assertNoWedgeInChat(t, m)
 	if hint := m.hintLine(); strings.Contains(hint, wedgeHint) {
 		t.Fatalf("nothing outstanding to say on the hint seam, got %q", hint)
 	}
@@ -160,14 +246,15 @@ func TestWedgeWatchdogWallClock(t *testing.T) {
 	m, _ := wedgeFixture(t)
 	stale(&m, bossWedgeAfter-time.Second)
 	m = pumpTicks(m, 60)
-	if m.wedgeNoted || countWedgeRows(m) != 0 {
+	if m.wedgeNoted || countWedgeLines(m) != 0 {
 		t.Fatalf("60 ticks under 2m of wall silence must not fire (ticks are not time)")
 	}
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
-	if !m.wedgeNoted || countWedgeRows(m) != 1 {
+	if !m.wedgeNoted || countWedgeLines(m) != 1 {
 		t.Fatal("past 2m of wall silence, the first tick must fire exactly once")
 	}
+	assertNoWedgeInChat(t, m)
 }
 
 // W1(d) — latch re-arms after a completion: fire once, the completed boss
@@ -199,9 +286,10 @@ func TestWedgeLatchRearmsAfterCompletion(t *testing.T) {
 		Msg: state.ChatMsg{ID: "boss-2", From: "boss", Pending: true}})
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
-	if n := countWedgeRows(m); n != 2 {
-		t.Fatalf("the re-armed watchdog must note the second wedge once, got %d rows", n)
+	if n := countWedgeLines(m); n != 2 {
+		t.Fatalf("the re-armed watchdog must note the second wedge once, got %d lines", n)
 	}
+	assertNoWedgeInChat(t, m)
 }
 
 // W1(e) — a parked question hold NEVER fires the watchdog: the boss is
@@ -218,9 +306,10 @@ func TestWedgeQuestionParkedSilent(t *testing.T) {
 	if m.wedgeNoted {
 		t.Fatal("a parked question hold must never latch the wedge note")
 	}
-	if n := countWedgeRows(m); n != 0 {
-		t.Fatalf("a boss waiting on the user's answer is not wedged — got %d rows", n)
+	if n := countWedgeLines(m); n != 0 {
+		t.Fatalf("a boss waiting on the user's answer is not wedged — got %d lines", n)
 	}
+	assertNoWedgeInChat(t, m)
 	if hint := m.hintLine(); strings.Contains(hint, wedgeHint) {
 		t.Fatalf("the hint seam must stay quiet on a parked question, got %q", hint)
 	}
@@ -239,9 +328,10 @@ func TestWedgePlaceholderNeverArms(t *testing.T) {
 		t.Fatal("the send-side placeholder must not stamp the watchdog wall clock")
 	}
 	m = pumpTicks(m, 3)
-	if m.wedgeNoted || countWedgeRows(m) != 0 {
+	if m.wedgeNoted || countWedgeLines(m) != 0 {
 		t.Fatal("no real traffic ever → the watchdog stays silent (notice-only beats false-positive)")
 	}
+	assertNoWedgeInChat(t, m)
 
 	// the first REAL server-side beat (a stream delta — pending WITH text)
 	// arms the clock through the normal reducer path; stale it and the
@@ -253,22 +343,23 @@ func TestWedgePlaceholderNeverArms(t *testing.T) {
 	}
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
-	if !m.wedgeNoted || countWedgeRows(m) != 1 {
+	if !m.wedgeNoted || countWedgeLines(m) != 1 {
 		t.Fatal("once armed by real traffic, past-threshold silence must fire exactly once")
 	}
+	assertNoWedgeInChat(t, m)
 }
 
 // W1(g) — placeholders mid-wedge never RE-ARM: fire once, re-emit the
 // placeholder family (the every-send/queue-flush staging) and the latch
-// holds, the clock does not move, the row stays exactly one — identical
-// repeated rows from placeholder emissions are impossible. REAL traffic
-// then re-opens a fresh episode: one further row, no more.
+// holds, the clock does not move, the activity line stays exactly one —
+// identical repeated lines from placeholder emissions are impossible.
+// REAL traffic then re-opens a fresh episode: one further line, no more.
 func TestWedgePlaceholderNeverReArms(t *testing.T) {
 	m, _ := wedgeFixture(t)
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
-	if !m.wedgeNoted || countWedgeRows(m) != 1 {
-		t.Fatal("setup: the first wedge must latch with exactly one row")
+	if !m.wedgeNoted || countWedgeLines(m) != 1 {
+		t.Fatal("setup: the first wedge must latch with exactly one activity line")
 	}
 
 	armedAt := m.lastBossActivityAt
@@ -281,26 +372,28 @@ func TestWedgePlaceholderNeverReArms(t *testing.T) {
 		t.Fatal("a mid-wedge placeholder must NOT clear the wedge latch")
 	}
 	m = pumpTicks(m, 3)
-	if n := countWedgeRows(m); n != 1 {
-		t.Fatalf("placeholders must never reprint the wedge row, got %d rows", n)
+	if n := countWedgeLines(m); n != 1 {
+		t.Fatalf("placeholders must never reprint the wedge note, got %d lines", n)
 	}
 
 	// real traffic (a stream delta) re-stamps the CLOCK mid-turn — the
 	// derived hint clears itself — but does NOT re-arm the fired latch:
-	// one red row per TURN, never one per quiet stretch (the field fix).
+	// one activity line per TURN, never one per quiet stretch (the field
+	// fix).
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
 		Msg: state.ChatMsg{ID: "bossmsg-m2", From: "boss", Text: "half an answer…", Pending: true}})
 	if !m.wedgeNoted {
-		t.Fatal("mid-turn real traffic must NOT re-arm the fired latch (one row per turn until the turn ends)")
+		t.Fatal("mid-turn real traffic must NOT re-arm the fired latch (one line per turn until the turn ends)")
 	}
 	if m.lastBossActivityAt.Equal(armedAt) {
 		t.Fatal("real boss traffic must re-stamp the watchdog clock")
 	}
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 2)
-	if n := countWedgeRows(m); n != 1 {
-		t.Fatalf("a spent latch must NEVER reprint mid-turn, got %d rows", n)
+	if n := countWedgeLines(m); n != 1 {
+		t.Fatalf("a spent latch must NEVER reprint mid-turn, got %d lines", n)
 	}
+	assertNoWedgeInChat(t, m)
 
 	// close the mid-stream delta first (its completion swap), so the
 	// turn-ending bubble below actually closes the WHOLE turn — an open
@@ -319,14 +412,15 @@ func TestWedgePlaceholderNeverReArms(t *testing.T) {
 		t.Fatal("the completion (turn end) must re-arm the watchdog for the next episode")
 	}
 
-	// a NEW turn stalls again: one more row, exactly once.
+	// a NEW turn stalls again: one more line, exactly once.
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
 		Msg: state.ChatMsg{ID: "boss-2", From: "boss", Pending: true}})
 	stale(&m, bossWedgeAfter+time.Second)
 	m = pumpTicks(m, 1)
-	if n := countWedgeRows(m); n != 2 {
-		t.Fatalf("the turn-ended watchdog notes the next episode once, got %d rows", n)
+	if n := countWedgeLines(m); n != 2 {
+		t.Fatalf("the turn-ended watchdog notes the next episode once, got %d lines", n)
 	}
+	assertNoWedgeInChat(t, m)
 }
 
 // W2 (G1) — /stop ALWAYS unwinds: abort fails remotely, yet the office
@@ -342,6 +436,7 @@ func TestStopAbortErrorUnwinds(t *testing.T) {
 	if !m.wedgeNoted {
 		t.Fatal("setup: the wedge latch should be set before /stop")
 	}
+	assertNoWedgeInChat(t, m) // even mid-wedge, the note stays out of the transcript
 
 	m = runMsg(t, m, slashMsg{text: "/stop"})
 
@@ -384,6 +479,7 @@ func TestStopAbortErrorUnwinds(t *testing.T) {
 	if m.wedgeNoted {
 		t.Fatal("/stop closes the turn: the watchdog must re-arm")
 	}
+	assertNoWedgeInChat(t, m)
 	if m.st.BossThinking || m.st.BossDelegating {
 		t.Fatal("BossThinking/BossDelegating must clear on /stop even when abort fails")
 	}
@@ -405,6 +501,7 @@ func TestStopAbortSuccessUnchanged(t *testing.T) {
 	if want := "stopped current work — queue intact (0 items)"; m.st.StatusLine != want {
 		t.Fatalf("StatusLine = %q, want %q", m.st.StatusLine, want)
 	}
+	assertNoWedgeInChat(t, m)
 }
 
 // F4 sanity — a plan-tagged completion rides the SAME event path as the
@@ -423,4 +520,5 @@ func TestWedgePlanCompletionUnaffected(t *testing.T) {
 	if m.wedgeNoted {
 		t.Fatal("the plan completion is boss activity: the latch must clear")
 	}
+	assertNoWedgeInChat(t, m)
 }

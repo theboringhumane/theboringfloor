@@ -60,6 +60,13 @@ func (a *Activity) Add(line string) {
 	a.SetState(state.OfficeState{})
 }
 
+// Lines returns a copy of the raw log lines (unclipped, unstyled) — the
+// read seam tests/harnesses use to assert on the activity state without
+// parsing the ANSI viewport frame.
+func (a *Activity) Lines() []string {
+	return append([]string(nil), a.lines...)
+}
+
 // Update implements Interactive (scroll).
 func (a *Activity) Update(msg tea.Msg) tea.Cmd {
 	switch msg.(type) {

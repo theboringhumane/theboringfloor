@@ -1461,11 +1461,12 @@ func runStopProof() error {
 // threshold makes deterministic). Leg 1 — W1: the boss goes busy at 200ms
 // and NEVER completes; the wedge watchdog (harness-seamed through
 // SetWedgeAfterForShot — the production 2m floor can't be slept out in a
-// shot) fires exactly ONCE: one red "boss turn wedged" transcript row and
-// the hint-seam swap. Leg 2 — G1: /stop against an AbortSessions stubbed
-// to FAIL (stub.abortErr): the office must NOT strand — the placeholder
-// collapses to "stopped by user", one dim note records the remote
-// failure, the statusline reads stopped, the watchdog re-arms.
+// shot) fires exactly ONCE: ONE activity-tab "boss turn wedged" line (the
+// transcript stays clean — zero chat rows) and the hint-seam swap. Leg 2 —
+// G1: /stop against an AbortSessions stubbed to FAIL (stub.abortErr): the
+// office must NOT strand — the placeholder collapses to "stopped by user",
+// one dim note records the remote failure, the statusline reads stopped,
+// the watchdog re-arms.
 
 func runStuckProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
@@ -1491,10 +1492,22 @@ func runStuckProof() error {
 			}
 		}
 	}
-	wedgeRowCount := func() int {
+	// the wedge note lives ONLY in the activity tab — count it there via
+	// the raw-line read seam (byte-deterministic, no ANSI/clipping).
+	wedgeLineCount := func() int {
+		n := 0
+		for _, ln := range d.m.ActivityLines() {
+			if strings.Contains(ln, "boss turn wedged") {
+				n++
+			}
+		}
+		return n
+	}
+	// and the transcript-off invariant: zero chat rows, any meta class.
+	chatWedgeRows := func() int {
 		n := 0
 		for _, c := range d.m.State().Chat {
-			if c.Meta == "error" && strings.Contains(c.Text, "boss turn wedged") {
+			if strings.Contains(c.Text, "boss turn wedged") {
 				n++
 			}
 		}
@@ -1516,11 +1529,14 @@ func runStuckProof() error {
 	time.Sleep(60 * time.Millisecond) // past the 30ms harness threshold
 	d.pump(1)                         // the watchdog evaluates on the tick cheap loop
 
-	if n := wedgeRowCount(); n != 1 {
-		return fail("stuck A: wedge row must print exactly once after the threshold, got %d", n)
+	if n := wedgeLineCount(); n != 1 {
+		return fail("stuck A: wedge note must land in the activity tab exactly once after the threshold, got %d", n)
+	}
+	if n := chatWedgeRows(); n != 0 {
+		return fail("stuck A: the wedge note must NEVER land in the transcript, got %d chat rows", n)
 	}
 	frameA := d.m.Frame()
-	fmt.Println("===== UI SHOT · STUCK A — watchdog fired: one red wedge row + hint swap (turn still pending, never auto-killed) =====")
+	fmt.Println("===== UI SHOT · STUCK A — watchdog fired: transcript stays CLEAN (no wedge row), red hint swap on the status bar (turn still pending, never auto-killed) =====")
 	fmt.Println(frameA)
 	fmt.Println("===== UI SHOT =====")
 	for _, want := range []string{"boss looks wedged", "is typing…"} {
@@ -1528,18 +1544,37 @@ func runStuckProof() error {
 			return fail("stuck A: frame missing %q", want)
 		}
 	}
-	var wedgeRow string
-	for _, c := range d.m.State().Chat {
-		if c.Meta == "error" && strings.Contains(c.Text, "boss turn wedged") {
-			wedgeRow = c.Text
+	if strings.Contains(ansi.Strip(frameA), "boss turn wedged") {
+		return fail("stuck A: the transcript frame must NOT show the wedge note")
+	}
+	var wedgeLine string
+	for _, ln := range d.m.ActivityLines() {
+		if strings.Contains(ln, "boss turn wedged") {
+			wedgeLine = ln
 		}
 	}
-	if !strings.Contains(wedgeRow, "/stop unwinds it (queue intact); the turn may still complete on its own") {
-		return fail("stuck A: wedge row copy drifted, got %q", wedgeRow)
+	if !strings.Contains(wedgeLine, "/stop unwinds it (queue intact); the turn may still complete on its own") {
+		return fail("stuck A: wedge line copy drifted, got %q", wedgeLine)
+	}
+	if !d.m.SelectTab("activity") {
+		return fail("stuck A: activity tab not selectable")
+	}
+	frameAct := d.m.Frame()
+	fmt.Println("===== UI SHOT · STUCK A (activity) — the wedge note's one home: a single dim-timestamped line =====")
+	fmt.Println(frameAct)
+	fmt.Println("===== UI SHOT =====")
+	if !strings.Contains(ansi.Strip(frameAct), "boss turn wedged") {
+		return fail("stuck A: the activity tab frame must show the wedge line")
+	}
+	if !d.m.SelectTab("chat") {
+		return fail("stuck A: could not switch back to the chat tab")
 	}
 	d.pump(3) // one-shot latch: silence past the note
-	if n := wedgeRowCount(); n != 1 {
-		return fail("stuck A: the wedge note is one-shot per wedge, got %d rows after more ticks", n)
+	if n := wedgeLineCount(); n != 1 {
+		return fail("stuck A: the wedge note is one-shot per wedge, got %d lines after more ticks", n)
+	}
+	if n := chatWedgeRows(); n != 0 {
+		return fail("stuck A: still zero chat wedge rows after more ticks, got %d", n)
 	}
 
 	// Leg 2 — /stop with the abort RPC FAILING remotely (G1).
@@ -1577,14 +1612,14 @@ func runStuckProof() error {
 		return fail("stuck B: /stop closes the turn — the wedge hint must retire with it")
 	}
 	d.pump(2) // nothing outstanding → the watchdog stays disarmed
-	if n := wedgeRowCount(); n != 1 {
-		return fail("stuck B: no new wedge rows after the unwind, got %d", n)
+	if n := wedgeLineCount(); n != 1 {
+		return fail("stuck B: no new wedge lines after the unwind, got %d", n)
 	}
 	fmt.Println("--- stub capture (AbortSessions returned the stubbed error) ---")
 	for _, ln := range stub.abortLog {
 		fmt.Println(ln)
 	}
-	fmt.Println("asserts: OK — one red \"boss turn wedged\" row + hint swap at the seamed threshold (one-shot); /stop with AbortSessions FAILING still unwinds (placeholder → \"stopped by user\", dim abort-failure note, \"stopped current work\" statusline, watchdog re-armed, queue intact)")
+	fmt.Println("asserts: OK — ONE \"boss turn wedged\" line in the activity tab (ZERO transcript rows) + hint swap at the seamed threshold (one-shot); /stop with AbortSessions FAILING still unwinds (placeholder → \"stopped by user\", dim abort-failure note, \"stopped current work\" statusline, watchdog re-armed, queue intact)")
 	return nil
 }
 
@@ -4211,7 +4246,7 @@ func main() {
 	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
-	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) fires ONE red \"boss turn wedged\" row + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
+	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) notes ONE \"boss turn wedged\" line in the ACTIVITY tab (zero transcript rows) + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
 	freesend := flag.Bool("freesend", false, "free-queuing proof: boss busy 200–3000ms; two prompts sent DURING the window must hit backend.Send IMMEDIATELY (both ([stub] Send lines precede the turn-completed marker in the ordering trace) — frame 1 (t=2.2s) shows \"busy · 2 queued (server)\" + the \"turn 2 · your message rides next\" placeholder; frame 2 (t=3.6s) shows the drained FIFO pins + restored status line")
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
 	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")

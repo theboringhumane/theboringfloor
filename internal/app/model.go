@@ -470,11 +470,11 @@ type Model struct {
 	// therefore proves nothing about the server. NEVER derived from
 	// st.Tick — the governor re-arms ticks at 180ms–3s depending on
 	// posture (power.go), so tick deltas cannot measure real silence.
-	// wedgeNoted is the one-shot latch: the "boss turn wedged" red row +
-	// hint-swap fire ONCE per wedge and ride until REAL boss traffic
-	// re-arms it (mirror of conciergeNoted) or resetServerTurn//stop
-	// closes the turn. wedgeAfter is the threshold override (0 =
-	// bossWedgeAfter); the uishot/test harness seams it via
+	// wedgeNoted is the one-shot latch: the "boss turn wedged" activity
+	// line + hint-swap fire ONCE per wedge and ride until REAL boss
+	// traffic re-arms it (mirror of conciergeNoted) or
+	// resetServerTurn//stop closes the turn. wedgeAfter is the threshold
+	// override (0 = bossWedgeAfter); the uishot/test harness seams it via
 	// SetWedgeAfterForShot.
 	lastBossActivityAt time.Time
 	wedgeNoted         bool
@@ -1735,7 +1735,7 @@ func (m Model) hintLine() string {
 		// one-shot latch: it shows whenever a boss turn is overdue and
 		// vanishes on its own the moment real traffic refreshes the
 		// clock — no stale banner after a recovered turn, no chorus of
-		// repeated rows either (the transcript row fires once per turn).
+		// repeated notes either (the activity line fires once per turn).
 		return chrome.OnBarBold(chrome.Warn, " "+wedgeHint+" ")
 	}
 	if m.terminalActive() {
@@ -2865,9 +2865,9 @@ func isBossActivity(ev state.Event) bool {
 // opencode.go's pendingID). It proves only that a prompt left the client,
 // never that the server is alive, so it must NOT stamp or clear the wedge
 // watchdog's wall clock: each send/queue-flush used to restart the 2m
-// silence window, printing one red "boss turn wedged" row per turn
-// forever. Stream deltas (Pending with TEXT) and every pinned/completed
-// boss bubble remain real traffic.
+// silence window, noting one "boss turn wedged" line per turn forever.
+// Stream deltas (Pending with TEXT) and every pinned/completed boss
+// bubble remain real traffic.
 func isSendSidePlaceholder(ev state.Event) bool {
 	return ev.Kind == state.EvChatBoss && ev.Msg.Pending && ev.Msg.Text == ""
 }
@@ -2887,6 +2887,12 @@ const bossWedgeAfter = 120 * time.Second
 // turn may still complete on its own and queued input keeps working.
 const wedgeHint = "boss looks wedged — no reply for 2m · /stop to abort · enter queues anyway"
 
+// wedgeNote — the ONE line the watchdog writes per wedge episode: an
+// ACTIVITY-TAB entry (the "[stamp] …" seam, same as describeEvent /
+// [memory] recorded), NEVER a chat row — the transcript stays clean and
+// the member-visible warning rides the status bar (wedgeHint) instead.
+const wedgeNote = "boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own"
+
 // checkBossWedge runs off the EvTick cheap loop (applyEvent's tick branch).
 // NOTICE-ONLY by design: NEVER auto-kill, NEVER auto-respawn the turn — a
 // slow model round or a long delegation quiet spell is indistinguishable
@@ -2895,8 +2901,12 @@ const wedgeHint = "boss looks wedged — no reply for 2m · /stop to abort · en
 // (waiting on the user's answer is not a wedge). Fires ONCE per wedge
 // (wedgeNoted, re-armed only by REAL server-side boss traffic in
 // applyDelegation — the send-side placeholder is isSendSidePlaceholder and
-// cannot re-arm — or by resetServerTurn//stop closing the turn): one red
-// transcript row plus the hint swap, then silence until recovery.
+// cannot re-arm — or by resetServerTurn//stop closing the turn): one
+// activity-tab line plus the hint swap, then silence until recovery. The
+// note NEVER lands in st.Chat — a transcript row would linger for the
+// whole session (and Snapshot/hydrate round-trips) long after the turn
+// recovered; the status bar hint is derived from the silence clock, so it
+// retires itself.
 func (m *Model) checkBossWedge() {
 	if m.wedgeNoted || m.questionParked || !hasPendingBoss(m.st) {
 		return // already said, waiting on the user's question answer, or nothing outstanding
@@ -2905,7 +2915,8 @@ func (m *Model) checkBossWedge() {
 		return
 	}
 	m.wedgeNoted = true
-	m.appendNotice("[theboringoffice] boss turn wedged: no traffic for 2m — /stop unwinds it (queue intact); the turn may still complete on its own", bootWarnNoticeMeta)
+	m.activity.Add(fmt.Sprintf("[%s] %s", chrome.OfficeClock(m.st.Tick), wedgeNote))
+	m.activityAdds++ // digest term (same seam as describeEvent adds)
 }
 
 // bossWedgeOverdue — the wall-clock wedge predicate, shared by the
@@ -2928,6 +2939,12 @@ func (m *Model) bossWedgeOverdue() bool {
 // synchronous proof drivers can't wait out the 2m production floor. A
 // zero/negative value restores the default.
 func (m *Model) SetWedgeAfterForShot(d time.Duration) { m.wedgeAfter = d }
+
+// ActivityLines is the uishot/test read seam for the activity tab's raw
+// log lines (same additive harness pattern as SetWedgeAfterForShot):
+// proofs count entries byte-deterministically without parsing the
+// clipped, ANSI-styled viewport frame.
+func (m Model) ActivityLines() []string { return m.activity.Lines() }
 
 // team type-asserts the optional teamBackend seam (live/demo backends).
 func (m *Model) team() (teamBackend, bool) {

@@ -142,7 +142,9 @@ one dim `[office] board sync: flipped N rows to done` note when anything moved.
   pass on return.
 - **`/stop` + free-send** — `enter` while the boss works never blocks: the
   prompt free-sends into the backlog and the status line reads "busy · N
-  queued". `/stop` aborts current work (boss + workers).
+  queued". `/stop` aborts current work (boss + workers). If a busy turn
+  goes silent for 2m, the wedge watchdog notes it once — it reads on the
+  status bar and in the activity log — never in the transcript.
 - **Long memory** — reaching the TOP of the transcript walks one page
   further back in older history: one async page-walk per landing, spliced
   byte-stable into the head, riding the same scroll keys (nothing new).
@@ -204,8 +206,11 @@ one dim `[office] board sync: flipped N rows to done` note when anything moved.
 
 One file runs the office: **`~/.theboringoffice/configs/brain.json`** (created with
 defaults on first run; inspect anytime with `theboringoffice --print-default-config`).
-Upgrading from grafeio? Your old `~/.grafeio` config, theme and sessions are
-still READ (writes land on the new paths only), and `GRAFEIO_*` env vars keep
+Session state lives per working directory at
+**`~/.theboringoffice/projects/<dirhash>/session.json`**.
+Upgrading? Your old `~/.theboringoffice/sessions/<dirhash>` session files and
+the pre-rename `~/.grafeio` config, theme and sessions are still READ (writes
+land on the new paths only), and `GRAFEIO_*` env vars keep
 working as fallbacks for the new `THEBORINGOFFICE_*` ones.
 
 ```jsonc
