@@ -278,6 +278,15 @@ type OfficeState struct {
 	// a fresh office starts empty, and (like the usage counters) the
 	// session snapshot never threads it.
 	Models []ModelInfo `json:"models,omitempty"`
+	// BackendName — the selected LLM transport ("opencode"|"claudecode"),
+	// latched reducer-side off the backend's boot EvStatus name hint
+	// ("[theboringoffice] backend: <name>") and the /backend swap line —
+	// the same string-marker contract pattern as the agentmemory boot
+	// latch. The topbar renders it between mode and agents (the compact
+	// bar drops it with mode). "" pre-hint: nothing renders. Additive
+	// state: the session snapshot never threads it (each boot's hint
+	// re-latches it).
+	BackendName string `json:"backendName,omitempty"`
 }
 
 // EventKind — Go has no tagged unions; one Event struct with a Kind + optional fields.
