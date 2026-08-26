@@ -164,6 +164,9 @@ func TestPlanShapeGateKeepsUserEdit(t *testing.T) {
 	v1 := gatedPlan("Plan v1", "matte")
 	m = bossReply(t, m, "b1", v1)
 	m = runMsg(t, m, paneClick())
+	// the click now PLACES the caret (selection wave); ctrl+end parks it
+	// back at the buffer's end before typing, like a member would
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd, Mod: tea.ModCtrl}))
 	m = runMsg(t, m, pressKey('!'))
 	edited := v1 + "!"
 	if !m.plan.UserDirty() {

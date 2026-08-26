@@ -346,6 +346,9 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	if m.plan.Value() != v1 {
 		t.Fatalf("manual-open must never clobber a presented plan, got %q", firstNonEmptyLine(m.plan.Value()))
 	}
+	// the click now PLACES the caret (selection wave); ctrl+end parks it
+	// back at the buffer's end before typing, like a member would
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd, Mod: tea.ModCtrl}))
 	m = runMsg(t, m, pressKey('!'))
 	if !m.plan.UserDirty() {
 		t.Fatal("a user edit must latch userDirty")
@@ -964,6 +967,9 @@ func TestApproveRestoredRefusesUntilEdited(t *testing.T) {
 
 	// open + edit: the gate lifts (userDirty) and the accept clears the latch
 	m = runMsg(t, m, paneClick())
+	// the click now PLACES the caret (selection wave); ctrl+end parks it
+	// back at the buffer's end before typing, like a member would
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd, Mod: tea.ModCtrl}))
 	m = runMsg(t, m, pressKey('!'))
 	if !m.plan.UserDirty() {
 		t.Fatal("an edit must latch userDirty (the gate's lift)")
@@ -981,6 +987,208 @@ func TestApproveRestoredRefusesUntilEdited(t *testing.T) {
 	if m.agentMode != agentModeBuild {
 		t.Fatalf("the edited restore flips to build, got %q", m.agentMode)
 	}
+}
+
+// --- selection + cut/copy/paste in the focused pane ---------------------------
+
+func shiftArrow(c rune) tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: c, Mod: tea.ModShift}) }
+func ctrlC() tea.KeyPressMsg            { return tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}) }
+
+// markThree drives THREE shift+right presses into the focused pane through
+// the app's REAL key routing (the pane branch's default arm) — the
+// keyboard-native way a member marks text.
+func markThree(t *testing.T, m Model) Model {
+	t.Helper()
+	for i := 0; i < 3; i++ {
+		m = runMsg(t, m, shiftArrow(tea.KeyRight))
+	}
+	if !m.plan.SelectionActive() {
+		t.Fatal("three shift+rights into the focused pane must mark three runes")
+	}
+	return m
+}
+
+// TestPlanSelCutSkipsApproveArm pins the F1 precedence: with a LIVE mark in
+// the focused pane ctrl+x is CUT — it NEVER stamps approveArmAt, NEVER
+// sends through the agent seam, the marked bytes leave the buffer, and the
+// office stays in plan mode. Clearing the mark (esc) restores the CLASSIC
+// ctrl+x approve double-press byte-identically (the guard is a card over
+// the keyguard, not a rewrite of it).
+func TestPlanSelCutSkipsApproveArm(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	body := gatedPlan("Cut plan", "selection")
+	m = bossReply(t, m, "b1", body)
+	m = runMsg(t, m, paneClick())
+	if !m.plan.Focused() {
+		t.Fatal("setup: the pane must be focused")
+	}
+	m = markThree(t, m)
+
+	nm, cmd := m.Update(ctrlX())
+	m = nm.(Model)
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("ctrl+x with a live mark is CUT — the approve arm must NEVER stamp")
+	}
+	if len(b.agentCalls) != 0 {
+		t.Fatalf("a cut sends NOTHING through the agent seam, got %+v", b.agentCalls)
+	}
+	if m.agentMode != agentModePlan {
+		t.Fatalf("a cut never flips the mode, got %q", m.agentMode)
+	}
+	if m.plan.SelectionActive() {
+		t.Fatal("the mark dies with the range it covered")
+	}
+	if cmd == nil {
+		t.Fatal("the cut path still returns the copy verdict cmd (OSC52 + toast tick)")
+	}
+	if out := cmd(); out != nil {
+		if _, isQuit := out.(tea.QuitMsg); isQuit {
+			t.Fatal("a cut must never carry tea.Quit")
+		}
+	}
+	if !m.plan.UserDirty() {
+		t.Fatal("cutting three runes from the pane latches userDirty")
+	}
+	t.Logf("cut precedence: approveArmAt zero, agentCalls 0, mode=%q, dirty=%t", m.agentMode, m.plan.UserDirty())
+
+	// the guard RELAXES: with the mark gone the classic double-press is
+	// byte-identical (F1's arm → fire, untouched).
+	m = approveDoublePress(t, m)
+	if len(b.agentCalls) != 1 || b.agentCalls[0].agent != agentModeBuild {
+		t.Fatalf("the classic approve path survives the selection guard: %+v", b.agentCalls)
+	}
+	if m.agentMode != agentModeBuild {
+		t.Fatalf("the classic approve flips the mode after the cut, got %q", m.agentMode)
+	}
+	t.Logf("post-cut classic approve: SendAgent(%q…) → mode=%q", b.agentCalls[0].text[:30], m.agentMode)
+}
+
+// TestPlanSelCopySkipsQuit pins the ctrl+c precedence: with a LIVE mark in
+// the focused pane ctrl+c is COPY — it NEVER emits tea.Quit, the buffer
+// keeps its bytes, the mark STAYS (esc or an unshifted key drops it), and
+// the office stays in plan mode with the pane focused. Without a mark the
+// key keeps its quit claim (the guard is invisible to the classic path —
+// pinned by every other ctrl+c test in this package).
+func TestPlanSelCopySkipsQuit(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	body := gatedPlan("Copy plan", "clipboard")
+	m = bossReply(t, m, "b1", body)
+	m = runMsg(t, m, paneClick())
+	before := m.plan.Value()
+	m = markThree(t, m)
+
+	nm, cmd := m.Update(ctrlC())
+	m = nm.(Model)
+	if cmd == nil {
+		t.Fatal("the copy path returns its verdict cmd (OSC52 + the toast tick)")
+	}
+	if out := cmd(); out != nil {
+		if _, isQuit := out.(tea.QuitMsg); isQuit {
+			t.Fatal("ctrl+c with a live mark must NEVER quit the office")
+		}
+	}
+	if m.agentMode != agentModePlan || !m.plan.Focused() {
+		t.Fatalf("a copy keeps the surface: mode=%q focused=%t", m.agentMode, m.plan.Focused())
+	}
+	if m.plan.Value() != before {
+		t.Fatalf("copy mutates nothing, got %q", m.plan.Value())
+	}
+	if !m.plan.SelectionActive() {
+		t.Fatal("copy KEEPS the mark (esc or an unshifted key drops it)")
+	}
+	if !m.approveArmAt.IsZero() {
+		t.Fatal("a copy NEVER arms the approve pair")
+	}
+	if m.copyNote != "" && !strings.HasPrefix(m.copyNote, "Copied ") {
+		t.Fatalf("the success toast rides the frozen copy, got %q", m.copyNote)
+	}
+	t.Logf("copy precedence: no quit, buffer untouched, mark kept; statusbar note %q", m.copyNote)
+}
+
+// TestPlanSelEscOwnsSelectionFirst pins the app's esc gate: with a live
+// mark esc clears the mark and KEEPS the pane focused; the next esc blurs
+// back to chat (the selection never swallows the blur outright).
+func TestPlanSelEscOwnsSelectionFirst(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = runMsg(t, m, ctrlP())
+	m = bossReply(t, m, "b1", gatedPlan("Esc plan", "gate"))
+	m = runMsg(t, m, paneClick())
+	m = markThree(t, m)
+
+	m = runMsg(t, m, escKey())
+	if m.plan.SelectionActive() {
+		t.Fatal("esc #1 must clear the mark")
+	}
+	if !m.plan.Focused() {
+		t.Fatal("esc #1 keeps the pane focused (the blur is esc #2's)")
+	}
+	m = runMsg(t, m, escKey())
+	if m.plan.Focused() {
+		t.Fatal("esc #2 blurs back to the chat input")
+	}
+	t.Log("app esc gate: mark → clear(focus kept) → blur (chat)")
+}
+
+// TestPlanPasteMsgRoutesToFocusedPane pins the paste fix: tea.PasteMsg
+// (Terminal.app's cmd+v, bracketed) lands in the FOCUSED plan pane's buffer
+// and NEVER in the chat draft; with the pane UNFOCUSED the chat claims it
+// (today's routing, one gate over).
+func TestPlanPasteMsgRoutesToFocusedPane(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m = typeText(t, m, "keepme") // a chat draft predates the flip
+	m = runMsg(t, m, ctrlP())
+	body := gatedPlan("Paste plan", "bracketed")
+	m = bossReply(t, m, "b1", body)
+	m = runMsg(t, m, paneClick())
+	if !m.plan.Focused() {
+		t.Fatal("setup: the pane must be focused")
+	}
+
+	m = runMsg(t, m, tea.PasteMsg{Content: "PASTED-MARKER"})
+	if !strings.Contains(m.plan.Value(), "PASTED-MARKER") {
+		t.Fatalf("the bracketed paste must land in the focused pane, buffer:\n%q", m.plan.Value())
+	}
+	if !m.plan.UserDirty() {
+		t.Fatal("a paste into the pane is a user edit (the latch rides)")
+	}
+	// now send the chat draft: the marker must NOT ride it (the paste
+	// never fell into the chat textarea)
+	m = runMsg(t, m, escKey()) // blur back to chat first
+	m = runMsg(t, m, enterKey())
+	if len(b.agentCalls) != 1 || b.agentCalls[0].text != "keepme" || b.agentCalls[0].agent != "plan" {
+		t.Fatalf("the chat draft must send byte-clean of the pane paste, got %+v", b.agentCalls)
+	}
+	t.Logf("paste routing: pane buffer carries PASTED-MARKER; chat send %q stays clean", b.agentCalls[0].text)
+
+	// CONTROL — pane unfocused: the chat claims the paste exactly as today
+	b2 := &agentRecBackend{}
+	m2 := New(b2, nil)
+	m2 = runMsg(t, m2, tea.WindowSizeMsg{Width: 140, Height: 40})
+	m2 = runMsg(t, m2, ctrlP())
+	m2 = bossReply(t, m2, "b1", gatedPlan("Control plan", "chatpaste"))
+	if m2.plan.Focused() {
+		t.Fatal("control setup: boss presentation is passive (chat keeps focus)")
+	}
+	m2 = runMsg(t, m2, tea.PasteMsg{Content: "CHAT-ONLY-MARKER"})
+	m2 = typeText(t, m2, "")
+	m2 = runMsg(t, m2, enterKey())
+	if len(b2.agentCalls) != 1 || !strings.Contains(b2.agentCalls[0].text, "CHAT-ONLY-MARKER") {
+		t.Fatalf("unfocused-pane control: the chat must claim the paste, got %+v", b2.agentCalls)
+	}
+	if strings.Contains(m2.plan.Value(), "CHAT-ONLY-MARKER") {
+		t.Fatal("unfocused-pane control: nothing leaks into the pane")
+	}
+	t.Logf("control: unfocused pane → chat claims the paste (%q)", b2.agentCalls[0].text)
 }
 
 // --- F3: the flip rides SEND ACCEPTANCE ---------------------------------------

@@ -28,6 +28,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/glamour/v2"
@@ -82,6 +83,11 @@ type PlanEditor struct {
 	mode      string
 	userDirty bool
 
+	// sel is the pane's ONE live selection (buffer-space endpoints —
+	// plan_editor_selection.go owns the whole contract: shift-motion
+	// marking, ctrl+a, mouse drag, cut/copy/paste, the SGR-7 highlight).
+	sel planSelState
+
 	// taTheme tracks the chrome theme the textarea styles were last applied
 	// against, so a /theme switch re-points them on the next frame without
 	// the app having to call anything (styles read live chrome vars).
@@ -106,6 +112,10 @@ func NewPlanEditor() *PlanEditor {
 	ta.Prompt = "› " // the house editing gutter (mirrors chat)
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 0
+	// ctrl+a is the pane's SELECT-ALL (plan_editor_selection.go) — the
+	// textarea's own ctrl+a faction (LineStart) is rebound to home-only at
+	// construction so the two never double-claim the key.
+	ta.KeyMap.LineStart = key.NewBinding(key.WithKeys("home"), key.WithHelp("home", "line start"))
 	applyTextareaStyles(&ta) // reads the live chrome palette
 
 	rv := viewport.New(viewport.WithWidth(1), viewport.WithHeight(1))
@@ -147,9 +157,30 @@ func (e *PlanEditor) SetUserDirty(d bool) { e.userDirty = d }
 // (plan mode). In build mode the plan is approved → keys are fully ignored;
 // unfocused the buffer must not move at all. A keystroke that actually
 // changes the buffer latches userDirty (app-side SetValue never does).
+//
+// The pane-owned key family is claimed BEFORE the textarea (selKey):
+// shift-motions + shift+home/end grow the selection, ctrl+a marks all, esc
+// drops a live mark, ctrl+v/super+v run the pane's own clipboard-read seam;
+// tea.PasteMsg and the readback (PlanPasteMsg) paste OVER a live mark. Any
+// OTHER keypress clears a live mark first and then behaves exactly as it
+// always did (classic editor collapse).
 func (e *PlanEditor) Update(msg tea.Msg) tea.Cmd {
 	if !e.focused || e.mode == planModeBuild {
 		return nil
+	}
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		if cmd, handled := e.selKey(msg); handled {
+			return cmd
+		}
+		e.sel = planSelState{} // an unshifted key collapses the mark first
+	case tea.PasteMsg:
+		return e.pasteContent(msg.Content)
+	case PlanPasteMsg:
+		if msg.Err != nil || msg.Content == "" {
+			return nil
+		}
+		return e.pasteContent(msg.Content)
 	}
 	before := e.ta.Value()
 	var cmd tea.Cmd
@@ -178,6 +209,9 @@ func (e *PlanEditor) View() string {
 		body = e.rv.View()
 	} else {
 		body = e.ta.View()
+		if e.sel.active {
+			body = e.overlaySelection(body) // SGR-7 splice (render-level only)
+		}
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, e.header(), fit(body, bh), e.footer())
 }
@@ -201,9 +235,12 @@ func (e *PlanEditor) Focus() tea.Cmd {
 }
 
 // Blur disarms editing; the next frame shows the read-only markdown render.
+// A live selection clears with the blur — an invisible editor never retains
+// a mark (pane swaps and esc-to-chat ride the same path).
 func (e *PlanEditor) Blur() {
 	e.focused = false
 	e.ta.Blur()
+	e.sel = planSelState{}
 }
 
 // Focused reports whether keystrokes reach the textarea.
@@ -274,9 +311,10 @@ func (e *PlanEditor) header() string {
 }
 
 // footer renders the one-line dim hint row for the current mode: the
-// edit-focused hint while the textarea owns keys, the click-to-edit surface
-// hint while the pane sits passive (chat keeps typing), the build lane's
-// exit pointer.
+// edit-focused hint while the textarea owns keys (swapping to the
+// cut/copy/select line ONLY while a mark is live), the click-to-edit
+// surface hint while the pane sits passive (chat keeps typing), the build
+// lane's exit pointer. Every state's copy is byte-frozen for uishot.
 func (e *PlanEditor) footer() string {
 	hint := "enter: newline · esc: done editing"
 	switch {
@@ -284,6 +322,8 @@ func (e *PlanEditor) footer() string {
 		hint = "ctrl+p back to plan"
 	case !e.focused:
 		hint = "click to edit · ctrl+x approve → build · ctrl+p exits"
+	case e.sel.active:
+		hint = "shift+arrows select · ctrl+c copy · ctrl+x cut · esc clear"
 	}
 	s := chrome.DimText.Render(hint)
 	if e.w >= 1 && lipgloss.Width(s) > e.w {
