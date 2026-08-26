@@ -35,9 +35,14 @@
 // FIRST occurrence winning.
 //
 // SHELL-OUT (the clipboard.go clipboardCopyText precedent): the runner
-// is a package-level seam — systemOpen by default (darwin `open -g`
-// found via exec.LookPath, linux/BSD `xdg-open`; NEVER `sh -c`), swapped
-// by tests and the uishot harness through SetOpenRunnerForShot.
+// is a package-level seam — defaultOpenRunner by default (the OPTIONAL
+// terminal-browser candidate leg — zenbu's kitty-painting Chromium —
+// probed FIRST, systemOpen as the unconditional fallback; darwin `open
+// -g` found via exec.LookPath, linux/BSD `xdg-open`; NEVER `sh -c`),
+// swapped by tests and the uishot harness through SetOpenRunnerForShot.
+// The swap replaces the WHOLE chain, so a stubbed-runner suite or shot
+// never probes (nor spawns) the candidate ON ANY HOST — hermetic on
+// kitty-capable dev boxes that actually carry the binary.
 package panels
 
 import (
@@ -204,9 +209,12 @@ func sanitizePath(raw string) (string, error) {
 // -------------------------------------------------------------------
 
 // openRunner — THE shell-out seam (clipboard.go's clipboardCopyText
-// precedent): systemOpen by default, swapped by tests and the uishot
-// harness, ALWAYS restored (leaks across suites break determinism).
-var openRunner = systemOpen
+// precedent): defaultOpenRunner by default (the candidate CASCADE:
+// terminal-browser when the resolver prefers it, systemOpen always the
+// unconditional next leg), swapped by tests and the uishot harness,
+// ALWAYS restored (leaks across suites break determinism). Swapping
+// replaces the WHOLE chain — a shot never touches the real candidate.
+var openRunner = defaultOpenRunner
 
 // openLookPath — the tool probe (exec.LookPath's twin): stubbed by tests
 // to prove the missing-tool verdict without depending on the host PATH.
@@ -216,6 +224,127 @@ var openLookPath = exec.LookPath
 // `xdg-open` found. Renders as the dim "could not open:" transcript row
 // (never fatal).
 var errNoOpenTool = errors.New("no open/xdg-open tool on this host")
+
+// -------------------------------------------------------------------
+// the OPTIONAL terminal-browser candidate leg (kitty-capable hosts)
+// -------------------------------------------------------------------
+
+// OpenTool — which browser lane the next open prefers: the zenbu
+// terminal-browser (https://github.com/zenbu-labs/terminal-browser — a
+// full Chromium app that paints pages via the kitty graphics protocol; a
+// distributed BINARY on PATH, never a Go dependency) when every gate
+// clears, else the system opener.
+type OpenTool int
+
+const (
+	// OpenToolSystemOpen — the classic fallback leg (open/xdg-open).
+	OpenToolSystemOpen OpenTool = iota
+	// OpenToolTerminalBrowser — the candidate leg: `terminal-browser
+	// open <target>` paints the page IN the terminal.
+	OpenToolTerminalBrowser
+)
+
+// String — the lane word for notices/tests/proofs.
+func (t OpenTool) String() string {
+	if t == OpenToolTerminalBrowser {
+		return "terminal-browser"
+	}
+	return "system-open"
+}
+
+// TerminalBrowserOffEnv — the kill-switch, read AT USE TIME with no
+// config schema field (the THEBORINGOFFICE_MUTE house style: an optional
+// lane's off-gate does not mint brain.json migration surface for the 99%
+// who never flip it — sound/player.go reads its env the same way). The
+// lane is new post-rename, so there is NO pre-rename GRAFEIO_ twin.
+const TerminalBrowserOffEnv = "THEBORINGOFFICE_NO_TERMINAL_BROWSER"
+
+// ResolveOpenTool — the next open's preferred lane, resolved FRESH per
+// call: fresh env + PATH probe at use time, so the kill-switch and an
+// install/uninstall land immediately (an `o` press is human-frequency;
+// the probe is PATH stats).
+func ResolveOpenTool() OpenTool { return ResolveOpenToolFrom(os.Getenv, openLookPath) }
+
+// ResolveOpenToolFrom — the pure core (DetectImageSupportFrom's shape:
+// env + probe injected, the matrix a shell-out-free table). ALL of:
+//
+//  1. THEBORINGOFFICE_NO_TERMINAL_BROWSER != "1" — the kill-switch
+//     consults the env FIRST: a switched-off lane is never even probed;
+//  2. a kitty-capable host: TERM_PROGRAM ghostty|kitty|wezterm or
+//     kitty's own KITTY_WINDOW_ID (image_detect.go's KittyLane classes),
+//     tmux always a miss (passthrough never guaranteed — the same
+//     conservative fold), iTerm2/Apple Terminal/VSCode a dead-end;
+//  3. the probe finds a `terminal-browser` binary.
+//
+// → OpenToolTerminalBrowser; every miss → OpenToolSystemOpen.
+func ResolveOpenToolFrom(env func(string) string, lookPath func(string) (string, error)) OpenTool {
+	if strings.TrimSpace(env(TerminalBrowserOffEnv)) == "1" {
+		return OpenToolSystemOpen
+	}
+	if !terminalBrowserHostOK(env) {
+		return OpenToolSystemOpen
+	}
+	if _, err := lookPath("terminal-browser"); err != nil {
+		return OpenToolSystemOpen
+	}
+	return OpenToolTerminalBrowser
+}
+
+// terminalBrowserHostOK — the kitty-capable host gate: tmux folds to a
+// miss FIRST (escapes would have to pass through), kitty's own window
+// marker beats TERM_PROGRAM, and only ghostty/kitty/wezterm name
+// themselves kitty-graphics speakers — everything else (iTerm2, Apple
+// Terminal, VSCode, unknowns) is a dead-end for this lane.
+func terminalBrowserHostOK(env func(string) string) bool {
+	get := func(k string) string { return strings.TrimSpace(env(k)) }
+	if get("TMUX") != "" {
+		return false
+	}
+	if get("KITTY_WINDOW_ID") != "" {
+		return true
+	}
+	switch strings.ToLower(get("TERM_PROGRAM")) {
+	case "ghostty", "kitty", "wezterm":
+		return true
+	}
+	return false
+}
+
+// terminalBrowserOpen — the candidate leg's exec: `terminal-browser open
+// <target>` (NO --split: the binary's own placement defaults; the office
+// never hijacks the member's pane layout semantics). A FILE target runs
+// with cmd.Dir = its parent dir (the office's cwd never leaks into the
+// page's relative fetches); a URL leaves Dir empty (inherits). Env and
+// stdio pass STRAIGHT THROUGH — the page paints on THIS terminal's kitty
+// lane; a discarded stdio would blind it.
+func terminalBrowserOpen(t LinkTarget) error {
+	cmd := exec.Command("terminal-browser", "open", t.Value)
+	if t.Kind == LinkFile {
+		cmd.Dir = filepath.Dir(t.Value)
+	}
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("terminal-browser: %w", err)
+	}
+	return nil
+}
+
+// defaultOpenRunner — the default shell-out chain: the terminal-browser
+// candidate leg FIRST (kitty-capable host + on PATH + no kill-switch —
+// the whole decision is ResolveOpenTool's), then the system opener as
+// the unconditional fallback: a candidate exec FAILURE (non-zero exit)
+// cascades the SAME target to systemOpen immediately, exactly once —
+// never fatal, never a retry, never a shutdown thread — and a double
+// failure surfaces the system opener's own verdict (errNoOpenTool
+// included). systemOpen itself stays byte-identical.
+func defaultOpenRunner(t LinkTarget) error {
+	if ResolveOpenTool() == OpenToolTerminalBrowser {
+		if err := terminalBrowserOpen(t); err == nil {
+			return nil
+		}
+	}
+	return systemOpen(t)
+}
 
 // SetOpenRunnerForShot swaps the shell-out seam for a shot/test harness
 // and returns the restore closure. The house's ForShot pattern (the wedge
@@ -231,9 +360,12 @@ func SetOpenRunnerForShot(fn func(LinkTarget) error) (restore func()) {
 func OpenInBrowser(t LinkTarget) error { return openInBrowser(t) }
 
 // openInBrowser fires ONE verified target at the OS default browser /
-// handler. A file target re-stats RIGHT BEFORE the exec (the extraction
-// gate ran at render/pick time; files move — never launch an unverified
-// path). The exec itself rides the seam, so tests capture and shots stub.
+// handler — on kitty-capable hosts, at the in-terminal terminal-browser
+// first, via the default runner's cascade (defaultOpenRunner: candidate
+// leg → systemOpen fallback, one shot each, never fatal). A file target
+// re-stats RIGHT BEFORE the exec (the extraction gate ran at render/pick
+// time; files move — never launch an unverified path). The exec itself
+// rides the seam, so tests capture and shots stub the WHOLE chain.
 func openInBrowser(t LinkTarget) error {
 	if strings.TrimSpace(t.Value) == "" {
 		return errors.New("empty target")
