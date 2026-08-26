@@ -318,6 +318,12 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	if b.am.kind == "actions" {
 		board = "agentmemory (" + b.am.winner + ")"
 	}
+	// Backend-name hint FIRST (the topbar/reducer latch reads this marker —
+	// same contract as claude.go's boot): it must precede the capability
+	// lines below so a later status can own the line without losing the
+	// name, and the /backend swap grammar can re-latch on the very next
+	// "… → <name>" line.
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: opencode"})
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live - " + u + " | board: " + board})
 
 	// The memory lane's probe verdict, surfaced — never the silent degrade
@@ -736,8 +742,10 @@ func (b *liveBackend) Stop() error {
 
 	// Drain in-flight ledger savers BEFORE tearing down: a memory write
 	// mid-flight stops being "best-effort" if Stop silently abandons it —
-	// and tests' TempDir cleanups must never race a live append.
-	b.drainLedger(3 * time.Second)
+	// and tests' TempDir cleanups must never race a live append. Hard-capped
+	// (stopDrainTimeout): the quit path's whole Stop budget is ~3s and a
+	// wedged drain is never allowed to eat it.
+	b.drainLedger(stopDrainTimeout)
 
 	b.mu.Lock()
 	cancel := b.sseCancel
@@ -756,10 +764,35 @@ func (b *liveBackend) Stop() error {
 	}
 	if proc != nil && proc.Process != nil {
 		_ = proc.Process.Kill()
-		_ = proc.Wait() // reap
+		// BOUNDED reap: never wait on the child beyond stopKillGrace. The
+		// spawn-era reaper goroutine (spawnServe's exitCh) usually owns
+		// cmd.Wait already (our Wait then errors out instantly); when it
+		// doesn't, a child wedged in uninterruptible sleep (dead FS,
+		// D-state) reaps NEVER — Stop must not commute with it. The grace
+		// expiring leaves one goroutine parked in Wait at worst; the
+		// killing process exit reaps everything.
+		reaped := make(chan struct{})
+		go func() { _ = proc.Wait(); close(reaped) }()
+		select {
+		case <-reaped:
+		case <-time.After(stopKillGrace):
+		}
 	}
 	return nil
 }
+
+// The Stop budget, split in two so the teardown path (cmd/theboringoffice's
+// stopBounded wraps the whole thing once more) always lands ~≤3s worst
+// case even against a wedged network/serve. Vars, not consts: deadline
+// tests shrink them (sseBackoffSteps idiom).
+var (
+	// stopDrainTimeout caps the in-flight ledger drain during Stop —
+	// savers are already 2s-bounded transport + a local write; the drain
+	// may not wait the full window.
+	stopDrainTimeout = 1500 * time.Millisecond
+	// stopKillGrace caps SIGKILL → reap for the spawned serve child.
+	stopKillGrace = 1 * time.Second
+)
 
 // ---------------------------------------------------------------- spawn
 
@@ -1251,8 +1284,9 @@ func (b *liveBackend) saveLedgerLanes(e LedgerEntry) {
 }
 
 // drainLedger waits out in-flight ledger savers with a hard cap: every
-// saver is already 2s-bounded transport + a local file write, so a 3s
-// window drains them without letting a pathological hang stall Stop.
+// saver is already 2s-bounded transport + a local file write, so the
+// caller's window (Stop passes stopDrainTimeout) drains them without
+// letting a pathological hang stall the teardown.
 func (b *liveBackend) drainLedger(timeout time.Duration) {
 	done := make(chan struct{})
 	go func() { b.ledgerWG.Wait(); close(done) }()
@@ -1820,12 +1854,22 @@ func (b *liveBackend) AbortSessions() error {
 // completion only — the latch is single-shot in maybeBossCompleted).
 const abortQuietMs = 15000
 
+// abortCallTimeout bounds ONE abort POST (the live /stop hop). The
+// control-plane client's own 15s Timeout is the outer wall; this tighter
+// per-call ctx keeps a black-holed serve (socket accepted, reply never
+// sent) from parking the async round trip. A var, not a const: deadline
+// tests shrink it (sseBackoffSteps idiom). The APP never blocks on this
+// either way — /stop's abort rides a tea.Cmd and lands as a message.
+var abortCallTimeout = 5 * time.Second
+
 // abortSession cancels one session's in-flight turn: POST
 // /session/{sessionID}/abort (opencode serve /doc, operationId
 // session.abort, -> 200 "Aborted session"). Errors surface to the caller
 // so the batch can note them per-id without sinking the whole round.
 func (b *liveBackend) abortSession(sessionID string) error {
-	return b.doJSON(http.MethodPost, "/session/"+sessionID+"/abort", nil, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), abortCallTimeout)
+	defer cancel()
+	return b.doJSONCtx(ctx, http.MethodPost, "/session/"+sessionID+"/abort", nil, nil)
 }
 
 // ---------------------------------------------------------------- diffs
