@@ -26,8 +26,7 @@ func TestClaudeAbortInterruptThenSignalLadder(t *testing.T) {
 	siglog := filepath.Join(t.TempDir(), "sig.log")
 	// the stub holds its turn forever, logs the interrupt request off its
 	// stdin, traps SIGINT to the signal log, and dies on the SIGTERM tail.
-	stubBody := `printf '%s\n' '` + claudeStubInitLine[:len(claudeStubInitLine)-1] + `'` + `
-trap 'echo INT >> "` + siglog + `"' INT
+	stubBody := claudeStubPreambleSh() + `trap 'echo INT >> "` + siglog + `"' INT
 trap 'echo TERM >> "` + siglog + `"; exit 143' TERM
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
@@ -97,8 +96,7 @@ done
 }
 
 func TestClaudeAbortNothingRunning(t *testing.T) {
-	stub := claudeStubScript(t, `printf '%s\n' '`+claudeStubInitLine[:len(claudeStubInitLine)-1]+`'`+`
-while IFS= read -r line; do :; done
+	stub := claudeStubScript(t, claudeStubPreambleSh()+`while IFS= read -r line; do :; done
 `)
 	log := &claudeEventLog{}
 	b := newClaudeBackend(stub, t.TempDir(), nil)

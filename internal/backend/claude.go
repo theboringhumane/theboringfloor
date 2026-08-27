@@ -9,6 +9,10 @@
 // FIRST system/init (never from a user Send) and becomes the ONE resume
 // pin: a dead process is never auto-respawned, but the NEXT user Send
 // respawns with `--resume <pinned uuid>` (mid-turn kill recovery).
+// `claude -p` emits system/init only AFTER the first stdin user message
+// (startup hook frames lead, init lands at line 5+ of the stream), so
+// Start NEVER waits on it: the floor seats immediately and init pins
+// primaryID/resumeID whenever it arrives (readLoop).
 //
 // Chat path (opencode parity): Send echoes EvChatUser locally (send-owned,
 // never from the wire), stages ONE pending boss placeholder and writes
@@ -43,6 +47,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -53,21 +58,25 @@ type liveClaudeBackend struct {
 	bin       string
 	fl        *flow
 
-	mu           sync.Mutex
-	proc         *exec.Cmd
-	procStdin    io.WriteCloser
-	procExit     <-chan error
-	procWait     chan struct{} // closed when the current proc's watch drains
-	initDone     bool
-	stopping     bool // Stop() engaged: the watch stays silent
-	died         bool // the watch latched a death; next Send respawns
-	resumeID     string
-	primaryID    string
-	busyTurns    int // outstanding turns (user writes without a result)
-	chatSeq      int
-	pendingBoss  []string
-	interruptSeq int
-	interruptArm bool // an interrupt is already in flight for the live turn(s)
+	mu        sync.Mutex
+	proc      *exec.Cmd
+	procStdin io.WriteCloser
+	procExit  <-chan error
+	procWait  chan struct{} // closed when the current proc's watch drains
+	initDone  bool          // informational: system/init has landed (set by readLoop, never by Start)
+	stopping  bool          // Stop() engaged: the watch stays silent
+	died      bool          // the watch latched a death; next Send respawns
+	resumeID  string
+	primaryID string
+	// primaryOverride — the office-session restore pin (internal/app
+	// PrimaryOverride seam). Set pre-Start, it WINS over the wire's own
+	// init session_id; "" means no pin (init's id pins on arrival).
+	primaryOverride string
+	busyTurns       int // outstanding turns (user writes without a result)
+	chatSeq         int
+	pendingBoss     []string
+	interruptSeq    int
+	interruptArm    bool // an interrupt is already in flight for the live turn(s)
 
 	writeMu sync.Mutex // single-writer stdin guard
 
@@ -118,11 +127,21 @@ func (b *liveClaudeBackend) PrimaryID() string {
 // SessionID is PrimaryID by another name (harness probes key on it).
 func (b *liveClaudeBackend) SessionID() string { return b.PrimaryID() }
 
-// ---------------------------------------------------------------- start
+// PrimaryOverride pins the boss-session id the office restored from
+// session.json (the additive primarySeamBackend seam, called BEFORE
+// Start). The pin reports immediately via PrimaryID and WINS over the
+// init frame's own session_id when init eventually lands; an empty id
+// leaves the wire pin in charge ("" = no override).
+func (b *liveClaudeBackend) PrimaryOverride(id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.primaryOverride = id
+	if id != "" {
+		b.primaryID = id
+	}
+}
 
-// claudeStartTimeout bounds the wait for the process's first system/init.
-// A var so deadline tests can shrink it (sseBackoffSteps idiom).
-var claudeStartTimeout = 10 * time.Second
+// ---------------------------------------------------------------- start
 
 // claudeAbortSigIntAfter / claudeAbortSigTermAfter — the kill ladder
 // behind /stop's interrupt control_request: escalate to SIGINT, then
@@ -149,11 +168,14 @@ func claudeBin() (string, error) {
 	return p, nil
 }
 
-// claudeConfigDir is the office-owned CLAUDE_CONFIG_DIR: the harness pin
-// (THEBORINGOFFICE_CLAUDE_CONFIG) wins outright; otherwise
-// <home>/.theboringoffice/claude/<project-hash> — project-keyed, so every
-// office keeps its own claude profile sandbox. Settings are NEVER passed
-// via --settings (the office owns no settings.json).
+// claudeConfigDir resolves the child's CLAUDE_CONFIG_DIR: the harness pin
+// (THEBORINGOFFICE_CLAUDE_CONFIG) wins outright — an explicit sandbox
+// opt-in for tests and isolation-minded members; otherwise the user's REAL
+// ~/.claude, so an existing `claude` login (auth, settings, MCP roster)
+// carries straight into office sessions (a fresh sandbox makes `claude -p`
+// exit silently without one). Settings are NEVER passed via --settings
+// (the office owns no settings.json). directory is retained for seam
+// stability — the user's claude config is global, not per-project.
 func claudeConfigDir(directory string) string {
 	if p := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_CLAUDE_CONFIG")); p != "" {
 		return p
@@ -162,29 +184,7 @@ func claudeConfigDir(directory string) string {
 	if home == "" {
 		home = os.Getenv("HOME")
 	}
-	return filepath.Join(home, ".theboringoffice", "claude", claudeDirKey(directory))
-}
-
-// claudeDirKey is the stable per-project key (FNV-1a of the cleaned path,
-// base36 — short, collision-tolerant, and stable across boots).
-func claudeDirKey(directory string) string {
-	const digits = "0123456789abcdefghijklmnopqrstuvwxyz"
-	h := uint64(14695981039346656037)
-	for i := 0; i < len(directory); i++ {
-		h ^= uint64(directory[i])
-		h *= 1099511628211
-	}
-	if h == 0 {
-		return "root"
-	}
-	var out [16]byte
-	i := len(out)
-	for h > 0 {
-		i--
-		out[i] = digits[h%36]
-		h /= 36
-	}
-	return string(out[i:])
+	return filepath.Join(home, ".claude")
 }
 
 // claudeChildEnv builds the child's environment EXPLICITLY (an allowlist):
@@ -192,7 +192,9 @@ func claudeDirKey(directory string) string {
 // applied overrides — the office controls the whole process env instead.
 // ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN pass through when present
 // (never into argv). THEBORINGOFFICE_CLAUDE_* harness vars pass through so
-// the uishot/test stubs can be scripted.
+// the uishot/test stubs can be scripted. When the office's auto-commit
+// flag is on, the four majdoor GIT_* vars are appended so the agent's own
+// `git commit`s are authored by the majdoor.
 func claudeChildEnv(directory string) []string {
 	allow := []string{
 		"HOME", "PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "USER", "SHELL",
@@ -211,8 +213,12 @@ func claudeChildEnv(directory string) []string {
 			env = append(env, kv)
 		}
 	}
-	env = append(env, "CLAUDE_CONFIG_DIR="+claudeConfigDir(directory))
-	_ = os.MkdirAll(claudeConfigDir(directory), 0o755) // profile sandbox must exist
+	configDir := claudeConfigDir(directory)
+	env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
+	env = gitx.WithMajdoorAuthorEnv(env) // majdoor-authored commits when the office flag is on; no-op otherwise
+	// Best-effort ONLY: the dir usually exists already (~/.claude) and an
+	// unreadable/un creatable path must never fail the spawn.
+	_ = os.MkdirAll(configDir, 0o755)
 	return env
 }
 
@@ -281,8 +287,15 @@ func (c *cappedErrBuf) String() string {
 	return c.buf.String()
 }
 
-// Start spawns the claude process and resolves on the FIRST system/init
-// (boss-session pin), a process exit (error), or claudeStartTimeout.
+// Start spawns the claude process and seats the floor IMMEDIATELY — there
+// is NO system/init wait: `claude -p` only emits init after the first
+// stdin user message, so blocking on it parks every boot on a frame the
+// protocol sends mid-conversation (and an init that never comes — e.g. a
+// fresh sandbox config — must never fail the boot). Start returns nil the
+// moment the child is wired: readLoop pins primaryID/resumeID whenever
+// init actually arrives, and the death watch (never initDone) reports a
+// child that exits early. A pre-Start PrimaryOverride pin wins over the
+// wire id (see the seam).
 func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	b.fl.setEmit(emit)
 	bin := b.bin
@@ -297,7 +310,7 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	b.bin = bin
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "")
+	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "")
 	if err != nil {
 		return err
 	}
@@ -305,77 +318,48 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	b.proc, b.procStdin, b.procExit = proc, stdin, exitCh
 	wait := make(chan struct{})
 	b.procWait = wait
+	primaryID := b.primaryID // a pre-Start override pin; "" until init lands
+	bin2 := b.bin
 	b.mu.Unlock()
 
-	// The reader owns stdout from here; initCh hands the FIRST system/init
-	// to this Start (processed or not, the resolver decides synchronously).
-	initCh := make(chan claudeEvent, 1)
-	go b.readLoop(stdout, initCh)
+	// Fixed seats FIRST (opencode parity): the boss and Mnemosyne (hr) are
+	// always on the floor. The manager's ID is the pinned session id — ""
+	// pre-init is fine: every roster lookup keys on the manager ROLE, and
+	// the id stays metadata-only once init pins it.
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: primaryID, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
+	}})
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "hr", Name: "hr", Role: state.RoleHR, Seat: "hr", Sprite: state.SpriteAtDesk,
+	}})
+	// Backend-name hint FIRST (the topbar/reducer latch reads this marker
+	// "[theboringoffice] backend: <name>" — same contract as opencode.go's
+	// boot and the /backend swap line): it precedes the capability line so
+	// every later status can own the line without losing the name. Both
+	// land BEFORE the reader starts, so the boot event order is
+	// deterministic (hires, hints, then whatever the wire delivers).
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: claudecode"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live (claude) — " + bin2 + " | board: in-memory"})
 
-	select {
-	case ev := <-initCh:
-		// system/init landed: the mapper already pinned primaryID/model/mcp
-		// (readLoop maps in order). Seat the floor, THEN take the death
-		// watch (the watch must never race this resolution on exitCh).
-		b.mu.Lock()
-		b.initDone = true
-		primaryID := b.primaryID
-		b.mu.Unlock()
-		b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
-			ID: primaryID, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
-		}})
-		b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
-			ID: "hr", Name: "hr", Role: state.RoleHR, Seat: "hr", Sprite: state.SpriteAtDesk,
-		}})
-		go b.watchProc(proc, exitCh, wait)
-		b.mu.Lock()
-		bin2 := b.bin
-		b.mu.Unlock()
-		// Backend-name hint FIRST (the topbar/reducer latch reads this
-		// marker "[theboringoffice] backend: <name>" — same contract as
-		// opencode.go's boot and the /backend swap line): it precedes the
-		// capability line below so every later status can own the line
-		// without losing the name.
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: claudecode"})
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live (claude) — " + bin2 + " | board: in-memory"})
-		_ = ev
-		return nil
-	case err := <-exitCh:
-		b.failSpawn(proc, wait)
-		return fmt.Errorf("claude -p exited before init: %v: %s", err, trimTo(errBuf.String(), 200))
-	case <-time.After(claudeStartTimeout):
-		b.failSpawn(proc, wait)
-		return errors.New("claude -p: no system/init within " + claudeStartTimeout.String())
-	}
-}
-
-// failSpawn tears down a Start that never resolved (exit-before-init /
-// init timeout): the child is killed best-effort, the wait channel is
-// closed (watchProc was never armed on it, so its closure is ours to own
-// — a Stop() after a failed Start must never park the claudeStopDrain on
-// a channel nobody drains), and the backend's live refs are released.
-func (b *liveClaudeBackend) failSpawn(proc *exec.Cmd, wait chan struct{}) {
-	if proc != nil && proc.Process != nil {
-		_ = proc.Process.Kill()
-	}
-	b.mu.Lock()
-	if b.proc == proc {
-		b.proc = nil
-		b.procStdin = nil
-	}
-	b.mu.Unlock()
-	close(wait)
+	// The reader owns stdout from here; system/init pins the boss session
+	// WHENEVER it arrives (typically after the first Send) — Start never
+	// waits on it. The death watch parks on the child exit channel only.
+	go b.readLoop(stdout)
+	go b.watchProc(proc, exitCh, wait)
+	return nil
 }
 
 // ---------------------------------------------------------------- stdout reader
 
-// readLoop scans stdout JSONL with a 1MB frame cap, hands the first
-// system/init to initCh, maps every frame via claude_events.go and emits.
+// readLoop scans stdout JSONL with a 1MB frame cap, maps every frame via
+// claude_events.go and emits. The FIRST system/init pins resumeID +
+// primaryID and latches initDone (the respawn gate) WHENEVER it arrives —
+// claude -p emits init only after the first stdin user line, so nothing
+// upstream may block on it. A PrimaryOverride pin wins over the wire id.
 // Unknown frames never log-spam; a malformed line earns ONE dim status.
-func (b *liveClaudeBackend) readLoop(stdout io.Reader, initCh chan<- claudeEvent) {
+func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	initSent := false
 	for sc.Scan() {
 		if b.fl.isStopped() {
 			return
@@ -391,9 +375,15 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader, initCh chan<- claudeEvent
 			continue
 		}
 		b.mu.Lock()
-		if raw.Type == "system" && raw.Subtype == "init" && b.resumeID == "" {
-			b.resumeID = raw.SessionID
-			b.primaryID = raw.SessionID
+		if raw.Type == "system" && raw.Subtype == "init" {
+			b.initDone = true
+			if b.resumeID == "" {
+				b.resumeID = raw.SessionID
+				b.primaryID = raw.SessionID
+			}
+			if b.primaryOverride != "" {
+				b.primaryID = b.primaryOverride // the pre-init restore pin wins over the wire id
+			}
 		}
 		evs := mapClaudeEvent(raw, b.ctx, nowMs())
 		// Turn bookkeeping: every main-conversation user write expects a
@@ -410,13 +400,6 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader, initCh chan<- claudeEvent
 			}
 		}
 		b.mu.Unlock()
-		if raw.Type == "system" && raw.Subtype == "init" && !initSent {
-			initSent = true
-			select {
-			case initCh <- raw:
-			default:
-			}
-		}
 		for _, e := range evs {
 			b.emitMapped(e)
 		}
@@ -584,8 +567,15 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 			"[claude] process terminated by signal (exit %d) — clean kill; your next send respawns the session", es)})
 		return
 	}
+	if resume := b.resumeIDOrEmpty(); resume != "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+			"[theboringoffice] claude process died (exited: %v) — your next send respawns it with --resume %s", err, shortTitle(resume, 24))})
+		return
+	}
+	// No init pin yet (init arrives after the first Send) — there is no
+	// session to resume; the death is reported plainly instead.
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] claude process died (exited: %v) — your next send respawns it with --resume %s", err, shortTitle(b.resumeIDOrEmpty(), 24))})
+		"[theboringoffice] claude process died before system/init (exited: %v) — check `claude auth status` (CLAUDE_CONFIG_DIR defaults to ~/.claude so your login carries over)", err)})
 }
 
 func (b *liveClaudeBackend) resumeIDOrEmpty() string {
@@ -628,7 +618,7 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	b.procWait = wait
 	b.mu.Unlock()
 	go b.watchProc(proc, exitCh, wait)
-	go b.readLoop(stdout, make(chan claudeEvent, 1)) // second init lands as a mapped note
+	go b.readLoop(stdout) // the resume's own init lands as a mapped note
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[claude] respawned with --resume %s", shortTitle(resume, 24))})
 	return nil

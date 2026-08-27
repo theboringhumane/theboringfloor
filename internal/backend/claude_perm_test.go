@@ -17,8 +17,7 @@ import (
 // stdin bytes.
 func TestClaudeControlRequestRoundTrip(t *testing.T) {
 	capture := tempCaptureLog(t)
-	stubBody := `printf '%s\n' '` + claudeStubInitLine[:len(claudeStubInitLine)-1] + `'` + `
-while IFS= read -r line; do
+	stubBody := claudeStubPreambleSh() + `while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
   case "$line" in
     *'"type":"user"'*)

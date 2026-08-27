@@ -21,7 +21,7 @@ func TestClaudeResumePinAfterMidTurnKill(t *testing.T) {
 	// one Roger turn so a respawned send STILL completes (the placeholder
 	// drain behavior under a resume).
 	stubBody := `printf '%s\n' "$*" >> ` + argvlog + `
-printf '%s\n' '{"type":"system","subtype":"init","cwd":"/tmp","session_id":"sess-uuid-42","model":"claude-test-1","mcp_servers":[],"claude_code_version":"2.1.246","uuid":"00000000-0000-4000-8000-000000000042"}'
+` + claudeStubSh(claudeStubHookLines) + `printf '%s\n' '{"type":"system","subtype":"init","cwd":"/tmp","session_id":"sess-uuid-42","model":"claude-test-1","mcp_servers":[],"claude_code_version":"2.1.246","uuid":"00000000-0000-4000-8000-000000000042"}'
 n=0
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
@@ -42,9 +42,10 @@ done
 	}
 	defer func() { _ = b.Stop() }()
 
-	if got := b.PrimaryID(); got != "sess-uuid-42" {
-		t.Fatalf("init pin drifted: %q", got)
-	}
+	// init pins WHENEVER the reader maps it (Start never waits on init).
+	claudeWait(t, "the init pin", 3*time.Second, func() bool {
+		return b.PrimaryID() == "sess-uuid-42"
+	})
 
 	// a mid-turn kill: send, then murder the child before any reply
 	// (the stub's scripted reply is fast — kill right after the write

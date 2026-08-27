@@ -36,8 +36,7 @@ func claudeCapture(t *testing.T, path string) []string {
 // {"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello there"}]},"parent_tool_use_id":null}
 func TestClaudeSendWritesExactlyOnce(t *testing.T) {
 	capture := filepath.Join(t.TempDir(), "capture.log")
-	stubBody := `printf '%s\n' '` + claudeStubInitLine[:len(claudeStubInitLine)-1] + `'` + `
-while IFS= read -r line; do
+	stubBody := claudeStubPreambleSh() + `while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
 done
 `
@@ -85,8 +84,7 @@ func TestClaudeSendMidTurnQueuedNoBlocking(t *testing.T) {
 	capture := filepath.Join(t.TempDir(), "capture.log")
 	// the stub replies to the FIRST input only after a hold, so turn 2's
 	// write has to land BEFORE any frame proves the turn ended.
-	stubBody := `printf '%s\n' '` + claudeStubInitLine[:len(claudeStubInitLine)-1] + `'` + `
-first=1
+	stubBody := claudeStubPreambleSh() + `first=1
 while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
   case "$first" in
