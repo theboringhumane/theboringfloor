@@ -7,6 +7,41 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-27 · Dev G: real claude CLI integration (@develope... — tekton-4 (developer) · `issues`
+- summary: Everything is green and evidence-complete. Assembling the final return.
+- files: `internal/backend/claude_live_test.go`, `internal/backend/claude.go`
+- verify: My diff cannot reach that path: the seam is one nil-guarded hook call per parsed stdout frame; the abort stubs never set it.
+- proof: *Test 1 — one bubble per message.id, live:** the real wire produced ONE assistant message (`msg_bdrk_01VYNbLS7HFdMQdjnwLFGmNe`) across TWO a
+- ledgerId: led-1787848497729-bcf8d3de
+
+### 2026-08-27 · Dev E: wire zenbu lane live (@developer subag... — tekton-2 (developer) · `issues`
+- summary: All gates green. Assembling the final return.
+- files: `internal/panels/browser.go`, `internal/app/browser.go`, `internal/panels/browser_panel_lane_test.go`, `internal/app/browser_lane_test.go`, `internal/panels/browser_nav_test.go`, `internal/app/browser_test.go`, `internal/app/browser_open_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched (foreign in-flight work, ledger led-1787844677003 / led-1787846237568): `install.sh`, `i
+- verify: $ `go run ./cmd/uishot --browsertab` → `exit=0` (byte-identical two drives, text lane unchanged)
+- proof: *Leg C — `/open` through the REAL app: the zenbu lane live in the LEFT slot** (ANSI-stripped, `go run ./cmd/uishot --browser --lane live`):
+- ledgerId: led-1787847438500-935cead5
+
+### 2026-08-27 · Dev D: claude bubble/perm/think fixes (@devel... — tekton-1 (developer) · `issues`
+- summary: All gates green — 18/18 packages ok. Assembling the final return.
+- files: `internal/backend/claude_regression_test.go`, `internal/backend/claude.go`, `internal/backend/claude_events.go`
+- verify: (all 18 packages `ok` in the clean sweep, including `internal/backend 31.974s` and `internal/panels 4.418s`. The two Requirement-6 flakes —
+- proof: ### Bug 1 — the two IDs and the single-bubble assertion
+- ledgerId: led-1787846237568-0edae27f
+
+### 2026-08-27 · Dev F: fix installer npm 404 (@developer suba... — tekton-3 (developer) · `issues`
+- summary: **Renamed the npm package to the real scoped name** `@agentmemory/agentmemory` in both mandated spots: the auto-install command inside `setup_agentmemory` and t
+- files: `install.sh`
+- verify: The run really executed end-to-end (downloaded v0.2.23, installed the binary into the scratch prefix, seeded scratch brain.json) — and still
+- proof: *Before → after, auto-install (setup_agentmemory):**
+- ledgerId: led-1787844677003-48d81f07
+
+### 2026-08-27 · Commit, tag v0.2.23, push release (@developer... — tekton-14 (developer) · `issues`
+- summary: Full suite green before any commit: `go test ./...` all packages `ok`, `go build ./...` exit 0, gofmt clean on every pending file.
+- files: n/a (no content edits
+- verify: ```
+- proof: $ `git log --oneline -6`
+- ledgerId: led-1787840610933-b0e063ec
+
 ### 2026-08-27 · Render all dialog kinds (@developer subagent) — tekton-13 (developer) · `issues`
 - summary: **`supportedDialogKinds` declaration wired, evidence-backed**: the office now writes an `initialize` control_request as the FIRST stdin line of every claude pro
 - files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_dialog_test.go`, `internal/backend/claude_dialog_kinds_test.go`, `internal/backend/claude_send_test.go`, `README.md`
@@ -321,39 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *The `/backend` config after a swap** — `TestBackendSwapForceEscThenSwaps` drives `/backend claudecode` and then reads the persisted brain.j
 - ledgerId: led-1787755083800-341ecbc9
-
-### 2026-08-26 · Reformat return per contract (@general subagent) — tekton-11 (developer) · `issues`
-- summary: Wrote the Claude Code support announcement post, `website/content/blog/claude-code-support.md` — title "The office doesn't care which brain the boss has", dated
-- files: | path | why |, |---|---|, | `website/content/blog/claude-code-support.md` | The announcement post |
-- verify: ```
-- proof: *Blog index (`/blog`)** — new card appears in the filter list under Release / Updates, dated Aug 26, 2026; featured grid untouched:
-- ledgerId: led-1787754277263-74b45559
-
-### 2026-08-26 · Dev: claude code blog post (@general subagent) — tekton-10 (developer) · `issues`
-- summary: All verified. Final return per the contract:
-- files: | path | why |, |---|---|, | `website/content/blog/claude-code-support.md` | The announcement post
-- verify: ```
-- proof: ````markdown
-- ledgerId: led-1787754202911-40e8c557
-
-### 2026-08-26 · Dev: site copy for claudecode (@general subag... — tekton-9 (developer) · `issues`
-- summary: All checks pass. The remaining "(Coming Soon)" tags (Codex, Cursor, Pi) are correctly still pending — only Claude Code graduated. Return per the contract:
-- files: | path | why |, |---|---|, | `website/app/layout.tsx` | Meta description + OG/Twitter description: "opencode TUI" → "opencode o, | `website/app/get-started/page.tsx` | HOW-to: flag in run card, brain.json pin, `/backend` swap, pe, | `website/app/docs/page.tsx` | Quickstart item: "Connecting opencode" → "Choosing a transport, | `website/app/vision/page.tsx` | Killed stale "Claude Code support is coming", | `website/components/home/hero.tsx` | Hero subcopy: "your opencode boss" → "your opencode or Claude, | `website/components/home/under-the-hood.tsx` | Card 02: event stream now transport-accurate, | `website/components/home/context-model.tsx` | "Any Model, Any Backend" body: removed "coming soon", | `website/components/home/product-platform.tsx` | "real opencode session" → "real agent session, | `website/components/home/why-composio.tsx` | Floor tab: sprite events / walk-cycle points now tran, | `website/components/site-header.tsx` | Products menu: "any opencode agent" → "any opencode or Clau
-- verify: Exported-HTML spot check: `out/get-started/index.html` → `backend claudecode: FOUND`, `brain.json: FOUND`, `/backend: FOUND`; `out/index.htm
-- proof: *Hero (homepage `components/home/hero.tsx`):**
-- ledgerId: led-1787754149948-1d276152
-
-### 2026-08-26 · Scout: claude code interface map (@explore su... — skopos-7 (scout) · `issues`
-- summary: Recon complete. Zero files modified — read-only survey (54 reads/greps across `website/`, plus README/install.sh/backend cross-checks for the accuracy claims). 
-- files: None touched. Key files read, `website/app/{layout,page,sitemap,robots,get-started/page,docs/page,vision/page,blog/page,blog/layou
-- verify: Commands run (all read-only): `rg -n -i 'opencode|claude|claudecode|anthropic' website` (excl. node_modules/out) → 60+ hits catalogued; `rg
-- proof: ## (a) File → line → current copy → verdict
-- ledgerId: led-1787754085119-b1a1ae34
-
-### 2026-08-26 · Reformat return per contract (@general subagent) — tekton-8 (developer) · `issues`
-- summary: Proof regenerated end-to-end on the live tree. Here is my return, re-emitted under the exact required headers.
-- files: | path | why |, |---|---|, | `internal/app/model.go` | `stopAbortResultMsg` type + Update case; `stopWork()` returns the async , | `internal/backend/opencode.go` | `abortCallTimeout` + ctx-bounded `abortSession`; `stopDrainTimeou, | `cmd/theboringoffice/main.go` | use `p.Run()`'s final model for all teardown/ExecRequest/PrimarySe, | `internal/app/stop_async_test.go`, | `internal/backend/abort_timeout_test.go`, | `cmd/theboringoffice/main_test.go`, NOT touched
-- verify: ```
-- proof: Simulated frames from the PTY run (ANSI-stripped, marker lines) — the member-visible result with the abort POST **parked forever** server-si
-- ledgerId: led-1787753663410-08175efd
 

@@ -2,6 +2,20 @@
 // as navigable text+link rows inside the sidebar — no external binary, no
 // zenbu, works on every terminal.
 //
+// PREMIUM LANE (browser_lane.go's controller, CONSULTED ON EVERY OPEN):
+// on a kitty-capable host (kitty/ghostty) with the `terminal-browser`
+// binary on PATH and no kill-switch armed, Open ALSO spawns the embedded
+// zenbu child — the pane's View swaps the text body for the live PTY
+// screen model (the " zenbu " badge + the "▸ zenbu terminal-browser ·
+// <url>" strip mark the lane), unclaimed keys forward to the child
+// through the controller's Write path, and the text fetch STILL rides
+// underneath so an early/non-zero exit lands the fallback on a warm page
+// (the dim "zenbu exited (<code>) — falling back to text mode" note
+// surfaces through the pane's own note row). Everywhere else the lane
+// resolves text and this pane is byte-identical to the universal viewer.
+// The app owns the lifecycle flips: SuspendLane on the ctrl+b/q/esc
+// switch-away, ResumeLane on return, CloseLane via Close at quit.
+//
 // FETCH POSTURE (FetchPage): what the pane will load is deliberately
 // narrow and NEVER silently on the open internet:
 //
@@ -133,6 +147,12 @@ type Browser struct {
 	hist    []histEntry // oldest first, bounded at browserHistMax
 	histIdx int         // position of the CURRENT page (-1 = nothing yet)
 
+	// lane — the premium render lane's state machine (browser_lane.go):
+	// the memoized resolve, the embedded zenbu child, the fallback latch.
+	// Consulted on EVERY open; on a text-lane host it is the cheap URL
+	// recorder and the pane never paints its chrome.
+	lane *BrowserLaneController
+
 	// test seams: default to the real fetch + the links.go exec seam.
 	fetchFn func(string) (*Page, error)
 	openFn  func(LinkTarget) error
@@ -146,6 +166,7 @@ func NewBrowser() *Browser {
 	vp := viewport.New(viewport.WithWidth(10), viewport.WithHeight(5))
 	vp.MouseWheelEnabled = true
 	b := &Browser{vp: vp, histIdx: -1, cursor: -1}
+	b.lane = NewBrowserLaneController(10, 5)
 	b.fetchFn = FetchPage
 	b.openFn = OpenInBrowser
 	return b
@@ -169,6 +190,11 @@ func (b *Browser) SetSize(w, h int) {
 		bodyH = 1
 	}
 	b.vp.SetHeight(bodyH)
+	// the live premium child takes the SIGWINCH (the strip + note rows
+	// stay reserved inside the controller's own math).
+	if b.lane != nil {
+		b.lane.SetSize(w, h)
+	}
 	b.refreshBody()
 }
 
@@ -178,8 +204,13 @@ func (b *Browser) SetSize(w, h int) {
 func (b *Browser) SetState(_ state.OfficeState) { b.refreshBody() }
 
 // Close clears the navigation history + the loaded page (pane teardown —
-// the app calls it from its quit paths; memory-only state regardless).
+// the app calls it from its quit paths; memory-only state regardless) and
+// seals the lane controller (the premium child is group-killed + reaped —
+// NEVER leaked past the office exit).
 func (b *Browser) Close() {
+	if b.lane != nil {
+		b.lane.Close()
+	}
 	b.hist = nil
 	b.histIdx = -1
 	b.page = nil
@@ -209,6 +240,13 @@ func (b *Browser) wrapW() int {
 // Open loads url into the pane: the bar flips optimistic, the fetch rides
 // a tea.Cmd (the UI goroutine never blocks), and the verdict lands back as
 // BrowserPageMsg. Test seam: fetchFn.
+//
+// EVERY open also drives the lane controller: on a kitty-capable host
+// with terminal-browser on PATH the embedded zenbu child spawns here (the
+// text fetch below still rides — the fallback lands on a warm page, and
+// the history ring stays meaningful in text mode); everywhere else the
+// call is the text lane's cheap URL record. A lane miss is never fatal
+// (a spawn failure wears the 127 note).
 func (b *Browser) Open(rawurl string) tea.Cmd {
 	rawurl = strings.TrimSpace(rawurl)
 	if rawurl == "" {
@@ -216,7 +254,12 @@ func (b *Browser) Open(rawurl string) tea.Cmd {
 	}
 	b.loading = true
 	b.err = ""
-	b.note = ""
+	if b.lane != nil {
+		_ = b.lane.OpenURL(rawurl)
+		b.note = b.lane.Note() // "" while premium is healthy; the 127 wording on a spawn failure
+	} else {
+		b.note = ""
+	}
 	fn := b.fetchFn
 	return func() tea.Msg {
 		p, err := fn(rawurl)
@@ -242,6 +285,7 @@ func (b *Browser) Reload() tea.Cmd {
 // Update implements Interactive: scroll, link cursor, open, history,
 // reload, leave — plus the two async verdicts the app forwards.
 func (b *Browser) Update(msg tea.Msg) tea.Cmd {
+	b.pollLane()
 	switch msg := msg.(type) {
 	case BrowserPageMsg:
 		b.applyPage(msg)
@@ -257,6 +301,12 @@ func (b *Browser) Update(msg tea.Msg) tea.Cmd {
 	case tea.KeyPressMsg:
 		return b.handleKey(msg)
 	case tea.MouseWheelMsg:
+		if b.lane != nil && b.lane.PremiumActive() {
+			// the embed owns its surface — no mouse bytes ever ride the
+			// PTY seam (the termSess contract), and the hidden text
+			// viewport must not scroll behind the child's back.
+			return nil
+		}
 		var cmd tea.Cmd
 		b.vp, cmd = b.vp.Update(msg)
 		return cmd
@@ -264,8 +314,25 @@ func (b *Browser) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// handleKey — the pane's key surface (see the package header).
+// handleKey — the pane's key surface (see the package header). While the
+// premium embed is live the pane's own keys yield: q/esc still leave (the
+// app suspends the lane with the slot flip — the child dies with the
+// pane, never a leak), EVERY other key forwards to the child through
+// term.go's keyToBytes matrix (the office's own claims — ctrl+b, ctrl+q,
+// tab, the digit jumps — are intercepted above and never reach here).
 func (b *Browser) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	if b.lane != nil && b.lane.PremiumActive() {
+		switch msg.String() {
+		case "q", "esc":
+			return func() tea.Msg { return BrowserLeaveMsg{} }
+		}
+		if sess := b.lane.Session(); sess != nil {
+			if bs, ok := keyToBytes(msg); ok {
+				_, _ = sess.Write(bs)
+			}
+		}
+		return nil
+	}
 	switch msg.String() {
 	case "up", "k":
 		b.moveCursor(-1)
@@ -369,6 +436,12 @@ func (b *Browser) historyMove(d int) {
 		yoff = 0
 	}
 	b.vp.SetYOffset(yoff)
+	// the lane follows the ring: a never-fell-back url re-embeds the
+	// premium child on a resolving host; a latched one stays text (the
+	// controller's no-flap rule).
+	if b.lane != nil {
+		_ = b.lane.OpenURL(e.url)
+	}
 }
 
 // moveCursor walks the link focus; the landing row auto-scrolls into view.
@@ -429,9 +502,109 @@ func (b *Browser) openFocused() tea.Cmd {
 // ---------------------------------------------------------------------------
 
 // View implements Tab: the location bar over the body viewport, fitted to
-// the panel's height.
+// the panel's height. While the premium embed is live the pane paints the
+// controller's region instead: the " zenbu " badge + the "▸ zenbu
+// terminal-browser · <url>" strip on row 0, the embedded PTY's screen
+// model as the body, the (blank-while-healthy) note row at the bottom.
 func (b *Browser) View() string {
+	b.pollLane()
+	if b.lane != nil && b.lane.PremiumActive() {
+		return fit(b.lane.RegionView(nil), b.h)
+	}
 	return fit(b.bar()+"\n"+b.vp.View(), b.h)
+}
+
+// ---------------------------------------------------------------------------
+// the lane's pane surface (the app drives the lifecycle through these)
+// ---------------------------------------------------------------------------
+
+// pollLane rides the pane's per-frame (View) + per-message (Update)
+// cadence — the controller's Poll contract: observes a dropped premium
+// child and lands the exit contract. A fallback's dim note surfaces
+// through the pane's own note row; a clean long-run exit drops back to
+// the text location bar silently.
+func (b *Browser) pollLane() {
+	if b.lane == nil {
+		return
+	}
+	if b.lane.Poll() {
+		if n := b.lane.Note(); n != "" {
+			b.note = n
+		}
+		b.refreshBody()
+	}
+}
+
+// PollLane — the explicit poll ride (the shots harness + any caller that
+// renders outside the pane's own View/Update cadence): observes a dropped
+// premium child and lands the exit contract NOW.
+func (b *Browser) PollLane() { b.pollLane() }
+
+// SuspendLane — the app flipped the left slot away from the browser
+// (ctrl+b to the floor, the pane's q/esc leave): the premium child is
+// group-killed + reaped, SILENTLY (a pane switch is never a failure
+// note); the URL state keeps for ResumeLane.
+func (b *Browser) SuspendLane() {
+	if b.lane != nil {
+		b.lane.Suspend()
+	}
+}
+
+// ResumeLane — the app flipped back to the browser: re-spawn the premium
+// embed for the current url when the lane still resolves premium and the
+// url never fell back (a latched url stays text — no flap). A text-lane
+// host no-ops.
+func (b *Browser) ResumeLane() {
+	if b.lane != nil {
+		b.lane.Resume()
+	}
+}
+
+// PremiumActive — the premium embed is live RIGHT NOW (the app + the
+// shots harness read the lane posture through the pane).
+func (b *Browser) PremiumActive() bool {
+	return b.lane != nil && b.lane.PremiumActive()
+}
+
+// LaneNote — the lane's dim fallback note ("" while premium is healthy or
+// the last exit was clean).
+func (b *Browser) LaneNote() string {
+	if b.lane == nil {
+		return ""
+	}
+	return b.lane.Note()
+}
+
+// LaneGridHas reports whether needle appears in the live premium child's
+// screen model (the harness seam: shots/tests converge on the child's
+// paint WITHOUT owning a real terminal). False while the text lane
+// paints.
+func (b *Browser) LaneGridHas(needle string) bool {
+	if b.lane == nil {
+		return false
+	}
+	sess := b.lane.Session()
+	if sess == nil {
+		return false
+	}
+	g := sess.Grid()
+	for y := 0; y < g.Rows(); y++ {
+		if strings.Contains(g.LineText(y), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// LaneSessionSize — the live premium child's grid geometry (the
+// resize-propagation tests' read seam; ok=false while the text lane
+// paints).
+func (b *Browser) LaneSessionSize() (cols, rows int, ok bool) {
+	if b.lane == nil || b.lane.Session() == nil {
+		return 0, 0, false
+	}
+	cols, rows = b.lane.Session().Size()
+	return cols, rows, true
 }
 
 // bar — "▸ <url> · <title>", ansi-aware truncated to the panel width.

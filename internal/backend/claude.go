@@ -112,6 +112,17 @@ type liveClaudeBackend struct {
 	// bridge (its emit closure reads fl AT CALL TIME).
 	briefed       bool
 	browserBridge *browsertools.Bridge
+
+	// rawFrameHook — TEST-ONLY seam (claude_live_test.go): when non-nil,
+	// readLoop hands it every parsed stdout frame BEFORE mapping. Nil in
+	// production (one nil-check branch per frame, zero behavior change).
+	// The live-CLI evidence tests need the REAL wire's frame types and the
+	// assistant frame's uuid-vs-message.id divergence — the mapped
+	// state.Events deliberately scrub the frame uuid (that scrub IS the
+	// doubled-bubble fix), so no events-only observation can produce that
+	// mandated evidence. Set BEFORE Start, never mutated after (readLoop's
+	// goroutine starts in Start, giving the write a happens-before edge).
+	rawFrameHook func(claudeEvent)
 }
 
 var _ state.Backend = (*liveClaudeBackend)(nil)
@@ -416,6 +427,9 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 			b.fl.emit(state.Event{Kind: state.EvStatus,
 				Text: "[claude] malformed line skipped: " + trimTo(line, 60)})
 			continue
+		}
+		if b.rawFrameHook != nil {
+			b.rawFrameHook(raw)
 		}
 		b.mu.Lock()
 		if raw.Type == "system" && raw.Subtype == "init" {

@@ -41,10 +41,20 @@ func browserFixtureURL(t *testing.T) string {
 	return "file://" + abs
 }
 
+// pinBrowserTextLane — hermetic text lane on EVERY host: on a
+// kitty-capable machine with terminal-browser on PATH the pane's lane
+// resolve would otherwise spawn a real child out of these opens. The
+// premium lane's LIVE app wiring rides browser_lane_test.go.
+func pinBrowserTextLane(t *testing.T) {
+	t.Helper()
+	t.Setenv(panels.BrowserLaneOffEnv, "1")
+}
+
 // ctrlB — the left-pane switcher key, bubbletea-encoded.
 func ctrlB() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl}) }
 
 func TestBrowserLeftSlotRegistration(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 
@@ -88,6 +98,7 @@ func TestBrowserLeftSlotRegistration(t *testing.T) {
 }
 
 func TestBrowserSlashOpenHappyPath(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	raw := browserFixtureURL(t)
@@ -144,6 +155,7 @@ func lastOfficeNoticeHas(m Model, want string) bool {
 }
 
 func TestBrowserSlashOpenErrorPath(t *testing.T) {
+	pinBrowserTextLane(t)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
@@ -171,6 +183,7 @@ func TestBrowserSlashOpenErrorPath(t *testing.T) {
 }
 
 func TestBrowserSlashOpenUsageError(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open"})
@@ -190,6 +203,7 @@ func TestBrowserSlashOpenUsageError(t *testing.T) {
 // back to the FLOOR tab (and q on the browser slot does NOT quit the app;
 // the right strip never moves either).
 func TestBrowserLeaveReturnsToFloor(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})
@@ -219,6 +233,7 @@ func TestBrowserLeaveReturnsToFloor(t *testing.T) {
 // FLOOR is up still reaches the pane (never misdelivered through the
 // active-tab hop); the switcher position is the app's, not the pane's.
 func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	page := &panels.Page{URL: "file:///x.html", Title: "Offtab"}
@@ -244,6 +259,7 @@ func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
 // textarea on the right strip; flipping back to the floor restores the
 // draft keys.
 func TestBrowserSlotOwnsKeys(t *testing.T) {
+	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})

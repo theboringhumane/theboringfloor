@@ -39,6 +39,11 @@ type navRig struct {
 
 func newNavRig(t *testing.T, pages map[string]*Page) *navRig {
 	t.Helper()
+	// the text-lane suites are hermetic on EVERY host: on a kitty-capable
+	// machine with terminal-browser on PATH the lane resolve would
+	// otherwise spawn a real child out of Open. The premium lane's own
+	// matrix lives in browser_panel_lane_test.go.
+	t.Setenv(BrowserLaneOffEnv, "1")
 	r := &navRig{pages: pages}
 	b := NewBrowser()
 	b.SetSize(60, 8) // 1 bar + 7 body rows (scrollable fixture bodies)

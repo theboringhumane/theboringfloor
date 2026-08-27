@@ -5196,6 +5196,314 @@ func runBrowserLaneProof() error {
 	return nil
 }
 
+// --- browser tab LIVE premium lane (--browser --lane live) -------------------
+// The LIVE WIRING proof (legs A/B proved the controller; THIS proves the
+// pane + app glue the member actually rides): a REAL fake
+// `terminal-browser` on a pinned "<fixture>:<orig>" PATH under the
+// hermetic ghostty stub, and "/open file://<fixture>" typed through the
+// REAL chat input + slash popover — the pane's Open consults the lane
+// controller, the child spawns on the real PTY seam, and the LEFT slot's
+// frame wears the " zenbu " badge + the "▸ zenbu terminal-browser ·
+// <url>" strip + the child's painted marker (the RIGHT strip unmoved on
+// chat). Leg C then presses esc — the pane's leave rides BrowserLeaveMsg,
+// the app's SuspendLane kills the child, the floor returns. Leg D (the
+// fake exits 1) lands the text fallback THROUGH THE APP: the pane's real
+// viewer (warm — the fetch rode under the embed) + the dim "zenbu exited
+// (1) — falling back to text mode" note, and a re-open never re-spawns
+// (the no-flap latch, read off the fake's call log). Every leg
+// byte-identical across two drives (the paint-convergence waits poll the
+// app's harness seams — no state events, the digest stays frozen).
+
+// browserLiveFrameOut — ONE live drive's observed artifacts.
+type browserLiveFrameOut struct {
+	frameLive  string // after /open — the premium frame (badge + strip + marker)
+	frameFloor string // after esc — the floor restored, the lane suspended
+	frameFell  string // leg D: the text lane + the dim fallback note
+	leftTab    int
+	activeTab  int
+	spawns     int // the fake's call-log line count (the no-flap evidence)
+}
+
+// browserLiveFake — the live proof's fake binary: logs every invocation
+// (the spawn count rides the log), prints its marker, then runs the
+// flavor tail ("sleep" parks ~11 days; "die" exits 1 — the deterministic
+// fallback trigger: a real PTY death measures ~180–500ms here and would
+// race the 300ms early-exit window under load; the code-0 early-exit
+// class is pinned synthetically in panels' controller suite).
+func browserLiveFake(root, flavor string) error {
+	tail := "exec sleep 1000000"
+	if flavor == "die" {
+		tail = "exit 1"
+	}
+	fake := "#!/bin/sh\n" +
+		"echo \"$@\" >> \"" + filepath.Join(root, "calls.log") + "\"\n" +
+		"printf 'zenbu-fake open %s\\n' \"$2\"\n" +
+		tail + "\n"
+	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
+}
+
+// browserLiveDrive — ONE hermetic live drive with flavor "sleep" (leg C)
+// or "die" (leg D).
+func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
+	var out browserLiveFrameOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range browserEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() { // restore EVERY key (the drive pairs share the process)
+		for _, k := range browserEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-browser-live-")
+	if err != nil {
+		return out, fmt.Errorf("browser-live fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	if err := browserLiveFake(root, flavor); err != nil {
+		return out, fmt.Errorf("browser-live fixture terminal-browser: %w", err)
+	}
+	os.Setenv("TERM_PROGRAM", "ghostty") // the hermetic kitty-capable host stub
+	for _, k := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM_VERSION", "WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID"} {
+		os.Setenv(k, "")
+	}
+	os.Setenv("TERM", "xterm-256color")
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv(panels.BrowserLaneOffEnv, "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	// runExec — the exact breadth-first drain the --browsertab proof runs.
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — live browser lane stub online"})
+
+	// /open through the REAL chat input: the bracketed-paste path (cmd+v's
+	// own msg — pasteFilePaths refuses the spaced composite, the slash
+	// popover opens only on a TYPED "/", so Enter on the pasted draft
+	// sends straight to slashMsg → applySlash → applyOpenSlash → the
+	// pane's Open → THE live wiring). Paste keeps the drive out of the
+	// per-key blink crawl (the --browsertab popover dance costs ~530ms
+	// per key; this proof runs four drives).
+	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
+	if err != nil {
+		return out, fmt.Errorf("browser-live fixture path: %w", err)
+	}
+	url := "file://" + fixtureAbs
+	openViaChat := func() {
+		runExec(tea.PasteMsg{Content: "/open " + url})
+		runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // sends → slashMsg → applySlash → lane spawn + fetch
+	}
+	openViaChat()
+
+	if flavor == "die" {
+		// leg D — the early death: the pane's poll ride (the explicit
+		// harness seam, never the frame cache) observes it, the text lane
+		// returns with the dim note; a re-open never re-spawns.
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); {
+			m.BrowserLanePoll()
+			if !m.BrowserPremiumActive() {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if m.BrowserPremiumActive() {
+			return out, fmt.Errorf("browser-live D: the dead child never dropped")
+		}
+		out.leftTab = m.LeftTabIndex()
+		out.activeTab = m.ActiveTabIndex()
+		runExec(state.Event{Kind: state.EvStatus, Text: "live lane fell back"})
+		out.frameFell = m.Frame()
+		// the no-flap latch: a re-open of the fell-back url stays text.
+		openViaChat()
+		if m.BrowserPremiumActive() {
+			return out, fmt.Errorf("browser-live D: a fell-back url re-spawned")
+		}
+	} else {
+		// leg C — the healthy embed: wait for the child's paint (the grid
+		// read seam — no state events, the digest stays frozen), then one
+		// status bump re-renders and the frame carries the strip.
+		painted := false
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && !painted; {
+			if m.BrowserLaneGridHas("zenbu-fake open file:///") {
+				painted = true
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		if !painted {
+			return out, fmt.Errorf("browser-live C: the fake's marker row never painted the embedded grid")
+		}
+		if !m.BrowserPremiumActive() {
+			return out, fmt.Errorf("browser-live C: the premium embed must be live")
+		}
+		out.leftTab = m.LeftTabIndex()     // captured LIVE — the esc leg below
+		out.activeTab = m.ActiveTabIndex() // returns the slot to the floor
+		runExec(state.Event{Kind: state.EvStatus, Text: "live lane painting"})
+		out.frameLive = m.Frame()
+		// esc leaves to the floor AND suspends the lane (the child dies
+		// with the slot flip — the drain runs the bounded reap inline).
+		runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+		if m.BrowserPremiumActive() {
+			return out, fmt.Errorf("browser-live C: esc must close the premium session")
+		}
+		out.frameFloor = m.Frame()
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "calls.log")); err == nil {
+		out.spawns = strings.Count(strings.TrimSpace(string(b)), "\n") + 1
+	}
+	return out, nil
+}
+
+// browserLiveIdentical — the two-drives byte-identity gate.
+func browserLiveIdentical(a, b browserLiveFrameOut) bool {
+	return a.frameLive == b.frameLive && a.frameFloor == b.frameFloor && a.frameFell == b.frameFell &&
+		a.leftTab == b.leftTab && a.activeTab == b.activeTab && a.spawns == b.spawns
+}
+
+func runBrowserLiveProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+
+	// leg C — the healthy embed THROUGH THE APP GLUE: the zenbu strip
+	// renders inside the LEFT slot; esc closes + returns to the floor.
+	c1, err := browserLiveDrive("sleep")
+	if err != nil {
+		return err
+	}
+	c2, err := browserLiveDrive("sleep")
+	if err != nil {
+		return err
+	}
+	if c1.leftTab != 1 {
+		return fail("browser-live C: /open must flip the LEFT slot to the browser (leftTab 1), got %d", c1.leftTab)
+	}
+	if c1.activeTab != 0 {
+		return fail("browser-live C: the RIGHT strip must stay on chat (index 0), got %d", c1.activeTab)
+	}
+	live := ansi.Strip(c1.frameLive)
+	for _, want := range []string{
+		" zenbu ",                             // the premium badge
+		"▸ zenbu terminal-browser · file:///", // the strip (ansi-clipped at the slot width)
+		"zenbu-fake open file:///",            // the child's painted marker row
+		"· ctrl+b",                            // the switcher strip rides on top
+	} {
+		if !strings.Contains(live, want) {
+			return fail("browser-live C frame missing %q:\n%s", want, live)
+		}
+	}
+	// the strip paints INSIDE the LEFT slot — left of the sidebar's chat.
+	stripSeen := false
+	for _, line := range strings.Split(live, "\n") {
+		if strings.Contains(line, "zenbu terminal-browser") {
+			stripSeen = true
+			zi, ci := strings.Index(line, "zenbu terminal-browser"), strings.Index(line, "chat")
+			if ci >= 0 && zi > ci {
+				return fail("browser-live C: the zenbu strip must paint LEFT of the sidebar's chat tab: %q", line)
+			}
+		}
+	}
+	if !stripSeen {
+		return fail("browser-live C: the zenbu strip never rendered")
+	}
+	floor := ansi.Strip(c1.frameFloor)
+	if strings.Contains(floor, "zenbu terminal-browser") || strings.Contains(floor, " zenbu ") {
+		return fail("browser-live C: esc must drop the premium chrome:\n%s", floor)
+	}
+	if !strings.Contains(floor, "· ctrl+b") {
+		return fail("browser-live C: the floor frame keeps the switcher strip:\n%s", floor)
+	}
+	if c1.spawns != 1 {
+		return fail("browser-live C: exactly ONE spawn (esc never re-spawns), log %d", c1.spawns)
+	}
+	if !browserLiveIdentical(c1, c2) {
+		return fail("browser-live C: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER LIVE C — /open through the REAL app: the zenbu lane embedded in the LEFT slot =====")
+	fmt.Println(c1.frameLive)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("===== UI SHOT · BROWSER LIVE C — after esc: the floor returns, the lane suspended (one spawn total) =====")
+	fmt.Println(c1.frameFloor)
+	fmt.Println("===== UI SHOT =====")
+
+	// leg D — the non-zero early death THROUGH THE APP GLUE: the text lane
+	// returns (the fetch rode under the embed) with the exact dim note;
+	// the no-flap latch keeps the re-open text.
+	d1, err := browserLiveDrive("die")
+	if err != nil {
+		return err
+	}
+	d2, err := browserLiveDrive("die")
+	if err != nil {
+		return err
+	}
+	fell := ansi.Strip(d1.frameFell)
+	for _, want := range []string{
+		"zenbu exited (1) — falling back to text mode", // the EXACT dim note
+		"▸ file:///",          // the text location bar is back
+		"The Fixture Gazette", // the page was warm — the fetch rode under the embed
+	} {
+		if !strings.Contains(fell, want) {
+			return fail("browser-live D frame missing %q:\n%s", want, fell)
+		}
+	}
+	if strings.Contains(fell, "zenbu terminal-browser ·") {
+		return fail("browser-live D: the fallback drops the premium strip:\n%s", fell)
+	}
+	if d1.spawns != 1 {
+		return fail("browser-live D: the no-flap latch keeps the re-open text (one spawn), log %d", d1.spawns)
+	}
+	if !browserLiveIdentical(d1, d2) {
+		return fail("browser-live D: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER LIVE D — the child exited 1: the text lane returns with the dim note (re-open never re-spawns) =====")
+	fmt.Println(d1.frameFell)
+	fmt.Println("===== UI SHOT =====")
+
+	fmt.Println("asserts: OK — the LIVE wiring (never the controller direct): \"/open file://<fixture>\" through the REAL chat input (bracketed paste → Enter → slashMsg → the pane's Open) on the hermetic ghostty stub (PATH pinned \"<fixture>:<orig>\", both kill-switch spellings cleared); leg C: the pane's Open spawned the real fake child on the PTY seam — the LEFT slot's frame wears the \" zenbu \" badge + the \"▸ zenbu terminal-browser · <url>\" strip + the child's painted marker (strip LEFT of the sidebar's chat tab, the RIGHT strip unmoved), then esc rode BrowserLeaveMsg → SuspendLane (the child reaped with the flip, ONE spawn total, the floor restored); leg D (the fake exits 1): the pane's poll ride landed the text fallback THROUGH THE APP — the fixture page warm underneath (never re-fetched), the exact dim \"zenbu exited (1) — falling back to text mode\" note, and the re-open never re-spawned (the no-flap latch read off the fake's call log); every leg byte-identical across two drives")
+	return nil
+}
+
 // --- browser tab text viewer (--browsertab) ---------------------------------
 // The UNCONDITIONAL lane: the browser tab itself — no zenbu, no external
 // binary, every host — riding the LEFT pane's floor|browser switcher. A
@@ -5231,6 +5539,19 @@ type browserTabFrameOut struct {
 
 func browserTabDrive() (browserTabFrameOut, error) {
 	var out browserTabFrameOut
+	// the TEXT-viewer proof is hermetic on every host: on a kitty-capable
+	// machine with terminal-browser on PATH the pane's lane resolve would
+	// otherwise spawn a real child out of /open (the premium lane's OWN
+	// proofs live at --browser [--lane kitty|live]).
+	oldLaneOff, laneOffSet := os.LookupEnv(panels.BrowserLaneOffEnv)
+	os.Setenv(panels.BrowserLaneOffEnv, "1")
+	defer func() {
+		if laneOffSet {
+			os.Setenv(panels.BrowserLaneOffEnv, oldLaneOff)
+		} else {
+			os.Unsetenv(panels.BrowserLaneOffEnv)
+		}
+	}()
 	ln, err := net.Listen("tcp", browserTabStubAddr)
 	if err != nil {
 		return out, fmt.Errorf("browsertab: stub listen %s: %w (a stale proof still running?)", browserTabStubAddr, err)
@@ -5600,7 +5921,7 @@ func main() {
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
-	browser := flag.Bool("browser", false, "browser tab premium-lane proof (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env — use with --lane kitty): leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note \"zenbu exited (0) — falling back to text mode\", \" text \" badge, fixture body, strip gone, URL state intact; every leg byte-identical twice")
+	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
 
@@ -5822,12 +6143,19 @@ func main() {
 	}
 
 	if *browser {
-		if lane := strings.TrimSpace(*laneList); lane != "" && lane != "kitty" {
-			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the premium lane), got %q\n", lane)
-			os.Exit(1)
-		}
-		if err := runBrowserLaneProof(); err != nil {
-			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+		switch lane := strings.TrimSpace(*laneList); lane {
+		case "", "kitty":
+			if err := runBrowserLaneProof(); err != nil {
+				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+				os.Exit(1)
+			}
+		case "live":
+			if err := runBrowserLiveProof(); err != nil {
+				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+				os.Exit(1)
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller) or --lane live (the LIVE app-glue wiring), got %q\n", lane)
 			os.Exit(1)
 		}
 		return

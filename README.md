@@ -361,13 +361,21 @@ opens targets in-terminal first, cascading to the system opener on any
 failure; `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1` disables the lane.
 
 Browser premium lane: on kitty/ghostty (tmux and the iTerm2 family
-stay text) with `terminal-browser` on PATH, `/open` embeds the real
-Chromium page inside the left-pane browser slot (top strip `▸ zenbu
-terminal-browser · <url>`, ` zenbu ` badge); a non-zero or instant
-(<300ms) exit falls back to the text viewer with the URL state kept and a
-dim `zenbu exited (<code>) — falling back to text mode` note; either
-kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1` or
-`THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) forces the text lane.
+stay text) with the
+[`terminal-browser`](https://github.com/zenbu-labs/terminal-browser)
+binary on PATH, the browser tab embeds the REAL Chromium browser
+automatically — every open (`/open`, the agent's browser-open tool, an
+in-pane link follow) paints the live page (CSS, images, full rendering)
+inside the left-pane slot under the ` zenbu ` badge and the `▸ zenbu
+terminal-browser · <url>` top strip; keys reach the embedded browser
+while `ctrl+b` / `q` / `esc` still belong to the office (leaving the slot
+suspends the session, returning resumes it). The text lane is the
+universal default everywhere else — non-kitty terminals, the binary
+absent, or either kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1`
+or `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) armed — and the automatic
+fallback: a non-zero or instant (<300ms) exit drops that URL back to the
+text viewer with its history kept and a dim
+`zenbu exited (<code>) — falling back to text mode` note.
 
 ## Keys
 

@@ -376,7 +376,7 @@ print_manual_agentmemory() { # $1 = reason
     warn "agentmemory auto-setup unavailable: $1"
     cat <<EOF
     Manual setup (best effort — theboringoffice itself is fully installed):
-      1. install  : npm i -g agentmemory
+      1. install  : npm i -g @agentmemory/agentmemory
       2. init env : agentmemory init
       3. run      : agentmemory          (keep alive with tmux, screen, or your init system)
       4. check    : agentmemory status
@@ -401,11 +401,18 @@ setup_agentmemory() {
     AM_BIN=$(command -v agentmemory 2>/dev/null || true)
     if [ -z "$AM_BIN" ] && command -v npm >/dev/null 2>&1; then
         info "    agentmemory not on PATH — installing via npm"
-        run npm i -g agentmemory
-        if [ "$DRY_RUN" -eq 1 ]; then
-            AM_BIN="/path/to/agentmemory (resolved after npm i -g)"
+        # Guarded: errexit is ON, so ANY npm failure (404, network, perms)
+        # must degrade to the manual path — never abort the whole install.
+        if run npm i -g @agentmemory/agentmemory; then
+            if [ "$DRY_RUN" -eq 1 ]; then
+                AM_BIN="/path/to/agentmemory (resolved after npm i -g)"
+            else
+                AM_BIN=$(command -v agentmemory 2>/dev/null || true)
+            fi
         else
-            AM_BIN=$(command -v agentmemory 2>/dev/null || true)
+            print_manual_agentmemory "npm i -g @agentmemory/agentmemory failed (see the npm error above)"
+            AM_SERVICE_STATE="not configured (npm install failed — see above)"
+            return 0
         fi
     fi
     if [ -z "$AM_BIN" ]; then
@@ -415,7 +422,11 @@ setup_agentmemory() {
     fi
     info "    agentmemory binary: ${AM_BIN}"
 
-    run agentmemory init   # idempotent: seeds ~/.agentmemory/.env if absent
+    # idempotent: seeds ~/.agentmemory/.env if absent. Guarded so an init
+    # failure can never abort the install either (errexit is ON).
+    if ! run agentmemory init; then
+        warn "agentmemory init failed — continuing; re-run 'agentmemory init' by hand"
+    fi
 
     case "$OS" in
         darwin) setup_launchd ;;
@@ -629,7 +640,7 @@ do_uninstall() {
     if [ "$found_service" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
         info "    no ${PLIST_LABEL} / agentmemory.service installation found"
     fi
-    info "    note: the agentmemory npm package itself is left installed; remove with: npm rm -g agentmemory"
+    info "    note: the agentmemory npm package itself is left installed; remove with: npm rm -g @agentmemory/agentmemory"
 }
 
 # ---------------------------------------------------------------- backend

@@ -65,6 +65,7 @@ func officeRows(m Model) []state.ChatMsg {
 }
 
 func TestBrowserOpenRequestReachesHandler(t *testing.T) {
+	pinBrowserTextLane(t) // hermetic: the lane resolve must never spawn a real child here
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<html><head><title>The Boring Gazette</title></head><body><h1>agent opened me</h1></body></html>`))

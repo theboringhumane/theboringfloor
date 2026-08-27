@@ -25,6 +25,14 @@
 // the browser panel (never through the active-tab hop) — a mid-flight
 // switch can never misdeliver a page. BrowserLeaveMsg (the pane's q/esc)
 // flips the slot back to the floor.
+//
+// PREMIUM LANE LIFECYCLE: the pane consults its lane controller on every
+// open (kitty-capable host + `terminal-browser` on PATH + no kill-switch
+// → the embedded zenbu child paints the slot); THIS file owns the flips —
+// leaving the slot (ctrl+b to the floor, the pane's q/esc) SUSPENDS the
+// lane (the child is group-killed + reaped, never leaked behind the
+// floor), returning RESUMES it (a fresh spawn for the current url unless
+// it fell back before), and the quit paths seal it through Close.
 package app
 
 import (
@@ -53,12 +61,22 @@ func (m *Model) browserActive() bool {
 	return m.leftTab == leftTabBrowser && !m.planPaneVisible()
 }
 
-// toggleLeftTab — ctrl+b: flip the floor slot floor ↔ browser.
+// toggleLeftTab — ctrl+b: flip the floor slot floor ↔ browser. Leaving
+// the browser SUSPENDS its premium lane (the embedded child dies with the
+// flip — never a leak behind the floor); returning RESUMES it (a fresh
+// spawn for the current url unless that url fell back before — the
+// controller's no-flap latch).
 func (m *Model) toggleLeftTab() {
 	if m.leftTab == leftTabBrowser {
 		m.leftTab = leftTabFloor
+		if m.browser != nil {
+			m.browser.SuspendLane()
+		}
 	} else {
 		m.leftTab = leftTabBrowser
+		if m.browser != nil {
+			m.browser.ResumeLane()
+		}
 	}
 }
 
@@ -158,8 +176,40 @@ func (m *Model) handleBrowserOpened(msg panels.BrowserOpenedMsg) tea.Cmd {
 	return nil
 }
 
+// ---------------------------------------------------------------------------
+// harness seams (the uishot live-lane proof reads the lane posture through
+// these — it never instantiates the controller directly)
+// ---------------------------------------------------------------------------
+
+// BrowserPremiumActive — the left-pane browser's premium embed (the
+// embedded zenbu terminal-browser child) is live RIGHT NOW.
+func (m Model) BrowserPremiumActive() bool {
+	return m.browser != nil && m.browser.PremiumActive()
+}
+
+// BrowserLaneGridHas — needle appears in the live premium child's screen
+// model (the proof's paint-convergence read: poll this until the child's
+// bytes land, then snapshot the frame). False while the text lane paints.
+func (m Model) BrowserLaneGridHas(needle string) bool {
+	return m.browser != nil && m.browser.LaneGridHas(needle)
+}
+
+// BrowserLanePoll — the harness's poll ride: runs the pane's per-frame
+// lane check (a dropped child lands the fallback contract) WITHOUT
+// waiting on a frame render or a state event (the frame cache would
+// otherwise gate the observation).
+func (m Model) BrowserLanePoll() {
+	if m.browser != nil {
+		m.browser.PollLane()
+	}
+}
+
 // handleBrowserLeave — the pane's q/esc: back to the floor tab (the right
-// strip never moves).
+// strip never moves) AND the lane session closes (the premium child never
+// outlives the slot).
 func (m *Model) handleBrowserLeave() {
+	if m.browser != nil {
+		m.browser.SuspendLane()
+	}
 	m.leftTab = leftTabFloor
 }
