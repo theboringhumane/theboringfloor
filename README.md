@@ -4,7 +4,8 @@
 
 Chat with the boss. Watch the floor — employees get up, walk to the manager,
 take the task, type it out, drop the mail, hit the tea machine. The right panel
-is yours: chat, agents, board, mail, activity, git, browser — switch with `tab`.
+is yours: chat, agents, board, mail, activity, git — switch with `tab`. The
+left pane flips between the floor and the in-TUI browser with `ctrl+b`.
 
 Underneath the wallpaper, it's all real: the manager is
 **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, the employees
@@ -251,6 +252,29 @@ active name between mode and agents, and session.json pins session ids PER
 TRANSPORT (`primaryIDs`), so swapping back later resumes that transport's
 own session instead of cross-pinning ids.
 
+- The `claudecode` transport declares its rendered `request_user_dialog`
+  kinds up front (an `initialize` control_request carrying
+  `supportedDialogKinds`, the first stdin line of every process — the CLI
+  only sends a kind some attached client declared) and renders 28 of them
+  as boss question-modal pages: the 12 permission gates
+  (`permission_ask_user_question`, `permission_prompt`, `permission_bash`,
+  `permission_browser`, `permission_enter_plan_mode`,
+  `permission_exit_plan_mode_v2`, `permission_file`, `permission_monitor`,
+  `permission_powershell`, `permission_skill`, `permission_webfetch`,
+  `permission_workflow` — Allow once / Allow always / Reject), the 12 enum
+  consent kinds (`cloud_sync_consent`, `fable_overage_consent_prompt`,
+  `refusal_fallback_prompt`, `chrome_install_upsell`,
+  `chrome_install_setup`, `auto_mode_setup_review`, `resume_return`,
+  `managed_settings_security`, `auto_default_nudge`, `cost_threshold`,
+  `ide_onboarding`, `it2_setup` — the answer is the kind's enum string),
+  and the 4 structured kinds (`goal_proposal`, `auto_mode_flagged_allow`,
+  `sandbox_network_access`, `peer_inbound_approval`). Dismissal is always
+  the envelope-level `{behavior:"cancelled"}` (the CLI substitutes the
+  kind's own default); `computer_use_approval`, `local_jsx` and
+  `mcp_url_elicitation` are deliberately never declared — a kind the
+  office can't render faithfully stays parked for the CLI's dialog
+  deadline instead of getting a fabricated answer.
+
 Boss model rides every prompt as `{"model":{"providerID","modelID"}}` (serve
 1.18.19 `/doc`-verified). Role models are noted as best-effort (sub-agent model
 dispatch is opencode's call). `/power`, `/model`, `/theme` all write back.
@@ -270,7 +294,8 @@ quiet syncs (cap 4×, reset on change). The office goes cheap when nothing moves
 
 ## The sidebar is a cockpit
 
-Eight tabs with a real terminal in the middle:
+Seven tabs with a real terminal in the middle (the browser lives on the
+left pane — see the last bullet):
 
 - **terminal** — an OS shell (`$SHELL`) on a real PTY, by `creack/pty`:
   lazily spawned on first visit, resizes with the panel, mouse scrolls the
@@ -300,20 +325,23 @@ Eight tabs with a real terminal in the middle:
   click on a file opens a colored unified diff (`+` green, `−` red, `@@`
   hunk headers); `b` or `esc` returns to the list, `r` refreshes. A clean
   tree shows "working tree clean".
-- **browser** — a real in-TUI page viewer: web pages render as navigable
-  text+link rows, no external dependency. `/open <url>` (or the tab) jumps
-  there: `file://` URLs and bare paths read off disk, `http(s)://` is
-  limited to localhost unless `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1` is
-  exported (never network silently); fetches are 10s-bounded and 4 MiB-capped,
-  and non-HTML payloads land a dim `unsupported content type` row. The page
-  paints a `▸ <url> · <title>` bar over wrapped paragraphs, bold headings,
-  bullet rows, `a │ b` table rows, code rows, `🖼 <alt>` image chips (image
-  bytes are never fetched), and links as `text [n]` with the URLs indexed in
-  a side map. `↑`/`↓` move the link cursor (dim → bright), `o` opens the
-  focused link (a local file goes to the OS browser; http(s) navigates in
-  place), `[` / `]` walk the 100-page history ring (scroll restored), `r`
-  reloads, `q` / `esc` leaves to chat. The tab cycles after `git` —
-  `tab`/`shift+tab` only in v1, no digit key.
+- **browser** — a real in-TUI page viewer on the LEFT pane: the floor
+  slot carries a two-tab switcher, **floor** (the office, the default) and
+  **browser**, flipped with `ctrl+b`. Web pages render as navigable
+  text+link rows, no external dependency. `/open <url>` flips the slot to
+  the browser for you: `file://` URLs and bare paths read off disk,
+  `https://` opens anywhere and localhost always works; plain `http://`
+  beyond localhost needs `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1` (never
+  network silently); fetches are 10s-bounded and 4 MiB-capped, and non-HTML
+  payloads land a dim `unsupported content type` row. The page paints a
+  `▸ <url> · <title>` bar over wrapped paragraphs, bold headings, bullet
+  rows, `a │ b` table rows, code rows, `🖼 <alt>` image chips (image
+  bytes are never fetched), and links as `text [n]` with the URLs indexed
+  in a side map. `↑`/`↓` move the link cursor (dim → bright), `o` opens
+  the focused link (a local file goes to the OS browser; http(s)
+  navigates in place), `[` / `]` walk the 100-page history ring (scroll
+  restored), `r` reloads, `q` / `esc` leaves back to the floor. The right
+  strip never moves — the browser is not one of its tabs.
 
 Layout lives in the config *and* in the app:
 
@@ -332,22 +360,23 @@ Browser lane for `o`: on kitty-capable terminals (kitty, ghostty, WezTerm
 opens targets in-terminal first, cascading to the system opener on any
 failure; `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1` disables the lane.
 
-Browser tab premium lane: on kitty/ghostty (tmux and the iTerm2 family
+Browser premium lane: on kitty/ghostty (tmux and the iTerm2 family
 stay text) with `terminal-browser` on PATH, `/open` embeds the real
-Chromium page inside the pane (top strip `▸ zenbu terminal-browser ·
-<url>`, ` zenbu ` badge); a non-zero or instant (<300ms) exit falls back
-to the text viewer with the URL state kept and a dim `zenbu exited
-(<code>) — falling back to text mode` note; either kill-switch
-(`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1` or
+Chromium page inside the left-pane browser slot (top strip `▸ zenbu
+terminal-browser · <url>`, ` zenbu ` badge); a non-zero or instant
+(<300ms) exit falls back to the text viewer with the URL state kept and a
+dim `zenbu exited (<code>) — falling back to text mode` note; either
+kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1` or
 `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) forces the text lane.
 
 ## Keys
 
 | key | does |
 |---|---|
-| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git · **browser** — only inside shell capture (`ctrl+space` toggle) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type); the browser tab cycles after git (no digit key in v1) |
+| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git — only inside shell capture (`ctrl+space` toggle) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type) |
+| `ctrl+b` | flip the LEFT pane's slot: **floor** ⇄ **browser** (the browser is not a right-strip tab; works from every surface except a captured shell) |
 | `enter` / click a file (git tab) | open its colored unified diff — `b` / `esc` back to the list, `r` refresh |
-| `/open <url>` | open a page in the **browser** tab — `file://`, a bare path, or `http(s)://localhost/…` (outbound HTTP needs `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1`); inside the tab: `↑`/`↓` pick a link, `o` opens it (local file → OS browser, http(s) → navigate), `[` / `]` history, `r` reload, `pgup`/`pgdn` scroll, `q` / `esc` back to chat |
+| `/open <url>` | open a page in the **browser** (auto-flips the left slot) — `file://`, a bare path, or `http(s)://…` (`https://` anywhere; plain `http://` beyond localhost needs `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1`); inside the pane: `↑`/`↓` pick a link, `o` opens it (local file → OS browser, http(s) → navigate), `[` / `]` history, `r` reload, `pgup`/`pgdn` scroll, `q` / `esc` back to the floor |
 | `↑` `↓` `pgup` `pgdn` / wheel | scroll the active panel |
 | `enter` | send to the boss (chat) |
 | `shift+enter` | newline |

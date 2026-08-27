@@ -17,6 +17,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/docs/plan-mode', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/queue-board-memory', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/terminal-and-git-tabs', priority: 0.7, changeFrequency: 'weekly' as const },
+    { path: '/docs/browser-tab', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/layout-themes-power', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/keys-and-slash', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/blog', priority: 0.9, changeFrequency: 'daily' as const },

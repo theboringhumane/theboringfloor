@@ -32,6 +32,11 @@ const cards = [
     title: 'Tested by its own hands',
     body: 'The app ships its own screenshot and regression drivers — uishot and floorshot — so every wave is checked by deterministic, scripted runs before it lands.',
   },
+  {
+    id: '07',
+    title: 'A browser, no browser engine',
+    body: 'The browser tab renders pages as text and link rows on any terminal — no headless Chromium, no runtime. On kitty-capable terminals an installed zenbu terminal-browser embeds the real page in the pane; https pages open by default; plain http beyond localhost stays off unless you allow it.',
+  },
 ]
 
 export function UnderTheHood() {

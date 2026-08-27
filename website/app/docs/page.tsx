@@ -78,6 +78,11 @@ const groups: { title: string; items: DocLink[] }[] = [
         promise: 'A real shell and a live git panel one tab away from the chat.',
       },
       {
+        href: '/docs/browser-tab',
+        name: 'Browser tab',
+        promise: 'Web pages as navigable text rows on any terminal; a real embedded browser on kitty.',
+      },
+      {
         href: '/docs/layout-themes-power',
         name: 'Layout, themes & power',
         promise: 'Compact mode, themes, and the battery dial that keeps an idle office cheap.',
