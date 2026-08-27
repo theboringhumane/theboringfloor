@@ -213,3 +213,54 @@ func (m *Model) handleBrowserLeave() {
 	}
 	m.leftTab = leftTabFloor
 }
+
+// ---------------------------------------------------------------------------
+// the premium lane's frame-splice registry publish (panels/zenbu_frame.go)
+// ---------------------------------------------------------------------------
+
+// zenbuGridOriginY — the ABSOLUTE 0-based row of the embedded grid's row 0,
+// identical in the desktop and mobile layouts (Frame's branch structure is
+// the source of truth; the stack ABOVE the grid is the same in both):
+// topbar 1 row (Frame's `top`) + the left pane's switcher strip 1 row
+// (leftPaneView) + the RegionView's badge/strip row 1 row (the controller's
+// body starts on RegionView row 1). The grid's column origin is always 0
+// (the left pane/band paints at x=0 in both layouts).
+const zenbuGridOriginY = 3
+
+// publishZenbuFrame — Frame()'s registry write (called once per RENDERED
+// frame, after the frame composed): the premium lane's absolute origin +
+// live images + drained deletes, or the empty state whenever the lane
+// paints nothing this frame (the wrapper then emits nothing and
+// diff-deletes whatever it emitted before). A cache-HIT Frame never
+// reaches here — and needs to: every field the origin depends on is
+// digest-covered, so an unchanged digest means an unchanged entry.
+func (m Model) publishZenbuFrame() {
+	reg := panels.ZenbuRegistry()
+	ox, oy, ok := m.browserGridOrigin()
+	if !ok {
+		reg.Clear()
+		return
+	}
+	imgs, deletes := m.browser.LaneFrameState()
+	reg.Publish(true, ox, oy, imgs, deletes)
+}
+
+// browserGridOrigin — the ABSOLUTE cell origin of the premium lane's body
+// grid THIS frame, mirroring Frame()'s branch structure exactly: ok=false
+// (the registry clears) whenever the browser's RegionView is not painted —
+// zen owns the whole middle, thread focus owns the middle, the DESKTOP plan
+// pane owns the left slot (mobile's plan swaps only the panel below the
+// band — the browser band still paints), the floor tab is showing, or the
+// lane is not premium-active (text lane / fell back / closed).
+func (m Model) browserGridOrigin() (originX, originY int, ok bool) {
+	if m.browser == nil || m.leftTab != leftTabBrowser || !m.browser.PremiumActive() {
+		return 0, 0, false
+	}
+	if m.zen || m.threadFocus != nil {
+		return 0, 0, false
+	}
+	if !m.mobile() && m.planPaneVisible() {
+		return 0, 0, false // desktop: the plan owns the floor slot
+	}
+	return 0, zenbuGridOriginY, true
+}

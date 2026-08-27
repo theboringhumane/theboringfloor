@@ -7,6 +7,27 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-27 · Dev L: move splice to WithOutput (@developer... — tekton-2 (developer) · `issues`
+- summary: All gates green. Assembling the final return.
+- files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser.go`, `internal/app/model.go`, `internal/app/browser_frame_test.go`, `cmd/theboringoffice/main.go`, `cmd/uishot/main.go`
+- verify: Pre-fix it printed `ESC_G sequences: 0` / `a=T present: False` (18,668 bytes). Now: **34 ESC_G, a=T True** — the REAL child's `f=32,o=z,s=12
+- proof: *The wrapper's emitted bytes for a known registry state** (TestZenbuFrameWriterSplice: origin (0,3), image pane-local (5,2), APC `\x1b_Ga=T,
+- ledgerId: led-1787858669896-648f7454
+
+### 2026-08-27 · Dev L: kitty passthrough lane (@developer sub... — tekton-1 (developer) · `issues`
+- summary: All gates green. Assembling the final return.
+- files: `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `cmd/uishot/main.go`, `.opencode/office-ledger.md`
+- verify: New tests: `TestKittyStream{SplitCleanGrid,SplitBoundaries,BELTerminator,ChainFinalChunkOmitsM,ProbeIgnored,Malformed,APCBodyCap}`, `TestZen
+- proof: *1. The REAL stream (825KB captured from terminal-browser v0.6.0 on a PTY) — before → after:**
+- ledgerId: led-1787856360063-526c5f07
+
+### 2026-08-27 · Scout: kitty escape surface map (@explore sub... — skopos-1 (scout) · `issues`
+- summary: Recon complete. All evidence gathered; the tree was never modified.
+- files: `internal/panels/kitty_lanes.go`, `chat_raster.go`, `image_detect.go`, `internal/panels/chat.go`, `tabs.go`, `terminal.go`, `internal/panels/browser_lane.go`, `browser.go`, `internal/term/term.go`, `grid.go`, `notify.go`, `internal/app/model.go`, `browser.go`, `images.go`, `power.go`, `cmd/theboringoffice/main.go`, `cmd/uishot/main.go`, `go.mod`, `README.md`, module cache: `charm.land/bubbletea/v2@v2.0.9/{tea,options,cursed_renderer}.go`, `github.com/charmbr
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1787855712243-206df16b
+
 ### 2026-08-27 · Dev J: text-lane reason hint (@developer suba... — tekton-1 (developer) · `issues`
 - summary: All gates green. Assembling the final return.
 - files: `internal/panels/browser_lane.go`, `internal/panels/browser.go`, `internal/panels/browser_hint_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched
@@ -335,25 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (14/14 packages ok — app, backend, charter, chrome, config, gitx, netwatch, notify, office, panels, projinfo, sound, state, term, version.)
 - proof: ```
 - ledgerId: led-1787761026578-1258e5fc
-
-### 2026-08-26 · Dev: queue/terminal/layout/keys docs pages (@... — tekton-7 (developer) · `issues`
-- summary: All gates green. Final return:
-- files: `website/app/docs/queue-board-memory/page.tsx`, `website/app/docs/terminal-and-git-tabs/page.tsx`, `website/app/docs/layout-themes-power/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`, Nothing else touched
-- verify: ```
-- proof: ### `/docs/queue-board-memory` — *Queue, board & memory | theboringoffice*
-- ledgerId: led-1787759503769-67ef9115
-
-### 2026-08-26 · Dev: chat/permissions/plan docs pages (@devel... — tekton-6 (developer) · `issues`
-- summary: All gates green. Final return:
-- files: `website/app/docs/chat-and-threads/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`, `website/app/docs/plan-mode/page.tsx`
-- verify: All 8 contracted paths present; no images created (parallel worker owns the PNGs).
-- proof: ### `/docs/chat-and-threads` — *Chat and work threads · theboringoffice*
-- ledgerId: led-1787759411332-f3422f15
-
-### 2026-08-26 · Dev: docs index + getting-started + backends... — tekton-5 (developer) · `issues`
-- summary: All clean. Return per the contract:
-- files: `website/app/docs/page.tsx`, `website/app/docs/getting-started/page.tsx`, `website/app/docs/backends/page.tsx`, `website/app/sitemap.ts`
-- verify: (plus line 12 `{ path: '/docs', priority: 0.8, ... }` — doesn't match the `docs/` literal but is present exactly once; `grep -c "'/docs"` →
-- proof: ### `/docs` (hub)
-- ledgerId: led-1787759278680-7d8df82e
 

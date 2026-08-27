@@ -1974,6 +1974,11 @@ func (m Model) Frame() string {
 	if m.modelPick != nil && m.permQ.front() == nil && m.question == nil {
 		frame = panels.ModelPickerFrame(m.modelPick, frame, m.width, m.height)
 	}
+	// the premium browser lane's frame-splice registry: published AFTER the
+	// frame composed (the entry always matches what the renderer just got —
+	// a cache-hit Frame republishes nothing because nothing it covers
+	// changed). browser.go owns the origin math + the empty-state clears.
+	m.publishZenbuFrame()
 	m.gov.frameKey, m.gov.frameCached = digest, frame
 	return frame
 }

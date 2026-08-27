@@ -157,7 +157,17 @@ func main() {
 	// and wiring unconditionally keeps /notify on able to flip live.
 	model.SetNotifyBus(notifyBus{notify.NewBus(cfg.UI.Notifications)})
 
-	p := tea.NewProgram(model)
+	// The premium browser lane's frame-splice seam (panels/zenbu_frame.go):
+	// the renderer's every flush passes through the wrapper unchanged, and
+	// the lane's live kitty images re-emit AFTER each flush at their
+	// absolute cells (the Model publishes the registry per Frame). The
+	// lane's direct deletes (suspend/close/quit) route through the same
+	// wrapper's DirectEmit so they serialize with frame flushes. The
+	// wrapper delegates Fd/Read to os.Stdout (bubbletea's ttyOutput +
+	// colorprofile.Detect type-assert the output to term.File).
+	frameOut := panels.NewZenbuFrameWriter(os.Stdout, panels.ZenbuRegistry())
+	panels.SetZenbuEmit(frameOut.DirectEmit)
+	p := tea.NewProgram(model, tea.WithOutput(frameOut))
 
 	// theme auto mode: with nothing pinned anywhere, ask the terminal for
 	// its background color (OSC 11) — the reply lands in app.Update as
@@ -188,6 +198,12 @@ func main() {
 	}
 
 	finalModel, err := p.Run()
+	// Sweep the premium lane's terminal-side images BEFORE anything else:
+	// the clean quit paths already deleted through the lane Close (these
+	// are hushed dupes), but a FATAL exit skips Update — the a=d sweep
+	// keeps the child's frames from ghosting over the restored main
+	// screen. Seals the wrapper (passthrough-only) either way.
+	frameOut.Finish()
 	// The LIVE model is the one p.Run() hands back: every Update (the
 	// /session picker accept's exec intent included) ran on ITS value
 	// chain — the pre-Run `model` variable is a stale copy and must NEVER

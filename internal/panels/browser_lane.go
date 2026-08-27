@@ -296,6 +296,7 @@ type ZenbuSession struct {
 	mf      *os.File // pty master
 	sb      *term.Scrollback
 	grid    *term.Grid
+	images  *zenbuImageStore // the kitty passthrough's live state (browser_lane_kitty.go)
 	started time.Time
 
 	mu     sync.Mutex
@@ -334,15 +335,21 @@ func newZenbuSession(url string, cols, rows int) (*ZenbuSession, error) {
 		mf:      mf,
 		sb:      term.NewScrollback(0), // 0 → term's defaultScrollback
 		grid:    term.NewGrid(cols, rows),
+		images:  newZenbuImageStore(),
 		started: time.Now(),
 		alive:   true,
 		code:    -1,
 	}
-	// the reader loop (term.Session.startReader's twin): every byte lands
-	// in BOTH the raw scrollback and the live screen model; the PTY going
-	// away flips Alive even if Wait is still reaping.
+	// the reader loop (term.Session.startReader's twin + the kitty
+	// passthrough): the stream SPLITTER (browser_lane_kitty.go) extracts
+	// the child's kitty graphics APCs into the image store, and every
+	// other byte lands in BOTH the raw scrollback and the live screen
+	// model (the base64 payloads NEVER reach the grid — they re-emit to
+	// the outer terminal at RegionView time instead); the PTY going away
+	// flips Alive even if Wait is still reaping.
+	split := newKittyStream(io.MultiWriter(s.sb, s.grid), s.grid, s.images)
 	go func() {
-		_, _ = io.Copy(io.MultiWriter(s.sb, s.grid), s.mf)
+		_, _ = io.Copy(split, s.mf)
 		s.mu.Lock()
 		s.alive = false
 		s.mu.Unlock()
@@ -434,7 +441,10 @@ func (s *ZenbuSession) Write(p []byte) (int, error) {
 
 // Resize hands the PTY a new window size (SIGWINCH to the foreground
 // process group is implicit on darwin/linux) and reshapes the screen
-// model first (term.Session.Resize's exact order).
+// model first (term.Session.Resize's exact order). Every live kitty
+// placement's geometry is now stale: the deletes queue (the next
+// RegionView flushes them in-frame) and the child repaints fresh frames
+// into the new box, re-placing from scratch.
 func (s *ZenbuSession) Resize(cols, rows int) error {
 	if cols < 2 {
 		cols = 2
@@ -443,6 +453,7 @@ func (s *ZenbuSession) Resize(cols, rows int) error {
 		rows = 1
 	}
 	s.grid.SetSize(cols, rows)
+	s.images.retirePlacements()
 	return pty.Setsize(s.mf, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 }
 
@@ -462,7 +473,13 @@ func (s *ZenbuSession) Scrollback() *term.Scrollback { return s.sb }
 // reader unblocks, and waits BOUNDED by zenbuKillGrace for the reap
 // (opencode.go's stopKillGrace contract: the teardown path never commutes
 // with a wedged child; the killing process exit reaps the rest).
-// Idempotent — safe at office quit.
+// Idempotent — safe at office quit. The terminal's live kitty placements
+// die WITH the session: the office-side deletes flush DIRECTLY through
+// the zenbuEmit seam (no frame will paint this pane again — the images
+// must not linger over the floor or past the office exit), and the
+// frame-splice registry CLEARS on the spot — the QUIT path renders no
+// further Frame to publish the empty state, so the renderer's final
+// flush (the alt-screen exit) must already find the registry empty.
 func (s *ZenbuSession) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -476,6 +493,12 @@ func (s *ZenbuSession) Close() error {
 	}
 	s.mu.Unlock()
 
+	if s.images != nil {
+		if frames := s.images.dropAll(); frames != "" {
+			zenbuEmit(frames)
+		}
+	}
+	ZenbuRegistry().Clear()
 	if pid > 0 {
 		_ = syscall.Kill(-pid, syscall.SIGKILL)
 	}
@@ -490,6 +513,29 @@ func (s *ZenbuSession) Close() error {
 	}
 	return nil
 }
+
+// -------------------------------------------------------------------
+// the frame-splice read seam (browser_lane_kitty.go + zenbu_frame.go)
+// -------------------------------------------------------------------
+
+// zenbuImageSurface — the premium session's kitty-passthrough read seam:
+// the REAL *ZenbuSession implements it; the controller suite's fakes
+// deliberately don't (their RegionView paint stays the text-only path —
+// the existing chrome/fallback tests are untouched by the splice, and the
+// controller's FrameState reads (nil, nil) for them).
+type zenbuImageSurface interface {
+	imagePlacements() []zenbuPlacement
+	drainImageDeleteIDs() []uint32
+}
+
+// imagePlacements — the live kitty placements for the frame-splice
+// registry (zenbu_frame.go's FrameState).
+func (s *ZenbuSession) imagePlacements() []zenbuPlacement { return s.images.placements() }
+
+// drainImageDeleteIDs — the queued office-side delete ids (child a=d,
+// id-replacement, resize-retire) for the registry publish's per-render
+// drain (the queue's OTHER drain is dropAll at Close).
+func (s *ZenbuSession) drainImageDeleteIDs() []uint32 { return s.images.drainPendingIDs() }
 
 // -------------------------------------------------------------------
 // the lane controller (the browser tab's drive surface)
@@ -730,6 +776,13 @@ func (c *BrowserLaneController) RegionView(textRows []string) string {
 	}
 	body := c.bodyH()
 	if c.PremiumActive() {
+		// PURE TEXT: the embedded PTY's screen model paints exactly like
+		// TermPanel's body path. The kitty images NEVER ride this string —
+		// bubbletea's cell renderer eats zero-width sequences (the wave-80
+		// in-View splice never painted; it only bloated the differ) — they
+		// reach the terminal through the frame-splice wrapper instead
+		// (zenbu_frame.go: the Model's per-Frame registry publish + the
+		// tea.WithOutput seam's post-flush emission).
 		for y, row := range c.sess.Grid().Render() {
 			if y >= body {
 				break
