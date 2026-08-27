@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/browsertools"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -106,6 +107,42 @@ func claudeStubSh(stream string) string {
 
 // claudeStubPreambleSh — the preamble as shell (hooks, then init).
 func claudeStubPreambleSh() string { return claudeStubSh(claudeStubPreamble) }
+
+// TestClaudeSpawnArgvPermissionPromptTool — the permission-modal lifeline:
+// headless `claude -p` only wires canUseTool to the stdio control channel
+// when `--permission-prompt-tool stdio` rides the spawn argv (the CLI's
+// own SDK spawn builder pushes exactly that). Without it EVERY
+// permission-requiring tool is auto-denied before the office modal can
+// appear, and the denial lands as a tool_result error row. A
+// --permission-mode flag would SILENCE prompts instead — never allowed.
+func TestClaudeSpawnArgvPermissionPromptTool(t *testing.T) {
+	argvlog := filepath.Join(t.TempDir(), "argv.log")
+	stub := claudeStubScript(t, `printf '%s\n' "$*" >> `+argvlog+`
+while IFS= read -r line; do :; done
+`)
+	log := &claudeEventLog{}
+	b := newClaudeBackend(stub, t.TempDir(), nil)
+	if err := b.Start(log.emit); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = b.Stop() }()
+
+	claudeWait(t, "the spawn argv record", 3*time.Second, func() bool {
+		bits, err := os.ReadFile(argvlog)
+		return err == nil && strings.Contains(string(bits), "--permission-prompt-tool stdio")
+	})
+	bits, err := os.ReadFile(argvlog)
+	if err != nil {
+		t.Fatalf("read argv log: %v", err)
+	}
+	argv := string(bits)
+	if !strings.Contains(argv, "--permission-prompt-tool stdio") {
+		t.Fatalf("spawn argv missing `--permission-prompt-tool stdio`: %s", argv)
+	}
+	if strings.Contains(argv, "--permission-mode") {
+		t.Fatalf("a --permission-mode would silence the modal prompts — argv must never carry one: %s", argv)
+	}
+}
 
 // TestClaudeStartSeatsFloorBeforeInit — the no-init-wait boot contract:
 // Start returns nil with the hires + hint lines ALREADY emitted in a
@@ -314,12 +351,17 @@ done
 	if err := b.Send("hello there"); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	const wantUser = `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello there"}]},"parent_tool_use_id":null}`
+	// the FIRST user line carries the browser-tool preamble ahead of the
+	// member text (browser_open_test.go owns that contract) — assert the
+	// exact placement via the production encoder plus the literal marker
+	// intro, so a wire-shape drift still fails here.
+	wantUser := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\nhello there"))
 	claudeWait(t, "the user line in the stub capture", 2*time.Second, func() bool {
 		return len(claudeCapture(t, capture)) == 1
 	})
-	if lines := claudeCapture(t, capture); lines[0] != wantUser {
-		t.Fatalf("stdin wire shape drifted:\n got %q\nwant %q", lines[0], wantUser)
+	lines := claudeCapture(t, capture)
+	if len(lines) != 1 || lines[0] != wantUser || !strings.Contains(lines[0], "⟦open-browser:") {
+		t.Fatalf("first stdin line must be preamble + prompt:\n got %q\nwant %q", lines, wantUser)
 	}
 
 	// the Send-triggered init maps ON ARRIVAL: primaryID pins, the init

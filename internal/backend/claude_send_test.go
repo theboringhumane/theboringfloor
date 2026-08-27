@@ -16,8 +16,26 @@ import (
 )
 
 // claudeCapture reads the stub's capture file (one stdin line per row,
-// the stub mirrors with >> appends).
+// the stub mirrors with >> appends). The office's initialize
+// control_request (the supportedDialogKinds declaration, the FIRST stdin
+// line of every process since the dialog-kind wave) is FILTERED OUT: it
+// rides every capture and no pre-existing assertion counts it — tests
+// that pin the declaration bytes read the raw file via claudeCaptureRaw.
 func claudeCapture(t *testing.T, path string) []string {
+	t.Helper()
+	var out []string
+	for _, ln := range claudeCaptureRaw(t, path) {
+		if strings.Contains(ln, `"subtype":"initialize"`) {
+			continue
+		}
+		out = append(out, ln)
+	}
+	return out
+}
+
+// claudeCaptureRaw reads the stub's capture file UNFILTERED (initialize
+// declaration included).
+func claudeCaptureRaw(t *testing.T, path string) []string {
 	t.Helper()
 	f, err := os.Open(path)
 	if err != nil {
@@ -34,6 +52,10 @@ func claudeCapture(t *testing.T, path string) []string {
 
 // TestClaudeSendWritesExactlyOnce pins the EXACT stdin wire shape:
 // {"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello there"}]},"parent_tool_use_id":null}
+// The browser-tool preamble (browsertools.PromptPreamble) rides the
+// FIRST user line of a session — the byte-pin below is the SECOND
+// send's line (the plain-prompt shape the preamble never touches); the
+// first line's contract lives in browser_open_test.go.
 func TestClaudeSendWritesExactlyOnce(t *testing.T) {
 	capture := filepath.Join(t.TempDir(), "capture.log")
 	stubBody := claudeStubPreambleSh() + `while IFS= read -r line; do
@@ -48,21 +70,27 @@ done
 	}
 	defer func() { _ = b.Stop() }()
 
-	if err := b.Send("hello there"); err != nil {
-		t.Fatalf("Send: %v", err)
+	if err := b.Send("brief me"); err != nil {
+		t.Fatalf("Send 1 (the briefed one): %v", err)
 	}
-	const want = `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello there"}]},"parent_tool_use_id":null}`
-	claudeWait(t, "the user line to land in the stub capture", 2*time.Second, func() bool {
+	claudeWait(t, "the first (preamble-carrying) user line in the stub capture", 2*time.Second, func() bool {
 		return len(claudeCapture(t, capture)) == 1
 	})
+	if err := b.Send("hello there"); err != nil {
+		t.Fatalf("Send 2: %v", err)
+	}
+	const want = `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello there"}]},"parent_tool_use_id":null}`
+	claudeWait(t, "the second user line to land in the stub capture", 2*time.Second, func() bool {
+		return len(claudeCapture(t, capture)) == 2
+	})
 	lines := claudeCapture(t, capture)
-	if len(lines) != 1 {
-		t.Fatalf("Send wrote %d stdin lines (want exactly 1)", len(lines))
+	if len(lines) != 2 {
+		t.Fatalf("two Sends wrote %d stdin lines (want exactly 2)", len(lines))
 	}
-	if lines[0] != want {
-		t.Fatalf("stdin wire shape drifted:\n got %q\nwant %q", lines[0], want)
+	if lines[1] != want {
+		t.Fatalf("stdin wire shape drifted:\n got %q\nwant %q", lines[1], want)
 	}
-	// the local echo + ONE pending placeholder fired (Send owns them)
+	// the local echo + ONE pending placeholder fired per Send (Send owns them)
 	var echo, placeholder bool
 	for _, e := range log.snapshot() {
 		if e.Kind == state.EvChatUser && e.Msg.Text == "hello there" {

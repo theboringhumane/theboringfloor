@@ -98,13 +98,260 @@ func TestClaudeStreamThenSnapshotSingleBubbleNoDoubleGrowth(t *testing.T) {
 	if evs[0].Msg.Text != "Honey never spoils" {
 		t.Fatalf("stream accumulates: got %q", evs[0].Msg.Text)
 	}
-	// the snapshot pins the FINAL text on the same id, once, Pending=false
-	evs = claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-7","role":"assistant","content":[{"type":"text","text":"Honey never spoils"}]},"session_id":"sess-1","uuid":"msg-7","parent_tool_use_id":null}`, 140)
+	// the mid-stream PARTIAL snapshot (real wire: lands BEFORE the stops,
+	// sharing the message id) REFRESHES the same bubble — it must NOT pin.
+	evs = claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-7","role":"assistant","content":[{"type":"text","text":"Honey never spoils"}]},"session_id":"sess-1","uuid":"frame-partial-7","parent_tool_use_id":null}`, 135)
+	if len(evs) != 1 || evs[0].Msg.ID != "bossmsg-msg-7" || !evs[0].Msg.Pending || evs[0].Msg.Text != "Honey never spoils" {
+		t.Fatalf("a mid-stream partial snapshot must refresh pending, not pin: %+v", evs)
+	}
+	if ctx.pinned["msg-7"] {
+		t.Fatalf("a mid-stream partial must never set the one-shot pin")
+	}
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 136)
+	// the real wire sends NO final assistant snapshot after message_stop —
+	// the close itself pins the FINAL text on the same id, once, Pending=false.
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`, 137)
 	if len(evs) != 1 || evs[0].Msg.ID != "bossmsg-msg-7" || evs[0].Msg.Pending || evs[0].Msg.Text != "Honey never spoils" {
-		t.Fatalf("snapshot must pin the same bubble id, got %+v", evs)
+		t.Fatalf("message_stop must pin the same bubble id, got %+v", evs)
 	}
 	if evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-7","role":"assistant","content":[{"type":"text","text":"Honey never spoils"}]},"session_id":"sess-1","uuid":"msg-7","parent_tool_use_id":null}`, 141); len(evs) != 0 {
 		t.Fatalf("a duplicate snapshot re-emitted %v", claudeKinds(evs))
+	}
+}
+
+func TestClaudeAssistantSnapshotPrefersMessageIDOverFrameUUID(t *testing.T) {
+	// the stream pins under message.id; a snapshot whose frame uuid differs
+	// must join THAT bubble (and thought), never mint "bossmsg-"+<frame uuid>.
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-real"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	evs := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"half"}},"session_id":"sess-1","parent_tool_use_id":null}`, 120)
+	if len(evs) != 1 || evs[0].Msg.ID != "bossmsg-msg-real" {
+		t.Fatalf("the stream must grow bossmsg-msg-real, got %+v", evs)
+	}
+	// the snapshot's frame uuid differs from message.id — the refresh MUST
+	// land on message.id or the streamed bubble forks. Mid-stream it stays
+	// pending (never pins), but its FULLER text ("half an answer" vs the
+	// streamed "half") becomes the bubble's best-known text.
+	evs = claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-real","role":"assistant","content":[{"type":"thinking","thinking":"hmm"},{"type":"text","text":"half an answer"}]},"session_id":"sess-1","uuid":"frame-uuid-9","parent_tool_use_id":null}`, 130)
+	var refresh *state.ChatMsg
+	var thought *state.Event
+	for i := range evs {
+		switch evs[i].Kind {
+		case state.EvChatBoss:
+			refresh = &evs[i].Msg
+		case state.EvThought:
+			thought = &evs[i]
+		}
+	}
+	if refresh == nil || refresh.ID != "bossmsg-msg-real" || !refresh.Pending || refresh.Text != "half an answer" {
+		t.Fatalf("snapshot must refresh the streamed bubble (message.id), got %+v", evs)
+	}
+	if thought == nil || thought.CallID != "think-msg-real" || !thought.Done {
+		t.Fatalf("snapshot thought must close on think-msg-real, got %+v", evs)
+	}
+	if ctx.pinned["frame-uuid-9"] || ctx.pinned["msg-real"] {
+		t.Fatalf("a mid-stream snapshot must never pin: %+v", ctx.pinned)
+	}
+	// the stream close pins DONE on the SAME message.id bubble — carrying
+	// the snapshot's fuller text, never the frame uuid's id.
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 140)
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`, 150)
+	if len(evs) != 1 || evs[0].Kind != state.EvChatBoss || evs[0].Msg.ID != "bossmsg-msg-real" ||
+		evs[0].Msg.Pending || evs[0].Msg.Text != "half an answer" {
+		t.Fatalf("message_stop must pin the streamed bubble (message.id), got %+v", evs)
+	}
+	if !ctx.pinned["msg-real"] || ctx.pinned["frame-uuid-9"] {
+		t.Fatalf("the frame uuid must never be a pin key: %+v", ctx.pinned)
+	}
+}
+
+func TestClaudeAssistantSnapshotFallsBackToFrameUUID(t *testing.T) {
+	// no message.id on the wire: the frame uuid is the only key left.
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"idless answer"}]},"session_id":"sess-1","uuid":"frame-only-1","parent_tool_use_id":null}`, 100)
+	if len(evs) != 1 || evs[0].Kind != state.EvChatBoss || evs[0].Msg.ID != "bossmsg-frame-only-1" || evs[0].Msg.Pending {
+		t.Fatalf("an idless snapshot must pin under the frame uuid, got %+v", evs)
+	}
+}
+
+// TestClaudePartialSnapshotIncompleteTextNeverFreezesBubble is THE freeze
+// regression: a mid-stream PARTIAL snapshot carrying INCOMPLETE text must
+// REFRESH (never pin) — the one-shot pin used to freeze the truncated
+// partial forever and ignore the complete text. The final rendered state
+// (the chat reducer's replace-merge fold) must be ONE bubble,
+// Pending:false, complete text.
+func TestClaudePartialSnapshotIncompleteTextNeverFreezesBubble(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-p1","model":"claude-test"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 101)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Honey nev"}},"session_id":"sess-1","parent_tool_use_id":null}`, 102)
+	// the TRUNCATED partial snapshot: same message.id, mid-stream — it
+	// refreshes the pending bubble, it must NEVER pin.
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-p1","role":"assistant","content":[{"type":"text","text":"Honey nev"}]},"session_id":"sess-1","uuid":"frame-partial-p1","parent_tool_use_id":null}`, 103)
+	if len(evs) != 1 || evs[0].Kind != state.EvChatBoss || evs[0].Msg.ID != "bossmsg-msg-p1" ||
+		!evs[0].Msg.Pending || evs[0].Msg.Text != "Honey nev" {
+		t.Fatalf("the truncated partial must refresh pending, got %+v", evs)
+	}
+	if ctx.pinned["msg-p1"] {
+		t.Fatalf("the truncated partial set the one-shot pin — the freeze bug")
+	}
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"er spoils"}},"session_id":"sess-1","parent_tool_use_id":null}`, 104)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 105)
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`, 106)
+	if len(evs) != 1 || evs[0].Msg.ID != "bossmsg-msg-p1" || evs[0].Msg.Pending || evs[0].Msg.Text != "Honey never spoils" {
+		t.Fatalf("the stream close must pin the COMPLETE text, got %+v", evs)
+	}
+	// a late complete snapshot (a wire that DOES send one) is absorbed
+	// idempotently — single bubble, no double growth.
+	if evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-p1","role":"assistant","content":[{"type":"text","text":"Honey never spoils"}]},"session_id":"sess-1","uuid":"msg-p1","parent_tool_use_id":null}`, 107); len(evs) != 0 {
+		t.Fatalf("the post-pin snapshot must stay silent, got %v", claudeKinds(evs))
+	}
+}
+
+// TestClaudeBubblePinsAtMessageStopRealWire drives the EXACT frame order
+// captured off a live `claude -p --include-partial-messages` run (CLI
+// 2.1.247): the wire sends NO final assistant snapshot after
+// message_stop — the last assistant frame is the mid-stream PARTIAL. The
+// bubble must still end pinned Pending:false with the complete text (the
+// message_stop close lands it), never hang pending. The merged fold
+// mirrors the chat reducer's replace-merge, so this is the member-visible
+// result.
+func TestClaudeBubblePinsAtMessageStopRealWire(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	frames := []string{
+		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_bdrk_01","model":"claude-test"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"short and sweet"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"assistant","message":{"id":"msg_bdrk_01","role":"assistant","content":[{"type":"thinking","thinking":"short and sweet"}]},"session_id":"sess-1","uuid":"frame-partial-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Honey never spoils"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"assistant","message":{"id":"msg_bdrk_01","role":"assistant","content":[{"type":"text","text":"Honey never spoils"}]},"session_id":"sess-1","uuid":"frame-partial-2","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":1},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`,
+		// the capture ends here: result frame — NO final assistant snapshot.
+	}
+	merged := map[string]state.ChatMsg{}
+	for i, line := range frames {
+		for _, e := range claudeFeed(t, ctx, line, int64(100+i)) {
+			if e.Kind == state.EvChatBoss {
+				merged[e.Msg.ID] = e.Msg // the chat reducer's replace-merge
+			}
+		}
+	}
+	if len(merged) != 1 {
+		t.Fatalf("exactly ONE boss bubble must exist, got %+v", merged)
+	}
+	final := merged["bossmsg-msg_bdrk_01"]
+	if final.Pending || final.Text != "Honey never spoils" {
+		t.Fatalf("message_stop must pin the complete text (no final snapshot on the wire): %+v", final)
+	}
+}
+
+// TestClaudePartialSnapshotStaleNeverShrinksBubble: a partial snapshot
+// carrying LESS text than the deltas already grew (a stale one) must not
+// shrink the rendered bubble — the refresh keeps the longest known text
+// and later deltas append on top of it.
+func TestClaudePartialSnapshotStaleNeverShrinksBubble(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-s1"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"the full answer"}},"session_id":"sess-1","parent_tool_use_id":null}`, 120)
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-s1","role":"assistant","content":[{"type":"text","text":"the full"}]},"session_id":"sess-1","uuid":"frame-stale","parent_tool_use_id":null}`, 130)
+	if len(evs) != 1 || !evs[0].Msg.Pending || evs[0].Msg.Text != "the full answer" {
+		t.Fatalf("a stale partial must not shrink the bubble: %+v", evs)
+	}
+	// deltas keep growing the SAME bubble on the longest known text
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" so far"}},"session_id":"sess-1","parent_tool_use_id":null}`, 140)
+	if len(evs) != 1 || evs[0].Msg.Text != "the full answer so far" || evs[0].Msg.ID != "bossmsg-msg-s1" {
+		t.Fatalf("deltas must grow the refreshed bubble: %+v", evs)
+	}
+}
+
+// TestClaudePartialSnapshotMintsPendingBubbleMidStream: a mid-stream
+// partial that lands before ANY text delta mints the pending bubble
+// (textStart seeded at the snapshot's stamp), still unpinned; the stream's
+// own deltas then grow the SAME bubble on its original stamp.
+func TestClaudePartialSnapshotMintsPendingBubbleMidStream(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-m1"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-m1","role":"assistant","content":[{"type":"text","text":"first words"}]},"session_id":"sess-1","uuid":"frame-pm1","parent_tool_use_id":null}`, 120)
+	if len(evs) != 1 || !evs[0].Msg.Pending || evs[0].Msg.Text != "first words" ||
+		evs[0].Msg.ID != "bossmsg-msg-m1" || evs[0].Msg.At != 120 {
+		t.Fatalf("a mid-stream partial must mint the pending bubble: %+v", evs)
+	}
+	if ctx.pinned["msg-m1"] {
+		t.Fatalf("a mid-stream partial must never pin: %+v", ctx.pinned)
+	}
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 130)
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" and more"}},"session_id":"sess-1","parent_tool_use_id":null}`, 131)
+	if len(evs) != 1 || evs[0].Msg.Text != "first words and more" || evs[0].Msg.At != 120 {
+		t.Fatalf("deltas must grow the minted bubble on its original stamp: %+v", evs)
+	}
+}
+
+// TestClaudeSnapshotOnlyPinsDoneOnFirstSight: no stream events at all
+// (resumed/history frame) — the first snapshot pins done outright.
+func TestClaudeSnapshotOnlyPinsDoneOnFirstSight(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-h1","role":"assistant","content":[{"type":"text","text":"from history"}]},"session_id":"sess-1","uuid":"msg-h1","parent_tool_use_id":null}`, 100)
+	if len(evs) != 1 || evs[0].Kind != state.EvChatBoss || evs[0].Msg.Pending ||
+		evs[0].Msg.Text != "from history" || evs[0].Msg.ID != "bossmsg-msg-h1" {
+		t.Fatalf("a snapshot-only frame must pin done on first sight: %+v", evs)
+	}
+	if !ctx.pinned["msg-h1"] {
+		t.Fatalf("snapshot-only must set the pin: %+v", ctx.pinned)
+	}
+}
+
+// TestClaudeSnapshotAfterStreamClosePins: on a wire where the complete
+// snapshot arrives only AFTER the stream's close (and no deltas ever grew
+// text), the first post-close snapshot pins done — and stays idempotent.
+func TestClaudeSnapshotAfterStreamClosePins(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-l1"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 120)
+	if evs := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`, 130); len(evs) != 0 {
+		t.Fatalf("no text grew — the close must stay silent, got %v", claudeKinds(evs))
+	}
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-l1","role":"assistant","content":[{"type":"text","text":"late answer"}]},"session_id":"sess-1","uuid":"msg-l1","parent_tool_use_id":null}`, 140)
+	if len(evs) != 1 || evs[0].Msg.Pending || evs[0].Msg.Text != "late answer" || evs[0].Msg.ID != "bossmsg-msg-l1" {
+		t.Fatalf("the post-close snapshot must pin done: %+v", evs)
+	}
+	if evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-l1","role":"assistant","content":[{"type":"text","text":"late answer"}]},"session_id":"sess-1","uuid":"msg-l1","parent_tool_use_id":null}`, 141); len(evs) != 0 {
+		t.Fatalf("the pin must stay idempotent, got %v", claudeKinds(evs))
+	}
+}
+
+// TestClaudeSubagentStreamNeverTouchesBossOpenMarker: a subagent's
+// message_start/message_stop (parent_tool_use_id set) must not open or
+// close the BOSS stream marker — a boss partial snapshot mid-subagent
+// still refreshes, never pins.
+func TestClaudeSubagentStreamNeverTouchesBossOpenMarker(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-boss"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	// a subagent's whole stream lifecycle interleaves
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-sub"}},"session_id":"sess-1","parent_tool_use_id":"toolu_task1"}`, 110)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":"toolu_task1"}`, 120)
+	// the boss's own stream is still open: its partial snapshot refreshes
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-boss","role":"assistant","content":[{"type":"text","text":"still streaming"}]},"session_id":"sess-1","uuid":"frame-b1","parent_tool_use_id":null}`, 130)
+	if len(evs) != 1 || !evs[0].Msg.Pending || evs[0].Msg.ID != "bossmsg-msg-boss" {
+		t.Fatalf("the boss marker must survive subagent frames: %+v", evs)
+	}
+	if ctx.pinned["msg-boss"] {
+		t.Fatalf("subagent frames must never close the boss stream: %+v", ctx.pinned)
 	}
 }
 
@@ -117,15 +364,137 @@ func TestClaudeThinkingStreamAndBlock(t *testing.T) {
 	if len(evs) != 1 || evs[0].Kind != state.EvThought || evs[0].EmployeeName != "boss" || evs[0].Done {
 		t.Fatalf("thinking delta must be an open boss thought, got %+v", evs)
 	}
-	evs = claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-9","role":"assistant","content":[{"type":"thinking","thinking":"do it the simple way"},{"type":"text","text":"ok"}]},"session_id":"sess-1","uuid":"msg-9","parent_tool_use_id":null}`, 130)
+	// the REAL wire order (--include-partial-messages): the partial snapshot
+	// lands MID-stream, BEFORE content_block_stop, sharing the message id —
+	// it refreshes the transcript but must NOT close the still-open thought.
+	evs = claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-9","role":"assistant","content":[{"type":"thinking","thinking":"goals first: weekly leaderboard."},{"type":"text","text":"ok"}]},"session_id":"sess-1","uuid":"msg-9","parent_tool_use_id":null}`, 130)
 	var thought *state.Event
 	for i := range evs {
 		if evs[i].Kind == state.EvThought {
 			thought = &evs[i]
 		}
 	}
+	if thought == nil || thought.Done || thought.Text != "goals first: weekly leaderboard." {
+		t.Fatalf("a mid-stream partial snapshot must refresh, never close: %+v", evs)
+	}
+	// the stream close pins the thought done WITH the full transcript.
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 140)
+	if len(evs) != 1 || evs[0].Kind != state.EvThought || !evs[0].Done ||
+		evs[0].Text != "goals first: weekly leaderboard." || evs[0].CallID != "think-msg-9" {
+		t.Fatalf("content_block_stop must pin the thought done with its transcript, got %+v", evs)
+	}
+	// a snapshot that arrives with NO open stream (older/quiet wire) still
+	// pins Done=true outright.
+	ctx2 := newClaudeNormCtx(nil)
+	ctx2.primaryID = "sess-1"
+	evs = claudeFeed(t, ctx2, `{"type":"assistant","message":{"id":"msg-10","role":"assistant","content":[{"type":"thinking","thinking":"do it the simple way"},{"type":"text","text":"ok"}]},"session_id":"sess-1","uuid":"msg-10","parent_tool_use_id":null}`, 100)
+	thought = nil
+	for i := range evs {
+		if evs[i].Kind == state.EvThought {
+			thought = &evs[i]
+		}
+	}
 	if thought == nil || !thought.Done || thought.Text != "do it the simple way" {
-		t.Fatalf("assistant thinking block must pin a done thought: %+v", evs)
+		t.Fatalf("a snapshot-only thought must pin done: %+v", evs)
+	}
+}
+
+// TestClaudeThinkingDeltasAccumulateGrowingTranscript pins the EvThought
+// contract the chat reducer relies on (replace-on-merge by CallID): every
+// delta carries the ACCUMULATED transcript, an empty keep-alive delta emits
+// nothing, and the stream close carries the transcript (never a wipe).
+func TestClaudeThinkingDeltasAccumulateGrowingTranscript(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-t1"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	evs := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"goals first"}},"session_id":"sess-1","parent_tool_use_id":null}`, 120)
+	if len(evs) != 1 || evs[0].Text != "goals first" || evs[0].Done || evs[0].CallID != "think-msg-t1" {
+		t.Fatalf("first delta must open the thought with its text, got %+v", evs)
+	}
+	// the second delta must carry the GROWING transcript, not the bare chunk
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":": weekly"}},"session_id":"sess-1","parent_tool_use_id":null}`, 130)
+	if len(evs) != 1 || evs[0].Text != "goals first: weekly" || evs[0].Done {
+		t.Fatalf("delta must emit the accumulated transcript, got %+v", evs)
+	}
+	// the real wire trails an EMPTY thinking_delta: a keep-alive, never a wipe
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`, 140)
+	if len(evs) != 0 {
+		t.Fatalf("an empty thinking delta must stay silent, got %+v", evs)
+	}
+	// the close pins Done=true WITH the transcript — a bare close would
+	// replace-merge the chat entry to empty.
+	evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`, 150)
+	if len(evs) != 1 || !evs[0].Done || evs[0].Text != "goals first: weekly" {
+		t.Fatalf("the close must carry the full transcript, got %+v", evs)
+	}
+}
+
+// TestClaudeThinkingRealWirePartialSnapshotSequence drives the EXACT frame
+// order captured off a live `claude -p --include-partial-messages` run
+// (haiku, thinking on): deltas -> empty trailing delta -> PARTIAL assistant
+// snapshot ([thinking] only, mid-stream) -> content_block_stop -> text block
+// -> partial snapshot ([text] only) -> stops. The final merged chat state
+// must show the full thought, done — the reducer fold below mirrors the
+// model.go replace-on-merge rule, so this is the member-visible result.
+func TestClaudeThinkingRealWirePartialSnapshotSequence(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	frames := []string{
+		`{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_bdrk_01","model":"claude-test"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"The user just"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" sent a"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":" reminder"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		// the mid-stream PARTIAL snapshot: same message.id, thinking block only
+		`{"type":"assistant","message":{"id":"msg_bdrk_01","role":"assistant","content":[{"type":"thinking","thinking":"The user just sent a reminder"}]},"session_id":"sess-1","uuid":"frame-uuid-partial-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":0},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"OK"}},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"assistant","message":{"id":"msg_bdrk_01","role":"assistant","content":[{"type":"text","text":"OK"}]},"session_id":"sess-1","uuid":"frame-uuid-partial-2","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"content_block_stop","index":1},"session_id":"sess-1","parent_tool_use_id":null}`,
+		`{"type":"stream_event","event":{"type":"message_stop"},"session_id":"sess-1","parent_tool_use_id":null}`,
+	}
+	type thoughtState struct {
+		text string
+		done bool
+	}
+	merged := map[string]*thoughtState{}
+	var allThoughtEvs []state.Event
+	stopFrame := 7 // frames[7] is the thinking content_block_stop
+	firstDoneFrame := -1
+	for i, line := range frames {
+		for _, e := range claudeFeed(t, ctx, line, int64(100+i)) {
+			if e.Kind != state.EvThought {
+				continue
+			}
+			allThoughtEvs = append(allThoughtEvs, e)
+			// the chat reducer's merge: one entry per CallID, each event
+			// REPLACES text/done (model.go's boss-thought arm).
+			merged[e.CallID] = &thoughtState{text: e.Text, done: e.Done}
+			if e.Done && firstDoneFrame < 0 {
+				firstDoneFrame = i
+			}
+		}
+	}
+	final := merged["think-msg_bdrk_01"]
+	if final == nil {
+		t.Fatalf("no thought events at all: %v", allThoughtEvs)
+	}
+	if final.text != "The user just sent a reminder" || !final.done {
+		t.Fatalf("final rendered thought must be the full transcript, done — got text=%q done=%v (all events: %+v)", final.text, final.done, allThoughtEvs)
+	}
+	// no event in the sequence may ever CARRY an empty transcript wipe
+	for _, e := range allThoughtEvs {
+		if e.Text == "" {
+			t.Fatalf("an EvThought with empty text wipes the rendered entry: %+v", allThoughtEvs)
+		}
+	}
+	// the premature-close guard: the partial snapshot (frame 6, BEFORE the
+	// content_block_stop) must not mark the thought done mid-stream.
+	if firstDoneFrame < stopFrame {
+		t.Fatalf("thought closed at frame %d, before its content_block_stop (frame %d): %+v", firstDoneFrame, stopFrame, allThoughtEvs)
 	}
 }
 

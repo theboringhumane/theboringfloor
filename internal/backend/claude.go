@@ -1,6 +1,7 @@
 // claude.go — the live Claude Code backend for theboringoffice: one
 // `claude -p --input-format stream-json --output-format stream-json
-// --verbose --include-partial-messages` process per office session (a
+// --verbose --include-partial-messages --permission-prompt-tool stdio`
+// process per office session (a
 // per-session process, NOT a daemon), with the stdout JSONL stream
 // normalized into state.Events via claude_events.go (pure, mirroring how
 // opencode.go + events.go share work).
@@ -23,8 +24,9 @@
 //
 // Control path: control_request can_use_tool -> EvPermission;
 // request_user_dialog -> EvQuestion. Answers write control_response ONCE
-// (once->allow / always->allow_always / reject->deny) and emit the local
-// resolved event the modal needs (claude never echoes responses).
+// (once->allow / always->allow+updatedPermissions / reject->deny+message)
+// and emit the local resolved event the modal needs (claude never
+// echoes responses).
 //
 // Kill ladder (/stop): interrupt control_request -> SIGINT after
 // claudeAbortSigIntAfter -> SIGTERM after claudeAbortSigTermAfter; a
@@ -46,6 +48,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/browsertools"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -86,6 +89,29 @@ type liveClaudeBackend struct {
 
 	lastUserText string
 	lastUserAt   int64
+
+	// questionStash holds the decoded question pages of each PENDING
+	// request_user_dialog (keyed by control request_id), lifted from the
+	// mapped EvQuestion in readLoop. AnswerQuestion needs them to rebuild
+	// the CLI-native dialog result (for the AskUserQuestion kind:
+	// updatedInput.questions + the answers map keyed by question text);
+	// AnswerQuestion/RejectQuestion pop it. The per-kind decode the
+	// answer needs (family, F1 input, label->result bytes) lives in
+	// ctx.dialogMeta — the permMeta analog.
+	questionStash map[string][]state.QuestionItem
+
+	// initSeq numbers the initialize control_requests (one per process:
+	// the FIRST stdin line of every spawn and every --resume respawn).
+	initSeq int
+
+	// briefed latches once the browser-tool preamble
+	// (browsertools.PromptPreamble) has ridden the FIRST stdin user line
+	// (set only on a clean write — a failed line re-briefs next Send);
+	// a --resume respawn keeps the latch (the resumed session's context
+	// retains the contract). browserBridge is the shared marker-policy
+	// bridge (its emit closure reads fl AT CALL TIME).
+	briefed       bool
+	browserBridge *browsertools.Bridge
 }
 
 var _ state.Backend = (*liveClaudeBackend)(nil)
@@ -93,15 +119,18 @@ var _ state.Backend = (*liveClaudeBackend)(nil)
 // newClaudeBackend wires the backend; bin "" means "resolve at Start"
 // (THEBORINGOFFICE_CLAUDE_BIN, then PATH's `claude`).
 func newClaudeBackend(bin, directory string, cfg *config.Config) *liveClaudeBackend {
-	return &liveClaudeBackend{
-		directory:    directory,
-		cfg:          cfgOrDefault(cfg),
-		bin:          bin,
-		fl:           newFlow(),
-		ctx:          newClaudeNormCtx(cfgOrDefault(cfg)),
-		thoughtSlots: make(map[string]*thoughtSlot),
-		chatSlots:    make(map[string]*thoughtSlot),
+	b := &liveClaudeBackend{
+		directory:     directory,
+		cfg:           cfgOrDefault(cfg),
+		bin:           bin,
+		fl:            newFlow(),
+		ctx:           newClaudeNormCtx(cfgOrDefault(cfg)),
+		thoughtSlots:  make(map[string]*thoughtSlot),
+		chatSlots:     make(map[string]*thoughtSlot),
+		questionStash: make(map[string][]state.QuestionItem),
 	}
+	b.browserBridge = browsertools.NewBridge(func(e state.Event) { b.fl.emit(e) })
+	return b
 }
 
 // NewClaude creates the live claude-CLI backend: directory is the office's
@@ -227,8 +256,16 @@ func claudeChildEnv(directory string) []string {
 // exitCh carries the process's eventual Wait result (the scan-era reaper
 // owns cmd.Wait — callers never re-Wait).
 func spawnClaude(bin, directory, resumeID string) (*exec.Cmd, io.WriteCloser, io.Reader, <-chan error, *cappedErrBuf, error) {
+	// --permission-prompt-tool stdio is the permission-modal lifeline:
+	// headless `claude -p` only wires canUseTool to the stdio control
+	// channel when the flag rides the spawn (the CLI's own SDK spawn
+	// builder pushes exactly this). Without it EVERY permission-requiring
+	// tool is auto-denied and the denial lands as a tool_result error —
+	// the office modal never appears. (--permission-mode acceptEdits /
+	// bypassPermissions would SILENCE prompts instead — never used here.)
 	argv := []string{"-p", "--input-format", "stream-json",
-		"--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+		"--output-format", "stream-json", "--verbose", "--include-partial-messages",
+		"--permission-prompt-tool", "stdio"}
 	if resumeID != "" {
 		argv = append(argv, "--resume", resumeID)
 	}
@@ -322,6 +359,12 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	bin2 := b.bin
 	b.mu.Unlock()
 
+	// Declare the rendered dialog kinds FIRST — the initialize control
+	// request must precede the first user line (the stream-json contract:
+	// "initialize is optional and normally the first line"), and no Send
+	// can have happened yet (Start owns the only pre-Send window).
+	b.writeInitialize()
+
 	// Fixed seats FIRST (opencode parity): the boss and Mnemosyne (hr) are
 	// always on the floor. The manager's ID is the pinned session id — ""
 	// pre-init is fine: every roster lookup keys on the manager ROLE, and
@@ -401,6 +444,14 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 		}
 		b.mu.Unlock()
 		for _, e := range evs {
+			// A pending question dialog carries its decoded pages on the
+			// event — stash them so AnswerQuestion can key the CLI-native
+			// result by question text (the hold in ctx is metadata-only).
+			if e.Kind == state.EvQuestion && e.ToolState == "pending" && len(e.Questions) > 0 {
+				b.mu.Lock()
+				b.questionStash[e.QuestionID] = e.Questions
+				b.mu.Unlock()
+			}
 			b.emitMapped(e)
 		}
 	}
@@ -426,6 +477,13 @@ func (b *liveClaudeBackend) emitMapped(e state.Event) {
 			b.emitChatStream(e)
 			return
 		}
+	}
+	// Browser-tool markers (⟦open-browser: URL⟧) never reach the
+	// transcript: scrub the PINNED text (deltas stream raw — the pin
+	// supersedes the growing bubble, so the transcript at rest is clean)
+	// and fire the open requests (opencode parity: maybeBossCompleted).
+	if e.Kind == state.EvChatBoss && !e.Msg.Pending && e.Msg.Text != "" {
+		e.Msg.Text = browsertools.Scrub(e.Msg.Text, b.browserBridge)
 	}
 	b.fl.emit(e)
 }
@@ -617,6 +675,11 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	wait := make(chan struct{})
 	b.procWait = wait
 	b.mu.Unlock()
+	// The respawned process is a NEW client attach: re-declare the
+	// rendered dialog kinds (the CLI also restores the prior epoch's
+	// declaration — "[print.ts] restored N declared dialog kind(s)" — but
+	// the re-initialize is the documented contract and costs one line).
+	b.writeInitialize()
 	go b.watchProc(proc, exitCh, wait)
 	go b.readLoop(stdout) // the resume's own init lands as a mapped note
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
@@ -726,7 +789,20 @@ func (b *liveClaudeBackend) Send(text string) error {
 		ID: pendingID, From: "boss", Text: "", At: nowMs(), Pending: true,
 	}})
 
-	if err := b.writeLine(claudeUserLineFor(trimmed)); err != nil {
+	// The browser-tool preamble (browsertools.PromptPreamble) rides the
+	// FIRST stdin user line exactly once — the conciergePreamble house
+	// pattern; the member's chat-user echo above carries `trimmed` only.
+	// The latch sets ONLY on a clean write (a failed line re-briefs next
+	// Send), and a --resume respawn keeps it (the resumed session's
+	// context retains the contract).
+	b.mu.Lock()
+	briefed := b.briefed
+	b.mu.Unlock()
+	line := claudeUserLineFor(trimmed)
+	if !briefed {
+		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + trimmed)
+	}
+	if err := b.writeLine(line); err != nil {
 		b.mu.Lock()
 		for i, id := range b.pendingBoss {
 			if id == pendingID {
@@ -744,34 +820,67 @@ func (b *liveClaudeBackend) Send(text string) error {
 	}
 	b.mu.Lock()
 	b.busyTurns++
+	if !briefed {
+		b.briefed = true // the preamble's line landed — never brief this session twice
+	}
 	b.mu.Unlock()
 	return nil
 }
 
 // ---------------------------------------------------------------- control writers
 
+// claudeControlResult is the inner response blob of a control_response.
+// The CLI's vocabulary is PER-SUBTYPE (verified against the installed CLI
+// 2.1.247 binary's zod schemas):
+//   - can_use_tool: behavior ∈ {"allow","deny"} ONLY — "allow_always" does
+//     not exist anywhere in the CLI binary, and a schema-parse failure on
+//     the reply rejects the parked promise (the CLI then converts it to a
+//     deny). message rides the deny reason; updatedPermissions rides the
+//     standing grant an "allow always" gives (the request's
+//     permission_suggestions re-emitted verbatim, the CLI-native
+//     PermissionUpdate[] shape).
+//   - request_user_dialog: behavior ∈ {"completed","cancelled"} ONLY — the
+//     SDK schema is {behavior: enum("completed","cancelled"),
+//     result?: unknown}, and the CLI's own cancel writer emits exactly
+//     {behavior:"cancelled"}. result carries the answer payload (opaque per
+//     dialog_kind; the CLI safeParses it against the kind's own result
+//     schema). "allow"/"deny" here are schema violations the CLI buckets as
+//     behavior "other" — the dialog never settles as answered. The result
+//     SHAPE is per-kind (claudeDialogResultJSON): an OBJECT carrying
+//     "behavior" for the permission_ask_user_question + F1 gates, a bare
+//     enum STRING for the consent kinds, a fixed object for the
+//     structured kinds; Result is raw JSON so every shape (and its
+//     omission on cancelled) serializes byte-exactly.
+type claudeControlResult struct {
+	Behavior           string          `json:"behavior"`
+	Result             json.RawMessage `json:"result,omitempty"`
+	Message            string          `json:"message,omitempty"`
+	UpdatedPermissions json.RawMessage `json:"updatedPermissions,omitempty"`
+}
+
 // claudeControlResponse is the EXACT stdin control_response shape:
-// {"type":"control_response","response":{"request_id":"…","response":{"behavior":"…",…}}}
+// {"type":"control_response","response":{"subtype":"success","request_id":"…","response":{"behavior":"…",…}}}
+// The envelope's subtype:"success" is REQUIRED — the CLI's own response
+// writers always include it; an envelope without it fails the same
+// schema parse and the parked permission converts to a deny.
 type claudeControlResponse struct {
 	Type     string `json:"type"`
 	Response struct {
-		RequestID string `json:"request_id"`
-		Response  struct {
-			Behavior string `json:"behavior"`
-			Answer   string `json:"answer,omitempty"`
-		} `json:"response"`
+		Subtype   string              `json:"subtype"`
+		RequestID string              `json:"request_id"`
+		Response  claudeControlResult `json:"response"`
 	} `json:"response"`
 }
 
-func claudeControlResponseFor(requestID, behavior, answer string) ([]byte, error) {
+func claudeControlResponseFor(requestID string, res claudeControlResult) ([]byte, error) {
 	if requestID == "" {
 		return nil, errors.New("control_response needs a request_id")
 	}
 	var v claudeControlResponse
 	v.Type = "control_response"
+	v.Response.Subtype = "success"
 	v.Response.RequestID = requestID
-	v.Response.Response.Behavior = behavior
-	v.Response.Response.Answer = answer
+	v.Response.Response = res
 	return json.Marshal(v)
 }
 
@@ -793,26 +902,88 @@ func claudeInterruptLine(seq int) []byte {
 	return body
 }
 
+// claudeInitializeLine is the initialize control_request the office writes
+// as the FIRST stdin line of every claude process (and every --resume
+// respawn) — field order pinned by struct layout, byte-stable on the wire:
+//
+//	{"type":"control_request","request_id":"office-init-N",
+//	 "request":{"subtype":"initialize","supportedDialogKinds":[...]}}
+//
+// Binary evidence (CLI 2.1.247): the stream-json StdinMessage doc says
+// "initialize is optional and normally the first line; the first user
+// message initializes with defaults"; the SDK's own consumer builds
+// {subtype:"initialize",…,supportedDialogKinds} and wraps it as
+// {request_id, type:"control_request", request} (the same envelope the
+// office's interrupt line uses); the CLI's initialize handler records
+// initialize.supportedDialogKinds into declared_dialog_kinds, and the
+// dialog host fails closed for undeclared kinds ("A kind is only sent in
+// sessions where some attached client declared it in
+// initialize.supportedDialogKinds"). The office declares EXACTLY the
+// kinds claudeRenderedDialogKinds renders — never more (a kind declared
+// but unrenderable would park a dialog the boss can never answer).
+func claudeInitializeLine(seq int, kinds []string) []byte {
+	var v struct {
+		Type      string `json:"type"`
+		RequestID string `json:"request_id"`
+		Request   struct {
+			Subtype              string   `json:"subtype"`
+			SupportedDialogKinds []string `json:"supportedDialogKinds"`
+		} `json:"request"`
+	}
+	v.Type = "control_request"
+	v.RequestID = fmt.Sprintf("office-init-%d", seq)
+	v.Request.Subtype = "initialize"
+	v.Request.SupportedDialogKinds = kinds
+	body, _ := json.Marshal(v)
+	return body
+}
+
+// writeInitialize declares the rendered dialog kinds to a freshly spawned
+// process (Start and the --resume respawn path). Best-effort: a failed
+// write earns ONE status line and the session continues undeclared (the
+// CLI then never sends the gated dialog kinds — fail-closed, never a
+// stuck dialog). The CLI's control_response answer is ignored by the
+// read loop's open-ended mapping ("control_response" -> nil).
+func (b *liveClaudeBackend) writeInitialize() {
+	b.mu.Lock()
+	b.initSeq++
+	seq := b.initSeq
+	b.mu.Unlock()
+	if err := b.writeLine(claudeInitializeLine(seq, claudeRenderedDialogKinds)); err != nil {
+		b.fl.emit(state.Event{Kind: state.EvStatus,
+			Text: "[claude] initialize (supportedDialogKinds) write failed: " + shortTitle(err.Error(), 100)})
+	}
+}
+
 // AnswerPermission replies to a pending control_request can_use_tool:
-// once->allow, always->allow (+always — behavior always rides through),
-// reject->deny. ONE stdin line; the local resolved event closes the modal
+// once->allow, always->allow + updatedPermissions (the CLI-native
+// standing grant: the request's stashed permission_suggestions re-emitted
+// verbatim; plain allow when the request carried none), reject->deny + a
+// message. ONE stdin line; the local resolved event closes the modal
 // (claude never echoes control_responses).
 func (b *liveClaudeBackend) AnswerPermission(permissionID, response string) error {
-	var behavior string
+	var res claudeControlResult
 	switch response {
 	case "once":
-		behavior = "allow"
+		res.Behavior = "allow"
 	case "always":
-		behavior = "allow_always" // the office's always grants the standing allow
+		res.Behavior = "allow"
+		b.mu.Lock()
+		meta, hasMeta := b.ctx.permMeta[permissionID]
+		b.mu.Unlock()
+		if hasMeta && len(meta.Suggestions) > 0 && string(meta.Suggestions) != "null" {
+			res.UpdatedPermissions = meta.Suggestions
+		}
 	case "reject":
-		behavior = "deny"
+		res.Behavior = "deny"
+		res.Message = "Denied by the boss in theboringoffice"
 	default:
 		return fmt.Errorf("invalid permission response %q (want once|always|reject)", response)
 	}
 	if b.fl.isStopped() {
 		return errors.New("backend stopped")
 	}
-	body, err := claudeControlResponseFor(permissionID, behavior, "")
+	body, err := claudeControlResponseFor(permissionID, res)
 	if err != nil {
 		return err
 	}
@@ -824,6 +995,7 @@ func (b *liveClaudeBackend) AnswerPermission(permissionID, response string) erro
 	if ok {
 		delete(b.ctx.pendingPerms, permissionID)
 	}
+	delete(b.ctx.permMeta, permissionID)
 	b.mu.Unlock()
 	if ok {
 		b.fl.emit(state.Event{Kind: state.EvPermission, PermissionID: permissionID,
@@ -835,19 +1007,222 @@ func (b *liveClaudeBackend) AnswerPermission(permissionID, response string) erro
 	return nil
 }
 
+// claudeAskUserDialogQuestion is one questions[] entry as re-emitted in
+// the dialog result's updatedInput (the wire field order of the request
+// payload: question/header/options/multiSelect).
+type claudeAskUserDialogQuestion struct {
+	Question string `json:"question"`
+	Header   string `json:"header"`
+	Options  []struct {
+		Label       string `json:"label"`
+		Description string `json:"description"`
+		// Preview — the option's markdown preview, re-emitted verbatim.
+		// omitempty: an absent preview keeps the re-emitted option bytes
+		// identical to the pre-preview protocol.
+		Preview string `json:"preview,omitempty"`
+	} `json:"options"`
+	MultiSelect bool `json:"multiSelect"`
+}
+
+// claudeAskUserDialogResult is the EXACT object the CLI's own permission
+// component produces as the dialog result for dialog_kind
+// permission_ask_user_question (CLI 2.1.247 binary evidence):
+//   - the kind's registration validates result as an object carrying a
+//     "behavior" key: zor=el({kind:"permission_ask_user_question",…,
+//     result:ae(()=>ml((e)=>typeof e==="object"&&e!==null&&("behavior"in e))),
+//     default:{behavior:"cancelled"}});
+//   - the interactive submit builder returns
+//     {behavior:"allow",updatedInput:{...input,answers:o,annotations:s}}
+//     and the quick-answer path
+//     {behavior:"allow",updatedInput:{...input,answers:{[question]:label}}};
+//   - the dialog host wraps that as {behavior:"completed",result:r};
+//   - the permission flow applies it REPLACE-wise: a.updatedInput??t —
+//     so updatedInput must carry the original questions array or the
+//     AskUserQuestion tool input schema (questions min 1) would fail;
+//   - answers is keyed by QUESTION TEXT (the UI maps key:t.question; the
+//     tool's output schema describes "question text -> answer string;
+//     multi-select answers are comma-separated").
+type claudeAskUserDialogResult struct {
+	Behavior     string `json:"behavior"`
+	UpdatedInput struct {
+		Questions []claudeAskUserDialogQuestion `json:"questions"`
+		Answers   map[string]string             `json:"answers"`
+		// MetadataSource/Metadata — the request payload's analytics
+		// context, re-emitted byte-verbatim when the wire carried them
+		// (the CLI's own submit builder spreads the original tool input,
+		// metadata included). omitempty: absence keeps the bytes
+		// identical to the pre-metadata protocol.
+		MetadataSource json.RawMessage `json:"metadataSource,omitempty"`
+		Metadata       json.RawMessage `json:"metadata,omitempty"`
+	} `json:"updatedInput"`
+}
+
+// claudeAskUserResultJSON builds the dialog result bytes for one
+// permission_ask_user_question answer: behavior "allow" + updatedInput
+// re-emitting the stashed questions and the boss's selections as an
+// answers map keyed by question text (multi-select selections join ", ",
+// exactly the CLI's own join — hss: n=r===0?o:n+", "+o). answers[i] pairs
+// with items[i] (the office's page order IS the wire question order).
+func claudeAskUserResultJSON(items []state.QuestionItem, answers [][]string) (json.RawMessage, error) {
+	var res claudeAskUserDialogResult
+	res.Behavior = "allow"
+	res.UpdatedInput.Answers = make(map[string]string, len(items))
+	for i, item := range items {
+		var q claudeAskUserDialogQuestion
+		q.Question = item.Question
+		q.Header = item.Header
+		q.MultiSelect = item.Multiple
+		for _, opt := range item.Options {
+			q.Options = append(q.Options, struct {
+				Label       string `json:"label"`
+				Description string `json:"description"`
+				Preview     string `json:"preview,omitempty"`
+			}{Label: opt.Label, Description: opt.Description, Preview: opt.Preview})
+		}
+		res.UpdatedInput.Questions = append(res.UpdatedInput.Questions, q)
+		if i < len(answers) && len(answers[i]) > 0 {
+			res.UpdatedInput.Answers[item.Question] = strings.Join(answers[i], ", ")
+		}
+		// The payload-level analytics context rides EVERY page of the
+		// dialog (mapClaudeControlRequest copies it onto each item) —
+		// the first carrier wins.
+		if res.UpdatedInput.Metadata == nil && len(item.Meta) > 0 {
+			res.UpdatedInput.Metadata = item.Meta
+		}
+		if res.UpdatedInput.MetadataSource == nil && len(item.MetaSource) > 0 {
+			res.UpdatedInput.MetadataSource = item.MetaSource
+		}
+	}
+	return json.Marshal(res)
+}
+
+// claudeDialogResultJSON builds the result bytes for one answered dialog
+// from its stashed per-kind decode (claude_events.go writes the stash at
+// map time). The CLI safeParses result against the KIND's own schema and
+// settles the dialog as the kind's default on ANY mismatch — so each
+// family builds exactly its kind's shape:
+//
+//   - dialogFamilyAUQ: the CLI-native permission decision (see
+//     claudeAskUserResultJSON).
+//   - dialogFamilyPermission (F1): Allow once/Allow always ->
+//     {behavior:"allow"} (+updatedInput re-emitting the payload's tool
+//     input when the wire carried one — the CLI's own "yes" builder is
+//     {behavior:"allow", updatedInput:t.input}); Reject ->
+//     {behavior:"deny", message:"Denied by the boss in theboringoffice"}.
+//   - dialogFamilyLabelResult (F2 + F3 label kinds): the picked option's
+//     prebuilt bytes (a bare enum STRING for F2, a fixed object for F3).
+//   - dialogFamilyFlaggedAllow: {toRemove:[...picked rules...]} ("Remove
+//     them all" expands to every flagged rule; no picks -> []).
+//
+// A picked label the map does not know (the modal's free-text row on a
+// label-select kind) fails CLOSED: an error, no write — the dialog stays
+// parked for the CLI's deadline rather than settling on garbage.
+func claudeDialogResultJSON(meta claudeDialogMeta, items []state.QuestionItem, answers [][]string) (json.RawMessage, error) {
+	// firstSelection flattens the modal's [][]string answer into the one
+	// picked label of a single-page dialog ("" when nothing was picked).
+	firstSelection := func() string {
+		for _, page := range answers {
+			if len(page) > 0 {
+				return page[0]
+			}
+		}
+		return ""
+	}
+	switch meta.family {
+	case dialogFamilyAUQ:
+		return claudeAskUserResultJSON(items, answers)
+	case dialogFamilyPermission:
+		switch firstSelection() {
+		case claudeDialogAllowOnce, claudeDialogAllowAlways:
+			// The always leg attaches NO permissionUpdates: the F1 payload
+			// carries no permission_suggestions to re-emit (documented on
+			// claudeRenderPermissionDialog) — a plain allow is the only
+			// faithful settle.
+			if len(meta.input) > 0 && string(meta.input) != "null" {
+				return json.RawMessage(`{"behavior":"allow","updatedInput":` + string(meta.input) + `}`), nil
+			}
+			return json.RawMessage(`{"behavior":"allow"}`), nil
+		case claudeDialogReject:
+			return json.RawMessage(`{"behavior":"deny","message":"Denied by the boss in theboringoffice"}`), nil
+		}
+		return nil, fmt.Errorf("claude dialog %q: unknown permission answer %q", meta.kind, shortTitle(firstSelection(), 40))
+	case dialogFamilyLabelResult:
+		sel := firstSelection()
+		raw, ok := meta.resultByLabel[sel]
+		if !ok {
+			return nil, fmt.Errorf("claude dialog %q: answer %q is not one of the rendered options", meta.kind, shortTitle(sel, 40))
+		}
+		return raw, nil
+	case dialogFamilyFlaggedAllow:
+		removeAll := false
+		var picked []string
+		seen := map[string]bool{}
+		for _, page := range answers {
+			for _, sel := range page {
+				if sel == claudeFlaggedAllowRemoveAll {
+					removeAll = true
+					continue
+				}
+				if !seen[sel] {
+					seen[sel] = true
+					picked = append(picked, sel)
+				}
+			}
+		}
+		if removeAll {
+			picked = append([]string(nil), meta.flagged...)
+		}
+		if picked == nil {
+			picked = []string{}
+		}
+		var b bytes.Buffer
+		b.WriteString(`{"toRemove":[`)
+		for i, rule := range picked {
+			if i > 0 {
+				b.WriteByte(',')
+			}
+			raw, _ := json.Marshal(rule)
+			b.Write(raw)
+		}
+		b.WriteString(`]}`)
+		return b.Bytes(), nil
+	}
+	return nil, fmt.Errorf("claude dialog %q: unknown family %d", meta.kind, meta.family)
+}
+
 // AnswerQuestion replies to a pending control_request request_user_dialog:
-// the answer text rides response.answer inside the dialog-shaped
-// control_response (behavior allow). answers is one string array per asked
-// question; the dialog's text is the pages joined "; " (selections ", ").
+// the dialog's response vocabulary is behavior "completed" with the answer
+// payload riding response.result (the CLI safeParses result against the
+// dialog kind's OWN schema — for the AskUserQuestion kind that is the
+// permission decision {behavior:"allow",updatedInput:{questions,answers}};
+// for the enum kinds a bare STRING; a shape the kind's schema rejects
+// settles the dialog as its default — the parked turn never gets its
+// answers). answers is one string array per asked question, in page order.
+// The per-kind builder dispatches on the mapper's stashed claudeDialogMeta.
 func (b *liveClaudeBackend) AnswerQuestion(requestID string, answers [][]string) error {
 	if b.fl.isStopped() {
 		return errors.New("backend stopped")
 	}
-	pages := make([]string, len(answers))
-	for i, a := range answers {
-		pages[i] = strings.Join(a, ", ")
+	b.mu.Lock()
+	items, stashed := b.questionStash[requestID]
+	meta, hasMeta := b.ctx.dialogMeta[requestID]
+	b.mu.Unlock()
+	if !stashed {
+		return fmt.Errorf("claude dialog %q has no stashed questions (already settled or never rendered)", shortTitle(requestID, 32))
 	}
-	body, err := claudeControlResponseFor(requestID, "allow", strings.Join(pages, "; "))
+	if !hasMeta {
+		// a stash without its meta can only come from a pre-table mapper
+		// build — treat it as the AskUserQuestion kind (the only kind that
+		// mapper ever rendered) so the CLI-native result still builds.
+		meta = claudeDialogMeta{kind: claudeAskUserDialogKind, family: dialogFamilyAUQ}
+	}
+	raw, err := claudeDialogResultJSON(meta, items, answers)
+	if err != nil {
+		return err
+	}
+	body, err := claudeControlResponseFor(requestID, claudeControlResult{
+		Behavior: "completed", Result: raw,
+	})
 	if err != nil {
 		return err
 	}
@@ -855,6 +1230,8 @@ func (b *liveClaudeBackend) AnswerQuestion(requestID string, answers [][]string)
 		return err
 	}
 	b.mu.Lock()
+	delete(b.questionStash, requestID)
+	delete(b.ctx.dialogMeta, requestID)
 	hold, ok := b.ctx.pendingQuestions[requestID]
 	if ok {
 		delete(b.ctx.pendingQuestions, requestID)
@@ -871,13 +1248,18 @@ func (b *liveClaudeBackend) AnswerQuestion(requestID string, answers [][]string)
 	return nil
 }
 
-// RejectQuestion declines a pending dialog outright (behavior deny),
-// freeing the parked turn.
+// RejectQuestion declines a pending dialog outright (behavior "cancelled" —
+// the CLI's own cancelDialogByMachine writer emits exactly
+// {behavior:"cancelled"}; a dismissal settles the dialog and frees the
+// parked turn). Envelope-cancelled is the correct dismissal for EVERY
+// dialog kind: it carries NO result, and the CLI substitutes the kind's
+// registered default (for the enum kinds their dismissal value — e.g.
+// "not_now"/"deferred_no_consent_surface" — never a fabricated answer).
 func (b *liveClaudeBackend) RejectQuestion(requestID string) error {
 	if b.fl.isStopped() {
 		return errors.New("backend stopped")
 	}
-	body, err := claudeControlResponseFor(requestID, "deny", "")
+	body, err := claudeControlResponseFor(requestID, claudeControlResult{Behavior: "cancelled"})
 	if err != nil {
 		return err
 	}
@@ -885,6 +1267,8 @@ func (b *liveClaudeBackend) RejectQuestion(requestID string) error {
 		return err
 	}
 	b.mu.Lock()
+	delete(b.questionStash, requestID)
+	delete(b.ctx.dialogMeta, requestID)
 	hold, ok := b.ctx.pendingQuestions[requestID]
 	if ok {
 		delete(b.ctx.pendingQuestions, requestID)
