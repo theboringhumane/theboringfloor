@@ -63,6 +63,7 @@ var slashCommands = []slashCommand{
 	{"/perm", "re-open an esc'd permission prompt", ""},
 	{"/diffs", "expand/collapse file diffs", "/diffs on|off"},
 	{"/images", "boss-turn image previews (persists)", "/images auto|ascii|off"},
+	{"/open", "open a page in the browser tab", "/open <url>"},
 	{"/question", "re-open a deferred boss question", ""},
 	{"/power", "power governor", "/power auto|performance|saver"},
 	{"/notify", "desktop notifications while unfocused", "/notify on|off"},

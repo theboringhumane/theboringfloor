@@ -74,6 +74,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/netwatch"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -884,6 +885,10 @@ func spawnServe(directory string) (string, *exec.Cmd, <-chan error, error) {
 	if directory != "" {
 		cmd.Dir = directory
 	}
+	// Explicit env so the majdoor GIT_* vars can merge in when the office
+	// auto-commit flag is on (agent-run `git commit`s land as the majdoor);
+	// identical to plain inheritance when the flag is off.
+	cmd.Env = gitx.WithMajdoorAuthorEnv(os.Environ())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("opencode serve spawn failed: %w", err)

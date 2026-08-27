@@ -4,7 +4,7 @@
 
 Chat with the boss. Watch the floor — employees get up, walk to the manager,
 take the task, type it out, drop the mail, hit the tea machine. The right panel
-is yours: chat, agents, board, mail, activity, git — switch with `tab`.
+is yours: chat, agents, board, mail, activity, git, browser — switch with `tab`.
 
 Underneath the wallpaper, it's all real: the manager is
 **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, the employees
@@ -270,7 +270,7 @@ quiet syncs (cap 4×, reset on change). The office goes cheap when nothing moves
 
 ## The sidebar is a cockpit
 
-Seven tabs with a real terminal in the middle:
+Eight tabs with a real terminal in the middle:
 
 - **terminal** — an OS shell (`$SHELL`) on a real PTY, by `creack/pty`:
   lazily spawned on first visit, resizes with the panel, mouse scrolls the
@@ -300,6 +300,20 @@ Seven tabs with a real terminal in the middle:
   click on a file opens a colored unified diff (`+` green, `−` red, `@@`
   hunk headers); `b` or `esc` returns to the list, `r` refreshes. A clean
   tree shows "working tree clean".
+- **browser** — a real in-TUI page viewer: web pages render as navigable
+  text+link rows, no external dependency. `/open <url>` (or the tab) jumps
+  there: `file://` URLs and bare paths read off disk, `http(s)://` is
+  limited to localhost unless `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1` is
+  exported (never network silently); fetches are 10s-bounded and 4 MiB-capped,
+  and non-HTML payloads land a dim `unsupported content type` row. The page
+  paints a `▸ <url> · <title>` bar over wrapped paragraphs, bold headings,
+  bullet rows, `a │ b` table rows, code rows, `🖼 <alt>` image chips (image
+  bytes are never fetched), and links as `text [n]` with the URLs indexed in
+  a side map. `↑`/`↓` move the link cursor (dim → bright), `o` opens the
+  focused link (a local file goes to the OS browser; http(s) navigates in
+  place), `[` / `]` walk the 100-page history ring (scroll restored), `r`
+  reloads, `q` / `esc` leaves to chat. The tab cycles after `git` —
+  `tab`/`shift+tab` only in v1, no digit key.
 
 Layout lives in the config *and* in the app:
 
@@ -318,12 +332,22 @@ Browser lane for `o`: on kitty-capable terminals (kitty, ghostty, WezTerm
 opens targets in-terminal first, cascading to the system opener on any
 failure; `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1` disables the lane.
 
+Browser tab premium lane: on kitty/ghostty (tmux and the iTerm2 family
+stay text) with `terminal-browser` on PATH, `/open` embeds the real
+Chromium page inside the pane (top strip `▸ zenbu terminal-browser ·
+<url>`, ` zenbu ` badge); a non-zero or instant (<300ms) exit falls back
+to the text viewer with the URL state kept and a dim `zenbu exited
+(<code>) — falling back to text mode` note; either kill-switch
+(`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1` or
+`THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) forces the text lane.
+
 ## Keys
 
 | key | does |
 |---|---|
-| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git — only inside shell capture (`ctrl+space` toggle) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type) |
+| `tab` / `shift+tab` / `1..7` | switch panel: chat · **terminal** · agents · board · mail · activity · git · **browser** — only inside shell capture (`ctrl+space` toggle) are these NOT intercepted (`tab` completes in the shell, `shift+tab` sends `\x1b[Z`, digits type); the browser tab cycles after git (no digit key in v1) |
 | `enter` / click a file (git tab) | open its colored unified diff — `b` / `esc` back to the list, `r` refresh |
+| `/open <url>` | open a page in the **browser** tab — `file://`, a bare path, or `http(s)://localhost/…` (outbound HTTP needs `THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1`); inside the tab: `↑`/`↓` pick a link, `o` opens it (local file → OS browser, http(s) → navigate), `[` / `]` history, `r` reload, `pgup`/`pgdn` scroll, `q` / `esc` back to chat |
 | `↑` `↓` `pgup` `pgdn` / wheel | scroll the active panel |
 | `enter` | send to the boss (chat) |
 | `shift+enter` | newline |
@@ -366,6 +390,60 @@ are `os.Stat`-verified, directories and dead tokens never qualify) wears the
 dim `· o (open)` beacon; mark it with a mouse press/drag and press `o` to
 open the target in the OS default browser, with the opened target logged to
 the **activity** tab as `→ opened: <name>`.
+
+## Commit attribution — TheBoringMajdoor
+
+Every commit authored through the office is stamped with one trailer:
+
+```text
+Co-authored-by: TheBoringMajdoor <themajdoor@theboring.name>
+```
+
+The majdoor is the office's bot profile on GitHub, and it already exists:
+https://github.com/themajdoor, with `themajdoor@theboring.name` registered
+under its email settings. GitHub renders co-author credit — and the
+majdoor's avatar — on each stamped commit out of the box; there is no
+setup step. (If the account ever hides behind GitHub's noreply shield,
+swap the trailer's address for its `<id>+themajdoor@users.noreply.github.com`
+one.)
+
+To stamp the same trailer on commits you write by hand, install the
+`commit-msg` hook into any repo (idempotent, backs up a pre-existing hook to
+`commit-msg.bak-majdoor`, and resolves the real hooks dir so `core.hooksPath`
+and worktrees work):
+
+```bash
+curl -fsSL \
+  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/scripts/install-majdoor-hook.sh | sh -s -- /path/to/repo
+```
+
+From a checkout it's just `scripts/install-majdoor-hook.sh /path/to/repo`;
+either way `--uninstall` peels the hook back off and restores the backup. The
+office's own installer can do it in the same breath —
+`install.sh --majdoor-hook /path/to/repo` — and office-authored commits stamp
+the identical trailer automatically, no hook needed.
+
+### Author vs co-author
+
+The two layers do different jobs:
+
+- **Office auto-commits** (`THEBORINGOFFICE_AUTO_COMMIT=true`) are *authored*
+  by the majdoor. The office exports the four identity vars —
+  `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` / `GIT_COMMITTER_NAME` /
+  `GIT_COMMITTER_EMAIL`, all `TheBoringMajdoor
+  <themajdoor@theboring.name>` — into every shell it spawns, so those
+  commits show the majdoor as both author and committer. Hand-rolled flows
+  outside the office get the same four vars by sourcing
+  `. scripts/majdoor-env.sh` (it exports nothing unless the flag is exactly
+  `true`).
+- **Hand-written commits** keep your identity and pick up the
+  `Co-authored-by` trailer above via the `commit-msg` hook — credit, not
+  authorship.
+
+Why doesn't authorship ship as a `prepare-commit-msg` hook too? Because a git
+hook can't set it: git runs hooks as child processes, and environment exported
+inside a child never flows back to the parent git process that writes the
+commit. That's why this layer ships as env, not as a hook.
 
 ## Slash commands
 

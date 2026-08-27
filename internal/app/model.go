@@ -283,6 +283,12 @@ type Model struct {
 	agents        *panels.Agents // roster tab — floor-click selection highlight
 	activity      *panels.Activity
 	termTab       *termTabWrap // tab 2: the real OS-shell (lazy PTY, terminal.go)
+	// browser — tab 8: the in-TUI page viewer (app/browser.go owns the
+	// wiring; panels/browser.go owns the pane). browserSlashNote is the
+	// /open notice latch: set by the slash case, consumed by the FIRST
+	// BrowserPageMsg that lands (in-pane navs stay silent).
+	browser          *panels.Browser
+	browserSlashNote string
 	// termCaptured — the terminal tab's OPT-IN keyboard state (wave-42):
 	// false = RELEASED (the default — office keys behave normally on the
 	// terminal tab), true = CAPTURED via ctrl+space (wave-41: every key
@@ -922,6 +928,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	}
 
 	termTab := newTermTabWrap()
+	browserTab := panels.NewBrowser()
 	// The plan editor is built BEFORE the chat callback: the closure is a
 	// one-time capture, so the CURRENT plan/build mode at send time
 	// reaches it only through the shared pane pointer (see paneAgent).
@@ -965,6 +972,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 		agents:           agents,
 		activity:         activity,
 		termTab:          termTab,
+		browser:          browserTab,
 		plan:             plan,
 		planTemplate:     plan.Value(),
 		agentMode:        agentModeBuild,
@@ -980,9 +988,14 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			panels.NewBoard(),
 			panels.NewMail(),
 			activity,
-			// git stays LAST (index 6): the floor click pins activity at 5.
-			// Empty root → the panel renders its "git unavailable" line.
+			// git rides index 6: the floor click pins activity at 5, so git
+			// could only ever APPEND past it. Empty root → the panel
+			// renders its "git unavailable" line.
 			panels.NewGit(func() gitx.Repo { r, _ := gitx.Root(""); return r }()),
+			// browser appends LAST (index 7): v1 is tab/shift+tab-cycle
+			// only — keys 1..7 are burned into the grab/quit matrix, so a
+			// digit jump for the browser is wave-out (keys.go).
+			browserTab,
 		),
 		keys: NewKeyMap(),
 		boot: NewBoot(0, 0),
@@ -1535,6 +1548,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activity.Add(fmt.Sprintf("[%s] → opened: %s", chrome.OfficeClock(m.st.Tick), msg.target.Name))
 			m.activityAdds++
 		}
+	case panels.BrowserPageMsg:
+		// the browser tab's fetch landed (panel-only state → nonce): the
+		// page forwards STRAIGHT to the pane (never the active-tab hop — a
+		// mid-flight tab switch can't misdeliver it), then the /open
+		// notice latch settles.
+		m.frameNonce++
+		if cmd := m.handleBrowserPage(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case panels.BrowserOpenedMsg:
+		// the pane's OS-open verdict (a focused LOCAL link) — its note row
+		// carries the outcome; no activity-tab line from the browser (spec §8).
+		m.frameNonce++
+		if cmd := m.handleBrowserOpened(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case panels.BrowserLeaveMsg:
+		// the pane's q/esc — back to the chat tab (thread-focus's contract).
+		m.frameNonce++
+		m.handleBrowserLeave()
 	case pagerSeedMsg:
 		// the eager attach hop landed: seed the walk (or stay unseeded and
 		// unarmed on failure — scroll-top simply never fetches). Rows are
@@ -2029,6 +2062,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			m.quitArmAt = time.Time{}
 			m.persistOfficeSession(true) // final SYNC snapshot (live only)
 			m.closeTerminal()
+			m.closeBrowser()
 			return tea.Quit
 		}
 		m.quitArmAt = now
@@ -2198,11 +2232,17 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+c":
 		m.persistOfficeSession(true) // final SYNC snapshot (live only)
 		m.closeTerminal()
+		m.closeBrowser()
 		return tea.Quit
 	case "q":
-		if !chatActive {
+		// The browser tab is the ONE non-chat surface where q does NOT
+		// quit: there it means "leave the tab" (the pane's own q/esc →
+		// BrowserLeaveMsg → chat). Every other non-chat tab keeps the
+		// global quit. (Grab/quit tests pin the non-browser branches.)
+		if !chatActive && m.tabs.ActiveIndex() != browserIndex {
 			m.persistOfficeSession(true) // final SYNC snapshot (live only)
 			m.closeTerminal()
+			m.closeBrowser()
 			return tea.Quit
 		}
 	case "ctrl+t":
@@ -4720,6 +4760,7 @@ const slashHelp = `commands:
    /perm              re-open an esc'd permission prompt
    /question          re-open a deferred boss question
    /images [mode]     boss-turn image previews: auto|ascii|off (persists)
+  /open <url>        open a page in the browser tab (file:// or localhost)
   /new               fresh office (previous transcript archived on disk)
   /session           pick a past session to resume live (fallback prints
                      the id + path; boot flag -s|--session <id> pins one)
@@ -5066,9 +5107,14 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// backend hop, nothing queued — stream-safe like /queue (the
 		// outcome rides the same office-notice seam as every slash).
 		m.notice(m.memoryBody(strings.Join(fields[1:], " ")))
+	case "/open":
+		// browser tab: parse the arg, jump to the pane, load — the dim
+		// completion notice lands with the fetch verdict (app/browser.go).
+		return m.applyOpenSlash(fields)
 	case "/quit":
 		m.persistOfficeSession(true) // final SYNC snapshot (live only)
 		m.closeTerminal()
+		m.closeBrowser()
 		return tea.Quit
 	default:
 		m.noticeErr(fmt.Sprintf("/ %s: no such command (/help)", strings.TrimPrefix(cmd, "/")))

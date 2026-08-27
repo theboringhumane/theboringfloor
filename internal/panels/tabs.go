@@ -1,6 +1,8 @@
-// Package panels — the right-hand sidebar tab strip and its seven tab
-// panels: chat, terminal, agents, board, mail, activity, git (git LAST —
-// the activity index 5 is hardcoded app-side, so git must append).
+// Package panels — the right-hand sidebar tab strip and its eight tab
+// panels: chat, terminal, agents, board, mail, activity, git, browser
+// (git rides index 6 — the activity index 5 is hardcoded app-side, so git
+// could only append past it; the browser tab appends after git, cycle-only
+// in v1 — no digit jump).
 //
 // tabs.go — the strip itself: a one-row tab bar (active tab accent bg,
 // others gray) above a rounded-border panel holding the active tab's
@@ -57,6 +59,7 @@ var compactLabels = map[string]string{
 	"mail":     "m",
 	"activity": "x",
 	"git":      "g",
+	"browser":  "w", // "b" is board — web
 }
 
 // SetCompact switches the tab-bar label density (the app re-calls it on

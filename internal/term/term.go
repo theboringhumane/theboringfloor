@@ -44,6 +44,8 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+
+	"github.com/theboringhumane/theboringoffice/internal/gitx"
 )
 
 // DefaultShell picks the user's shell: $SHELL, else /bin/zsh (darwin
@@ -66,7 +68,7 @@ type TermConfig struct {
 	Cols  int      // default: 80
 	Rows  int      // default: 24
 	CWD   string   // default: caller's working directory
-	Env   []string // default: os.Environ() + TERM + COLORTERM
+	Env   []string // default: os.Environ() + TERM + COLORTERM; either way the majdoor GIT_* vars merge in when THEBORINGOFFICE_AUTO_COMMIT=true
 }
 
 // Session is one live PTY-bound shell process.
@@ -104,6 +106,10 @@ func Spawn(cfg TermConfig) (*Session, error) {
 		env = os.Environ()
 		env = append(env, "TERM=xterm-256color", "COLORTERM=truecolor")
 	}
+	// Majdoor attribution: when the office's auto-commit flag is on, any
+	// `git commit` run inside this shell is authored by the majdoor (the
+	// four GIT_* vars win over any inherited ones). No-op otherwise.
+	env = gitx.WithMajdoorAuthorEnv(env)
 
 	cmd := exec.Command(cfg.Shell, "-i")
 	if cfg.CWD != "" {

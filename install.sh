@@ -9,6 +9,8 @@
 #                        else ~/.local/bin with a PATH hint)
 #   --backend NAME       LLM transport the office boots on: opencode (default)
 #                        or claudecode (needs the claude CLI; warn-only when absent)
+#   --majdoor-hook DIR   Also install the TheBoringMajdoor commit-msg attribution
+#                        hook into the repo at DIR (opt-in)
 #   --skip-agentmemory   Do not install/start the agentmemory background service
 #   --uninstall          Remove the theboringoffice binary and the agentmemory service
 #
@@ -25,6 +27,7 @@ APP="theboringoffice"
 REPO="theboringhumane/theboringoffice"
 REPO_URL="https://github.com/${REPO}"
 API_LATEST="https://api.github.com/repos/${REPO}/releases/latest"
+RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
 
 PLIST_LABEL="ai.agentmemory.server"
 PLIST_PATH="${HOME}/Library/LaunchAgents/${PLIST_LABEL}.plist"
@@ -39,6 +42,8 @@ PREFIX=""
 PATH_HINT=0
 BACKEND="opencode"
 BACKEND_STATE=""
+MAJDOOR_HOOK_DIR=""
+MAJDOOR_STATE="not requested"
 STAGE_NUM=0
 OS=""
 ARCH=""
@@ -130,6 +135,8 @@ Flags:
                        (default: /usr/local/bin if writable, else ~/.local/bin)
   --skip-agentmemory   Do not install/start the agentmemory background service
   --backend NAME       LLM transport: opencode (default) | claudecode
+  --majdoor-hook DIR   Install the TheBoringMajdoor commit-msg attribution
+                       hook into the repo at DIR (opt-in)
   --uninstall          Remove the theboringoffice binary and the agentmemory service
 USAGE
 }
@@ -732,6 +739,47 @@ setup_backend() {
     seed_brain_backend
 }
 
+# ---------------------------------------------------------------- majdoor hook
+
+# setup_majdoor_hook — opt-in (--majdoor-hook DIR): stamp the TheBoringMajdoor
+# co-author trailer onto commits in ONE repo the member names. Pure delegation
+# to scripts/install-majdoor-hook.sh (single source of truth for the hook body
+# and the backup/hooks-dir rules): run from the checkout when install.sh runs
+# in one, fetched from the raw URL into the temp workdir when curl-piped.
+setup_majdoor_hook() {
+    [ -n "$MAJDOOR_HOOK_DIR" ] || return 0
+    stage "TheBoringMajdoor commit-msg hook"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        info "  [dry-run] install the TheBoringMajdoor commit-msg attribution hook into: ${MAJDOOR_HOOK_DIR}"
+        info "            (delegates to scripts/install-majdoor-hook.sh — checkout copy, else fetched raw)"
+        MAJDOOR_STATE="would install into ${MAJDOOR_HOOK_DIR} (dry-run)"
+        return 0
+    fi
+    if [ ! -d "$MAJDOOR_HOOK_DIR" ]; then
+        warn "--majdoor-hook: ${MAJDOOR_HOOK_DIR} is not a directory — skipping (the office install itself is unaffected)"
+        MAJDOOR_STATE="skipped (${MAJDOOR_HOOK_DIR} is not a directory)"
+        return 0
+    fi
+    installer=""
+    self_dir=$(CDPATH= cd "$(dirname "$0")" 2>/dev/null && pwd -P || true)
+    if [ -n "$self_dir" ] && [ -f "${self_dir}/scripts/install-majdoor-hook.sh" ]; then
+        installer="${self_dir}/scripts/install-majdoor-hook.sh"
+    else
+        # curl-pipe path: no checkout on disk — pull the installer AND the
+        # hook body (the installer expects it as a sibling) into TMPWORK.
+        fetch "${RAW_BASE}/scripts/install-majdoor-hook.sh" "${TMPWORK}/install-majdoor-hook.sh"
+        fetch "${RAW_BASE}/scripts/majdoor-commit-msg-hook.sh" "${TMPWORK}/majdoor-commit-msg-hook.sh"
+        installer="${TMPWORK}/install-majdoor-hook.sh"
+    fi
+    if sh "$installer" "$MAJDOOR_HOOK_DIR"; then
+        MAJDOOR_STATE="installed into ${MAJDOOR_HOOK_DIR}"
+    else
+        warn "majdoor hook install FAILED — the office itself is fully installed; retry later with:"
+        warn "  scripts/install-majdoor-hook.sh ${MAJDOOR_HOOK_DIR}"
+        MAJDOOR_STATE="FAILED for ${MAJDOOR_HOOK_DIR} (see above)"
+    fi
+}
+
 # ---------------------------------------------------------------- summary
 
 box_hr() { info '+----------------------------------------------------------------------------'; }
@@ -761,6 +809,9 @@ print_install_summary() {
     box_row ""
     box_row "  agentmemory : ${AM_SERVICE_STATE}"
     box_row "  backend   : ${BACKEND} (${BACKEND_STATE})"
+    if [ -n "$MAJDOOR_HOOK_DIR" ]; then
+        box_row "  majdoor hook: ${MAJDOOR_STATE}"
+    fi
     box_row "  check       : agentmemory status"
     box_hr
 }
@@ -793,6 +844,9 @@ main() {
             --backend)          [ $# -ge 2 ] || die "--backend requires a NAME argument"
                                 BACKEND=$2; shift ;;
             --backend=*)        BACKEND=${1#--backend=} ;;
+            --majdoor-hook)     [ $# -ge 2 ] || die "--majdoor-hook requires a DIR argument"
+                                MAJDOOR_HOOK_DIR=$2; shift ;;
+            --majdoor-hook=*)   MAJDOOR_HOOK_DIR=${1#--majdoor-hook=} ;;
             -h|--help)          usage; exit 0 ;;
             *)                  usage; die "unknown flag: $1" ;;
         esac
@@ -819,6 +873,7 @@ main() {
     install_binary
     setup_agentmemory
     setup_backend
+    setup_majdoor_hook
     print_install_summary
 }
 

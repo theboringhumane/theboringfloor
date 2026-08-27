@@ -5,6 +5,15 @@
 // chat textarea and a CAPTURED terminal — inside a captured terminal they
 // go to the shell; ctrl+c is a real SIGINT there). tab/shift+tab cycle
 // panels, 1..7 jump, ↑↓/pgup/pgdn/wheel scroll, enter sends chat.
+//
+// THE TAB LIST is chat|terminal|agents|board|mail|activity|git|browser —
+// EIGHT panels, but the digit jump stays 1..7: the browser tab (index 7)
+// is reachable by tab/shift+tab CYCLING ONLY in v1. Keys 1..7 are burned
+// into the grab/quit test matrix (grab_test.go pins TabJump's exact map
+// and the Tab7 binding); adding a Tab8/"8" binding is wave-out, so there
+// is deliberately NO Tab8 field below. The `/open <url>` slash command
+// (applySlash's case in model.go — the one slash whose arg is a URL)
+// jumps straight to the pane, the every-slash contract.
 package app
 
 import (
@@ -98,7 +107,9 @@ func (k KeyMap) ShortHelpView() string {
 	return h.ShortHelpView(k.ShortHelp())
 }
 
-// TabJump maps a 1..7 keypress to a tab index, or -1.
+// TabJump maps a 1..7 keypress to a tab index, or -1. The browser tab
+// (index 7) NEVER appears here — cycle-only in v1 (the header comment's
+// burned-keys ruling).
 func (k KeyMap) TabJump(s string) int {
 	switch s {
 	case "1":

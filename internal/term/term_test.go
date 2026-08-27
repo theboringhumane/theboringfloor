@@ -107,6 +107,43 @@ func TestExitCodeAndKill(t *testing.T) {
 	}
 }
 
+// TestSpawnMajdoorAuthorEnv pins the spawn-seam injection contract on a
+// real shell: a parent-process GIT_AUTHOR_NAME passes through untouched
+// when the office auto-commit flag is off, and is overridden by the
+// majdoor (author AND committer) when the flag is on.
+func TestSpawnMajdoorAuthorEnv(t *testing.T) {
+	t.Setenv("GIT_AUTHOR_NAME", "Boss Person")
+
+	t.Run("flag off passes the parent value through", func(t *testing.T) {
+		t.Setenv("THEBORINGOFFICE_AUTO_COMMIT", "")
+		s, err := Spawn(TermConfig{Shell: "/bin/sh", Cols: 80, Rows: 24})
+		if err != nil {
+			t.Fatalf("spawn: %v", err)
+		}
+		defer s.Close()
+		waitFor(t, 3*time.Second, "first output", func() bool { return s.Scrollback().Len() > 0 })
+		_, _ = s.Write([]byte("echo MAJDOOR_PROBE:[$GIT_AUTHOR_NAME]\n"))
+		waitFor(t, 5*time.Second, "parent GIT_AUTHOR_NAME in scrollback", func() bool {
+			return strings.Contains(string(s.Scrollback().Raw()), "MAJDOOR_PROBE:[Boss Person]")
+		})
+	})
+
+	t.Run("flag on overrides with the majdoor", func(t *testing.T) {
+		t.Setenv("THEBORINGOFFICE_AUTO_COMMIT", "true")
+		s, err := Spawn(TermConfig{Shell: "/bin/sh", Cols: 80, Rows: 24})
+		if err != nil {
+			t.Fatalf("spawn: %v", err)
+		}
+		defer s.Close()
+		waitFor(t, 3*time.Second, "first output", func() bool { return s.Scrollback().Len() > 0 })
+		_, _ = s.Write([]byte("echo MAJDOOR_PROBE:[$GIT_AUTHOR_NAME]:[$GIT_COMMITTER_EMAIL]\n"))
+		waitFor(t, 5*time.Second, "majdoor GIT_* in scrollback", func() bool {
+			return strings.Contains(string(s.Scrollback().Raw()),
+				"MAJDOOR_PROBE:[TheBoringMajdoor]:[themajdoor@theboring.name]")
+		})
+	})
+}
+
 func TestSanitizeStripsCursorKeepsSGR(t *testing.T) {
 	in := "\x1b[?2004h\x1b[?25h\x1b[2J\x1b[3;4H\x1b[>hand \x1b[92mgreen\x1b[0m \x1b]0;title\x07plain\x1bc"
 	out := Sanitize(in)

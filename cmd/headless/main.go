@@ -156,6 +156,7 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/charter"
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -1070,7 +1071,9 @@ func probeEnv() []string {
 func spawnServeForProbe(dir string) (string, *exec.Cmd, error) {
 	cmd := exec.Command("opencode", "serve", "--port", "0", "--hostname", "127.0.0.1")
 	cmd.Dir = dir
-	cmd.Env = probeEnv()
+	// probeEnv strips THEBORINGOFFICE_* (incl. the flag itself); the merge
+	// re-injects only the four resolved majdoor GIT_* vars when it was on.
+	cmd.Env = gitx.WithMajdoorAuthorEnv(probeEnv())
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", nil, fmt.Errorf("probe serve spawn failed: %w", err)
