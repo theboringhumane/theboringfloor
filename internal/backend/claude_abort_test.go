@@ -16,7 +16,9 @@ import (
 )
 
 func TestClaudeAbortInterruptThenSignalLadder(t *testing.T) {
-	// shrink the ladder
+	// shrink the ladder (deliberate: tight intervals keep the test fast —
+	// these are ladder timings, not scheduling deadlines; the 8s outer
+	// waits below absorb any scheduler delay under full-suite load)
 	oldInt, oldTerm := claudeAbortSigIntAfter, claudeAbortSigTermAfter
 	claudeAbortSigIntAfter = 60 * time.Millisecond
 	claudeAbortSigTermAfter = 140 * time.Millisecond
@@ -43,14 +45,16 @@ done
 	if err := b.Send("turn that never ends"); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
-	claudeWait(t, "the turn staged (user line seen)", 2*time.Second, func() bool {
+	// 8s: survives full-suite parallel load (was 2s — the wave-78 flake)
+	claudeWait(t, "the turn staged (user line seen)", 8*time.Second, func() bool {
 		return len(claudeCapture(t, capture)) == 1
 	})
 
 	if err := b.AbortSessions(); err != nil {
 		t.Fatalf("AbortSessions: %v", err)
 	}
-	claudeWait(t, "the interrupt control_request on stdin", 2*time.Second, func() bool {
+	// 8s: survives full-suite parallel load (was 2s — the wave-78 flake)
+	claudeWait(t, "the interrupt control_request on stdin", 8*time.Second, func() bool {
 		return len(claudeCapture(t, capture)) == 2
 	})
 	lines := claudeCapture(t, capture)
@@ -59,7 +63,8 @@ done
 	}
 
 	// the FIFO head placeholder closed with the stopped marker
-	claudeWait(t, "the stopped placeholder", 2*time.Second, func() bool {
+	// 8s: survives full-suite parallel load (was 2s — the wave-78 flake)
+	claudeWait(t, "the stopped placeholder", 8*time.Second, func() bool {
 		for _, e := range log.snapshot() {
 			if e.Kind == state.EvChatBoss && strings.Contains(e.Msg.Text, "stopped (turn aborted)") {
 				return true
@@ -71,11 +76,13 @@ done
 	// SIGINT fires after the interrupt won't settle the turn; SIGTERM's
 	// exit-143 is then a CLEAN kill: the watch latches died without the
 	// scary crash line.
-	claudeWait(t, "SIGINT + SIGTERM delivered, exit 143", 4*time.Second, func() bool {
+	// 8s: survives full-suite parallel load (was 4s — the wave-78 flake)
+	claudeWait(t, "SIGINT + SIGTERM delivered, exit 143", 8*time.Second, func() bool {
 		bits, _ := os.ReadFile(siglog)
 		return strings.Contains(string(bits), "INT") && strings.Contains(string(bits), "TERM")
 	})
-	claudeWait(t, "the clean-kill watch line", 3*time.Second, func() bool {
+	// 8s: survives full-suite parallel load (was 3s — the wave-78 flake)
+	claudeWait(t, "the clean-kill watch line", 8*time.Second, func() bool {
 		b.mu.Lock()
 		died := b.died
 		b.mu.Unlock()

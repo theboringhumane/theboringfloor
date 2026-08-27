@@ -1222,8 +1222,17 @@ func (ctx *claudeNormCtx) mapClaudeControlRequest(raw claudeEvent, now int64) []
 			summary = claudeToolSummary(req.Input)
 		}
 		toolName := claudeToolName(req.ToolName)
+		// The REAL 2.1.247 can_use_tool envelope carries NO session_id
+		// (live capture, Bedrock) — fill from the pinned primary session
+		// id (the same source the system/init arm pins), so the office's
+		// EvPermission never carries SessionID="" in production. With no
+		// primary pinned yet it stays empty: fill, never invent.
+		sessionID := raw.SessionID
+		if sessionID == "" {
+			sessionID = ctx.primaryID
+		}
 		ctx.pendingPerms[raw.RequestID] = permHold{
-			SessionID: raw.SessionID, EmployeeID: ownerID, EmployeeName: ownerName,
+			SessionID: sessionID, EmployeeID: ownerID, EmployeeName: ownerName,
 			Title: toolName, Summary: summary,
 		}
 		ctx.permMeta[raw.RequestID] = claudePermMeta{
@@ -1231,7 +1240,7 @@ func (ctx *claudeNormCtx) mapClaudeControlRequest(raw claudeEvent, now int64) []
 		}
 		evs := []state.Event{{
 			Kind: state.EvPermission, PermissionID: raw.RequestID,
-			SessionID: raw.SessionID, EmployeeID: ownerID, EmployeeName: ownerName,
+			SessionID: sessionID, EmployeeID: ownerID, EmployeeName: ownerName,
 			ToolName: toolName, ToolSummary: summary, ToolState: "pending",
 		}}
 		if ownerID != "boss" {

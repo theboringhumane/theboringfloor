@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-27 · Dev I: abort-ladder test budgets (@developer... — tekton-6 (developer) · `issues`
+- summary: **Fully green loaded run** — `grep -cE '^FAIL'` → **0**, my test `--- PASS` under full-suite load, and even the previously-flaked panels test and the concurrent
+- files: `internal/backend/claude_abort_test.go`
+- verify: ```
+- proof: Before → after of each raised budget (verbatim diff hunks):
+- ledgerId: led-1787849348047-ef91c581
+
+### 2026-08-27 · Dev H: perm SessionID + wire fixtures (@devel... — tekton-5 (developer) · `issues`
+- summary: **FIX A (SessionID fallback):** `mapClaudeControlRequest`'s `can_use_tool` arm now computes `sessionID := raw.SessionID; if sessionID == "" { sessionID = ctx.pr
+- files: `internal/backend/claude_events.go`, `internal/backend/claude_wire_21247_test.go`, `internal/backend/claude_events_test.go`
+- verify: ```
+- proof: *FIX A — the mapper before→after** (verbatim `git diff internal/backend/claude_events.go`):
+- ledgerId: led-1787849344177-bd8f7527
+
 ### 2026-08-27 · Dev G: real claude CLI integration (@develope... — tekton-4 (developer) · `issues`
 - summary: Everything is green and evidence-complete. Assembling the final return.
 - files: `internal/backend/claude_live_test.go`, `internal/backend/claude.go`
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *`git log --oneline -8` (final, after push):**
 - ledgerId: led-1787758760611-ef94d97f
-
-### 2026-08-26 · Dev A: claude backend stdio core (@general su... — tekton-1 (developer) · `issues`
-- summary: All verification is green. The final state of the work:
-- files: | path | why |, |---|---|, | `cmd/uishot/main.go` | **Edited this session:** dispatch branch for the pre-declared `*claudeMode`, | `cmd/uishot/claude_proof.go` | **Edited this session:** `sendDeep`/`drainDeep` recursive cmd pump;, | `internal/backend/claude.go` | pre-existing this wave, | `internal/backend/claude_events.go` | pre-existing, | `internal/backend/claude_events_test.go` | pre-existing, | `internal/backend/claude_spawn_test.go` | pre-existing, | `internal/backend/claude_send_test.go` | pre-existing, | `internal/backend/claude_usage_test.go` | pre-existing, | `internal/backend/claude_abort_test.go` | pre-existing, | `internal/backend/claude_perm_test.go` | pre-existing
-- verify: (`grep -c "^FAIL\|^--- FAIL"` over the full suite → `0`)
-- proof: *A. The stub-captured stdin schedule — the byte-pinned Send→control round-trip contract (verbatim from the run's printed artifact):**
-- ledgerId: led-1787755258436-7a82ffef
-
-### 2026-08-26 · Dev B: backend select + switching (@general s... — tekton-2 (developer) · `issues`
-- summary: All VERIFY gates pass. Assembling the return.
-- files: | path | why |, |---|---|, | `install.sh` | **Edited this session:** `BACKEND_STATE` strings no longer repeat the backend name , | `cmd/theboringoffice/main.go` | Verified: `--backend` flag + THEBORINGOFFICE_BACKEND env + brain.j, | `internal/config/config.go` | Verified: `BackendConfig.Name`, `Default()`, `Load()` backfill, help, | `internal/app/model.go` | Verified: `/backend` routing, | `internal/app/sessions.go` | Verified: `Backend`+`PrimaryIDs` schema, `primaryIDFor`/`mergeBackend, | `internal/app/backend_switch_test.go` | Verified: swap-gate test matrix, | `internal/app/config_backend_test.go` | Verified: resolver/grammar/latch tests, | `cmd/headless/main.go` | Verified: `backendNameLine` boot row. |, | `README.md` | Verified: install selector + `/backend` slash + brain.json note. |
-- verify: ```
-- proof: *The `/backend` config after a swap** — `TestBackendSwapForceEscThenSwaps` drives `/backend claudecode` and then reads the persisted brain.j
-- ledgerId: led-1787755083800-341ecbc9
 
