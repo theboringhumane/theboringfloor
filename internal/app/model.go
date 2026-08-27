@@ -5,8 +5,10 @@
 // Layout: topbar (1) | middle (floor left flex | right sidebar) | statusbar (1).
 // The sidebar holds seven tabs — chat | terminal | agents | board | mail |
 // activity | git — and its width is configurable (brain.json ui.sidebarWidth,
-// 26..100 clamp, 0 = default 80; /compact mode narrows it to 30). /zen is a
-// transient fullscreen-floor mode (sidebar hidden, any key exits).
+// 26..100 clamp, 0 = default 80; /compact mode narrows it to 30). The LEFT
+// pane is a two-tab slot of its own — floor (default) | browser — flipped
+// with ctrl+b (app/browser.go owns the switcher). /zen is a transient
+// fullscreen-floor mode (sidebar hidden, any key exits).
 // Events arrive as state.Event tea.Msgs (backend goroutine → tea.Program.Send);
 // the animation tick is a re-arming tea.Tick loop governed by the brain.json
 // power posture (power.go): busy = smooth (180ms/150ms/400ms), idle = cheap
@@ -283,12 +285,15 @@ type Model struct {
 	agents        *panels.Agents // roster tab — floor-click selection highlight
 	activity      *panels.Activity
 	termTab       *termTabWrap // tab 2: the real OS-shell (lazy PTY, terminal.go)
-	// browser — tab 8: the in-TUI page viewer (app/browser.go owns the
-	// wiring; panels/browser.go owns the pane). browserSlashNote is the
-	// /open notice latch: set by the slash case, consumed by the FIRST
-	// BrowserPageMsg that lands (in-pane navs stay silent).
+	// browser — the LEFT pane's second tab: the in-TUI page viewer
+	// (app/browser.go owns the wiring; panels/browser.go owns the pane).
+	// browserSlashNote is the /open notice latch: set by the slash case,
+	// consumed by the FIRST BrowserPageMsg that lands (in-pane navs stay
+	// silent). leftTab is the floor slot's switcher position:
+	// leftTabFloor (the office floor, the default) | leftTabBrowser.
 	browser          *panels.Browser
 	browserSlashNote string
+	leftTab          int
 	// termCaptured — the terminal tab's OPT-IN keyboard state (wave-42):
 	// false = RELEASED (the default — office keys behave normally on the
 	// terminal tab), true = CAPTURED via ctrl+space (wave-41: every key
@@ -992,10 +997,9 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			// could only ever APPEND past it. Empty root → the panel
 			// renders its "git unavailable" line.
 			panels.NewGit(func() gitx.Repo { r, _ := gitx.Root(""); return r }()),
-			// browser appends LAST (index 7): v1 is tab/shift+tab-cycle
-			// only — keys 1..7 are burned into the grab/quit matrix, so a
-			// digit jump for the browser is wave-out (keys.go).
-			browserTab,
+			// the browser is NOT here: it lives on the LEFT pane's
+			// floor|browser slot (app/browser.go) — this strip stays at
+			// seven tabs, indexes AND digit jumps unchanged.
 		),
 		keys: NewKeyMap(),
 		boot: NewBoot(0, 0),
@@ -1153,6 +1157,10 @@ func (m *Model) SelectTab(name string) bool {
 // click proofs — double-clicked floor sprites jump to chat, 0).
 func (m Model) ActiveTabIndex() int { return m.tabs.ActiveIndex() }
 
+// LeftTabIndex reports the LEFT pane's switcher position (leftTabFloor |
+// leftTabBrowser) — the harness seam for the browser layout proofs.
+func (m Model) LeftTabIndex() int { return m.leftTab }
+
 // SetSoundBus injects the sound engine's bus (nil disables sound). The app
 // only calls Play — the engine is owned elsewhere.
 func (m *Model) SetSoundBus(bus SoundBus) {
@@ -1292,8 +1300,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// (a) is behind a fullscreen pane and (b) must not swallow it.
 		// The `o` target card's esc ALSO claims before the selection's —
 		// the card floats ABOVE the mark like the focus pane: its esc
-		// closes the card first, the mark's esc comes after.
-		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && m.chat != nil && !m.chat.LinkPickerOpen() && m.chat.SelectionActive() {
+		// closes the card first, the mark's esc comes after. The left-pane
+		// browser's esc outranks the selection too — while the switcher
+		// sits on browser the key belongs to the pane (its leave-to-floor
+		// contract), never to a chat-region mark.
+		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && !m.browserActive() && m.chat != nil && !m.chat.LinkPickerOpen() && m.chat.SelectionActive() {
 			m.chat.ClearSelection()
 			m.sel = mselIdle
 			break
@@ -1390,10 +1401,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseWheelMsg:
 		// wheel scrolls the active panel (the default-arm's twin) — except
 		// an open thread-focus, which owns the wheel for its own viewport
-		// (the office underneath never scrolls behind the pane).
+		// (the office underneath never scrolls behind the pane), and the
+		// LEFT-pane browser, which owns it while the switcher sits on
+		// browser (the chat's older-hop gesture below stays chat-scoped).
 		m.frameNonce++
 		if m.threadFocus != nil {
 			if cmd := m.threadFocus.Update(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			break
+		}
+		if m.browserActive() {
+			if cmd := m.browser.Update(msg); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 			break
@@ -1914,12 +1933,12 @@ func (m Model) Frame() string {
 		}
 	} else if m.mobile() {
 		// mobile (auto, width < mobileMaxCols): the middle stacks
-		// VERTICALLY — a compact floor band on top, the active panel
-		// full-width below it. No horizontal split, no sidebar frame
-		// eating columns; the chrome rows (topbar/statusbar) stay as-is.
+		// VERTICALLY — the left slot (floor|browser switcher + content)
+		// as a compact band on top, the active panel full-width below it.
+		// No horizontal split, no sidebar frame eating columns; the chrome
+		// rows (topbar/statusbar) stay as-is.
 		bandH := m.floorBandH()
-		floor := lipgloss.NewStyle().Width(m.width).Height(bandH).
-			Render(office.CachedStyled(m.st, m.width, bandH))
+		left := m.leftPaneView(m.width, bandH)
 		var side string
 		if m.planPaneVisible() {
 			// a presented/edited plan swaps the PANEL slot (the big lower
@@ -1931,7 +1950,7 @@ func (m Model) Frame() string {
 			side = lipgloss.NewStyle().Width(m.width).Height(m.middleH - bandH).
 				Render(m.tabs.View())
 		}
-		mid = lipgloss.JoinVertical(lipgloss.Left, floor, side)
+		mid = lipgloss.JoinVertical(lipgloss.Left, left, side)
 		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	} else {
 		side := lipgloss.NewStyle().Width(m.sidebar).Height(m.middleH).
@@ -1942,9 +1961,7 @@ func (m Model) Frame() string {
 			m.plan.SetSize(m.floorW, m.middleH)
 			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.plan.View(), side)
 		} else {
-			floor := lipgloss.NewStyle().Width(m.floorW).Height(m.middleH).
-				Render(office.CachedStyled(m.st, m.floorW, m.middleH))
-			mid = lipgloss.JoinHorizontal(lipgloss.Top, floor, side)
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.leftPaneView(m.floorW, m.middleH), side)
 		}
 		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	}
@@ -2039,6 +2056,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	key := msg.String()
 	chatActive := m.tabs.ActiveIndex() == 0
 	termActive := m.terminalActive()
+	// The left-pane browser, while the switcher sits on it, owns the
+	// office's unclaimed keys: the right strip's chat/terminal surfaces
+	// (the textarea, the shell) all yield — exactly like the browser tab
+	// did when it rode the strip.
+	browserActive := m.browserActive()
+	if browserActive {
+		chatActive, termActive = false, false
+	}
 
 	// ANY other key press clears a pending ctrl+q arm (its toast retires
 	// on the next render via the keypress frameNonce bump).
@@ -2114,6 +2139,15 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		}
 		m.tabs.Prev()
 		m.maybeSpawnTerminal()
+		return nil
+	case "ctrl+b":
+		// the LEFT pane's floor|browser switcher (the tab-cycle claim
+		// tier): flips BOTH ways from every surface except a CAPTURED
+		// terminal — there the shell owns 0x02 like every other byte.
+		if m.termCapturedNow() {
+			break // captured: ctrl+b is the shell's byte — forwarded below
+		}
+		m.toggleLeftTab()
 		return nil
 	case "ctrl+space":
 		// THE one capture toggle: released ⇄ captured, BOTH ways, and only
@@ -2235,11 +2269,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		m.closeBrowser()
 		return tea.Quit
 	case "q":
-		// The browser tab is the ONE non-chat surface where q does NOT
-		// quit: there it means "leave the tab" (the pane's own q/esc →
-		// BrowserLeaveMsg → chat). Every other non-chat tab keeps the
-		// global quit. (Grab/quit tests pin the non-browser branches.)
-		if !chatActive && m.tabs.ActiveIndex() != browserIndex {
+		// The browser is the ONE non-chat surface where q does NOT quit:
+		// there it means "leave the tab" (the pane's own q/esc →
+		// BrowserLeaveMsg → the floor tab). Every other non-chat tab
+		// keeps the global quit. (Grab/quit tests pin the non-browser
+		// branches.)
+		if !chatActive && !browserActive {
 			m.persistOfficeSession(true) // final SYNC snapshot (live only)
 			m.closeTerminal()
 			m.closeBrowser()
@@ -2296,6 +2331,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 			return m.tabs.Update(msg)
 		}
 		return nil
+	}
+	if browserActive {
+		// the left-pane browser owns every unclaimed key (scroll, link
+		// cursor, [ ] history, r reload, o open, q/esc leave) — the right
+		// strip's active tab (the chat textarea INCLUDED) never sees them.
+		return m.browser.Update(msg)
 	}
 	cmd := m.tabs.Update(msg)
 	// TOP-GESTURE: an ↑/pgup that leaves the transcript on row 0 arms ONE
@@ -2587,6 +2628,12 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		m.chat.ClickRow(cx, cy)
 		return nil
 	}
+	// The left-pane browser owns the floor slot's clicks while the
+	// switcher sits on it: no sprite hit-testing underneath (link-click
+	// navigation is wave-out — the pane's keys carry it).
+	if m.browserActive() {
+		return nil
+	}
 	id, ok := office.HitAgent(m.st, msg.X, msg.Y-1 /* topbar row */)
 	if !ok {
 		return nil
@@ -2699,10 +2746,16 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // inbound boss-turn image payloads and fires the lazy rasterize cmd —
 // model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev))
 }
 
 func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
+	// an allowed agent browser-open flips the left slot to the browser so
+	// the member sees the page land (refused opens surface as a notice row
+	// via applyBrowserOpen and never touch the slot).
+	if ev.Kind == state.EvBrowserOpen && ev.BrowserOpenAllowed {
+		m.leftTab = leftTabBrowser
+	}
 	// permission prompts + question holds are model-owned UI state (not
 	// chat history) — handle before the reducer (the reducer also uses
 	// the parked state: a question popover drops the typing placeholder).
@@ -3973,8 +4026,14 @@ func (m *Model) resize(w, h int) {
 		// the rows under the floor band (Frame renders the band itself at
 		// bandH; both sides share floorBandH() so they never drift apart).
 		m.tabs.SetSize(w, m.middleH-m.floorBandH())
+		// the browser rides the band's left slot — the switcher strip
+		// eats one row (Frame renders the strip; both share the math).
+		m.browser.SetSize(w, m.floorBandH()-1)
 	} else {
 		m.tabs.SetSize(sw, m.middleH)
+		// the browser rides the LEFT floor slot — the switcher strip
+		// eats one row of the slot's height.
+		m.browser.SetSize(m.floorW, m.middleH-1)
 	}
 	if m.threadFocus != nil {
 		// the open focus spans the whole middle region at ANY width —

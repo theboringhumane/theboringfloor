@@ -32,6 +32,8 @@ type governor struct {
 func (m *Model) frameDigest() uint64 {
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%d|%d|%d|%d|%d|%d", m.width, m.height, m.sidebar, m.floorW, m.tabs.ActiveIndex(), m.frameNonce)
+	// the left pane's floor|browser switcher swaps the whole left region.
+	fmt.Fprintf(h, "|%d", m.leftTab)
 	fmt.Fprintf(h, "|%s|%s|%d|%d|%t|%t|%t|%t", m.st.Mode, m.st.StatusLine, len(m.queue), m.st.Tick, m.st.BossThinking, m.st.BossDelegating, m.permQ.front() != nil, m.question != nil)
 	for _, e := range m.st.Employees {
 		fmt.Fprintf(h, "|%s%s%s%s", e.ID, e.Sprite, e.Seat, e.Task)

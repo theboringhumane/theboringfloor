@@ -73,6 +73,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/browsertools"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/netwatch"
@@ -177,6 +178,14 @@ type liveBackend struct {
 	conciergeBooted bool
 	pendingOffice   []string
 	officeCompleted map[string]bool
+	// browserBriefedFor latches the primary session id the browser-tool
+	// preamble (browsertools.PromptPreamble) already rode — the FIRST
+	// prompt to each NEW primary re-briefs (a respawned/fresh session
+	// lost the context), later prompts go out raw. browserBridge is the
+	// shared marker-policy bridge (constructed in newLiveBackend; its
+	// emit closure reads fl AT CALL TIME, so pre-Start is a safe no-op).
+	browserBriefedFor string
+	browserBridge     *browsertools.Bridge
 	// Office memory (the dispatch ledger): ledgerDone latches each
 	// completion key ("child:"+sessionID / "queue:"+boardID) so a replayed
 	// idle or a retried flush never double-records (the file's ledgerId
@@ -216,6 +225,7 @@ func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend 
 	// connectivity until the watcher's first confirmed round refutes it —
 	// degrade open, same as every other probe in this file.
 	close(b.netOnline)
+	b.browserBridge = browsertools.NewBridge(func(e state.Event) { b.fl.emit(e) })
 	return b
 }
 
@@ -539,7 +549,26 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 		ID: pendingID, From: "boss", Text: "", At: nowMs(), Pending: true,
 	}})
 
-	err := b.postPrompt(primaryID, trimmed, atts, agent)
+	// The browser-tool preamble (browsertools.PromptPreamble) rides the
+	// FIRST prompt to each primary session — the conciergePreamble house
+	// pattern, keyed on the session id so a respawned/fresh primary
+	// re-briefs (its context never saw the marker contract). The member's
+	// chat-user echo above carries `trimmed` only: the preamble is
+	// agent-facing, never transcript noise. The latch sets ONLY on a
+	// clean post — a failed first prompt must not spend the brief.
+	prompt := trimmed
+	b.mu.Lock()
+	briefed := b.browserBriefedFor == primaryID
+	b.mu.Unlock()
+	if !briefed {
+		prompt = browsertools.PromptPreamble + "\n\n" + trimmed
+	}
+	err := b.postPrompt(primaryID, prompt, atts, agent)
+	if err == nil && !briefed {
+		b.mu.Lock()
+		b.browserBriefedFor = primaryID
+		b.mu.Unlock()
+	}
 	if err != nil {
 		b.mu.Lock()
 		for i, id := range b.pendingBoss {
@@ -2732,6 +2761,10 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 		}
 		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
 	}
+	// Browser-tool markers (⟦open-browser: URL⟧) never reach the
+	// transcript: scrub the pinned text and fire the open requests (the
+	// policy runs inside the bridge; the app owns the reaction).
+	text = browsertools.Scrub(text, b.browserBridge)
 	// Boss edits surface as diff events on message completion.
 	b.fetchDiffAndEmit(primaryID)
 

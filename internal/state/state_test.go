@@ -117,29 +117,30 @@ func TestModeConstants(t *testing.T) {
 
 func TestEventKindConstants(t *testing.T) {
 	want := map[EventKind]string{
-		EvHire:       "hire",
-		EvFire:       "fire",
-		EvDispatch:   "dispatch",
-		EvWorking:    "working",
-		EvReturned:   "returned",
-		EvIdleDrift:  "idle-drift",
-		EvBlocked:    "blocked",
-		EvTask:       "task",
-		EvMail:       "mail",
-		EvChatUser:   "chat-user",
-		EvChatBoss:   "chat-boss",
-		EvChatOffice: "chat-office",
-		EvThought:    "thought",
-		EvTool:       "tool",
-		EvBubble:     "bubble",
-		EvStatus:     "status",
-		EvTick:       "tick",
-		EvPermission: "permission",
-		EvQuestion:   "question",
-		EvFileDiff:   "diff",
-		EvUsage:      "usage",
+		EvHire:        "hire",
+		EvFire:        "fire",
+		EvDispatch:    "dispatch",
+		EvWorking:     "working",
+		EvReturned:    "returned",
+		EvIdleDrift:   "idle-drift",
+		EvBlocked:     "blocked",
+		EvTask:        "task",
+		EvMail:        "mail",
+		EvChatUser:    "chat-user",
+		EvChatBoss:    "chat-boss",
+		EvChatOffice:  "chat-office",
+		EvThought:     "thought",
+		EvTool:        "tool",
+		EvBubble:      "bubble",
+		EvStatus:      "status",
+		EvTick:        "tick",
+		EvPermission:  "permission",
+		EvQuestion:    "question",
+		EvFileDiff:    "diff",
+		EvUsage:       "usage",
+		EvBrowserOpen: "browser-open",
 	}
-	if len(want) != 21 {
+	if len(want) != 22 {
 		t.Fatalf("test covers %d event kinds; update when kinds change", len(want))
 	}
 	for kind, s := range want {

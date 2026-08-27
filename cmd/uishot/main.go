@@ -2471,21 +2471,27 @@ func runLayoutProof() error {
 		}
 		if leg.compact {
 			// the 30-col sidebar drops to single-letter labels — with all
-			// EIGHT tabs the letters tier is "c t a b m x g w" (b = board,
-			// w = web/browser); numbers never fit at 30. (Asserted on the
-			// STRIPPED frame: the tight tier pads nothing, so the styled
-			// segments never carry literal " c "-style substrings.)
+			// SEVEN right-strip tabs the bar fits the BARE tier at 27
+			// cells: " c  t  a  b  m  x  g " (b = board; the old eight-tab
+			// strip overflowed into the tight letters tier, seven ride
+			// padded). Numbers never fit at 30. (Asserted on the STRIPPED
+			// frame. The browser is absent BY DESIGN — it rides the LEFT
+			// pane's floor|browser switcher, whose full-word labels are
+			// legit.)
 			plain := ansi.Strip(frame)
-			if !strings.Contains(plain, "c t a b m x g w") {
-				return fail("[compact] tab bar missing the letters tier %q", "c t a b m x g w")
+			if !strings.Contains(plain, "c   t   a   b   m   x   g") {
+				return fail("[compact] tab bar missing the bare letters tier %q", "c   t   a   b   m   x   g")
 			}
-			if strings.Contains(plain, "chat") || strings.Contains(plain, "terminal") || strings.Contains(plain, "browser") {
+			if strings.Contains(plain, "chat") || strings.Contains(plain, "terminal") {
 				return fail("[compact] tab bar still shows a full tab name")
+			}
+			if !strings.Contains(plain, "floor") || !strings.Contains(plain, "browser") {
+				return fail("[compact] the left slot's floor|browser switcher must ride the frame")
 			}
 			if strings.Contains(frame, "DEMO") {
 				return fail("[compact] topbar still carries the mode segment (should compress to agents + clock)")
 			}
-			fmt.Println("asserts: OK — sidebar 30, compact tab labels (c t a b m x g w), compressed topbar, 2-row chat input")
+			fmt.Println("asserts: OK — sidebar 30, compact tab labels (c   t   a   b   m   x   g bare tier), left floor|browser switcher, compressed topbar, 2-row chat input")
 		} else {
 			if !strings.Contains(frame, "terminal") || !strings.Contains(frame, "activity") {
 				return fail("[%s] tab bar missing full tab labels (want \"terminal\" + \"activity\" visible — six tabs must never clip)", leg.name)
@@ -5192,16 +5198,19 @@ func runBrowserLaneProof() error {
 
 // --- browser tab text viewer (--browsertab) ---------------------------------
 // The UNCONDITIONAL lane: the browser tab itself — no zenbu, no external
-// binary, every host. A REAL stub HTTP server on the pinned loopback port
-// serves the shared panels fixture (404 for every other route); the member
-// types "/open http://127.0.0.1:52731/fixture.html" through the REAL chat
-// input ("/" opens the slash popover, the fragment filters, Enter prefills
+// binary, every host — riding the LEFT pane's floor|browser switcher. A
+// REAL stub HTTP server on the pinned loopback port serves the shared
+// panels fixture (404 for every other route); the member types
+// "/open http://127.0.0.1:52731/fixture.html" through the REAL chat input
+// ("/" opens the slash popover, the fragment filters, Enter prefills
 // "/open ", the URL types, the second Enter sends → slashMsg → applySlash
 // → the pane's FetchPage — the drain runs the round-trip synchronously).
-// Asserts: the browser tab is ACTIVE (index 7), the "▸ <url> · Fixture
-// Gazette" bar, the bold heading row, the three indexed link rows, the
-// 🖼 chip + the " │ " table after pgdn scrolls them into view, the
-// tail-marker crossing the fold — and two drives byte-identical.
+// Asserts: the LEFT slot flipped to browser (the RIGHT strip never moved
+// off chat), the switcher strip carries "floor"/"browser" + the ctrl+b
+// hint, the "▸ <url>" location bar renders in the LEFT pane, the bold
+// heading row, the three indexed link rows, the 🖼 chip + the " │ "
+// table after pgdn scrolls them into view, the tail-marker crossing the
+// fold — and two drives byte-identical.
 
 // browserTabStubAddr — the PINNED loopback port (byte-determinism: the
 // location bar prints the URL, so the port may never drift between drives).
@@ -5213,9 +5222,11 @@ const browserTabFixtureRel = "internal/panels/testdata/fixture.html"
 
 // browserTabFrameOut — ONE synchronous drive's observed artifacts.
 type browserTabFrameOut struct {
-	frameTop    string // after /open — bar + top rows, tail-marker below the fold
-	frameScroll string // after pgdn — tail-marker scrolled into view
-	activeTab   int
+	frameTop     string // after /open — bar + top rows, chip + tail-marker below the fold
+	frameScroll1 string // after ONE pgdn — the " │ " table + the 🖼 chip scrolled into view
+	frameScroll2 string // after TWO pgdn — the tail-marker crossed the fold
+	activeTab    int    // the RIGHT strip's position — /open must never move it
+	leftTab      int    // the LEFT slot's switcher — /open flips it to browser
 }
 
 func browserTabDrive() (browserTabFrameOut, error) {
@@ -5291,11 +5302,13 @@ func browserTabDrive() (browserTabFrameOut, error) {
 	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // sends → slashMsg → applySlash → fetch
 
 	out.activeTab = m.ActiveTabIndex()
+	out.leftTab = m.LeftTabIndex()
 	out.frameTop = m.Frame()
 
 	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
+	out.frameScroll1 = m.Frame()
 	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyPgDown}))
-	out.frameScroll = m.Frame()
+	out.frameScroll2 = m.Frame()
 	return out, nil
 }
 
@@ -5309,46 +5322,73 @@ func runBrowserTabProof() error {
 	if err != nil {
 		return err
 	}
-	if a1.activeTab != 7 {
-		return fail("browsertab: /open must leave the browser tab active at index 7, got %d", a1.activeTab)
+	if a1.leftTab != 1 {
+		return fail("browsertab: /open must flip the LEFT slot to the browser (leftTab 1), got %d", a1.leftTab)
+	}
+	if a1.activeTab != 0 {
+		return fail("browsertab: /open must never move the RIGHT strip off chat (index 0), got %d", a1.activeTab)
 	}
 	url := "http://" + browserTabStubAddr + "/fixture.html"
 	strip := ansi.Strip(a1.frameTop)
 	for _, want := range []string{
-		"▸ " + url + " · Fixture Gazette", // the location bar, title riding
-		"The Fixture Gazette",             // the h1 row
-		"News desk",                       // the h2 row
+		"▸ " + url,            // the location bar rides the LEFT pane (the · title tail truncates at the 50-col slot)
+		"The Fixture Gazette", // the h1 row
+		"News desk",           // the h2 row
 		"Open link alpha [1] for the first story.",
 		"Then link beta [2] for the follow-up.",
 		"Finally link gamma [3] closes the set.",
 		"• shelf item one",
+		"· ctrl+b", // the left slot's switcher strip (floor | browser)
 	} {
 		if !strings.Contains(strip, want) {
 			return fail("browsertab top frame missing %q:\n%s", want, strip)
 		}
 	}
-	if strings.Contains(strip, "tail-marker") {
-		return fail("browsertab: the tail-marker must start BELOW the fold (pgdn's proof needs it)")
-	}
-	scrolled := ansi.Strip(a1.frameScroll)
-	for _, want := range []string{"🖼 fixture diagram", "tekton-1 │ developer", "tail-marker"} {
-		if !strings.Contains(scrolled, want) {
-			return fail("browsertab scrolled frame missing %q:\n%s", want, scrolled)
+	// the layout itself: the switcher row carries the browser label LEFT of
+	// the right strip's chat tab (floor slot left, sidebar right).
+	for _, line := range strings.Split(strip, "\n") {
+		if strings.Contains(line, "ctrl+b") {
+			bi, ci := strings.Index(line, "browser"), strings.Index(line, "chat")
+			if bi < 0 || ci < 0 || bi > ci {
+				return fail("browsertab: the switcher row must place browser LEFT of the chat tab: %q", line)
+			}
+			break
 		}
 	}
-	if a1.frameTop == a1.frameScroll {
+	if strings.Contains(strip, "tail-marker") || strings.Contains(strip, "🖼 fixture diagram") {
+		return fail("browsertab: the chip + tail-marker must start BELOW the fold (pgdn's proof needs them)")
+	}
+	// ONE pgdn (the 28-row body hops a full page): the " │ " table + the
+	// 🖼 chip scroll into view.
+	scrolled1 := ansi.Strip(a1.frameScroll1)
+	for _, want := range []string{"Data corner", "agent │ role", "tekton-1 │ developer", "skopos-1 │ scout", "🖼 fixture diagram"} {
+		if !strings.Contains(scrolled1, want) {
+			return fail("browsertab pgdn-1 frame missing %q:\n%s", want, scrolled1)
+		}
+	}
+	// TWO pgdn (clamped at the content floor): the tail-marker crosses.
+	scrolled2 := ansi.Strip(a1.frameScroll2)
+	for _, want := range []string{"🖼 fixture diagram", "tail-marker"} {
+		if !strings.Contains(scrolled2, want) {
+			return fail("browsertab pgdn-2 frame missing %q:\n%s", want, scrolled2)
+		}
+	}
+	if a1.frameTop == a1.frameScroll1 || a1.frameScroll1 == a1.frameScroll2 {
 		return fail("browsertab: pgdn must move the scrollback (frames identical)")
 	}
-	if a1.frameTop != a2.frameTop || a1.frameScroll != a2.frameScroll {
+	if a1.frameTop != a2.frameTop || a1.frameScroll1 != a2.frameScroll1 || a1.frameScroll2 != a2.frameScroll2 {
 		return fail("browsertab: two drives must produce byte-identical frames")
 	}
-	fmt.Println("===== UI SHOT · BROWSERTAB — /open " + url + " (top of page) =====")
+	fmt.Println("===== UI SHOT · BROWSERTAB — /open " + url + " (LEFT slot: floor|browser switcher, top of page) =====")
 	fmt.Println(a1.frameTop)
 	fmt.Println("===== UI SHOT =====")
-	fmt.Println("===== UI SHOT · BROWSERTAB — after pgdn (chip + table + tail-marker) =====")
-	fmt.Println(a1.frameScroll)
+	fmt.Println("===== UI SHOT · BROWSERTAB — after ONE pgdn (table + chip over the fold) =====")
+	fmt.Println(a1.frameScroll1)
 	fmt.Println("===== UI SHOT =====")
-	fmt.Println("asserts: OK — the browser tab renders the stub fixture as navigable text rows: \"▸ " + url + " · Fixture Gazette\" bar, bold headings, \"link alpha [1]\"/\"link beta [2]\"/\"link gamma [3]\" indexed rows, bullet run, the 🖼 chip + \" │ \" table after pgdn scrolls them over the fold, tail-marker crossing; the tab active at index 7 via the REAL /open slash path; two drives byte-identical")
+	fmt.Println("===== UI SHOT · BROWSERTAB — after TWO pgdn (tail-marker crossing) =====")
+	fmt.Println(a1.frameScroll2)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("asserts: OK — the browser renders the stub fixture as navigable text rows in the LEFT pane (floor|browser switcher strip + \"· ctrl+b\" hint on top, the RIGHT strip unmoved on chat): \"▸ " + url + "\" bar, bold headings, \"link alpha [1]\"/\"link beta [2]\"/\"link gamma [3]\" indexed rows, bullet run, ONE pgdn bringing the \" │ \" table + the 🖼 chip over the fold and TWO crossing the tail-marker; the left slot flipped to browser via the REAL /open slash path; two drives byte-identical")
 	return nil
 }
 
@@ -5561,7 +5601,7 @@ func main() {
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
 	browser := flag.Bool("browser", false, "browser tab premium-lane proof (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env — use with --lane kitty): leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note \"zenbu exited (0) — falling back to text mode\", \" text \" badge, fixture body, strip gone, URL state intact; every leg byte-identical twice")
-	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover renders the shared fixture as text rows — the \"▸ <url> · Fixture Gazette\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
+	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
 
 	if *persist {

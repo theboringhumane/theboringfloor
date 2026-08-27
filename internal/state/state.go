@@ -8,6 +8,7 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -317,6 +318,13 @@ type ModelInfo struct {
 type QuestionOption struct {
 	Label       string `json:"label"`
 	Description string `json:"description,omitempty"`
+	// Preview — the CLI AskUserQuestion option's optional markdown preview
+	// (wire: questions[].options[].preview, a plain string). The office
+	// never renders it today: it rides the event so the claude backend's
+	// dialog answer can re-emit it inside updatedInput (the CLI's own
+	// submit builder spreads the original input), keeping the granted
+	// tool call's full original context. ADDITIVE, omitempty.
+	Preview string `json:"preview,omitempty"`
 }
 
 // QuestionItem is one page of a question.asked request: its text, an
@@ -328,6 +336,16 @@ type QuestionItem struct {
 	Header   string           `json:"header,omitempty"`
 	Options  []QuestionOption `json:"options,omitempty"`
 	Multiple bool             `json:"multiple,omitempty"`
+	// Meta/MetaSource — the AskUserQuestion dialog payload's raw
+	// metadata/metadataSource (CLI analytics context, "not displayed to
+	// the user"), carried VERBATIM (raw wire bytes) so the claude
+	// backend's dialog answer can re-emit them inside updatedInput.
+	// Payload-level (one value per dialog): every page of one dialog
+	// carries the same bytes, and result builders read the first
+	// carrier. nil for opencode-sourced questions and for dialogs
+	// without metadata. ADDITIVE, omitempty.
+	Meta       json.RawMessage `json:"meta,omitempty"`
+	MetaSource json.RawMessage `json:"metaSource,omitempty"`
 }
 
 // SpeechBubble — ambient office chatter balloon, expires after ttl ticks.
@@ -463,6 +481,16 @@ const (
 	// backend's watcher (pure-Go probe). Emit once per transition.
 	EvOffline EventKind = "offline"
 	EvOnline  EventKind = "online"
+	// EvBrowserOpen — an AGENT-originated request to open a URL in the
+	// office's browser tab (ADDITIVE; see internal/browsertools — the
+	// marker protocol: the boss agent emits ⟦open-browser: URL⟧ on its
+	// own line, the backend strips the marker from the pinned transcript
+	// and runs the URL policy BEFORE this event exists). Text carries
+	// the requested URL; BrowserOpenAllowed is the policy verdict (false
+	// → nothing opens and BrowserOpenReason carries the member-facing
+	// refusal). The reducer passes it through untouched (unknown-kind
+	// default); the APP owns the reaction (internal/app/browser_open.go).
+	EvBrowserOpen EventKind = "browser-open"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -523,6 +551,13 @@ type Event struct {
 	// multi-KB blobs; the app buffers them on receipt, keyed by
 	// MediaItem.Hash, and drops the event copy. nil on every other kind.
 	Media []MediaItem `json:"media,omitempty"`
+	// Browser-open fields (EvBrowserOpen): the backend's policy verdict
+	// on the agent-requested URL riding Text. BrowserOpenAllowed=false
+	// means nothing opens and BrowserOpenReason carries the member-facing
+	// refusal (the app posts it as a red notice); true means the app
+	// drives the browser pane's open path.
+	BrowserOpenAllowed bool   `json:"browserOpenAllowed,omitempty"`
+	BrowserOpenReason  string `json:"browserOpenReason,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

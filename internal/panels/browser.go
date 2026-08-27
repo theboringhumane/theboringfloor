@@ -6,11 +6,11 @@
 // narrow and NEVER silently on the open internet:
 //
 //	file:// URLs and bare paths (testdata/*.html fixtures, any on-disk
-//	file) read straight off disk; http(s):// fetches are limited to a
-//	localhost whitelist (localhost / 127.0.0.1 / ::1) — outbound internet
-//	is OFF by default and only unlocks when the member exports
-//	THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME, no config
-//	schema, no brain.json key). Every fetch is context-bounded (10s),
+//	file) read straight off disk; http(s):// fetches allow the localhost
+//	whitelist (localhost / 127.0.0.1 / ::1) on either scheme and https to
+//	ANY host by default — plain http to a non-localhost host is refused
+//	unless the member exports THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read
+//	AT USE TIME, no config schema, no brain.json key). Every fetch is context-bounded (10s),
 //	byte-capped (4 MiB), and the payload is content-SNIFFED: HTML only —
 //	images/pdf/etc land a dim "unsupported content type" row instead of a
 //	parse. Non-2xx surfaces as a dim error row: "404: no route → go to
@@ -555,7 +555,8 @@ func intIn(set []int, n int) bool {
 //   - file:// URLs and bare paths (relative paths resolve against the
 //     process cwd — testdata/*.html fixtures included);
 //   - http(s):// against the localhost whitelist (localhost, 127.0.0.1,
-//     ::1) — every other host is REFUSED unless
+//     ::1) on either scheme, and https:// to any host by default — plain
+//     http to a non-localhost host is REFUSED unless
 //     THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 is exported (never network
 //     silently).
 //
@@ -606,10 +607,10 @@ func fetchBrowserBytes(ctx context.Context, rawurl string) ([]byte, string, erro
 
 	u, err := url.Parse(rawurl)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
-		return nil, rawurl, fmt.Errorf("unsupported url %q (file://, a bare path, or http(s)://localhost only)", rawurl)
+		return nil, rawurl, fmt.Errorf("unsupported url %q (file://, a bare path, or http(s)://…)", rawurl)
 	}
-	if !browserHostAllowed(u.Hostname()) {
-		return nil, rawurl, fmt.Errorf("http fetch blocked: %s is not localhost (export %s=1 to allow outbound pages)", u.Hostname(), browserAllowHTTPEnv)
+	if !browserFetchAllowed(u.Scheme, u.Hostname()) {
+		return nil, rawurl, fmt.Errorf("http fetch blocked: plain http to %s refused (export %s=1 to allow outbound http pages)", u.Hostname(), browserAllowHTTPEnv)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawurl, nil)
 	if err != nil {
@@ -656,11 +657,15 @@ func localBrowserPath(rawurl string) string {
 	return abs
 }
 
-// browserHostAllowed — the fetch gate: localhost always, anything else
-// only with THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME).
-func browserHostAllowed(host string) bool {
+// browserFetchAllowed — the fetch gate: localhost always (either scheme),
+// https to any host by default, plain http to non-localhost only with
+// THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME).
+func browserFetchAllowed(scheme, host string) bool {
 	switch strings.ToLower(host) {
 	case "localhost", "127.0.0.1", "::1":
+		return true
+	}
+	if scheme == "https" {
 		return true
 	}
 	return os.Getenv(browserAllowHTTPEnv) == "1"

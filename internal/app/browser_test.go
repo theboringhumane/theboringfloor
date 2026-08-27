@@ -1,18 +1,20 @@
-// browser_test.go — the BROWSER tab's APP seam (the pane's own contracts
-// live in internal/panels' browser_*_test.go):
+// browser_test.go — the BROWSER surface's APP seam (the pane's own
+// contracts live in internal/panels' browser_*_test.go):
 //
-//	(a) registration — the strip's factory order is chat|terminal|agents|
-//	    board|mail|activity|git|browser: browser at index 7, git UNMOVED
-//	    at 6 (the floor click's activity pin at 5 never shifted), and the
-//	    tab cycle wraps through it while TabJump's digit map stays 1..7
-//	    (the burned-keys ruling — no "8" in v1);
-//	(b) `/open <url>` happy path — the slash jumps to the tab, the fetch
-//	    (a REAL file:// read of the shared fixture) lands, the location
-//	    bar + title render, and the dim office notice posts;
+//	(a) the LEFT slot — the right strip keeps its seven tabs (git UNMOVED
+//	    at 6, the cycle wrapping git → chat with NO browser stop) while
+//	    the browser rides the left pane's floor|browser switcher: floor
+//	    by default, ctrl+b flipping BOTH ways, TabJump's digit map still
+//	    1..7 (the burned-keys ruling);
+//	(b) `/open <url>` happy path — the slash flips the left slot to the
+//	    browser (the RIGHT strip never moves), the fetch (a REAL file://
+//	    read of the shared fixture) lands, the location bar + title
+//	    render in the LEFT pane, and the dim office notice posts;
 //	(c) `/open` error path — a stub-server 404 surfaces the frozen
 //	    "404: no route → go to <base>" wording as dim pane rows AND a red
 //	    office notice (never fatal);
-//	(d) `/open` with no arg posts the usage notice and never moves tabs.
+//	(d) `/open` with no arg posts the usage notice and never moves
+//	    EITHER switcher.
 package app
 
 import (
@@ -39,35 +41,46 @@ func browserFixtureURL(t *testing.T) string {
 	return "file://" + abs
 }
 
-func TestBrowserTabRegistration(t *testing.T) {
+// ctrlB — the left-pane switcher key, bubbletea-encoded.
+func ctrlB() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl}) }
+
+func TestBrowserLeftSlotRegistration(t *testing.T) {
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 
-	// factory order: git UNMOVED at 6, browser appended at 7.
+	// the right strip keeps its seven tabs; the browser is NOT one.
 	if !m.SelectTab("git") || m.ActiveTabIndex() != 6 {
 		t.Fatalf("git must stay at index 6, got %d", m.ActiveTabIndex())
 	}
-	if !m.SelectTab("browser") || m.ActiveTabIndex() != 7 {
-		t.Fatalf("browser must register at index 7, got %d", m.ActiveTabIndex())
+	if m.SelectTab("browser") {
+		t.Fatalf("the browser must NOT ride the right strip anymore")
 	}
-	// the cycle wraps THROUGH browser: git → browser → chat.
+	// the cycle wraps git → chat (no browser stop in the strip).
 	m.tabs.SetActive(6)
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
-	if got := m.ActiveTabIndex(); got != 7 {
-		t.Fatalf("tab from git (6) → %d, want 7 (browser)", got)
-	}
-	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 	if got := m.ActiveTabIndex(); got != 0 {
-		t.Fatalf("tab from browser (7) → %d, want 0 (wrap to chat)", got)
+		t.Fatalf("tab from git (6) → %d, want 0 (wrap to chat)", got)
 	}
-	// and shift+tab from chat lands ON browser.
+	// and shift+tab from chat lands ON git.
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
-	if got := m.ActiveTabIndex(); got != 7 {
-		t.Fatalf("shift+tab from chat → %d, want 7 (browser)", got)
+	if got := m.ActiveTabIndex(); got != 6 {
+		t.Fatalf("shift+tab from chat → %d, want 6 (git)", got)
 	}
-	// digits stay 1..7: no "8" jump in v1.
+	// the left slot defaults to the floor; ctrl+b flips it BOTH ways.
+	if m.LeftTabIndex() != leftTabFloor {
+		t.Fatalf("the left slot must default to floor, got %d", m.LeftTabIndex())
+	}
+	m = runMsg(t, m, ctrlB())
+	if m.LeftTabIndex() != leftTabBrowser {
+		t.Fatalf("ctrl+b must flip the left slot to browser, got %d", m.LeftTabIndex())
+	}
+	m = runMsg(t, m, ctrlB())
+	if m.LeftTabIndex() != leftTabFloor {
+		t.Fatalf("ctrl+b must flip the left slot back to floor, got %d", m.LeftTabIndex())
+	}
+	// digits stay 1..7 for the right strip — the browser never jumps.
 	if got := m.keys.TabJump("8"); got != -1 {
-		t.Fatalf(`TabJump("8") = %d, want -1 (cycle-only in v1)`, got)
+		t.Fatalf(`TabJump("8") = %d, want -1`, got)
 	}
 	if got := m.keys.TabJump("7"); got != 6 {
 		t.Fatalf(`TabJump("7") = %d, want 6 (git)`, got)
@@ -81,9 +94,13 @@ func TestBrowserSlashOpenHappyPath(t *testing.T) {
 
 	m = runMsg(t, m, slashMsg{text: "/open " + raw})
 
-	// the slash jumped to the browser tab…
-	if got := m.ActiveTabIndex(); got != browserIndex {
-		t.Fatalf("/open must jump to the browser tab (%d), got %d", browserIndex, got)
+	// the slash flipped the LEFT slot to the browser…
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("/open must flip the left slot to the browser (%d), got %d", leftTabBrowser, got)
+	}
+	// …while the RIGHT strip never moved (chat stays active)…
+	if got := m.ActiveTabIndex(); got != 0 {
+		t.Fatalf("/open must never move the right strip, got %d", got)
 	}
 	// …the pane loaded the fixture (the runMsg drain executed the fetch)…
 	if m.browser == nil {
@@ -91,9 +108,10 @@ func TestBrowserSlashOpenHappyPath(t *testing.T) {
 	}
 	frame := ansi.Strip(m.Frame())
 	for _, want := range []string{
-		"▸ file:///", // the location bar rides the fetched URL (78-col sidebar truncates the tail)
+		"▸ file:///", // the location bar rides the fetched URL
 		"The Fixture Gazette",
 		"Open link alpha [1] for the first story.",
+		"· ctrl+b", // the left slot's switcher strip
 	} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("browser frame missing %q:\n%s", want, frame)
@@ -109,8 +127,6 @@ func TestBrowserSlashOpenHappyPath(t *testing.T) {
 		}
 	}
 	// …and the dim office notice posted (success carries title · url).
-	// (State-side: the chat tab is NOT in the frame while the browser tab
-	// is active — read the transcript, not the pixels.)
 	if !lastOfficeNoticeHas(m, "browser: Fixture Gazette · "+raw) {
 		t.Fatalf("the /open success notice must post, chat tail: %+v", m.st.Chat[len(m.st.Chat)-1])
 	}
@@ -139,8 +155,8 @@ func TestBrowserSlashOpenErrorPath(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/missing"})
 
-	if got := m.ActiveTabIndex(); got != browserIndex {
-		t.Fatalf("/open must still jump to the browser tab, got %d", got)
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("/open must still flip the left slot to the browser, got %d", got)
 	}
 	frame := ansi.Strip(m.Frame())
 	// the pane body carries the frozen 404 wording as dim rows…
@@ -148,7 +164,7 @@ func TestBrowserSlashOpenErrorPath(t *testing.T) {
 		t.Fatalf("the pane must show the 404 dim rows, got:\n%s", frame)
 	}
 	// …and the office notice is the red error variant (state-side read —
-	// the chat tab isn't in the frame while the browser tab is active).
+	// the chat panel renders on the right strip under the browser slot).
 	if !lastOfficeNoticeHas(m, "browser: 404: no route → go to "+srv.URL) {
 		t.Fatalf("the /open error notice must post")
 	}
@@ -165,33 +181,43 @@ func TestBrowserSlashOpenUsageError(t *testing.T) {
 	if got := m.ActiveTabIndex(); got != 0 {
 		t.Fatalf("a usage error must never move tabs, got %d", got)
 	}
+	if got := m.LeftTabIndex(); got != leftTabFloor {
+		t.Fatalf("a usage error must never move the left slot, got %d", got)
+	}
 }
 
-// TestBrowserLeaveReturnsToChat — the pane's q/esc ride BrowserLeaveMsg
-// back to the chat tab (and q on the browser tab does NOT quit the app).
-func TestBrowserLeaveReturnsToChat(t *testing.T) {
+// TestBrowserLeaveReturnsToFloor — the pane's q/esc ride BrowserLeaveMsg
+// back to the FLOOR tab (and q on the browser slot does NOT quit the app;
+// the right strip never moves either).
+func TestBrowserLeaveReturnsToFloor(t *testing.T) {
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})
-	if got := m.ActiveTabIndex(); got != browserIndex {
-		t.Fatalf("setup: browser tab active, got %d", got)
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("setup: browser slot active, got %d", got)
 	}
 	// esc leaves…
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
-	if got := m.ActiveTabIndex(); got != 0 {
-		t.Fatalf("esc on the browser tab must land on chat, got %d", got)
+	if got := m.LeftTabIndex(); got != leftTabFloor {
+		t.Fatalf("esc on the browser slot must land on the floor, got %d", got)
 	}
-	// …and so does q (the global q-quit yields on THIS tab).
-	m.tabs.SetActive(browserIndex)
-	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 	if got := m.ActiveTabIndex(); got != 0 {
-		t.Fatalf("q on the browser tab must leave to chat (not quit), got %d", got)
+		t.Fatalf("esc on the browser slot must never move the right strip, got %d", got)
+	}
+	// …and so does q (the global q-quit yields on THIS surface).
+	m = runMsg(t, m, ctrlB())
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("setup: ctrl+b flips back to the browser, got %d", got)
+	}
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
+	if got := m.LeftTabIndex(); got != leftTabFloor {
+		t.Fatalf("q on the browser slot must leave to the floor (not quit), got %d", got)
 	}
 }
 
-// TestBrowserPageMsgRoutedOffTab — a fetch verdict landing while ANOTHER
-// tab is active still reaches the pane (never misdelivered through the
-// active-tab hop).
+// TestBrowserPageMsgRoutedOffTab — a fetch verdict landing while the
+// FLOOR is up still reaches the pane (never misdelivered through the
+// active-tab hop); the switcher position is the app's, not the pane's.
 func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
@@ -200,12 +226,39 @@ func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
 	if m.browser == nil {
 		t.Fatalf("the browser pane must be wired")
 	}
-	// the pane applied the page while the chat tab stayed active.
-	if got := m.ActiveTabIndex(); got != 0 {
-		t.Fatalf("an off-tab verdict must not move tabs, got %d", got)
+	// the pane applied the page while the floor slot stayed put.
+	if got := m.LeftTabIndex(); got != leftTabFloor {
+		t.Fatalf("an off-slot verdict must not move the switcher, got %d", got)
 	}
-	m.SelectTab("browser")
+	if got := m.ActiveTabIndex(); got != 0 {
+		t.Fatalf("an off-slot verdict must not move the right strip, got %d", got)
+	}
+	m = runMsg(t, m, ctrlB())
 	if frame := ansi.Strip(m.Frame()); !strings.Contains(frame, "· Offtab") {
-		t.Fatalf("the off-tab page must render on entry, got:\n%s", frame)
+		t.Fatalf("the off-slot page must render on entry, got:\n%s", frame)
+	}
+}
+
+// TestBrowserSlotOwnsKeys — while the switcher sits on browser, typed
+// letters belong to the PANE (the link cursor's j/k), never to the chat
+// textarea on the right strip; flipping back to the floor restores the
+// draft keys.
+func TestBrowserSlotOwnsKeys(t *testing.T) {
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("setup: browser slot active, got %d", got)
+	}
+	// "j" rides the pane's link cursor — it must NOT land in the draft.
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'j', Text: "j"}))
+	if f := ansi.Strip(m.Frame()); strings.Contains(f, "› j") {
+		t.Fatalf("the browser slot must own typed keys (no draft leak):\n%s", f)
+	}
+	// back on the floor the SAME key types into the chat draft again.
+	m = runMsg(t, m, ctrlB())
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'j', Text: "j"}))
+	if f := ansi.Strip(m.Frame()); !strings.Contains(f, "› j") {
+		t.Fatalf("the floor slot hands keys back to the chat draft:\n%s", f)
 	}
 }

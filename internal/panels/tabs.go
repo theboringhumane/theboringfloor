@@ -1,8 +1,9 @@
-// Package panels — the right-hand sidebar tab strip and its eight tab
-// panels: chat, terminal, agents, board, mail, activity, git, browser
-// (git rides index 6 — the activity index 5 is hardcoded app-side, so git
-// could only append past it; the browser tab appends after git, cycle-only
-// in v1 — no digit jump).
+// Package panels — the right-hand sidebar tab strip and its seven tab
+// panels: chat, terminal, agents, board, mail, activity, git (git rides
+// index 6 — the activity index 5 is hardcoded app-side, so git could only
+// append past it). The browser is NOT one of them: it lives on the LEFT
+// pane's floor|browser slot (app/browser.go owns the switcher; the pane
+// itself is browser.go here).
 //
 // tabs.go — the strip itself: a one-row tab bar (active tab accent bg,
 // others gray) above a rounded-border panel holding the active tab's
@@ -50,7 +51,8 @@ type Tabs struct {
 }
 
 // compactLabels — the /compact sidebar's short tab labels, keyed by the
-// canonical Title(). Unknown titles keep their full name.
+// canonical Title(). Unknown titles keep their full name. (The browser
+// has no entry: it rides the left pane's own switcher, never this strip.)
 var compactLabels = map[string]string{
 	"chat":     "c",
 	"terminal": "t",
@@ -59,7 +61,6 @@ var compactLabels = map[string]string{
 	"mail":     "m",
 	"activity": "x",
 	"git":      "g",
-	"browser":  "w", // "b" is board — web
 }
 
 // SetCompact switches the tab-bar label density (the app re-calls it on
@@ -144,7 +145,7 @@ func (t *Tabs) View() string {
 	// (58) → tight "chat terminal …" (45) → single letters " c t a b m x g "
 	// (14). The tight tier is one cell over the default 44-col sidebar at
 	// seven tabs, so the letters tier keeps "git" alive instead of letting
-	// the hard clip truncate it to "gi". (Six tabs were fine: tight = 41.)
+	// the hard clip truncate it to "gi".
 	var barFinal string
 	for _, barKind := range []barPad{padNumbered, padBare, padTight, padLetters} {
 		if bar := t.tabBar(barKind); lipgloss.Width(bar) <= t.w {

@@ -104,17 +104,24 @@ func TestWideFrameKeepsHorizontalSplit(t *testing.T) {
 		t.Fatalf("LayoutInfo = %dx%d sidebar %d floor %d, want 140x30 sidebar 80 floor 60", w, h, sidebar, floor)
 	}
 	plain := ansi.Strip(m.Frame())
-	// desk and tab bar sit on DIFFERENT columns of the SAME rows: find a
-	// line that carries both floor-border "+" and the tab bar's "chat"
-	split := false
+	// desk and tab bar sit on DIFFERENT columns of the SAME rows: the
+	// left slot's switcher strip ("floor"/"browser") shares its row with
+	// the right strip's tab bar ("chat"), and the floor's own "+-" top
+	// border rides one row below it (the strip row).
+	split, border := false, false
 	for _, line := range strings.Split(plain, "\n") {
-		if strings.Contains(line, "+-") && strings.Contains(line, "chat") {
+		if strings.Contains(line, "browser") && strings.Contains(line, "chat") {
 			split = true
-			break
+		}
+		if strings.Contains(line, "+-") {
+			border = true
 		}
 	}
 	if !split {
-		t.Fatalf("140x30 must keep floor and sidebar side by side (no shared row found)")
+		t.Fatalf("140x30 must keep the left slot and sidebar side by side (no shared strip/tab-bar row found)")
+	}
+	if !border {
+		t.Fatalf("140x30 must keep the floor's own border under the switcher strip")
 	}
 	// the floor's right border column is exactly at floorW-1
 	lines := strings.Split(plain, "\n")
