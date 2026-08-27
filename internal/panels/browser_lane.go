@@ -18,6 +18,15 @@
 //	  both spellings honored so an armed member is never surprised)
 //	→ BrowserLaneZenbu; every miss → BrowserLaneText.
 //
+// THE REASON RESOLVE (ResolveBrowserLaneReasonFrom — the same gates in
+// the same order, PLUS the WHY): a text-lane resolve never stays silent
+// anymore — the pane reads the memoized verdict's reason class (premium /
+// binary-missing / terminal-unsupported / kill-switch, the kill-switch
+// class naming WHICH spelling is armed) and paints ONE dim hint row
+// under the location bar (the starter card wears it too), so the member
+// sees the lane's reason at the moment of disappointment instead of
+// guessing terminal-browser was never integrated.
+//
 // THE EMBED — the EXACT terminal.go seam reused, no third tty layer: the
 // child spawns on a creack/pty PTY (pty.StartWithSize — Setsid+Setctty,
 // the child is its own pgroup leader) with stdout/stderr painting INTO
@@ -104,53 +113,142 @@ var zenbuLookPath = exec.LookPath
 // BrowserLaneResolver).
 func ResolveBrowserLane() BrowserLane { return ResolveBrowserLaneFrom(os.Getenv, zenbuLookPath) }
 
-// ResolveBrowserLaneFrom — the pure core (DetectImageSupportFrom's shape:
-// env + probe injected, the matrix a shell-out-free table). ALL of:
-//
-//  1. neither kill-switch armed (BrowserLaneOffEnv, TerminalBrowserOffEnv);
-//  2. a kitty-capable host per the detect layer's OWN truth table
-//     (DetectImageSupportFrom == KittyLane — ghostty/kitty; tmux folds
-//     out, the iterm family is a different protocol and a dead-end here);
-//  3. the probe finds a `terminal-browser` binary.
-//
-// → BrowserLaneZenbu; every miss → BrowserLaneText.
-func ResolveBrowserLaneFrom(env func(string) string, lookPath func(string) (string, error)) BrowserLane {
-	if strings.TrimSpace(env(BrowserLaneOffEnv)) == "1" {
-		return BrowserLaneText
+// BrowserLaneReason — WHY the lane resolved the way it did (the pane's
+// hint-row class; the gate that missed, in the resolve's own precedence:
+// kill-switch → terminal → binary).
+type BrowserLaneReason int
+
+const (
+	// BrowserLanePremium — every gate passed: the premium embed is
+	// available (the pane paints NO hint row).
+	BrowserLanePremium BrowserLaneReason = iota
+	// BrowserLaneNoBinary — kitty-capable host, no kill-switch, but the
+	// `terminal-browser` PATH probe missed (the actionable class: install
+	// the binary / re-run the office installer).
+	BrowserLaneNoBinary
+	// BrowserLaneNoTerminal — the host terminal can't host the embedded
+	// browser (not kitty-capable: the tmux fold, the iTerm2 family,
+	// xterm/unknowns).
+	BrowserLaneNoTerminal
+	// BrowserLaneKillSwitch — a kill-switch env is armed; the verdict's
+	// third return names WHICH spelling.
+	BrowserLaneKillSwitch
+)
+
+// String — the reason word for tests/notices.
+func (r BrowserLaneReason) String() string {
+	switch r {
+	case BrowserLanePremium:
+		return "premium"
+	case BrowserLaneNoBinary:
+		return "no-binary"
+	case BrowserLaneNoTerminal:
+		return "no-terminal"
+	case BrowserLaneKillSwitch:
+		return "kill-switch"
 	}
-	if strings.TrimSpace(env(TerminalBrowserOffEnv)) == "1" {
-		return BrowserLaneText
-	}
-	if DetectImageSupportFrom(env) != KittyLane {
-		return BrowserLaneText
-	}
-	if _, err := lookPath("terminal-browser"); err != nil {
-		return BrowserLaneText
-	}
-	return BrowserLaneZenbu
+	return "unknown"
 }
 
-// BrowserLaneResolver — the per-boot memo (app/images.go's
+// ResolveBrowserLaneReason — the live-read reasoned resolve (fresh env +
+// PATH probe; callers wanting the per-pane memo use a BrowserLaneResolver).
+func ResolveBrowserLaneReason() (BrowserLane, BrowserLaneReason, string) {
+	return ResolveBrowserLaneReasonFrom(os.Getenv, zenbuLookPath)
+}
+
+// ResolveBrowserLaneReasonFrom — the pure reasoned core
+// (DetectImageSupportFrom's shape: env + probe injected, the matrix a
+// shell-out-free table). The SAME gates as ResolveBrowserLaneFrom (which
+// now delegates here) in the SAME precedence, plus the reason class and —
+// for the kill-switch class — WHICH spelling is armed:
+//
+//  1. a kill-switch reads "1" (BrowserLaneOffEnv first, then
+//     TerminalBrowserOffEnv) → text + BrowserLaneKillSwitch + the var name;
+//  2. the host is NOT kitty-capable per the detect layer's OWN truth
+//     table (DetectImageSupportFrom != KittyLane — ghostty/kitty are the
+//     lane; tmux folds out, the iterm family is a different protocol and
+//     a dead-end here) → text + BrowserLaneNoTerminal;
+//  3. the probe finds no `terminal-browser` binary → text +
+//     BrowserLaneNoBinary;
+//
+// every gate passed → BrowserLaneZenbu + BrowserLanePremium.
+func ResolveBrowserLaneReasonFrom(env func(string) string, lookPath func(string) (string, error)) (BrowserLane, BrowserLaneReason, string) {
+	if strings.TrimSpace(env(BrowserLaneOffEnv)) == "1" {
+		return BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv
+	}
+	if strings.TrimSpace(env(TerminalBrowserOffEnv)) == "1" {
+		return BrowserLaneText, BrowserLaneKillSwitch, TerminalBrowserOffEnv
+	}
+	if DetectImageSupportFrom(env) != KittyLane {
+		return BrowserLaneText, BrowserLaneNoTerminal, ""
+	}
+	if _, err := lookPath("terminal-browser"); err != nil {
+		return BrowserLaneText, BrowserLaneNoBinary, ""
+	}
+	return BrowserLaneZenbu, BrowserLanePremium, ""
+}
+
+// ResolveBrowserLaneFrom — the pure lane-only core, kept for the existing
+// callers/tests: the reasoned resolve's lane half.
+func ResolveBrowserLaneFrom(env func(string) string, lookPath func(string) (string, error)) BrowserLane {
+	lane, _, _ := ResolveBrowserLaneReasonFrom(env, lookPath)
+	return lane
+}
+
+// browserLaneHintText — the EXACT dim hint copy per reason class (frozen,
+// uishot-pinned): ONE row telling the member WHY the text lane is showing
+// and, when actionable, how to get the full renderer. "" for the premium
+// class (no hint row anywhere while premium is available).
+func browserLaneHintText(reason BrowserLaneReason, killVar string) string {
+	switch reason {
+	case BrowserLaneNoBinary:
+		return "text lane — terminal-browser not on PATH · full rendering: github.com/zenbu-labs/terminal-browser (or re-run the office installer)"
+	case BrowserLaneNoTerminal:
+		return "text lane — this terminal can't host the embedded browser (kitty/ghostty only)"
+	case BrowserLaneKillSwitch:
+		return "text lane — " + killVar + "=1 set; unset it for the embedded browser"
+	}
+	return ""
+}
+
+// BrowserLaneResolver — the per-pane memo (app/images.go's
 // detectImageLane idiom: one honest read, then zero env/PATH traffic per
-// frame). One per browser tab; harnesses that stub the terminal env per
-// drive build a fresh resolver per drive (or Reset), exactly like the
-// per-Model image-lane memo.
+// frame). One per browser tab; the pane's controller pins it AT CREATION
+// (the env+PATH state at pane-creation time is the contract — a later
+// install or env flip never changes a live pane's lane story). Harnesses
+// that stub the terminal env per drive build a fresh resolver per drive
+// (or Reset), exactly like the per-Model image-lane memo.
 type BrowserLaneResolver struct {
-	lane BrowserLane
-	ok   bool
+	lane    BrowserLane
+	reason  BrowserLaneReason
+	killVar string
+	ok      bool
 }
 
 // NewBrowserLaneResolver returns a cold resolver (first Lane() reads).
 func NewBrowserLaneResolver() *BrowserLaneResolver { return &BrowserLaneResolver{} }
 
-// Lane — the memoized resolve: the FIRST call reads env+PATH live, later
+// resolve — the memoized read: the FIRST call reads env+PATH live, later
 // calls return the pin.
-func (r *BrowserLaneResolver) Lane() BrowserLane {
+func (r *BrowserLaneResolver) resolve() {
 	if !r.ok {
-		r.lane = ResolveBrowserLane()
+		r.lane, r.reason, r.killVar = ResolveBrowserLaneReason()
 		r.ok = true
 	}
+}
+
+// Lane — the memoized lane.
+func (r *BrowserLaneResolver) Lane() BrowserLane {
+	r.resolve()
 	return r.lane
+}
+
+// Verdict — the memoized resolve in full: the lane, the reason class, and
+// the armed kill-switch's spelling ("" unless the class is kill-switch) —
+// the pane's hint-row input.
+func (r *BrowserLaneResolver) Verdict() (BrowserLane, BrowserLaneReason, string) {
+	r.resolve()
+	return r.lane, r.reason, r.killVar
 }
 
 // Reset drops the pin (the next Lane() re-reads) — shots/tests only.
@@ -421,13 +519,18 @@ type BrowserLaneController struct {
 }
 
 // NewBrowserLaneController — cols×rows is the PANE's full box (the strip
-// row and the note row are reserved; the embedded PTY gets the rest).
+// row and the note row are reserved; the embedded PTY gets the rest). The
+// lane resolve is pinned HERE — env+PATH are read ONCE at pane-creation
+// time (never per frame, never per open), so the pane's lane story (badge
+// AND the text-lane hint row) is stable for the pane's whole life.
 func NewBrowserLaneController(cols, rows int) *BrowserLaneController {
-	return &BrowserLaneController{
+	c := &BrowserLaneController{
 		resolver: NewBrowserLaneResolver(),
 		cols:     cols,
 		rows:     rows,
 	}
+	c.resolver.Lane() // the pane-creation pin (the memo's one honest read)
+	return c
 }
 
 // bodyH — the embedded PTY's row count (strip + note reserved).
@@ -441,6 +544,13 @@ func (c *BrowserLaneController) bodyH() int {
 // Lane — the boot-memoized resolve (the tab shows the badge from
 // PremiumActive; the resolver's pick alone does not paint chrome).
 func (c *BrowserLaneController) Lane() BrowserLane { return c.resolver.Lane() }
+
+// Verdict — the pane-creation-memoized resolve in full (lane + reason
+// class + armed kill-switch spelling): the text lane's "why" — the pane
+// paints the dim hint row from it (browser.go's laneHintRow).
+func (c *BrowserLaneController) Verdict() (BrowserLane, BrowserLaneReason, string) {
+	return c.resolver.Verdict()
+}
 
 // OpenURL drives the browser tab to url: any live premium child is
 // SIGKILLed + reaped FIRST (a fresh /open = kill + spawn fresh), the url

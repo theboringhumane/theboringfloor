@@ -375,7 +375,10 @@ absent, or either kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1`
 or `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) armed — and the automatic
 fallback: a non-zero or instant (<300ms) exit drops that URL back to the
 text viewer with its history kept and a dim
-`zenbu exited (<code>) — falling back to text mode` note.
+`zenbu exited (<code>) — falling back to text mode` note. The pane always
+explains its lane choice: while the text lane shows, one dim row under the
+location bar says why — the `terminal-browser` binary missing (with the
+install link), an unsupported terminal, or a kill-switch left armed.
 
 ## Keys
 

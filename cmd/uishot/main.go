@@ -203,6 +203,15 @@
 //	                                to text mode
 //	                                with the exact dim note, URL state
 //	                                intact; byte-identical twice)
+//	                    [--browser --lane hint] (the text lane's "why" row
+//	                                (synchronous, hermetic): PATH pinned to
+//	                                an EMPTY fixture dir — the probe misses
+//	                                by construction — so the starter card
+//	                                wears the dim "text lane — terminal-
+//	                                browser not on PATH · …" hint under the
+//	                                location bar and /open keeps it pinned
+//	                                over the warm text page; two drives
+//	                                byte-identical)
 //	                    [--browsertab] (browser TAB text-viewer proof
 //	                                (synchronous, REAL pinned-port stub
 //	                                server): /open <stub>/fixture.html typed
@@ -5432,6 +5441,11 @@ func runBrowserLiveProof() error {
 			return fail("browser-live C frame missing %q:\n%s", want, live)
 		}
 	}
+	// the kitty-lane premium frame paints NO text-lane hint row anywhere
+	// (the hint's absence pin — the binary-missing leg lives at --lane hint).
+	if strings.Contains(live, "text lane —") {
+		return fail("browser-live C: a premium host never wears the text-lane hint row:\n%s", live)
+	}
 	// the strip paints INSIDE the LEFT slot — left of the sidebar's chat.
 	stripSeen := false
 	for _, line := range strings.Split(live, "\n") {
@@ -5500,7 +5514,197 @@ func runBrowserLiveProof() error {
 	fmt.Println(d1.frameFell)
 	fmt.Println("===== UI SHOT =====")
 
-	fmt.Println("asserts: OK — the LIVE wiring (never the controller direct): \"/open file://<fixture>\" through the REAL chat input (bracketed paste → Enter → slashMsg → the pane's Open) on the hermetic ghostty stub (PATH pinned \"<fixture>:<orig>\", both kill-switch spellings cleared); leg C: the pane's Open spawned the real fake child on the PTY seam — the LEFT slot's frame wears the \" zenbu \" badge + the \"▸ zenbu terminal-browser · <url>\" strip + the child's painted marker (strip LEFT of the sidebar's chat tab, the RIGHT strip unmoved), then esc rode BrowserLeaveMsg → SuspendLane (the child reaped with the flip, ONE spawn total, the floor restored); leg D (the fake exits 1): the pane's poll ride landed the text fallback THROUGH THE APP — the fixture page warm underneath (never re-fetched), the exact dim \"zenbu exited (1) — falling back to text mode\" note, and the re-open never re-spawned (the no-flap latch read off the fake's call log); every leg byte-identical across two drives")
+	fmt.Println("asserts: OK — the LIVE wiring (never the controller direct): \"/open file://<fixture>\" through the REAL chat input (bracketed paste → Enter → slashMsg → the pane's Open) on the hermetic ghostty stub (PATH pinned \"<fixture>:<orig>\", both kill-switch spellings cleared); leg C: the pane's Open spawned the real fake child on the PTY seam — the LEFT slot's frame wears the \" zenbu \" badge + the \"▸ zenbu terminal-browser · <url>\" strip + the child's painted marker (strip LEFT of the sidebar's chat tab, the RIGHT strip unmoved, NO text-lane hint row anywhere), then esc rode BrowserLeaveMsg → SuspendLane (the child reaped with the flip, ONE spawn total, the floor restored); leg D (the fake exits 1): the pane's poll ride landed the text fallback THROUGH THE APP — the fixture page warm underneath (never re-fetched), the exact dim \"zenbu exited (1) — falling back to text mode\" note, and the re-open never re-spawned (the no-flap latch read off the fake's call log); every leg byte-identical across two drives")
+	return nil
+}
+
+// --- browser tab text-lane hint (--browser --lane hint) ----------------------
+// The text lane's "why" row through the LIVE APP GLUE (the pane's own
+// per-class/persistence contracts live in internal/panels'
+// browser_hint_test.go): the hermetic ghostty stub (kitty-capable, both
+// kill-switch spellings cleared) with PATH pinned to an EMPTY fixture dir
+// — the terminal-browser probe misses BY CONSTRUCTION, no host binary can
+// ever leak in — so the pane resolves the text lane with the
+// binary-missing class AT pane-creation time. Leg E: ctrl+b flips the
+// LEFT slot to the browser and the idle starter card wears the dim hint
+// row under the location bar. Leg F: "/open file://<fixture>" through the
+// REAL chat input paints the warm text page with the SAME hint persisting
+// under the bar (the member sees it at the moment of disappointment, not
+// just on the empty card). Every leg byte-identical across two drives.
+
+// browserHintFrameOut — ONE hint drive's observed artifacts.
+type browserHintFrameOut struct {
+	frameIdle string // ctrl+b — the starter card + the hint row
+	frameOpen string // /open — the text page + the persistent hint row
+	leftTab   int
+	activeTab int
+}
+
+// browserHintDrive — ONE hermetic drive with the probe guaranteed to miss.
+func browserHintDrive() (browserHintFrameOut, error) {
+	var out browserHintFrameOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range browserEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() { // restore EVERY key (the drive pairs share the process)
+		for _, k := range browserEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-browser-hint-")
+	if err != nil {
+		return out, fmt.Errorf("browser-hint fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	// PATH pins the EMPTY fixture dir ALONE: exec.LookPath("terminal-browser")
+	// misses BY CONSTRUCTION (the host's real PATH never leaks a binary in).
+	os.Setenv("PATH", root)
+	os.Setenv("TERM_PROGRAM", "ghostty") // the hermetic kitty-capable host stub
+	for _, k := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM_VERSION", "WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID"} {
+		os.Setenv(k, "")
+	}
+	os.Setenv("TERM", "xterm-256color")
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv(panels.BrowserLaneOffEnv, "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	// runExec — the exact breadth-first drain the --browsertab proof runs.
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — browser hint stub online"})
+
+	// leg E — ctrl+b to the browser slot: the idle starter card wears the
+	// dim hint row under the location bar (the resolve pinned binary-missing
+	// at pane creation — the empty PATH is the whole trick).
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl}))
+	out.leftTab = m.LeftTabIndex()
+	out.activeTab = m.ActiveTabIndex()
+	out.frameIdle = m.Frame()
+
+	// leg F — back on the floor (the browser slot owns its keys, Enter
+	// included — the chat draft only rides from the floor), /open through
+	// the REAL chat input (the bracketed-paste idiom from the live-lane
+	// drive): the slash flips the slot back to the browser and the warm
+	// text page paints with the SAME hint persisting under the bar.
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl}))
+	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
+	if err != nil {
+		return out, fmt.Errorf("browser-hint fixture path: %w", err)
+	}
+	runExec(tea.PasteMsg{Content: "/open file://" + fixtureAbs})
+	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // sends → slashMsg → applySlash → fetch
+	out.frameOpen = m.Frame()
+	return out, nil
+}
+
+// browserHintIdentical — the two-drives byte-identity gate.
+func browserHintIdentical(a, b browserHintFrameOut) bool {
+	return a.frameIdle == b.frameIdle && a.frameOpen == b.frameOpen &&
+		a.leftTab == b.leftTab && a.activeTab == b.activeTab
+}
+
+func runBrowserHintProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	e1, err := browserHintDrive()
+	if err != nil {
+		return err
+	}
+	e2, err := browserHintDrive()
+	if err != nil {
+		return err
+	}
+	if e1.leftTab != 1 {
+		return fail("browser-hint E: ctrl+b must flip the LEFT slot to the browser (leftTab 1), got %d", e1.leftTab)
+	}
+	if e1.activeTab != 0 {
+		return fail("browser-hint E: the RIGHT strip must stay on chat (index 0), got %d", e1.activeTab)
+	}
+	// the binary-missing class's copy — ansi-truncated at the slot width;
+	// the class-naming prefix rides every width (the FULL verbatim copy is
+	// pinned in panels' browser_hint_test.go).
+	const hintPrefix = "text lane — terminal-browser not on PATH"
+	idle := ansi.Strip(e1.frameIdle)
+	for _, want := range []string{hintPrefix, "▸ enter a url · /open <url> · o for file"} {
+		if !strings.Contains(idle, want) {
+			return fail("browser-hint E idle frame missing %q:\n%s", want, idle)
+		}
+	}
+	// the hint rides UNDER the location bar (the row right below it).
+	idleLines := strings.Split(idle, "\n")
+	hintUnderBar := false
+	for i, line := range idleLines {
+		if strings.Contains(line, "▸ browser") && i+1 < len(idleLines) && strings.Contains(idleLines[i+1], hintPrefix) {
+			hintUnderBar = true
+			break
+		}
+	}
+	if !hintUnderBar {
+		return fail("browser-hint E: the hint must ride the row UNDER the location bar:\n%s", idle)
+	}
+	open := ansi.Strip(e1.frameOpen)
+	for _, want := range []string{hintPrefix, "▸ file:///", "The Fixture Gazette"} {
+		if !strings.Contains(open, want) {
+			return fail("browser-hint F open frame missing %q:\n%s", want, open)
+		}
+	}
+	// the text lane never wears premium chrome, either frame.
+	for _, never := range []string{" zenbu ", "zenbu terminal-browser ·"} {
+		if strings.Contains(idle, never) || strings.Contains(open, never) {
+			return fail("browser-hint: the text lane never wears premium chrome %q:\n%s\n%s", never, idle, open)
+		}
+	}
+	if !browserHintIdentical(e1, e2) {
+		return fail("browser-hint: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER HINT E — ctrl+b to the idle browser: the starter card wears the dim text-lane hint (terminal-browser not on PATH) =====")
+	fmt.Println(e1.frameIdle)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("===== UI SHOT · BROWSER HINT F — /open file://<fixture>: the hint persists under the location bar over the warm text page =====")
+	fmt.Println(e1.frameOpen)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("asserts: OK — the hermetic ghostty stub with PATH pinned to an EMPTY fixture dir (the terminal-browser probe misses BY CONSTRUCTION, no host leak) resolved the text lane with the binary-missing class AT pane creation; leg E: ctrl+b flipped the LEFT slot to the browser (right strip unmoved) and the idle starter card wears the dim hint row UNDER the location bar (\"text lane — terminal-browser not on PATH · full rendering: github.com/zenbu-labs/terminal-browser (or re-run the office installer)\", ansi-truncated at the slot width); leg F: \"/open file://<fixture>\" through the REAL chat input painted the warm text page with the SAME hint persisting under the bar; no premium chrome in either frame; every leg byte-identical across two drives")
 	return nil
 }
 
@@ -5921,7 +6125,7 @@ func main() {
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
-	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). Every leg byte-identical twice")
+	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
 
@@ -6154,8 +6358,13 @@ func main() {
 				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 				os.Exit(1)
 			}
+		case "hint":
+			if err := runBrowserHintProof(); err != nil {
+				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+				os.Exit(1)
+			}
 		default:
-			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller) or --lane live (the LIVE app-glue wiring), got %q\n", lane)
+			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller), --lane live (the LIVE app-glue wiring), or --lane hint (the text-lane why row), got %q\n", lane)
 			os.Exit(1)
 		}
 		return

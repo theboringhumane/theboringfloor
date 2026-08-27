@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-27 · Dev J: text-lane reason hint (@developer suba... — tekton-1 (developer) · `issues`
+- summary: All gates green. Assembling the final return.
+- files: `internal/panels/browser_lane.go`, `internal/panels/browser.go`, `internal/panels/browser_hint_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched
+- verify: ```
+- proof: *The ANSI-stripped starter card with the binary-missing hint** (`go run ./cmd/uishot --browser --lane hint`, leg E — hermetic empty-PATH fix
+- ledgerId: led-1787853075573-5c5d2d1c
+
+### 2026-08-27 · Dev K: installer terminal-browser step (@deve... — tekton-2 (developer) · `issues`
+- summary: All gates green. Assembling the final return.
+- files: `install.sh`, `internal/panels/browser_lane.go` shows modified in `git status`
+- verify: *7. shellcheck:** NOT on PATH (`which shellcheck` → not found) — could not run; see ISSUES.
+- proof: *Help text — before → after:**
+- ledgerId: led-1787852194575-4788f24f
+
 ### 2026-08-27 · Dev I: abort-ladder test budgets (@developer... — tekton-6 (developer) · `issues`
 - summary: **Fully green loaded run** — `grep -cE '^FAIL'` → **0**, my test `--- PASS` under full-suite load, and even the previously-flaked panels test and the concurrent
 - files: `internal/backend/claude_abort_test.go`
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (plus line 12 `{ path: '/docs', priority: 0.8, ... }` — doesn't match the `docs/` literal but is present exactly once; `grep -c "'/docs"` →
 - proof: ### `/docs` (hub)
 - ledgerId: led-1787759278680-7d8df82e
-
-### 2026-08-26 · Scout: uishot + docs architecture (@explore s... — theboringcto-1 (cto) · `issues`
-- summary: Recon complete. Zero files modified — everything below is read-only evidence. Here is the full map.
-- files: (none)
-- verify: Read-only brief — no builds run, no files written (confirmed: `git status` untouched by this survey; only `read/grep/glob` plus two `git log
-- proof: (none)
-- ledgerId: led-1787759024983-4df13957
-
-### 2026-08-26 · Commit + push pending work (@developer subagent) — tekton-3 (developer) · `issues`
-- summary: `6e7455c` — wave 60: /stop UI-freeze regression pins (async abort cmd + bounded teardown deadlines) — 3 test files
-- files: **wave 60 (`6e7455c`)**, **wave 61 (`05cc1b5`)**, **wave 62 (`8138424`)**, **wave 63 (`b199255`)**, **wave 64 (`4e23b95`)**, **wave 65 (`e0ca320`)**
-- verify: ```
-- proof: *`git log --oneline -8` (final, after push):**
-- ledgerId: led-1787758760611-ef94d97f
 

@@ -58,6 +58,14 @@
 // Idle (no page loaded) shows the starter card:
 // "▸ enter a url · /open <url> · o for file".
 //
+// THE TEXT LANE EXPLAINS ITSELF: when the lane resolve missed premium
+// (the memoized verdict's reason class — binary missing, terminal
+// unsupported, or a kill-switch armed), ONE dim hint row rides under the
+// location bar — on the starter card AND after every text-lane open — so
+// the member sees WHY (and, for the missing binary, where to get the full
+// renderer) at the moment of disappointment. Premium hosts paint no hint
+// row anywhere.
+//
 // The async halves (fetch, exec) ride tea.Cmds and land back as
 // BrowserPageMsg / BrowserOpenedMsg — the app forwards BOTH straight to
 // this panel (never through the active-tab hop, so a mid-flight tab
@@ -186,6 +194,9 @@ func (b *Browser) SetSize(w, h int) {
 	b.w, b.h = w, h
 	b.vp.SetWidth(w)
 	bodyH := h - 1 // the location bar owns row 0
+	if b.laneHint() != "" {
+		bodyH-- // the text lane's dim hint row owns the row under the bar
+	}
 	if bodyH < 1 {
 		bodyH = 1
 	}
@@ -506,12 +517,30 @@ func (b *Browser) openFocused() tea.Cmd {
 // controller's region instead: the " zenbu " badge + the "▸ zenbu
 // terminal-browser · <url>" strip on row 0, the embedded PTY's screen
 // model as the body, the (blank-while-healthy) note row at the bottom.
+// The text lane wears ONE dim hint row under the bar (the lane resolve's
+// reason class — never an error style, ansi-truncated to the pane width).
 func (b *Browser) View() string {
 	b.pollLane()
 	if b.lane != nil && b.lane.PremiumActive() {
 		return fit(b.lane.RegionView(nil), b.h)
 	}
-	return fit(b.bar()+"\n"+b.vp.View(), b.h)
+	view := b.bar()
+	if hint := b.laneHint(); hint != "" {
+		view += "\n" + chrome.DimText.Render(ansi.Truncate(hint, b.w, ""))
+	}
+	return fit(view+"\n"+b.vp.View(), b.h)
+}
+
+// laneHint — the text lane's "why", from the lane controller's
+// pane-creation-memoized verdict: the frozen per-class copy ("" while the
+// lane resolved premium — no hint row anywhere, and the resolve never
+// re-reads env/PATH past pane creation).
+func (b *Browser) laneHint() string {
+	if b.lane == nil {
+		return ""
+	}
+	_, reason, killVar := b.lane.Verdict()
+	return browserLaneHintText(reason, killVar)
 }
 
 // ---------------------------------------------------------------------------
