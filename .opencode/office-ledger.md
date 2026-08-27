@@ -7,6 +7,118 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-27 · Render all dialog kinds (@developer subagent) — tekton-13 (developer) · `issues`
+- summary: **`supportedDialogKinds` declaration wired, evidence-backed**: the office now writes an `initialize` control_request as the FIRST stdin line of every claude pro
+- files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_dialog_test.go`, `internal/backend/claude_dialog_kinds_test.go`, `internal/backend/claude_send_test.go`, `README.md`
+- verify: Post-restore: `diff` backup vs live for both files → `RESTORE-IDENTICAL`, full `-run Claude` suite `ok 12.572s`.
+- proof: ### (a) The initialize/declaration evidence + exact bytes
+- ledgerId: led-1787840395521-eb7c1e8a
+
+### 2026-08-27 · Scout all dialog-kind schemas (@explore subag... — skopos-3 (scout) · `issues`
+- summary: Cleanup done. Assembling the final return.
+- files: Scratch only (repo untouched, | path | why |, |---|---|, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/claude-strings-allkinds.txt` | fresh `s, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/claude-strings-offsets.txt` | `strings , | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/extract_kinds2.py` | balanced-brace reg, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/kind_registrations2.json` | all 35 raw , | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/print_kinds.py`, `resolve4.py`, `map_ti, `git -C … status --porcelain` shows only pre-existing parallel-agent modifications
+- verify: ```
+- proof: ### 0. De-minification legend (resolved via chunk export chains, verbatim evidence)
+- ledgerId: led-1787838913882-ea93da52
+
+### 2026-08-27 · Round-trip preview+metadata fidelity (@develo... — theboringcto-1 (cto) · `done`
+- summary: Restore byte-identical, and the state.go diff shows exactly my additive block (the `EvBrowserOpen` hunk below it is the parallel browser-lane agent's pre-existi
+- files: `internal/state/state.go`, `internal/backend/claude_events.go`, `internal/backend/claude.go`, `internal/backend/claude_dialog_test.go`
+- verify: Post-restore: `diff` backup vs `internal/backend/claude.go` → `RESTORE_IDENTICAL`; both full suites above were run AFTER the restore.
+- proof: *Decode side** (`internal/backend/claude_events.go`, verbatim):
+- ledgerId: led-1787838662008-5c1659b1
+
+### 2026-08-27 · Fix dialog result object shape (@developer su... — tekton-12 (developer) · `issues`
+- summary: All gates green. Assembling the return.
+- files: `internal/backend/claude.go`, `internal/backend/claude_dialog_test.go`, `internal/backend/claude_perm_test.go`, (scratch, sanctioned tmp dir, not repo: `claude-strings-result.txt`, `claude.go.bak`)
+- verify: (claude.go then restored from backup; suites above re-ran AFTER restore; gofmt clean.)
+- proof: ### (a) Binary evidence (CLI 2.1.247, `strings -a` + python windowed slices, verbatim)
+- ledgerId: led-1787838096617-fe510ca9
+
+### 2026-08-27 · Fix claude dialog request parsing (@developer... — tekton-11 (developer) · `issues`
+- summary: **Re-keyed `claudeControlRequest` request-side dialog parsing to the real CLI 2.1.247 wire shape**: removed the nonexistent flat `Question string json:"question
+- files: `internal/backend/claude_events.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_dialog_test.go`, NOT touched: `internal/backend/claude.go` (response side preserved byte-for-byte), app/panels/state/
+- verify: 2. Payload decode skipped (`if false && len(req.Payload) > 0`) → `--- FAIL: TestClaudeDialogRequestMapping … want 1 event, got 0: []` AND `-
+- proof: ### (a) Binary evidence (CLI 2.1.247, extracted via `strings -a` + python slicing)
+- ledgerId: led-1787837527276-896494e8
+
+### 2026-08-27 · Harden boss bubble pin (@developer subagent) — tekton-9 (developer) · `issues`
+- summary: All gates green. The fix is complete and verified. Final return:
+- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`
+- verify: (`Text:Honey nev Pending:false` under the mutation IS the original freeze bug, caught red-handed.) After restore: `--- PASS` on all three, `
+- proof: The new pin logic (verbatim from `internal/backend/claude_events.go`):
+- ledgerId: led-1787836933824-b73526fd
+
+### 2026-08-27 · Verify+fix claude dialog shape (@developer su... — tekton-10 (developer) · `issues`
+- summary: All gates green. Assembling the return.
+- files: `internal/backend/claude.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_dialog_test.go`
+- verify: ```
+- proof: *(a) Binary evidence — the dialog response schema (CLI 2.1.247, verbatim zod literal from the strings extraction):**
+- ledgerId: led-1787836807067-29bb7139
+
+### 2026-08-27 · Fix claude permission protocol (@developer su... — tekton-8 (developer) · `issues`
+- summary: **RC1 (primary, modal never appears):** `spawnClaude` argv now appends `--permission-prompt-tool stdio` (claude.go). Headless `claude -p` only wires `canUseTool
+- files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_spawn_test.go`, NOT touched
+- verify: $ `claude --version` → `2.1.247 (Claude Code)`
+- proof: *The new argv (claude.go, verbatim):**
+- ledgerId: led-1787836154304-1e40d050
+
+### 2026-08-27 · Scout claude permission flow (@explore subagent) — skopos-2 (scout) · `issues`
+- summary: All evidence is in hand. Tree state is byte-identical to the start (the dirty paths belong to parallel agents' browser-lane work; my only writes were scratch fi
+- files: | path | why read |, |---|---|, | `internal/backend/claude.go` | spawn argv, | `internal/backend/claude_events.go` | `claudeControlRequest` struct, | `internal/backend/claude_perm_test.go` | the assumed wire shapes in existing tests, | `internal/backend/opencode.go` | comparison `AnswerPermission`, | `internal/state/state.go` | `EvPermission` kind, | `internal/app/model.go` | event routing, | `internal/panels/chat.go` | `renderTool` ✗-on-error glyph, | `internal/panels/perm_modal.go` | modal rows "Allow once/Allow always/Reject", | `/Users/theboringhumane/.local/share/claude/versions/2.1.247`, Temp scratch
+- verify: `claude --help`, `claude --version` (read-only invocations; `--permission-prompt-tool` is hidden from help — matches `.hideHelp()` in the bi
+- proof: ### Flow as-built today (frame → parse → event → modal → answer)
+- ledgerId: led-1787835847817-078bc776
+
+### 2026-08-27 · Fix claude thinking rendering (@developer sub... — tekton-7 (developer) · `issues`
+- summary: All gates green on the settled tree. Final return:
+- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`, NOT touched: `internal/panels/*` (bug was purely normalization
+- verify: (panels suite not run — panels untouched, per brief.)
+- proof: *The fixed blocks (verbatim from `git diff internal/backend/claude_events.go`):**
+- ledgerId: led-1787835813091-80b4e238
+
+### 2026-08-27 · Fix mapClaudeAssistant ID priority (@develope... — tekton-6 (developer) · `done`
+- summary: Flipped the ID priority in `mapClaudeAssistant`: now `uuid := raw.Message.ID` with fallback to `raw.UUID` (was UUID-first), so assistant snapshots join the bubb
+- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`
+- verify: ```
+- proof: *The flipped block** (`internal/backend/claude_events.go:784–787`, verbatim):
+- ledgerId: led-1787835389395-057f2460
+
+### 2026-08-27 · Dev C: correct browser docs copy (@developer... — tekton-5 (developer) · `done`
+- summary: **CORRECTION 1 (layout):** hero body now says the left pane is a two-tab slot (floor default, browser behind `ctrl+b`) instead of "The sidebar's last tab"; meta
+- files: `website/app/docs/browser-tab/page.tsx`, `website/components/home/under-the-hood.tsx`
+- verify: Sanity sweeps: `grep -o "sidebar's last tab|No digit key in v1|unlocks outbound…"` → only the new `unlocks outbound http` matches; `grep -c
+- proof: ### Hero (framing line kept, body corrected)
+- ledgerId: led-1787834994310-6f96bdbd
+
+### 2026-08-27 · Dev A: browser to left pane (@developer subag... — tekton-1 (developer) · `issues`
+- summary: All gates green. Assembling the return.
+- files: `internal/app/browser.go`, `internal/app/model.go`, `internal/app/digest.go`, `internal/app/keys.go`, `internal/panels/tabs.go`, `internal/app/browser_test.go`, `internal/app/mobile_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched: `internal/backend/*`, `internal/state/*`, `internal/browsertools/`, `internal/app/brows
+- verify: ```
+- proof: *The new layout (ANSI-stripped `--browsertab` frame)** — switcher strip on the LEFT with ` browser ` active (accent bg in raw ANSI), fixture
+- ledgerId: led-1787834270085-4aa2ae31
+
+### 2026-08-27 · Dev B: agent browser-open tool (@developer su... — tekton-2 (developer) · `issues`
+- summary: All verification complete. The full-suite gate is green on a settled tree, with two provably foreign load-flakes documented below. Assembling the return.
+- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/state/state.go`, `internal/state/state_test.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/browser_open_test.go`, `internal/backend/claude_send_test.go`, `internal/backend/claude_spawn_test.go`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`
+- verify: (Full suite re-run 25+ times during this session — green on a settled tree; the intermittent bursts are two foreign load-flakes, evidence in
+- proof: *The agent-visible tool definition** — the exact `browsertools.PromptPreamble` text that rides the first prompt of every boss session on bot
+- ledgerId: led-1787833798237-5057c76d
+
+### 2026-08-27 · Dev C: website browser feature (@developer su... — tekton-3 (developer) · `issues`
+- summary: All gates pass. Assembling the return.
+- files: `website/app/docs/browser-tab/page.tsx`, `website/app/docs/page.tsx`, `website/app/sitemap.ts`, `website/components/home/under-the-hood.tsx`
+- verify: ```
+- proof: ### The new docs page (`/docs/browser-tab`) — the copy a visitor reads
+- ledgerId: led-1787811364148-dcb78f2e
+
+### 2026-08-27 · Scout: left-pane + tool seams (@explore subag... — skopos-1 (scout) · `done`
+- summary: # Recon Map — theboringoffice (read-only, tree untouched)
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1787811295889-6d3b00cc
+
 ### 2026-08-27 · Dev: fix claude spawn init gating (@general s... — tekton-9 (developer) · `issues`
 - summary: # Developer Return — claude backend: no-init-wait Start + real `~/.claude` default
 - files: | path | why |, |---|---|, | `internal/backend/claude.go` | Start rewrite, | `internal/backend/claude_spawn_test.go` | rewritten: hook-first fixture + 6 new contract tests, | `internal/backend/claude_send_test.go` | stub bodies → `claudeStubPreambleSh()`, | `internal/backend/claude_abort_test.go` | same fixture swap, | `internal/backend/claude_perm_test.go` | same fixture swap, | `internal/backend/claude_resume_test.go` | hook prefix + post-Start `PrimaryID` assert wrapped in , NOT touched: `cmd/uishot/*`
@@ -244,95 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: Simulated frames from the PTY run (ANSI-stripped, marker lines) — the member-visible result with the abort POST **parked forever** server-si
 - ledgerId: led-1787753663410-08175efd
-
-### 2026-08-26 · Reformat return per contract (@general subagent) — tekton-7 (developer) · `issues`
-- summary: Recovered my original return content — re-emitting under the exact required headers:
-- files: | path | why |, |---|---|, | `internal/app/model.go` | `stopAbortResultMsg` type + Update case; `stopWork()` returns the async , | `internal/backend/opencode.go` | `abortCallTimeout` + ctx-bounded `abortSession`; `Stop()` → `stop, | `cmd/theboringoffice/main.go` | **use `p.Run()`'s final model for all teardown/ExecRequest/Primary, | `internal/app/stop_async_test.go`, | `internal/backend/abort_timeout_test.go`, | `cmd/theboringoffice/main_test.go`, NOT touched
-- verify: ```
-- proof: `go build -o …/tbofix ./cmd/theboringoffice`, driven through a real PTY (132×40, `TERM=xterm-256color`) by a python driver against a fake se
-- ledgerId: led-1787753396307-f9174760
-
-### 2026-08-26 · Dev: fix slash-command UI hang (@general suba... — tekton-3 (developer) · `issues`
-- summary: All green on the final tree. Here is the return.
-- files: | path | why |, |---|---|, | `internal/app/model.go` | `stopAbortResultMsg` type + Update case; `stopWork()` returns the async , | `internal/backend/opencode.go` | `abortCallTimeout` + ctx-bounded `abortSession`; `Stop()` → `stop, | `cmd/theboringoffice/main.go` | **use `p.Run()`'s final model for all teardown/ExecRequest/Primary, | `internal/app/stop_async_test.go`, | `internal/backend/abort_timeout_test.go`, | `cmd/theboringoffice/main_test.go`, NOT touched
-- verify: ```
-- proof: `go build -o …/tbofix ./cmd/theboringoffice`, driven through a real PTY (132×40, `TERM=xterm-256color`) by a python driver against a fake se
-- ledgerId: led-1787753255200-8ba77a05
-
-### 2026-08-26 · Dev: terminal tab select+copy (@general subag... — tekton-4 (developer) · `issues`
-- summary: # Developer Return — terminal mouse selection + clipboard
-- files: `internal/panels/terminal.go`, `internal/panels/clipboard.go`, `internal/panels/terminal_sel_test.go`, `README.md`, NOT touched: `internal/app/*`, `internal/backend/*`, `cmd/*`, `internal/term/*` (no accessor gaps fo
-- verify: ```
-- proof: *Chosen UX (plain):** copy happens **on release** (release-copies, like the chat transcript — no follow-up keypress). Scroll conflict rule:
-- ledgerId: led-1787752838508-bdbccc34
-
-### 2026-08-26 · Scout: token cost audit (@explore subagent) — skopos-6 (scout) · `done`
-- summary: All recon complete — no files modified (read-only: repo reads, `wc`, and `sqlite3 -readonly` against the serve's own database). Everything below is measured fro
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787752735460-8014f4cc
-
-### 2026-08-26 · Scout: claude code interface map (@explore su... — skopos-5 (scout) · `issues`
-- summary: Recon complete — every hop read, zero files modified. Return per the contract:
-- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/state/state.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/opencode.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/config/config.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/chrome/topbar.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/sessions.go`, Local: `~/.local/bin/claude`
-- verify: `cmd/uishot` + `install.sh --dry-run --backend claudecode` shell test — narrated seed via the existing `[dry-run]` shim; topbar segment rend
-- proof: (none)
-- ledgerId: led-1787752496998-b3a1b15a
-
-### 2026-08-26 · Scout: hang root-cause map (@explore subagent) — skopos-3 (scout) · `done`
-- summary: Recon complete — every hop read. Here is the return per the contract.
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787752231253-57caa826
-
-### 2026-08-26 · Scout: terminal selection plumbing (@explore... — skopos-4 (scout) · `issues`
-- summary: All plumbing mapped. Nothing was written — report follows per the return contract.
-- files: No files modified. Read-only recon covered:, `internal/panels/terminal.go`, `internal/panels/chat_selection.go`, `internal/app/selection.go`, `internal/app/model.go`, `internal/app/terminal.go`, `internal/panels/tabs.go`, `internal/panels/popover.go`, `internal/panels/gitpanel.go`, `internal/term/{term,grid,scroll}.go`, `internal/panels/chat_attach.go`, `cmd/theboringoffice/main.go`, `go.mod`, bubbletea v2.0.9 module source
-- verify: Read-only brief: no build/test commands run. Evidence is file reads + targeted greps quoted with paths/lines throughout the map below. `tea.
-- proof: # Terminal mouse-select + copy: plumbing map
-- ledgerId: led-1787752148530-07c6f66d
-
-### 2026-08-26 · Scout: follow-ups form gap (@explore subagent) — skopos-2 (scout) · `done`
-- summary: Ready to work. I don't see a specific task or request in this session yet — no search target, bug report, or feature brief has been given.
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787751903952-f51ea9ad
-
-### 2026-08-26 · Dev: wedge row only on bar and activity (@gen... — tekton-1 (developer) · `issues`
-- summary: All verification complete. Final return per the contract:
-- files: `internal/app/model.go`, `internal/app/stuck_test.go`, `internal/panels/activity.go`, `cmd/uishot/main.go`, `README.md`, NOT touched (deliberately): `internal/app/sessions.go` (`bootWarnNoticeMeta` Snapshot strip + hydrat
-- verify: ```
-- proof: *Transcript (chat tab) while wedged — CLEAN, no wedge row:**
-- ledgerId: led-1787751850050-ec5940b0
-
-### 2026-08-26 · Dev: projects/hash home path (@general subagent) — tekton-2 (developer) · `issues`
-- summary: All verified. Reporting per the return contract.
-- files: `internal/app/sessions.go`, `internal/app/sessions_test.go`, `cmd/headless/main.go`, `README.md`, `docs/architecture.md`
-- verify: `go build ./... 2>&1 | tail -5`: **(silent — build exit: 0)**
-- proof: On-disk layout BEFORE → AFTER (`<home>` = `$THEBORINGOFFICE_HOME` else `$HOME`):
-- ledgerId: led-1787751565876-c97c3f5c
-
-### 2026-08-26 · Scout: projects/hash home layout (@explore su... — skopos-1 (scout) · `done`
-- summary: Search complete. All touchpoints enumerated below — no files were modified.
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787751284230-0aeca140
-
-### 2026-08-26 · Dev: sounds library page + assets (@general s... — tekton-2 (developer) · `done`
-- summary: Everything verified. Final return per contract:
-- files: `cmd/soundexport/main.go`, `website/public/sounds/{queued,send,reply,done,dispatch,alert,error}.wav`, `website/app/sounds/page.tsx`, `website/components/sounds/sound-card.tsx`, `website/components/site-header.tsx`, `website/components/site-footer.tsx`, `website/app/sitemap.ts`
-- verify: ```
-- proof: *Built HTML region (`out/sounds/index.html`, one card, comment markers stripped):**
-- ledgerId: led-1787748809858-082ee7de
-
-### 2026-08-26 · Dev: board sync hook on completion (@general... — tekton-1 (developer) · `issues`
-- summary: All checks green and the tree is clean. Final return:
-- files: `internal/backend/boardsync.go`, `internal/backend/opencode.go`, `internal/backend/boardsync_test.go`, `cmd/uishot/main.go`, `README.md`, (not mine: `.opencode/*` pre-existing boss-session edits; the tracked `uishot` binary was briefly re
-- verify: ```
-- proof: ```
-- ledgerId: led-1787747811860-aab00add
 
