@@ -20,6 +20,12 @@
 // can straddle delta boundaries — the completion pin supersedes the
 // growing bubble, so the transcript at rest is always clean).
 //
+// The tool speaks THREE directives, each on its own line:
+//
+//	⟦open-browser: URL⟧        — open the page in the member's tab
+//	⟦browser-screenshot: URL⟧  — render it for the member (PNG saved)
+//	⟦browser-snapshot: URL⟧    — read text+links BACK to the agent
+//
 // The policy (Decide): localhost/127.0.0.1/::1 always; https:// to any
 // host by default; plain http:// to any other host refused unless
 // THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME, never
@@ -33,44 +39,81 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
-// MarkerOpen/MarkerClose delimit the one-line directive. The brackets
-// are U+27E6/U+27E7 (mathematical white square brackets) — distinctive
-// enough that ordinary prose or code never carries them by accident.
+// MarkerOpen/MarkerShot/MarkerSnap open the three one-line directives;
+// MarkerClose delimits them all. The brackets are U+27E6/U+27E7
+// (mathematical white square brackets) — distinctive enough that
+// ordinary prose or code never carries them by accident.
 const (
 	MarkerOpen  = "⟦open-browser:"
+	MarkerShot  = "⟦browser-screenshot:"
+	MarkerSnap  = "⟦browser-snapshot:"
 	MarkerClose = "⟧"
 )
 
-// MaxRequestsPerReply caps the URLs ONE reply may request (the preamble
-// contracts a single marker; extras are tolerated up to this cap and
-// dropped past it — the marker lines are still stripped).
+// Kind — which browser-tool directive a parsed marker carries. The
+// string values double as the scrub-fallback's bubble labels.
+type Kind string
+
+const (
+	KindOpen Kind = "open-browser"
+	KindShot Kind = "browser-screenshot"
+	KindSnap Kind = "browser-snapshot"
+)
+
+// Request — ONE parsed marker: its directive kind and the (raw,
+// policy-pending) URL it carries.
+type Request struct {
+	Kind Kind
+	URL  string
+}
+
+// MaxRequestsPerReply caps the URLs ONE reply may request, SPANNING all
+// three marker kinds (the preamble contracts one of each; extras are
+// tolerated up to this cap and dropped past it — the marker lines are
+// still stripped).
 const MaxRequestsPerReply = 3
 
 // AllowHTTPEnv — the member's outbound-http flag (THE name the browser
 // pane's own fetch guard reads too: one flag, two independent layers).
 const AllowHTTPEnv = "THEBORINGOFFICE_BROWSER_ALLOW_HTTP"
 
-// markerLineRe matches ONE whole-line directive (multiline): optional
-// surrounding whitespace, the URL as the first run of non-space non-⟧
-// runes, and the line's trailing newline when present (the strip never
-// leaves a ghost blank line). A marker NOT alone on its line is prose,
-// not a directive — it stays in the transcript untouched (the
-// preamble's "its own line" rule).
-var markerLineRe = regexp.MustCompile(`(?m)^[ \t]*⟦open-browser:[ \t]*([^\s⟧]+)[ \t]*⟧[ \t]*\r?$\n?`)
+// markerLineRe builds ONE whole-line directive matcher (multiline):
+// optional surrounding whitespace, the URL as the first run of
+// non-space non-⟧ runes, and the line's trailing newline when present
+// (the strip never leaves a ghost blank line). A marker NOT alone on
+// its line is prose, not a directive — it stays in the transcript
+// untouched (the preamble's "its own line" rule).
+func markerLineRe(marker string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(marker) + `[ \t]*([^\s⟧]+)[ \t]*⟧[ \t]*\r?$\n?`)
+}
+
+// markerKinds — the three directive matchers, in kind order (extraction
+// itself re-sorts hits by position, so cross-kind order of appearance
+// is preserved).
+var markerKinds = []struct {
+	kind Kind
+	re   *regexp.Regexp
+}{
+	{KindOpen, markerLineRe(MarkerOpen)},
+	{KindShot, markerLineRe(MarkerShot)},
+	{KindSnap, markerLineRe(MarkerSnap)},
+}
 
 // blankCollapseRe merges the paragraph breaks a stripped marker line
 // used to sit between.
 var blankCollapseRe = regexp.MustCompile(`\n{3,}`)
 
 // PromptPreamble — the harness instruction riding the FIRST prompt of
-// every boss session (both backends): teaches the marker, the
+// every boss session (both backends): teaches the markers, the
 // member-controlled URL policy, and the strip contract (the agent must
-// never quote the marker as prose).
+// never quote a marker as prose). The open-browser paragraph is
+// byte-stable (backend tests pin it); new capabilities APPEND lines.
 const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
 	"You can ask the office to open a web page in the member's in-app browser tab. " +
 	"To open a page, emit this directive on ITS OWN line, at most once per reply:\n" +
@@ -79,10 +122,19 @@ const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
 	"(plain http to any other host is refused unless the member exports " + AllowHTTPEnv + "=1). " +
 	"The office strips the directive from your visible reply and performs the open, so never quote " +
 	"or explain the marker itself — just place it. Open a page only when it genuinely helps the " +
-	"member (docs, dashboards, pull requests, a dev server you started)."
+	"member (docs, dashboards, pull requests, a dev server you started)." +
+	"\nTwo read-only siblings (same own-line rule, same URL policy, at most one of each per reply, " +
+	"3 browser directives total per reply):\n" +
+	MarkerShot + " URL" + MarkerClose + " — render the page in the member's browser tab as an image " +
+	"(kitty terminals) and save the PNG (the member sees the path).\n" +
+	MarkerSnap + " URL" + MarkerClose + " — fetch the page's text + links back to YOU as a follow-up " +
+	"message — use it to READ pages."
 
-// Decision — the policy verdict for one requested URL.
+// Decision — the policy verdict for one requested URL. Kind is the
+// directive the request rode (RequestAll stamps it; Decide alone leaves
+// it zero — the policy itself is kind-agnostic).
 type Decision struct {
+	Kind    Kind
 	URL     string // the normalized (trimmed) request
 	Allowed bool
 	Reason  string // member-facing refusal when !Allowed ("" when Allowed)
@@ -120,26 +172,40 @@ func Decide(rawurl string, getenv func(string) string) Decision {
 	return Decision{URL: u, Reason: "plain http to " + host + " refused — export " + AllowHTTPEnv + "=1 to allow outbound http pages"}
 }
 
-// Extract pulls every whole-line marker out of a COMPLETED assistant
-// text: it returns the text with the marker lines stripped (no ghost
-// blank lines) plus the requested URLs in order of appearance, capped
-// at MaxRequestsPerReply (past-cap marker lines still strip — the
-// preamble contracts ONE per reply).
-func Extract(text string) (string, []string) {
-	matches := markerLineRe.FindAllStringSubmatch(text, -1)
-	if len(matches) == 0 {
-		return text, nil
+// Extract pulls every whole-line marker (all three kinds) out of a
+// COMPLETED assistant text: it returns the text with the marker lines
+// stripped (no ghost blank lines) plus the requests in order of
+// appearance ACROSS kinds, capped at MaxRequestsPerReply (past-cap
+// marker lines still strip — the preamble contracts one of each kind
+// per reply).
+func Extract(text string) (string, []Request) {
+	type hit struct {
+		at  int
+		req Request
 	}
-	urls := make([]string, 0, len(matches))
-	for _, m := range matches {
-		if len(urls) < MaxRequestsPerReply {
-			urls = append(urls, m[1])
+	var hits []hit
+	for _, mk := range markerKinds {
+		for _, m := range mk.re.FindAllStringSubmatchIndex(text, -1) {
+			hits = append(hits, hit{at: m[0], req: Request{Kind: mk.kind, URL: text[m[2]:m[3]]}})
 		}
 	}
-	cleaned := markerLineRe.ReplaceAllString(text, "")
+	if len(hits) == 0 {
+		return text, nil
+	}
+	sort.SliceStable(hits, func(i, j int) bool { return hits[i].at < hits[j].at })
+	reqs := make([]Request, 0, len(hits))
+	for _, h := range hits {
+		if len(reqs) < MaxRequestsPerReply {
+			reqs = append(reqs, h.req)
+		}
+	}
+	cleaned := text
+	for _, mk := range markerKinds {
+		cleaned = mk.re.ReplaceAllString(cleaned, "")
+	}
 	cleaned = blankCollapseRe.ReplaceAllString(cleaned, "\n\n")
 	cleaned = strings.TrimSpace(cleaned)
-	return cleaned, urls
+	return cleaned, reqs
 }
 
 // Bridge turns requested URLs into state events: the ONE policy
@@ -156,20 +222,37 @@ func NewBridge(emit func(state.Event)) *Bridge {
 	return &Bridge{Emit: emit, Getenv: os.Getenv}
 }
 
-// RequestAll decides every requested URL (already Extract-capped) and
-// emits ONE EvBrowserOpen per request — the URL rides Text, the verdict
+// eventKind maps a directive kind to its state event kind (the app's
+// reaction table keys off these).
+func eventKind(k Kind) state.EventKind {
+	switch k {
+	case KindShot:
+		return state.EvBrowserScreenshot
+	case KindSnap:
+		return state.EvBrowserSnapshot
+	default:
+		return state.EvBrowserOpen
+	}
+}
+
+// RequestAll decides every request (already Extract-capped) and emits
+// ONE event per request — EvBrowserOpen / EvBrowserScreenshot /
+// EvBrowserSnapshot by directive kind. The URL rides Text, the verdict
 // rides BrowserOpenAllowed, and a refusal carries BrowserOpenReason for
-// the app's red notice. The decisions return so the caller's scrub can
-// phrase a marker-only reply's fallback bubble.
-func (br *Bridge) RequestAll(urls []string) []Decision {
-	out := make([]Decision, 0, len(urls))
-	for _, u := range urls {
-		d := Decide(u, br.Getenv)
+// the app's red notice (ONE field contract across all three kinds — the
+// app never branches on kind to read the verdict). The decisions return
+// so the caller's scrub can phrase a marker-only reply's fallback
+// bubble.
+func (br *Bridge) RequestAll(reqs []Request) []Decision {
+	out := make([]Decision, 0, len(reqs))
+	for _, r := range reqs {
+		d := Decide(r.URL, br.Getenv)
+		d.Kind = r.Kind
 		out = append(out, d)
 		if br.Emit == nil {
 			continue
 		}
-		ev := state.Event{Kind: state.EvBrowserOpen, Text: d.URL, BrowserOpenAllowed: d.Allowed}
+		ev := state.Event{Kind: eventKind(r.Kind), Text: d.URL, BrowserOpenAllowed: d.Allowed}
 		if !d.Allowed {
 			ev.BrowserOpenReason = d.Reason
 		}
@@ -183,30 +266,49 @@ func (br *Bridge) RequestAll(urls []string) []Decision {
 // return the transcript text (markers gone). A marker-ONLY reply
 // degrades to a one-line office note — the pinned bubble never goes
 // blank (the send-side typing placeholder needs real text to settle).
+// The note names each directive kind ("[theboringoffice] open-browser:
+// u · browser-snapshot: u"); a refusal-only note names the kind when
+// every refusal rode one ("… browser-screenshot refused: r"), else the
+// generic "browser refused".
 func Scrub(text string, br *Bridge) string {
-	cleaned, urls := Extract(text)
-	if len(urls) == 0 {
+	cleaned, reqs := Extract(text)
+	if len(reqs) == 0 {
 		return text
 	}
-	decisions := br.RequestAll(urls)
+	decisions := br.RequestAll(reqs)
 	if cleaned != "" {
 		return cleaned
 	}
-	var opened, refused []string
+	byKind := map[Kind][]string{}
+	var refused []string
+	refusedKinds := map[Kind]bool{}
 	for _, d := range decisions {
 		if d.Allowed {
-			opened = append(opened, d.URL)
+			byKind[d.Kind] = append(byKind[d.Kind], d.URL)
 		} else {
 			refused = append(refused, d.Reason)
+			refusedKinds[d.Kind] = true
+		}
+	}
+	var allowed []string
+	for _, k := range []Kind{KindOpen, KindShot, KindSnap} {
+		if urls := byKind[k]; len(urls) > 0 {
+			allowed = append(allowed, string(k)+": "+strings.Join(urls, ", "))
 		}
 	}
 	switch {
 	case len(refused) == 0:
-		return "[theboringoffice] open-browser: " + strings.Join(opened, ", ")
-	case len(opened) == 0:
-		return "[theboringoffice] open-browser refused: " + strings.Join(refused, "; ")
+		return "[theboringoffice] " + strings.Join(allowed, " · ")
+	case len(allowed) == 0:
+		label := "browser"
+		if len(refusedKinds) == 1 {
+			for k := range refusedKinds {
+				label = string(k)
+			}
+		}
+		return "[theboringoffice] " + label + " refused: " + strings.Join(refused, "; ")
 	default:
-		return "[theboringoffice] open-browser: " + strings.Join(opened, ", ") +
+		return "[theboringoffice] " + strings.Join(allowed, " · ") +
 			" · refused: " + strings.Join(refused, "; ")
 	}
 }

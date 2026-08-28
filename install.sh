@@ -14,9 +14,14 @@
 #                        never boots in (it auto-installs into its boot repo
 #                        when attribution is on, the default)
 #   --skip-agentmemory   Do not install/start the agentmemory background service
+#   --with-terminal-browser
+#                        Install the zenbu terminal-browser bundle (the OPT-IN
+#                        embedded browser lane — default-off; the office's
+#                        browser tab uses headless screenshots now)
 #   --skip-terminal-browser
-#                        Do not install the zenbu terminal-browser bundle
-#                        (premium kitty/ghostty browser lane)
+#                        Deprecated no-op guard: terminal-browser is opt-in
+#                        (--with-terminal-browser) since the default-off
+#                        pivot, so a plain run already skips it
 #   --uninstall          Remove the theboringoffice binary, the agentmemory
 #                        service, and the terminal-browser bundle + shim
 #
@@ -25,7 +30,8 @@
 #   theboringoffice_<version>_checksums.txt
 # Fallback when the GitHub API can't resolve a version:
 #   .../releases/latest/download/theboringoffice_<os>_<arch>.tar.gz   (checksums skipped, loudly)
-# Also pulls the zenbu terminal-browser bundle (optional premium browser lane):
+# With --with-terminal-browser, also pulls the zenbu terminal-browser bundle
+# (opt-in embedded browser lane — off by default):
 #   https://github.com/zenbu-labs/terminal-browser/releases/latest/download/terminal-browser-<os>-<arch>.tar.gz
 #   (extracts a terminal-browser/ bundle that MUST stay intact — <prefix> gets a shim, not a symlink)
 
@@ -47,6 +53,7 @@ AM_LOG_DIR="${HOME}/.agentmemory/logs"
 DRY_RUN=0
 SKIP_AGENTMEMORY=0
 SKIP_TERMINAL_BROWSER=0
+WITH_TERMINAL_BROWSER=0
 UNINSTALL=0
 PREFIX=""
 PATH_HINT=0
@@ -145,9 +152,14 @@ Flags:
   --prefix DIR         Install prefix for the theboringoffice binary
                        (default: /usr/local/bin if writable, else ~/.local/bin)
   --skip-agentmemory   Do not install/start the agentmemory background service
+  --with-terminal-browser
+                       Install the zenbu terminal-browser bundle (the OPT-IN
+                       embedded browser lane — default-off; the office's
+                       browser tab uses headless screenshots now)
   --skip-terminal-browser
-                       Do not install the zenbu terminal-browser bundle
-                       (premium kitty/ghostty browser lane)
+                       Deprecated no-op guard: terminal-browser is opt-in
+                       (--with-terminal-browser) since the default-off pivot,
+                       so a plain run already skips it
   --backend NAME       LLM transport: opencode (default) | claudecode
   --majdoor-hook DIR   Install the TheBoringMajdoor commit-msg attribution
                        hook into the repo at DIR — meant for repos the office
@@ -620,8 +632,11 @@ exec "$2/terminal-browser/bin/terminal-browser" "\$@"
 EOF
 }
 
-# setup_terminal_browser — OPTIONAL premium browser lane (zenbu
-# terminal-browser, kitty/ghostty at runtime). NEVER fatal, same guarded
+# setup_terminal_browser — OPT-IN premium browser lane (zenbu
+# terminal-browser, kitty/ghostty at runtime). DEFAULT-OFF since the
+# headless-screenshots pivot: the stage only runs with
+# --with-terminal-browser; a plain run prints one info line and moves on.
+# NEVER fatal, same guarded
 # shape as the agentmemory stage: every failure (download, extract, missing
 # launcher, shim write, version check) degrades to the manual block and the
 # text lane simply stays the default. The release asset extracts a DIRECTORY
@@ -631,6 +646,11 @@ EOF
 # (verified: exit 126 through a symlink, v0.6.0 through the shim).
 setup_terminal_browser() {
     stage "terminal-browser (premium browser lane)"
+    if [ "$WITH_TERMINAL_BROWSER" -ne 1 ]; then
+        info "    terminal-browser: skipped (default-off; --with-terminal-browser to install — the office's browser tab uses headless screenshots now)"
+        TB_STATE="skipped (default-off; --with-terminal-browser to opt in)"
+        return 0
+    fi
     if [ "$SKIP_TERMINAL_BROWSER" -eq 1 ]; then
         info "    --skip-terminal-browser given; skipping. Re-run without it for the kitty/ghostty premium lane."
         TB_STATE="skipped (--skip-terminal-browser)"
@@ -1038,6 +1058,7 @@ main() {
         case "$1" in
             --dry-run)          DRY_RUN=1 ;;
             --skip-agentmemory) SKIP_AGENTMEMORY=1 ;;
+            --with-terminal-browser) WITH_TERMINAL_BROWSER=1 ;;
             --skip-terminal-browser) SKIP_TERMINAL_BROWSER=1 ;;
             --uninstall)        UNINSTALL=1 ;;
             --prefix)           [ $# -ge 2 ] || die "--prefix requires a DIR argument"

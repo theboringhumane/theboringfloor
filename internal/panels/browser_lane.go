@@ -16,13 +16,17 @@
 //	  (this lane's own gate) or THEBORINGOFFICE_NO_TERMINAL_BROWSER
 //	  (wave 70's documented `o`-lane gate — one zenbu off-switch contract,
 //	  both spellings honored so an armed member is never surprised)
+//	AND the lane is explicitly OPTED IN: THEBORINGOFFICE_ZENBU_LANE=1
+//	  (the wave-85 default-off pivot — the embedded lane is RETAINED but
+//	  opt-in; headless screenshots are the default premium path now)
 //	→ BrowserLaneZenbu; every miss → BrowserLaneText.
 //
 // THE REASON RESOLVE (ResolveBrowserLaneReasonFrom — the same gates in
 // the same order, PLUS the WHY): a text-lane resolve never stays silent
 // anymore — the pane reads the memoized verdict's reason class (premium /
-// binary-missing / terminal-unsupported / kill-switch, the kill-switch
-// class naming WHICH spelling is armed) and paints ONE dim hint row
+// opt-in-off / binary-missing / terminal-unsupported / kill-switch, the
+// kill-switch AND opt-in-off classes naming WHICH var is in play) and
+// paints ONE dim hint row
 // under the location bar (the starter card wears it too), so the member
 // sees the lane's reason at the moment of disappointment instead of
 // guessing terminal-browser was never integrated.
@@ -107,7 +111,8 @@ const (
 	// everywhere; the fallback for every premium-lane miss).
 	BrowserLaneText BrowserLane = iota
 	// BrowserLaneZenbu — zenbu's terminal-browser embedded in the pane
-	// (kitty-capable host + binary on PATH + no kill-switch).
+	// (kitty-capable host + binary on PATH + no kill-switch + the
+	// THEBORINGOFFICE_ZENBU_LANE=1 opt-in — default-off since wave 85).
 	BrowserLaneZenbu
 )
 
@@ -125,6 +130,17 @@ func (l BrowserLane) String() string {
 // TerminalBrowserOffEnv is honored too: ONE off-switch contract, both
 // spellings — the lane is off when either reads "1".
 const BrowserLaneOffEnv = "THEBORINGOFFICE_TERMINAL_BROWSER_OFF"
+
+// BrowserLaneOptInEnv — the premium lane's OPT-IN flag (the wave-85
+// default-off pivot): the embedded zenbu lane resolves premium ONLY when
+// this reads "1" at pane-creation time — unset, "0", or anything else
+// keeps the universal text lane even on a fully-qualified host (kitty
+// terminal + terminal-browser on PATH + no kill-switch). Read AT USE
+// TIME with no config schema field (BrowserLaneOffEnv's house style):
+// the lane is retained for members who want it, but headless screenshots
+// are the default premium path now, so the embedded Chromium never boots
+// unless the member explicitly asks.
+const BrowserLaneOptInEnv = "THEBORINGOFFICE_ZENBU_LANE"
 
 // zenbuLookPath — the binary probe (links.go's openLookPath precedent):
 // exec.LookPath by default, swapped by tests to prove the
@@ -145,7 +161,9 @@ func ResolveBrowserLane() BrowserLane { return ResolveBrowserLaneFrom(os.Getenv,
 
 // BrowserLaneReason — WHY the lane resolved the way it did (the pane's
 // hint-row class; the gate that missed, in the resolve's own precedence:
-// kill-switch → terminal → binary).
+// kill-switch → opt-in-off → terminal → binary — the opt-in-off class is
+// mutually exclusive with the terminal/binary classes: it only fires when
+// BOTH qualify).
 type BrowserLaneReason int
 
 const (
@@ -163,6 +181,13 @@ const (
 	// BrowserLaneKillSwitch — a kill-switch env is armed; the verdict's
 	// third return names WHICH spelling.
 	BrowserLaneKillSwitch
+	// BrowserLaneOptInOff — terminal AND binary both qualify but the
+	// opt-in flag is unset (the wave-85 default-off class: the embedded
+	// lane is retained but opt-in — headless screenshots are the default
+	// premium path). The verdict's third return names the flag
+	// (BrowserLaneOptInEnv), the killSwitchVar-style passthrough the hint
+	// renderer consumes.
+	BrowserLaneOptInOff
 )
 
 // String — the reason word for tests/notices.
@@ -176,6 +201,8 @@ func (r BrowserLaneReason) String() string {
 		return "no-terminal"
 	case BrowserLaneKillSwitch:
 		return "kill-switch"
+	case BrowserLaneOptInOff:
+		return "opt-in-off"
 	}
 	return "unknown"
 }
@@ -190,18 +217,26 @@ func ResolveBrowserLaneReason() (BrowserLane, BrowserLaneReason, string) {
 // (DetectImageSupportFrom's shape: env + probe injected, the matrix a
 // shell-out-free table). The SAME gates as ResolveBrowserLaneFrom (which
 // now delegates here) in the SAME precedence, plus the reason class and —
-// for the kill-switch class — WHICH spelling is armed:
+// for the kill-switch and opt-in-off classes — WHICH var is in play:
 //
 //  1. a kill-switch reads "1" (BrowserLaneOffEnv first, then
 //     TerminalBrowserOffEnv) → text + BrowserLaneKillSwitch + the var name;
 //  2. the host is NOT kitty-capable per the detect layer's OWN truth
 //     table (DetectImageSupportFrom != KittyLane — ghostty/kitty are the
 //     lane; tmux folds out, the iterm family is a different protocol and
-//     a dead-end here) → text + BrowserLaneNoTerminal;
+//     a dead-end here) → text + BrowserLaneNoTerminal (the probe never
+//     fires on a non-kitty host — the historic discipline);
 //  3. the probe finds no `terminal-browser` binary → text +
 //     BrowserLaneNoBinary;
+//  4. terminal AND binary both qualify but BrowserLaneOptInEnv does not
+//     read "1" (unset, "0", anything else — the wave-85 default-off
+//     pivot) → text + BrowserLaneOptInOff + BrowserLaneOptInEnv;
 //
-// every gate passed → BrowserLaneZenbu + BrowserLanePremium.
+// every gate passed → BrowserLaneZenbu + BrowserLanePremium. (The class
+// precedence is kill-switch > opt-in-off > terminal > binary > premium:
+// opt-in-off can only fire when terminal+binary both qualify, so its
+// position against the two earlier classes is never observable — only
+// the kill-switch's precedence over it is.)
 func ResolveBrowserLaneReasonFrom(env func(string) string, lookPath func(string) (string, error)) (BrowserLane, BrowserLaneReason, string) {
 	if strings.TrimSpace(env(BrowserLaneOffEnv)) == "1" {
 		return BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv
@@ -214,6 +249,9 @@ func ResolveBrowserLaneReasonFrom(env func(string) string, lookPath func(string)
 	}
 	if _, err := lookPath("terminal-browser"); err != nil {
 		return BrowserLaneText, BrowserLaneNoBinary, ""
+	}
+	if strings.TrimSpace(env(BrowserLaneOptInEnv)) != "1" {
+		return BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv
 	}
 	return BrowserLaneZenbu, BrowserLanePremium, ""
 }
@@ -237,6 +275,8 @@ func browserLaneHintText(reason BrowserLaneReason, killVar string) string {
 		return "text lane — this terminal can't host the embedded browser (kitty/ghostty only)"
 	case BrowserLaneKillSwitch:
 		return "text lane — " + killVar + "=1 set; unset it for the embedded browser"
+	case BrowserLaneOptInOff:
+		return "text lane — the embedded browser is opt-in: " + killVar + "=1 to enable it"
 	}
 	return ""
 }

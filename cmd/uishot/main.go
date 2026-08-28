@@ -263,6 +263,7 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/office"
 	"github.com/theboringhumane/theboringoffice/internal/panels"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -4986,6 +4987,15 @@ var browserEnvKeys = []string{
 	"PATH", "TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
 	"WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID", "TERM", "COLORTERM",
 	panels.BrowserLaneOffEnv, panels.TerminalBrowserOffEnv, "FAKE_TB_LIFE",
+	"THEBORINGOFFICE_HOME", "THEBORINGOFFICE_CELL_PX", "THEBORINGOFFICE_ZENBU_LANE",
+}
+
+// pinShotEngineAbsent — NO live chrome in the text-lane browser drives:
+// the shot lane's verdict is chrome-missing (deterministic on every
+// host, cheap — the probe gates before any render). The --lane shot
+// drives swap their OWN fake engines instead.
+func pinShotEngineAbsent() func() {
+	return panels.SetHeadlessForShot(func() (string, bool) { return "", false }, nil)
 }
 
 // browserLanePage — the drive's fixed page (stable, never fetched).
@@ -5060,6 +5070,9 @@ func browserDrive(tbLife string) (browserFrameOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
+	// in production — the headless shot lane is the default premium path).
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	c := panels.NewBrowserLaneController(64, 16)
@@ -5404,6 +5417,9 @@ func browserStreamDrive() (browserStreamOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
+	// in production — the headless shot lane is the default premium path).
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	restoreEmit := panels.SetZenbuEmitForShot(func(s string) { out.emitted = append(out.emitted, s) })
@@ -5629,6 +5645,9 @@ func browserKillDrive() (browserKillOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
+	// in production — the headless shot lane is the default premium path).
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	restoreEmit := panels.SetZenbuEmitForShot(func(string) {})
@@ -5758,6 +5777,7 @@ func browserLiveFake(root, flavor string) error {
 // or "die" (leg D).
 func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 	var out browserLiveFrameOut
+	defer pinShotEngineAbsent()() // no live chrome (the stub URL is localhost-allowed)
 	saved, present := map[string]string{}, map[string]bool{}
 	for _, k := range browserEnvKeys {
 		if v, ok := os.LookupEnv(k); ok {
@@ -5790,6 +5810,9 @@ func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
+	// in production — the headless shot lane is the default premium path).
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	backend := &stubBackend{done: make(chan struct{})}
@@ -6100,6 +6123,7 @@ type browserKeepaliveOut struct {
 // browserKeepaliveDrive — ONE hermetic keep-alive drive.
 func browserKeepaliveDrive() (browserKeepaliveOut, error) {
 	var out browserKeepaliveOut
+	defer pinShotEngineAbsent()() // no live chrome
 	saved, present := map[string]string{}, map[string]bool{}
 	for _, k := range browserEnvKeys {
 		if v, ok := os.LookupEnv(k); ok {
@@ -6132,6 +6156,9 @@ func browserKeepaliveDrive() (browserKeepaliveOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
+	// in production — the headless shot lane is the default premium path).
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	// the frame-splice wrapper over the SHARED registry (the production
@@ -6363,6 +6390,7 @@ type browserHintFrameOut struct {
 // browserHintDrive — ONE hermetic drive with the probe guaranteed to miss.
 func browserHintDrive() (browserHintFrameOut, error) {
 	var out browserHintFrameOut
+	defer pinShotEngineAbsent()() // no live chrome
 	saved, present := map[string]string{}, map[string]bool{}
 	for _, k := range browserEnvKeys {
 		if v, ok := os.LookupEnv(k); ok {
@@ -6528,6 +6556,401 @@ func runBrowserHintProof() error {
 	return nil
 }
 
+// --- browser tab headless SHOT lane (--browser --lane shot) -------------------
+// The headless screenshot lane through the LIVE app glue (the pane's own
+// flow contracts + the registry/wrapper byte-pins live in internal/panels'
+// browser_panel_lane_test.go + internal/app's browser_frame_test.go): a
+// FAKE headless engine behind the panels seam (NO live chrome) renders
+// the shared checker PNG, the shot clock + shots home pin byte-stable
+// paths, PATH pins an empty fixture dir (no terminal-browser — the zenbu
+// lane misses by construction), and "/open file://<fixture>" types
+// through the REAL chat input. Flavors: "ok" (the kitty SHOT MODE: the
+// " shot " badge + "▸ headless chromium · <url>" strip paint, the
+// registry publishes the PNG at absolute (0,3)+pane-local (0,0), the
+// wrapper's flush byte-pins cursor-save + CUP(4;1) + the f=100 APC with
+// NO c=/r= keys + cursor-restore, esc flushes ONE a=d through the diff,
+// ctrl+b re-publishes the CACHED bytes with ZERO new engine calls, the
+// PNG saves under the convention's <ts>-<hash8>.png name); "chrome" /
+// "refused" / "timeout" (the failure classes' exact dim rows, the text
+// page warm underneath, the registry untouched); "nonkitty" (the iTerm
+// stub: NO shot mode ever — the text lane + the dim "screenshot: <path>"
+// row). Every leg byte-identical across two drives.
+
+// browserShotPinTime — the pinned shot clock (byte-stable saved paths).
+var browserShotPinTime = time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+
+// browserShotOut — ONE shot drive's observed artifacts.
+type browserShotOut struct {
+	frame       string // after /open — the shot region (ok) / the failure row (others)
+	flush       string // the wrapper's "SHOT" flush (ok: CUP(4;1) + APC; failures: passthrough)
+	flushFloor  string // after esc — ok: ONE a=d through the emitted-set diff
+	flushBack   string // after ctrl+b — ok: the CACHED bytes re-published byte-identically
+	savedPath   string // the pane's saved PNG path
+	savedOK     bool   // the saved file's bytes == the checker's
+	engineCalls int    // the fake engine's render count (the flip never re-renders)
+	engineW     int    // the render's recorded viewport dims
+	engineH     int
+	leftTab     int
+	activeTab   int
+}
+
+// browserShotDrive — ONE hermetic drive of the given flavor
+// (ok|chrome|refused|timeout|nonkitty).
+func browserShotDrive(flavor string) (browserShotOut, error) {
+	var out browserShotOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range browserEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() { // restore EVERY key (the drive pairs share the process)
+		for _, k := range browserEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-browser-shot-")
+	if err != nil {
+		return out, fmt.Errorf("browser-shot fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	// the shots home is a FIXED path (byte-identity across the pair): the
+	// frame prints the saved PNG's path, so the directory may never drift.
+	home := filepath.Join(os.TempDir(), "uishot-browser-shot-home")
+	if err := os.RemoveAll(home); err != nil {
+		return out, fmt.Errorf("browser-shot home reset: %w", err)
+	}
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		return out, fmt.Errorf("browser-shot home: %w", err)
+	}
+	defer os.RemoveAll(home)
+
+	png, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		return out, fmt.Errorf("browser-shot checker fixture: %w", err)
+	}
+
+	// the flavor's fake engine (the panels seam — NO live chrome).
+	calls, lastW, lastH := 0, 0, 0
+	avail := func() (string, bool) { return "/fake/chrome", true }
+	var shotFn func(context.Context, string, int, int) (*headless.Result, error)
+	shotFn = func(_ context.Context, rawurl string, w, h int) (*headless.Result, error) {
+		calls++
+		lastW, lastH = w, h
+		switch flavor {
+		case "refused":
+			return nil, &headless.PolicyError{URL: rawurl, Reason: "plain http to example.test refused"}
+		case "timeout":
+			return nil, context.DeadlineExceeded
+		default: // ok + nonkitty
+			return &headless.Result{URL: rawurl, Title: "Fixture Gazette", PNG: png}, nil
+		}
+	}
+	if flavor == "chrome" {
+		avail = func() (string, bool) { return "", false }
+	}
+	restoreEngine := panels.SetHeadlessForShot(avail, shotFn)
+	defer restoreEngine()
+	restoreClock := panels.SetShotNowForShot(func() time.Time { return browserShotPinTime })
+	defer restoreClock()
+
+	// the hermetic host stub: ghostty for the kitty legs, iTerm for the
+	// non-kitty gate; PATH pins the EMPTY fixture dir (no terminal-browser,
+	// no host leak); the shots home + cell metric pin.
+	os.Setenv("PATH", root)
+	if flavor == "nonkitty" {
+		os.Setenv("TERM_PROGRAM", "iTerm.app")
+	} else {
+		os.Setenv("TERM_PROGRAM", "ghostty")
+	}
+	for _, k := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM_VERSION", "WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID"} {
+		os.Setenv(k, "")
+	}
+	os.Setenv("TERM", "xterm-256color")
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv(panels.BrowserLaneOffEnv, "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "")
+	os.Setenv("THEBORINGOFFICE_HOME", home)
+	os.Setenv("THEBORINGOFFICE_CELL_PX", "")
+
+	// the frame-splice wrapper over the SHARED registry (the production
+	// seam's exact shape), the lane's direct deletes captured.
+	reg := panels.ZenbuRegistry()
+	reg.Clear()
+	defer reg.Clear()
+	var buf strings.Builder
+	w := panels.NewZenbuFrameWriter(&buf, reg)
+	restoreEmit := panels.SetZenbuEmitForShot(w.DirectEmit)
+	defer restoreEmit()
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	// runExec — the exact breadth-first drain the --browsertab proof runs.
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	flush := func(tag string) string {
+		buf.Reset()
+		_, _ = w.Write([]byte(tag))
+		return buf.String()
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — headless engine stub online"})
+	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
+	if err != nil {
+		return out, fmt.Errorf("browser-shot fixture path: %w", err)
+	}
+	url := "file://" + fixtureAbs
+	runExec(tea.PasteMsg{Content: "/open " + url})
+	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // sends → slashMsg → applyOpenSlash → fetch + the shot arm
+
+	out.leftTab = m.LeftTabIndex()
+	out.activeTab = m.ActiveTabIndex()
+	out.frame = m.Frame() // publishes the registry (ok: the shot's PNG)
+	out.flush = flush("SHOT")
+
+	// the keep-alive flip: esc hides the slot (the wrapper's diff flushes
+	// the delete), ctrl+b back re-publishes the CACHED bytes (no re-render).
+	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	_ = m.Frame()
+	out.flushFloor = flush("FLOOR")
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl}))
+	_ = m.Frame()
+	out.flushBack = flush("BACK")
+
+	out.engineCalls, out.engineW, out.engineH = calls, lastW, lastH
+	out.savedPath = m.BrowserShotPath()
+	if out.savedPath != "" {
+		if back, err := os.ReadFile(out.savedPath); err == nil && len(back) == len(png) {
+			out.savedOK = true
+			for i := range png {
+				if back[i] != png[i] {
+					out.savedOK = false
+					break
+				}
+			}
+		}
+	}
+	return out, nil
+}
+
+// browserShotIdentical — the two-drives byte-identity gate.
+func browserShotIdentical(a, b browserShotOut) bool {
+	return a.frame == b.frame && a.flush == b.flush && a.flushFloor == b.flushFloor &&
+		a.flushBack == b.flushBack && a.savedPath == b.savedPath && a.savedOK == b.savedOK &&
+		a.engineCalls == b.engineCalls && a.engineW == b.engineW && a.engineH == b.engineH &&
+		a.leftTab == b.leftTab && a.activeTab == b.activeTab
+}
+
+// browserShotAPC — the EXPECTED emitted APC for the checker PNG (a=T +
+// t=d + q=2 + C=1 + i=<content hash8> + f=100, NO c=/r= keys).
+func browserShotAPC(png []byte) string {
+	return "\x1b_Ga=T,t=d,q=2,C=1,i=" + panels.KittyIDHash8(panels.KittyImageID(png)) +
+		",f=100;" + base64.StdEncoding.EncodeToString(png) + "\x1b\\"
+}
+
+// browserShotDelete — the office-side a=d for the checker PNG's content id.
+func browserShotDelete(png []byte) string {
+	return "\x1b_Ga=d,d=I,i=" + panels.KittyIDHash8(panels.KittyImageID(png)) + ",q=2;\x1b\\"
+}
+
+func runBrowserShotProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	png, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		return fmt.Errorf("browser-shot checker fixture: %w", err)
+	}
+	wantPath := filepath.Join(os.TempDir(), "uishot-browser-shot-home", "shots",
+		"1787918400000-"+panels.KittyIDHash8(panels.KittyImageID(png))+".png")
+
+	// leg OK — the kitty SHOT MODE through the LIVE app glue.
+	o1, err := browserShotDrive("ok")
+	if err != nil {
+		return err
+	}
+	o2, err := browserShotDrive("ok")
+	if err != nil {
+		return err
+	}
+	if o1.leftTab != 1 || o1.activeTab != 0 {
+		return fail("browser-shot ok: /open flips the LEFT slot to browser (1), the right strip stays on chat (0): got %d/%d", o1.leftTab, o1.activeTab)
+	}
+	live := ansi.Strip(o1.frame)
+	for _, want := range []string{" shot ", "▸ headless chromium · file:///", "screenshot: /", "· ctrl+b"} {
+		if !strings.Contains(live, want) {
+			return fail("browser-shot ok frame missing %q:\n%s", want, live)
+		}
+	}
+	// the strip paints INSIDE the LEFT slot (left of the sidebar's chat).
+	stripSeen := false
+	for _, line := range strings.Split(live, "\n") {
+		if strings.Contains(line, "headless chromium") {
+			stripSeen = true
+			hi, ci := strings.Index(line, "headless chromium"), strings.Index(line, "chat")
+			if ci >= 0 && hi > ci {
+				return fail("browser-shot ok: the shot strip must paint LEFT of the sidebar's chat tab: %q", line)
+			}
+		}
+	}
+	if !stripSeen {
+		return fail("browser-shot ok: the shot strip never rendered")
+	}
+	if o1.savedPath != wantPath {
+		return fail("browser-shot ok: the saved PNG rides the pinned convention path:\n got %q\nwant %q", o1.savedPath, wantPath)
+	}
+	if !o1.savedOK {
+		return fail("browser-shot ok: the saved PNG's bytes round-trip the checker's")
+	}
+	// the wrapper's flush, byte-pinned: cursor-save + CUP(4;1) (absolute
+	// (0,3) + pane-local (0,0), 1-based) + the f=100 APC + cursor-restore.
+	wantFlush := "SHOT" + "\x1b7\x1b[4;1H" + browserShotAPC(png) + "\x1b8"
+	if o1.flush != wantFlush {
+		return fail("browser-shot ok: the wrapper's emitted bytes:\n got %q\nwant %q", o1.flush, wantFlush)
+	}
+	if strings.Contains(o1.flush, ",c=") || strings.Contains(o1.flush, ",r=") {
+		return fail("browser-shot ok: the wave-81 ruling bans c=/r= keys: %q", o1.flush)
+	}
+	if want := "FLOOR" + browserShotDelete(png); o1.flushFloor != want {
+		return fail("browser-shot ok: esc flushes exactly one a=d through the wrapper's diff:\n got %q\nwant %q", o1.flushFloor, want)
+	}
+	if want := "BACK" + "\x1b7\x1b[4;1H" + browserShotAPC(png) + "\x1b8"; o1.flushBack != want {
+		return fail("browser-shot ok: the return re-publishes the CACHED bytes byte-identically:\n got %q\nwant %q", o1.flushBack, want)
+	}
+	if o1.engineCalls != 1 {
+		return fail("browser-shot ok: the flip cycle NEVER re-renders (calls %d, want 1)", o1.engineCalls)
+	}
+	if o1.engineW <= 0 || o1.engineH <= 0 {
+		return fail("browser-shot ok: the render fired at the pane box's pixel dims (%dx%d)", o1.engineW, o1.engineH)
+	}
+	if !browserShotIdentical(o1, o2) {
+		return fail("browser-shot ok: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER SHOT — /open through the REAL app: the headless SHOT MODE in the LEFT slot =====")
+	fmt.Println(o1.frame)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("===== UI SHOT · BROWSER SHOT — the wrapper's emitted bytes (f=100, NO c=/r=) + the keep-alive flip =====")
+	fmt.Println("open flush:  " + fmt.Sprintf("%q", o1.flush))
+	fmt.Println("floor flush: " + fmt.Sprintf("%q", o1.flushFloor))
+	fmt.Println("back flush:  " + fmt.Sprintf("%q", o1.flushBack))
+	fmt.Println("===== UI SHOT =====")
+
+	// the failure classes — each lands its exact dim row (ansi-truncated
+	// at the slot width — the class-naming PREFIX rides every width; the
+	// FULL verbatim copies pin in panels' browser_panel_lane_test.go).
+	type failLeg struct {
+		flavor, rowPrefix string
+	}
+	for _, leg := range []failLeg{
+		{"chrome", "text lane — headless chrome not found"},
+		{"refused", "text lane — headless render refused"},
+		{"timeout", "text lane — headless render timed out"},
+	} {
+		f1, err := browserShotDrive(leg.flavor)
+		if err != nil {
+			return err
+		}
+		f2, err := browserShotDrive(leg.flavor)
+		if err != nil {
+			return err
+		}
+		frame := ansi.Strip(f1.frame)
+		if !strings.Contains(frame, leg.rowPrefix) {
+			return fail("browser-shot %s: the failure lands its dim row (prefix %q):\n%s", leg.flavor, leg.rowPrefix, frame)
+		}
+		if !strings.Contains(frame, "The Fixture Gazette") {
+			return fail("browser-shot %s: the text page stays warm under the failure:\n%s", leg.flavor, frame)
+		}
+		for _, never := range []string{"▸ headless chromium", " shot "} {
+			if strings.Contains(frame, never) {
+				return fail("browser-shot %s: a failure never wears shot chrome %q:\n%s", leg.flavor, never, frame)
+			}
+		}
+		if f1.flush != "SHOT" || f1.flushFloor != "FLOOR" || f1.flushBack != "BACK" {
+			return fail("browser-shot %s: the registry stays EMPTY (the wrapper passes through):\n%q %q %q", leg.flavor, f1.flush, f1.flushFloor, f1.flushBack)
+		}
+		if !browserShotIdentical(f1, f2) {
+			return fail("browser-shot %s: two drives must be byte-identical", leg.flavor)
+		}
+		fmt.Printf("===== UI SHOT · BROWSER SHOT %s — the failure class's dim row =====\n%s\n===== UI SHOT =====\n", strings.ToUpper(leg.flavor), f1.frame)
+	}
+
+	// leg NONKITTY — the iTerm stub: NO shot mode ever; the text lane +
+	// the dim "screenshot: <path>" row (the save still lands).
+	n1, err := browserShotDrive("nonkitty")
+	if err != nil {
+		return err
+	}
+	n2, err := browserShotDrive("nonkitty")
+	if err != nil {
+		return err
+	}
+	nk := ansi.Strip(n1.frame)
+	for _, want := range []string{"screenshot: /", "The Fixture Gazette", "▸ file:///"} {
+		if !strings.Contains(nk, want) {
+			return fail("browser-shot nonkitty frame missing %q:\n%s", want, nk)
+		}
+	}
+	for _, never := range []string{"▸ headless chromium", " shot "} {
+		if strings.Contains(nk, never) {
+			return fail("browser-shot nonkitty: shot mode is kitty-only (%q):\n%s", never, nk)
+		}
+	}
+	if !n1.savedOK || n1.savedPath != wantPath {
+		return fail("browser-shot nonkitty: the save still lands (path %q ok %v)", n1.savedPath, n1.savedOK)
+	}
+	if n1.flush != "SHOT" || n1.flushFloor != "FLOOR" || n1.flushBack != "BACK" {
+		return fail("browser-shot nonkitty: the registry stays EMPTY on a non-kitty host")
+	}
+	if n1.engineCalls != 1 {
+		return fail("browser-shot nonkitty: the flip cycle never re-renders (calls %d)", n1.engineCalls)
+	}
+	if !browserShotIdentical(n1, n2) {
+		return fail("browser-shot nonkitty: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER SHOT NONKITTY — the iTerm stub: the text lane + the saved-PNG row (never shot mode) =====")
+	fmt.Println(n1.frame)
+	fmt.Println("===== UI SHOT =====")
+
+	fmt.Println("asserts: OK — the headless SHOT lane through the LIVE app glue (a FAKE engine behind the panels seam — NO live chrome — rendering the shared checker PNG; the shot clock + a FIXED shots home pin byte-stable paths; PATH pinned empty so the zenbu lane misses by construction; \"/open file://<fixture>\" through the REAL chat input): leg ok (hermetic ghostty stub): the fetch's landing armed ONE render at the pane box's exact pixel dims, the \" shot \" badge + \"▸ headless chromium · <url>\" strip painted INSIDE the LEFT slot (left of the sidebar's chat, the right strip unmoved), the registry published the PNG at absolute (0,3)+pane-local (0,0) — the wrapper's flush byte-pinned cursor-save + CUP(4;1) + `ESC_Ga=T,t=d,q=2,C=1,i=" + panels.KittyIDHash8(panels.KittyImageID(png)) + ",f=100;<b64>ESC\\` with NO c=/r= keys (the wave-81 emission ruling) + cursor-restore — esc hid the slot with exactly ONE `ESC_Ga=d,d=I` through the emitted-set diff, ctrl+b re-published the CACHED bytes byte-identically with ZERO new engine calls (ONE render across the flip cycle), and the PNG saved under shots/1787918400000-<hash8>.png with the checker's exact bytes; the failure classes (chrome-missing / navigation-refused / timeout) each landed their exact dim row with the text page warm underneath and the registry untouched; the nonkitty leg (iTerm stub) NEVER entered shot mode — the text lane + the dim \"screenshot: <path>\" row, the save still landing; every leg byte-identical across two drives")
+	return nil
+}
+
 // --- browser tab text viewer (--browsertab) ---------------------------------
 // The UNCONDITIONAL lane: the browser tab itself — no zenbu, no external
 // binary, every host — riding the LEFT pane's floor|browser switcher. A
@@ -6563,6 +6986,7 @@ type browserTabFrameOut struct {
 
 func browserTabDrive() (browserTabFrameOut, error) {
 	var out browserTabFrameOut
+	defer pinShotEngineAbsent()() // no live chrome (the stub URL is localhost-allowed)
 	// the TEXT-viewer proof is hermetic on every host: on a kitty-capable
 	// machine with terminal-browser on PATH the pane's lane resolve would
 	// otherwise spawn a real child out of /open (the premium lane's OWN
@@ -7188,8 +7612,13 @@ func main() {
 				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 				os.Exit(1)
 			}
+		case "shot":
+			if err := runBrowserShotProof(); err != nil {
+				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+				os.Exit(1)
+			}
 		default:
-			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller), --lane live (the LIVE app-glue wiring), --lane keepalive (the freeze/thaw flip cycle), or --lane hint (the text-lane why row), got %q\n", lane)
+			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller), --lane live (the LIVE app-glue wiring), --lane keepalive (the freeze/thaw flip cycle), --lane hint (the text-lane why row), or --lane shot (the headless screenshot lane), got %q\n", lane)
 			os.Exit(1)
 		}
 		return

@@ -18,8 +18,11 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,8 +30,21 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/panels"
 )
+
+// TestMain pins the panels headless engine seam HERMETIC for the whole
+// app suite (no live chrome in unit tests): the package-wide default
+// verdict is chrome-missing — deterministic on every host. The shot
+// suites swap their own fake per test (panels.SetHeadlessForShot).
+func TestMain(m *testing.M) {
+	defer panels.SetHeadlessForShot(func() (string, bool) { return "", false },
+		func(context.Context, string, int, int) (*headless.Result, error) {
+			return nil, headless.ErrChromeNotFound
+		})()
+	os.Exit(m.Run())
+}
 
 // browserFixtureURL — the shared panels fixture as a file:// URL (the
 // REAL FetchPage source, no network).
@@ -276,5 +292,78 @@ func TestBrowserSlotOwnsKeys(t *testing.T) {
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'j', Text: "j"}))
 	if f := ansi.Strip(m.Frame()); !strings.Contains(f, "› j") {
 		t.Fatalf("the floor slot hands keys back to the chat draft:\n%s", f)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// the headless SHOT's app-level latch + flow (the frame-splice byte-pin
+// lives in browser_frame_test.go)
+// ---------------------------------------------------------------------------
+
+// TestBrowserSlashOpenShotNoticeLatch — /open with a working headless
+// engine: the render verdict rides the SAME BrowserPageMsg hop as the
+// fetch, and the /open office notice settles on the FETCH verdict
+// whichever msg lands — the shot msg never touches the latch. Proven
+// BOTH ways: the full drain (fetch first) and a hand-fed shot-first
+// ordering.
+func TestBrowserSlashOpenShotNoticeLatch(t *testing.T) {
+	pinBrowserLaneEnv(t)                          // the kitty display lane
+	t.Setenv(panels.BrowserLaneOffEnv, "1")       // the zenbu child stays out
+	t.Setenv("PATH", t.TempDir())                 // no terminal-browser binary either
+	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir()) // the save lands scratch
+	png, err := os.ReadFile("../panels/testdata/checker-8x8.png")
+	if err != nil {
+		t.Fatalf("read the checker fixture: %v", err)
+	}
+	restore := panels.SetHeadlessForShot(
+		func() (string, bool) { return "/fake/chrome", true },
+		func(_ context.Context, rawurl string, w, h int) (*headless.Result, error) {
+			return &headless.Result{URL: rawurl, Title: "Fixture Gazette", PNG: png}, nil
+		})
+	defer restore()
+
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	raw := browserFixtureURL(t)
+	m = runMsg(t, m, slashMsg{text: "/open " + raw})
+
+	// the notice settled on the FETCH verdict (title · url), NOT the
+	// shot's; the shot display path engaged.
+	if !lastOfficeNoticeHas(m, "browser: Fixture Gazette · "+raw) {
+		t.Fatalf("the /open notice settles on the fetch verdict (never the shot's)")
+	}
+	if !m.BrowserShotActive() {
+		t.Fatal("the render's verdict entered shot mode through the app glue")
+	}
+	if m.BrowserShotPath() == "" {
+		t.Fatal("the PNG saved (the path row for the member's `o` habit)")
+	}
+}
+
+// TestBrowserShotMsgNeverSettlesLatch — the ORDERING half, hand-fed: a
+// Shot-carrying verdict landing while the /open latch is armed leaves the
+// latch for the FETCH verdict (which then settles exactly once).
+func TestBrowserShotMsgNeverSettlesLatch(t *testing.T) {
+	pinBrowserTextLane(t)
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m.browserSlashNote = "http://x.test/" // the armed /open latch
+
+	// the render verdict lands FIRST (production races the two cmds).
+	m = runMsg(t, m, panels.BrowserPageMsg{Shot: &panels.BrowserShot{Seq: 1, Err: errors.New("boom")}})
+	if m.browserSlashNote == "" {
+		t.Fatal("the shot verdict must NEVER settle the /open notice latch")
+	}
+	if lastOfficeNoticeHas(m, "browser:") {
+		t.Fatalf("no notice rides the shot verdict")
+	}
+
+	// the fetch verdict lands: the latch settles on IT, exactly once.
+	m = runMsg(t, m, panels.BrowserPageMsg{URL: "http://x.test/", Page: &panels.Page{URL: "http://x.test/", Title: "T"}})
+	if m.browserSlashNote != "" {
+		t.Fatal("the fetch verdict settles the latch")
+	}
+	if !lastOfficeNoticeHas(m, "browser: T · http://x.test/") {
+		t.Fatalf("the notice carries the fetch's title · url")
 	}
 }

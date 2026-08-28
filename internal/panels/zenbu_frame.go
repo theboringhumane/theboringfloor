@@ -130,6 +130,12 @@ func (r *ZenbuFrameRegistry) snapshot() (active bool, originX, originY int, imag
 		append([]uint32(nil), r.deletes...)
 }
 
+// SnapshotForTest — the harness's read of the published entry (the
+// wrapper's snapshot, exported for the app-level splice proofs).
+func (r *ZenbuFrameRegistry) SnapshotForTest() (active bool, originX, originY int, images []ZenbuFrameImage, deletes []uint32) {
+	return r.snapshot()
+}
+
 // -------------------------------------------------------------------
 // the frame-splice output wrapper
 // -------------------------------------------------------------------

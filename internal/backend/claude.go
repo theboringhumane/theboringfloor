@@ -492,10 +492,12 @@ func (b *liveClaudeBackend) emitMapped(e state.Event) {
 			return
 		}
 	}
-	// Browser-tool markers (⟦open-browser: URL⟧) never reach the
-	// transcript: scrub the PINNED text (deltas stream raw — the pin
-	// supersedes the growing bubble, so the transcript at rest is clean)
-	// and fire the open requests (opencode parity: maybeBossCompleted).
+	// Browser-tool markers (⟦open-browser: URL⟧ and the
+	// ⟦browser-screenshot: URL⟧/⟦browser-snapshot: URL⟧ read-only
+	// siblings) never reach the transcript: scrub the PINNED text
+	// (deltas stream raw — the pin supersedes the growing bubble, so the
+	// transcript at rest is clean) and fire the requests (opencode
+	// parity: maybeBossCompleted; one event kind per directive kind).
 	if e.Kind == state.EvChatBoss && !e.Msg.Pending && e.Msg.Text != "" {
 		e.Msg.Text = browsertools.Scrub(e.Msg.Text, b.browserBridge)
 	}

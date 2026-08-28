@@ -360,11 +360,15 @@ Browser lane for `o`: on kitty-capable terminals (kitty, ghostty, WezTerm
 opens targets in-terminal first, cascading to the system opener on any
 failure; `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1` disables the lane.
 
-Browser premium lane: on kitty/ghostty (tmux and the iTerm2 family
+Browser premium lane: the text lane is the default everywhere. The
+premium path is headless screenshots — on kitty/ghostty with Chrome
+installed the tab shows rendered screenshots. The older EMBEDDED lane is
+retained but opt-in: on kitty/ghostty (tmux and the iTerm2 family
 stay text) with the
 [`terminal-browser`](https://github.com/zenbu-labs/terminal-browser)
-binary on PATH, the browser tab embeds the REAL Chromium browser
-automatically — every open (`/open`, the agent's browser-open tool, an
+binary on PATH AND `THEBORINGOFFICE_ZENBU_LANE=1` exported, the browser
+tab embeds the REAL Chromium browser — every open (`/open`, the agent's
+browser-open tool, an
 in-pane link follow) paints the live page (CSS, images, full rendering)
 inside the left-pane slot under the ` zenbu ` badge and the `▸ zenbu
 terminal-browser · <url>` top strip; keys reach the embedded browser
@@ -372,14 +376,16 @@ while `ctrl+b` / `q` / `esc` still belong to the office (leaving the slot
 FREEZES the session — SIGSTOPped, page kept — and returning repaints the
 retained frame instantly, no reload). The text lane is the
 universal default everywhere else — non-kitty terminals, the binary
-absent, or either kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1`
+absent, the opt-in flag unset (the default), or either kill-switch
+(`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1`
 or `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) armed — and the automatic
 fallback: a non-zero or instant (<300ms) exit drops that URL back to the
 text viewer with its history kept and a dim
 `zenbu exited (<code>) — falling back to text mode` note. The pane always
 explains its lane choice: while the text lane shows, one dim row under the
 location bar says why — the `terminal-browser` binary missing (with the
-install link), an unsupported terminal, or a kill-switch left armed.
+install link), an unsupported terminal, a kill-switch left armed, or the
+opt-in flag unset (with the exact var to set).
 
 ## Keys
 

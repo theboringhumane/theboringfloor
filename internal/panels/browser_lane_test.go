@@ -36,26 +36,32 @@ func lookMissing(string) (string, error) { return "", errors.New("exec: no comma
 
 // TestBrowserLaneResolveMatrix — the pure lane table: kitty-found,
 // kitty-missing (PATH-resolution-failure), terminal-mismatch, kill-switch
-// (both spellings). Every miss is the universal text lane.
+// (both spellings), and the wave-85 OPT-IN gate (premium requires
+// THEBORINGOFFICE_ZENBU_LANE=1 explicitly — "0" is NOT set). Every miss
+// is the universal text lane.
 func TestBrowserLaneResolveMatrix(t *testing.T) {
 	ghostty := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color"}
+	ghosttyOptIn := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color", BrowserLaneOptInEnv: "1"}
 	cases := []struct {
 		name string
 		env  map[string]string
 		look func(string) (string, error)
 		want BrowserLane
 	}{
-		{"kitty-found (ghostty + binary)", ghostty, lookFound, BrowserLaneZenbu},
-		{"kitty-found (TERM_PROGRAM=kitty)", map[string]string{"TERM_PROGRAM": "kitty"}, lookFound, BrowserLaneZenbu},
-		{"kitty-found (KITTY_WINDOW_ID beats TERM_PROGRAM)", map[string]string{"KITTY_WINDOW_ID": "7", "TERM_PROGRAM": "iTerm.app"}, lookFound, BrowserLaneZenbu},
-		{"kitty-missing binary (PATH-resolution-failure)", ghostty, lookMissing, BrowserLaneText},
+		{"kitty-found + opted in (ghostty + binary + flag)", ghosttyOptIn, lookFound, BrowserLaneZenbu},
+		{"kitty-found + opted in (TERM_PROGRAM=kitty)", map[string]string{"TERM_PROGRAM": "kitty", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneZenbu},
+		{"kitty-found + opted in (KITTY_WINDOW_ID beats TERM_PROGRAM)", map[string]string{"KITTY_WINDOW_ID": "7", "TERM_PROGRAM": "iTerm.app", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneZenbu},
+		{"kitty-missing binary + opted in (PATH-resolution-failure)", ghosttyOptIn, lookMissing, BrowserLaneText},
 		{"terminal-mismatch: iTerm2 is NOT this lane", map[string]string{"TERM_PROGRAM": "iTerm.app"}, lookFound, BrowserLaneText},
+		{"terminal-mismatch: the opt-in flag does NOT rescue a non-kitty host", map[string]string{"TERM_PROGRAM": "iTerm.app", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneText},
 		{"terminal-mismatch: WezTerm resolves the iterm image lane, never zenbu", map[string]string{"TERM_PROGRAM": "WezTerm"}, lookFound, BrowserLaneText},
 		{"terminal-mismatch: plain xterm", map[string]string{"TERM": "xterm-256color"}, lookFound, BrowserLaneText},
 		{"terminal-mismatch: tmux folds out conservatively", map[string]string{"TERM_PROGRAM": "ghostty", "TMUX": "/tmp/tmux-1000/default,1,0"}, lookFound, BrowserLaneText},
-		{"kill-switch: THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText},
-		{"kill-switch: THEBORINGOFFICE_NO_TERMINAL_BROWSER=1 (wave-70 spelling)", map[string]string{"TERM_PROGRAM": "ghostty", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText},
-		{"kill-switch: '0' is NOT armed", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "0"}, lookFound, BrowserLaneZenbu},
+		{"kill-switch: THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1 (opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText},
+		{"kill-switch: THEBORINGOFFICE_NO_TERMINAL_BROWSER=1 (wave-70 spelling, opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText},
+		{"kill-switch: '0' is NOT armed (opted in)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "0"}, lookFound, BrowserLaneZenbu},
+		{"opt-in-off: qualified but the flag UNSET — the default-off pivot", ghostty, lookFound, BrowserLaneText},
+		{"opt-in-off: '0' is NOT set", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "0"}, lookFound, BrowserLaneText},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -66,8 +72,57 @@ func TestBrowserLaneResolveMatrix(t *testing.T) {
 	}
 }
 
+// TestBrowserLaneOptInGate — the wave-85 default-off pivot's REASONED
+// contract (the pure reasoned core's new class): premium requires the
+// opt-in flag explicitly; qualified-but-unflagged is the opt-in-off class
+// carrying the flag's name for the hint renderer (the killSwitchVar-style
+// passthrough); the kill-switch keeps precedence over the opt-in gate;
+// and "0" is NOT set. The hint copy for the class is pinned here too.
+func TestBrowserLaneOptInGate(t *testing.T) {
+	ghostty := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color"}
+	cases := []struct {
+		name       string
+		env        map[string]string
+		look       func(string) (string, error)
+		wantLane   BrowserLane
+		wantReason BrowserLaneReason
+		wantVar    string
+	}{
+		{"premium requires the opt-in flag explicitly", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneZenbu, BrowserLanePremium, ""},
+		{"qualified but unflagged → opt-in-off + the flag's name", ghostty, lookFound, BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv},
+		{"'0' is NOT set → opt-in-off", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "0"}, lookFound, BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv},
+		{"kill-switch precedence over opt-in-off (both gates in play)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
+		{"kill-switch precedence over opt-in-off (wave-70 spelling)", map[string]string{"TERM_PROGRAM": "ghostty", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, TerminalBrowserOffEnv},
+		{"kill-switch precedence over the OPTED-IN lane (the off-switch always wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
+		{"unflagged + binary missing → the actionable binary class (never opt-in-off)", ghostty, lookMissing, BrowserLaneText, BrowserLaneNoBinary, ""},
+		{"unflagged + non-kitty → the terminal class (never opt-in-off)", map[string]string{"TERM_PROGRAM": "iTerm.app"}, lookFound, BrowserLaneText, BrowserLaneNoTerminal, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lane, reason, v := ResolveBrowserLaneReasonFrom(laneEnv(tc.env), tc.look)
+			if lane != tc.wantLane || reason != tc.wantReason || v != tc.wantVar {
+				t.Fatalf("ResolveBrowserLaneReasonFrom = (%s, %s, %q), want (%s, %s, %q)",
+					lane, reason, v, tc.wantLane, tc.wantReason, tc.wantVar)
+			}
+		})
+	}
+	// the hint copy for the new class (the pane's dim "why" row consumes
+	// it verbatim through browser.go's laneHint).
+	if got, want := browserLaneHintText(BrowserLaneOptInOff, BrowserLaneOptInEnv),
+		"text lane — the embedded browser is opt-in: THEBORINGOFFICE_ZENBU_LANE=1 to enable it"; got != want {
+		t.Fatalf("the opt-in-off hint copy: got %q want %q", got, want)
+	}
+	if got := BrowserLaneOptInOff.String(); got != "opt-in-off" {
+		t.Fatalf("the reason word: got %q", got)
+	}
+}
+
 // pinKittyEnv — the hermetic kitty-capable host stub for the live-read
 // tests (uishot's stubTermEnv checklist: every detect-layer input owned).
+// The wave-85 opt-in flag is SET here: this is the "premium resolves"
+// stub — every lane test that spawns/expects the premium embed rides it
+// (the freeze/splitter/wrapper suites included); tests that want the
+// default-off world clear the flag themselves after pinning.
 func pinKittyEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("TERM_PROGRAM", "ghostty")
@@ -79,9 +134,30 @@ func pinKittyEnv(t *testing.T) {
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv(BrowserLaneOffEnv, "")
 	t.Setenv(TerminalBrowserOffEnv, "")
+	t.Setenv(BrowserLaneOptInEnv, "1")
 	old := zenbuLookPath
 	zenbuLookPath = lookFound
 	t.Cleanup(func() { zenbuLookPath = old })
+}
+
+// TestBrowserLaneOptInOffLive — the live-read (non-pure) default-off
+// contract: a fully-qualified host (kitty stub + binary found + no
+// kill-switch) with the flag UNSET resolves the TEXT lane wearing the
+// opt-in-off class and the flag's name — and setting the flag flips the
+// SAME read premium.
+func TestBrowserLaneOptInOffLive(t *testing.T) {
+	pinKittyEnv(t)
+	t.Setenv(BrowserLaneOptInEnv, "") // the default-off world
+	lane, reason, v := ResolveBrowserLaneReason()
+	if lane != BrowserLaneText || reason != BrowserLaneOptInOff || v != BrowserLaneOptInEnv {
+		t.Fatalf("qualified-but-unflagged live read = (%s, %s, %q), want (text, opt-in-off, %s)",
+			lane, reason, v, BrowserLaneOptInEnv)
+	}
+	t.Setenv(BrowserLaneOptInEnv, "1")
+	lane, reason, v = ResolveBrowserLaneReason()
+	if lane != BrowserLaneZenbu || reason != BrowserLanePremium || v != "" {
+		t.Fatalf("the opted-in live read = (%s, %s, %q), want (zenbu, premium, \"\")", lane, reason, v)
+	}
 }
 
 // TestBrowserLaneResolverMemo — the per-boot memoization: ONE honest read,

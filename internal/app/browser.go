@@ -153,13 +153,16 @@ func (m *Model) closeBrowser() {
 
 // handleBrowserPage — the fetch verdict landed: forward to the pane, then
 // settle the /open notice latch (success → dim "browser: <title> · <url>",
-// error → the red wording the fetch produced).
+// error → the red wording the fetch produced). A Shot-carrying msg is the
+// headless render's verdict riding the same hop: it forwards to the pane
+// exactly alike but NEVER settles the latch — the /open notice belongs to
+// the FETCH verdict, whichever msg lands first.
 func (m *Model) handleBrowserPage(msg panels.BrowserPageMsg) tea.Cmd {
 	var cmd tea.Cmd
 	if m.browser != nil {
 		cmd = m.browser.Update(msg)
 	}
-	if m.browserSlashNote != "" {
+	if msg.Shot == nil && m.browserSlashNote != "" {
 		m.browserSlashNote = ""
 		switch {
 		case msg.Err != nil:
@@ -231,6 +234,37 @@ func (m Model) BrowserLanePoll() {
 	}
 }
 
+// BrowserShotActive — the left-pane browser's SHOT MODE is painting
+// RIGHT NOW (a landed headless render on the kitty display lane AND the
+// slot visible): the " shot " badge + strip show and the PNG rides the
+// frame-splice wrapper. A shot BEHIND THE FLOOR is not active (the
+// keep-alive posture — the cached bytes re-publish on return;
+// BrowserPremiumActive's frozen-child twin). The harness proves the
+// display path through this.
+func (m Model) BrowserShotActive() bool {
+	_, _, ok := m.browserShotOrigin()
+	return ok
+}
+
+// BrowserShotPath — the saved PNG's on-disk path ("" while none): the
+// harness reads the shots/<ts>-<hash8>.png convention through this.
+func (m Model) BrowserShotPath() string {
+	if m.browser == nil {
+		return ""
+	}
+	return m.browser.ShotPath()
+}
+
+// BrowserShotBoxPx — the pane body box in CSS pixels the NEXT headless
+// render would use (the harness asserts the engine's recorded dims
+// against it).
+func (m Model) BrowserShotBoxPx() (widthPx, heightPx int) {
+	if m.browser == nil {
+		return 0, 0
+	}
+	return m.browser.ShotBoxPx()
+}
+
 // handleBrowserLeave — the pane's q/esc: back to the floor tab (the right
 // strip never moves) AND the lane session FREEZES (the keep-alive
 // suspend: the premium child keeps the page warm — the slot repaints
@@ -257,20 +291,28 @@ const zenbuGridOriginY = 3
 
 // publishZenbuFrame — Frame()'s registry write (called once per RENDERED
 // frame, after the frame composed): the premium lane's absolute origin +
-// live images + drained deletes, or the empty state whenever the lane
-// paints nothing this frame (the wrapper then emits nothing and
-// diff-deletes whatever it emitted before). A cache-HIT Frame never
-// reaches here — and needs to: every field the origin depends on is
-// digest-covered, so an unchanged digest means an unchanged entry.
+// live images + drained deletes, OR the headless SHOT's cached PNG (the
+// same origin math — the shot body starts where the zenbu grid would),
+// or the empty state whenever neither paints this frame (the wrapper
+// then emits nothing and diff-deletes whatever it emitted before — the
+// floor flip's a=d rides exactly that transition). A cache-HIT Frame
+// never reaches here — and needs to: every field the origin depends on
+// is digest-covered, and the shot's verdict rides BrowserPageMsg's
+// frameNonce++ (model.go's existing case), so a landed shot recomposes.
 func (m Model) publishZenbuFrame() {
 	reg := panels.ZenbuRegistry()
 	ox, oy, ok := m.browserGridOrigin()
-	if !ok {
-		reg.Clear()
+	if ok {
+		imgs, deletes := m.browser.LaneFrameState()
+		reg.Publish(true, ox, oy, imgs, deletes)
 		return
 	}
-	imgs, deletes := m.browser.LaneFrameState()
-	reg.Publish(true, ox, oy, imgs, deletes)
+	sx, sy, sok := m.browserShotOrigin()
+	if sok {
+		reg.Publish(true, sx, sy, m.browser.ShotFrameState(), nil)
+		return
+	}
+	reg.Clear()
 }
 
 // browserGridOrigin — the ABSOLUTE cell origin of the premium lane's body
@@ -282,6 +324,27 @@ func (m Model) publishZenbuFrame() {
 // lane is not premium-active (text lane / fell back / closed).
 func (m Model) browserGridOrigin() (originX, originY int, ok bool) {
 	if m.browser == nil || m.leftTab != leftTabBrowser || !m.browser.PremiumActive() {
+		return 0, 0, false
+	}
+	if m.zen || m.threadFocus != nil {
+		return 0, 0, false
+	}
+	if !m.mobile() && m.planPaneVisible() {
+		return 0, 0, false // desktop: the plan owns the floor slot
+	}
+	return 0, zenbuGridOriginY, true
+}
+
+// browserShotOrigin — the ABSOLUTE cell origin of the SHOT's body box
+// THIS frame: browserGridOrigin's exact gating with ShotActive in the
+// premium lane's place (the shot body starts at the same absolute row:
+// topbar 1 + switcher strip 1 + the pane's own strip row 1). ok=false
+// (the registry clears) whenever the shot region is not painted — the
+// floor is showing (the flip's keep-alive: the CACHED bytes re-publish
+// on return, no re-render), zen/thread-focus/desktop-plan owns the
+// middle, or no render has landed.
+func (m Model) browserShotOrigin() (originX, originY int, ok bool) {
+	if m.browser == nil || m.leftTab != leftTabBrowser || !m.browser.ShotActive() {
 		return 0, 0, false
 	}
 	if m.zen || m.threadFocus != nil {

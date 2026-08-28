@@ -268,6 +268,15 @@ func renderMCPAttachment(servers []mcpServerHint) []byte {
 	b.WriteString("no place for API keys. When a dispatch needs one of these servers,\n")
 	b.WriteString("name it in the dispatch brief's CONTEXT so the developer knows the\n")
 	b.WriteString("tools exist; the developer discovers the exact tool names live.\n")
+	b.WriteString("\n")
+	b.WriteString("Usage discipline:\n")
+	b.WriteString("- Prefer a purpose-built MCP tool over a shell workaround when one\n")
+	b.WriteString("  covers the job (memory recall, web fetch, tracing) — but never\n")
+	b.WriteString("  guess a tool name: list or probe the server's tools first.\n")
+	b.WriteString("- A failing or absent MCP tool is an ISSUE to report, not a reason\n")
+	b.WriteString("  to fake its output.\n")
+	b.WriteString("- Servers listed here may still be down at call time; treat the\n")
+	b.WriteString("  first call as the health check.\n")
 	return []byte(b.String())
 }
 

@@ -234,6 +234,78 @@ func TestBrowserMarkerFlagOnAllows(t *testing.T) {
 	}
 }
 
+// TestBrowserShotSnapMarkersScrubAtPin — opencode lane: the new
+// read-only markers scrub off the pinned bubble exactly like the open
+// marker, and each lands as its OWN event kind carrying the allowed
+// verdict (screenshot) / the exact refusal reason (snapshot).
+func TestBrowserShotSnapMarkersScrubAtPin(t *testing.T) {
+	t.Setenv(browsertools.AllowHTTPEnv, "")
+	rows := `[
+	  {"info":{"id":"u-1","sessionID":"ses-primary","role":"user","time":{"created":100}},"parts":[]},
+	  {"info":{"id":"m-1","sessionID":"ses-primary","role":"assistant","finish":"stop","time":{"created":110,"completed":120},"cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}},"parts":[]}
+	]`
+	// the fixture embeds the text raw into JSON — \n must arrive ESCAPED.
+	b, log := reconcileFixture(t, rows, map[string]string{
+		"m-1": "Rendering and reading it now.\\n⟦browser-screenshot: https://theboring.name/docs⟧\\n⟦browser-snapshot: http://theboring.name⟧",
+	})
+	b.mu.Lock()
+	b.pendingBoss = []string{"boss-1"}
+	b.mu.Unlock()
+
+	b.sseRecovered()
+
+	pins := bossPins(log)
+	if len(pins) != 1 {
+		t.Fatalf("want ONE boss pin, got %d", len(pins))
+	}
+	if pins[0].Msg.Text != "Rendering and reading it now." {
+		t.Fatalf("the pinned text must be scrubbed of BOTH new markers, got %q", pins[0].Msg.Text)
+	}
+	tool := eventsMatching(log, func(e state.Event) bool {
+		return e.Kind == state.EvBrowserScreenshot || e.Kind == state.EvBrowserSnapshot
+	})
+	if len(tool) != 2 {
+		t.Fatalf("want ONE EvBrowserScreenshot + ONE EvBrowserSnapshot, got %+v", tool)
+	}
+	if tool[0].Kind != state.EvBrowserScreenshot || tool[0].Text != "https://theboring.name/docs" ||
+		!tool[0].BrowserOpenAllowed || tool[0].BrowserOpenReason != "" {
+		t.Fatalf("the screenshot event must carry the allowed verdict on its own kind, got %+v", tool[0])
+	}
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	if tool[1].Kind != state.EvBrowserSnapshot || tool[1].Text != "http://theboring.name" ||
+		tool[1].BrowserOpenAllowed || tool[1].BrowserOpenReason != reason {
+		t.Fatalf("the snapshot refusal must carry the exact reason on its own kind, got %+v", tool[1])
+	}
+}
+
+// TestBrowserShotMarkerOnlyFallback — opencode lane: a screenshot-ONLY
+// reply scrubs to the kind-named office note (the pinned bubble never
+// goes blank).
+func TestBrowserShotMarkerOnlyFallback(t *testing.T) {
+	t.Setenv(browsertools.AllowHTTPEnv, "")
+	rows := `[
+	  {"info":{"id":"u-1","sessionID":"ses-primary","role":"user","time":{"created":100}},"parts":[]},
+	  {"info":{"id":"m-1","sessionID":"ses-primary","role":"assistant","finish":"stop","time":{"created":110,"completed":120},"cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}},"parts":[]}
+	]`
+	b, log := reconcileFixture(t, rows, map[string]string{
+		"m-1": "⟦browser-screenshot: https://theboring.name⟧",
+	})
+	b.mu.Lock()
+	b.pendingBoss = []string{"boss-1"}
+	b.mu.Unlock()
+
+	b.sseRecovered()
+
+	pins := bossPins(log)
+	if len(pins) != 1 || pins[0].Msg.Text != "[theboringoffice] browser-screenshot: https://theboring.name" {
+		t.Fatalf("the screenshot-only bubble degrades to the kind-named note, got %+v", pins)
+	}
+	shots := eventsMatching(log, func(e state.Event) bool { return e.Kind == state.EvBrowserScreenshot })
+	if len(shots) != 1 || !shots[0].BrowserOpenAllowed || shots[0].Text != "https://theboring.name" {
+		t.Fatalf("the screenshot event carries the allowed verdict, got %+v", shots)
+	}
+}
+
 // ---------------------------------------------------------------- claude
 
 // TestClaudeBrowserPreambleRidesFirstLine — the FIRST stdin user line
@@ -342,5 +414,57 @@ func TestClaudeBrowserMarkerScrubbedAtPin(t *testing.T) {
 	}})
 	if evs := log.snapshot(); len(evs) != 5 || evs[4].Msg.Text != "plain reply" {
 		t.Fatalf("a clean pin is identity + silence, got %+v", evs)
+	}
+}
+
+// TestClaudeBrowserShotSnapScrubbedAtPin — the new read-only markers
+// scrub off the claude completion pin exactly like the open marker:
+// each fires its OWN event kind BEFORE the pin lands, in order of
+// appearance, and the pinned text keeps only the prose.
+func TestClaudeBrowserShotSnapScrubbedAtPin(t *testing.T) {
+	t.Setenv(browsertools.AllowHTTPEnv, "")
+	b := newClaudeBackend("true", t.TempDir(), nil) // bin never spawned (no Start)
+	log := &claudeEventLog{}
+	b.fl.setEmit(log.emit)
+
+	b.emitMapped(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m1", From: "boss", Kind: "boss",
+		Text:    "Rendering and reading it now.\n⟦browser-screenshot: https://theboring.name/docs⟧\n⟦browser-snapshot: https://theboring.name/api⟧",
+		Pending: false,
+	}})
+
+	evs := log.snapshot()
+	if len(evs) != 3 {
+		t.Fatalf("want screenshot + snapshot events THEN the pin (3 events), got %d: %+v", len(evs), evs)
+	}
+	if evs[0].Kind != state.EvBrowserScreenshot || evs[0].Text != "https://theboring.name/docs" ||
+		!evs[0].BrowserOpenAllowed {
+		t.Fatalf("the screenshot request lands FIRST with the allowed verdict, got %+v", evs[0])
+	}
+	if evs[1].Kind != state.EvBrowserSnapshot || evs[1].Text != "https://theboring.name/api" ||
+		!evs[1].BrowserOpenAllowed {
+		t.Fatalf("the snapshot request lands SECOND with the allowed verdict, got %+v", evs[1])
+	}
+	if evs[2].Kind != state.EvChatBoss || evs[2].Msg.Text != "Rendering and reading it now." {
+		t.Fatalf("the pin lands LAST, scrubbed of both new markers, got %+v", evs[2])
+	}
+
+	// a refused screenshot-only pin degrades to the kind-named refusal
+	// note + the reason event on the screenshot kind.
+	b.emitMapped(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m2", From: "boss", Kind: "boss",
+		Text: "⟦browser-screenshot: http://theboring.name⟧", Pending: false,
+	}})
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	evs = log.snapshot()
+	if len(evs) != 5 {
+		t.Fatalf("the refused pin adds 2 events (5 total), got %d", len(evs))
+	}
+	if evs[3].Kind != state.EvBrowserScreenshot || evs[3].BrowserOpenAllowed ||
+		evs[3].BrowserOpenReason != reason {
+		t.Fatalf("the refused screenshot event carries the exact reason, got %+v", evs[3])
+	}
+	if evs[4].Msg.Text != "[theboringoffice] browser-screenshot refused: "+reason {
+		t.Fatalf("the refused screenshot-only pin degrades to the kind-named note, got %q", evs[4].Msg.Text)
 	}
 }

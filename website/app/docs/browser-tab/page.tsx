@@ -7,7 +7,7 @@ import { SectionTag } from '@/components/section-tag'
 export const metadata: Metadata = {
   title: 'Browser tab | theboringoffice',
   description:
-    'A text-mode HTML page viewer on the left pane — headings, indexed links, history, /open — with a zenbu terminal-browser premium lane on kitty-capable terminals.',
+    'A text-mode HTML page viewer on the left pane — headings, indexed links, history, /open — with rendered headless screenshots on kitty-capable terminals and an opt-in zenbu terminal-browser embedded lane.',
 }
 
 function Code({ children }: { children: React.ReactNode }) {
@@ -44,9 +44,10 @@ export default function BrowserTabPage() {
               in-TUI page viewer. Web pages render
               as navigable text and link rows — no external binary, no headless
               Chromium, no runtime to install — so it works on every terminal the
-              office runs on. On kitty-capable terminals an installed zenbu{' '}
-              <Code>terminal-browser</Code> upgrades the pane to a real embedded
-              browser; everywhere else, text is the feature, not the fallback.
+              office runs on. On kitty-capable terminals with Chrome installed the
+              tab upgrades to rendered headless screenshots; an older embedded
+              zenbu <Code>terminal-browser</Code> lane survives behind an explicit
+              opt-in flag; everywhere else, text is the feature, not the fallback.
             </p>
           </div>
         </section>
@@ -140,17 +141,26 @@ export default function BrowserTabPage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The premium lane</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              On kitty terminals, a real browser moves into the pane.
+              Rendered screenshots by default; the embedded browser is opt-in.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               On a kitty-capable terminal — kitty or ghostty; tmux and the iTerm2
-              family stay text — with zenbu&apos;s{' '}
-              <Code>terminal-browser</Code> binary on <Code>PATH</Code>, the tab
-              embeds the real Chromium page inside the pane at the pane&apos;s exact
-              pixel size: a top strip <Code>▸ zenbu terminal-browser · &lt;url&gt;</Code>{' '}
-              and a <Code>zenbu</Code> badge mark the lane. The text viewer remains
-              the universal default; the premium lane is an upgrade the tab resolves
-              live, not a dependency.
+              family stay text — with Chrome installed, the tab shows rendered
+              screenshots of the page: the headless browser runs out-of-process
+              and the pane paints the result. The text viewer remains the
+              universal default everywhere else; the premium path is an upgrade
+              the tab resolves live, not a dependency.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              The older EMBEDDED lane — zenbu&apos;s <Code>terminal-browser</Code>,
+              a real Chromium app living inside the pane — is retained but{' '}
+              <strong className="text-foreground">off by default</strong>. Opt in
+              explicitly: install the binary (re-run the office installer with{' '}
+              <Code>--with-terminal-browser</Code>) and export{' '}
+              <Code>THEBORINGOFFICE_ZENBU_LANE=1</Code>. Then the tab embeds the
+              live page at the pane&apos;s exact pixel size under a top strip{' '}
+              <Code>▸ zenbu terminal-browser · &lt;url&gt;</Code> and a{' '}
+              <Code>zenbu</Code> badge.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The fallback is honest both ways: a non-zero or instant (&lt;300ms) exit
@@ -158,11 +168,13 @@ export default function BrowserTabPage() {
               <Code>zenbu exited (&lt;code&gt;) — falling back to text mode</Code>{' '}
               note; a clean exit just returns to text quietly. Two kill-switches
               force the text lane — <Code>THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1</Code>{' '}
-              or <Code>THEBORINGOFFICE_NO_TERMINAL_BROWSER=1</Code>.
+              or <Code>THEBORINGOFFICE_NO_TERMINAL_BROWSER=1</Code> — and they win
+              over the opt-in flag.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
-              <Chip combo="kitty / ghostty" action="premium lane hosts" />
-              <Chip combo="terminal-browser on PATH" action="the one requirement" />
+              <Chip combo="kitty / ghostty + Chrome" action="rendered screenshots" />
+              <Chip combo="THEBORINGOFFICE_ZENBU_LANE=1" action="opt in to the embedded lane" />
+              <Chip combo="terminal-browser on PATH" action="the embedded lane's binary" />
               <Chip combo="&lt;300ms exit" action="falls back to text, URL kept" />
             </div>
           </div>
@@ -226,6 +238,13 @@ export default function BrowserTabPage() {
                 <strong className="text-foreground">The premium lane is kitty/ghostty
                 only.</strong> tmux and the iTerm2 family stay on the text lane — a
                 protocol boundary, not a preference.
+              </li>
+              <li>
+                <strong className="text-foreground">The embedded lane is off by
+                default.</strong> The zenbu <Code>terminal-browser</Code> embed is
+                opt-in (<Code>THEBORINGOFFICE_ZENBU_LANE=1</Code> + the binary on{' '}
+                <Code>PATH</Code>); the default premium path is headless
+                screenshots.
               </li>
             </ul>
           </div>

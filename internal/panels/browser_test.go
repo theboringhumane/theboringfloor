@@ -8,16 +8,37 @@
 package panels
 
 import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/theboringhumane/theboringoffice/internal/headless"
 )
+
+// TestMain pins the headless engine seam HERMETIC for the whole panels
+// suite (no live chrome in unit tests): the package-wide default verdict
+// is chrome-missing — deterministic on every host, and cheap (the probe
+// gates before any render). The shot suites swap their own fake per test
+// (SetHeadlessForShot's restore).
+func TestMain(m *testing.M) {
+	defer SetHeadlessForShot(func() (string, bool) { return "", false },
+		func(context.Context, string, int, int) (*headless.Result, error) {
+			return nil, headless.ErrChromeNotFound
+		})()
+	os.Exit(m.Run())
+}
 
 // browserKey mirrors gitpanel_test's gitKey: string → tea.KeyPressMsg.
 func browserKey(s string) tea.KeyPressMsg {
@@ -264,6 +285,133 @@ func TestBrowserStarterCard(t *testing.T) {
 	b.SetSize(60, 10)
 	if got := ansi.Strip(b.View()); !strings.Contains(got, "▸ enter a url · /open <url> · o for file") {
 		t.Fatalf("idle pane must show the starter card, got:\n%s", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// the headless screenshot lane (SHOT MODE) — unit half
+// ---------------------------------------------------------------------------
+
+// shotTestPNG — the shared checker fixture's bytes (a REAL PNG the save
+// convention + the content-addressed id hash).
+func shotTestPNG(t *testing.T) []byte {
+	t.Helper()
+	png, err := os.ReadFile("testdata/checker-8x8.png")
+	if err != nil {
+		t.Fatalf("read the checker fixture: %v", err)
+	}
+	return png
+}
+
+// TestShotKittyFrameShape — the emitted APC, byte-pinned: a=T + t=d +
+// q=2 + C=1 + i=<content hash8> + f=100, the PNG's base64 verbatim, and
+// NO c=/r= keys ANYWHERE (the wave-81/82 production emission ruling —
+// the c=/r= variant did not visibly paint on the member's ghostty).
+func TestShotKittyFrameShape(t *testing.T) {
+	png := shotTestPNG(t)
+	id := KittyImageID(png)
+	got := shotKittyFrame(id, png)
+	want := "\x1b_Ga=T,t=d,q=2,C=1,i=" + KittyIDHash8(id) + ",f=100;" +
+		base64.StdEncoding.EncodeToString(png) + "\x1b\\"
+	if got != want {
+		t.Fatalf("the shot frame's bytes:\n got %q\nwant %q", got, want)
+	}
+	for _, banned := range []string{",c=", ",r="} {
+		if strings.Contains(got, banned) {
+			t.Fatalf("the wave-81 ruling bans %s from the emitted frame: %q", banned, got)
+		}
+	}
+}
+
+// TestBrowserShotCellPx — the THEBORINGOFFICE_CELL_PX=W:H override matrix
+// (the 9x18 default stands on any malformed value).
+func TestBrowserShotCellPx(t *testing.T) {
+	cases := []struct {
+		name string
+		env  string
+		w, h int
+	}{
+		{"unset", "", 9, 18},
+		{"the override", "10:20", 10, 20},
+		{"malformed (no colon)", "10", 9, 18},
+		{"malformed (words)", "wide:tall", 9, 18},
+		{"zero is not a metric", "0:0", 9, 18},
+		{"negative is not a metric", "-4:18", 9, 18},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("THEBORINGOFFICE_CELL_PX", tc.env)
+			w, h := browserShotCellPx()
+			if w != tc.w || h != tc.h {
+				t.Fatalf("browserShotCellPx(%q) = %dx%d, want %dx%d", tc.env, w, h, tc.w, tc.h)
+			}
+		})
+	}
+}
+
+// TestShotFailCopyClasses — the failure classifier's frozen rows: chrome-
+// missing names the fix, a policy refusal carries the decision's verbatim
+// reason, the timeout names the bound, anything else degrades honest.
+func TestShotFailCopyClasses(t *testing.T) {
+	if got := shotFailCopy(headless.ErrChromeNotFound); got != shotFailChromeCopy {
+		t.Fatalf("chrome-missing row = %q, want %q", got, shotFailChromeCopy)
+	}
+	if got := shotFailCopy(fmt.Errorf("wrap: %w", headless.ErrChromeNotFound)); got != shotFailChromeCopy {
+		t.Fatalf("a WRAPPED chrome-missing still classifies: %q", got)
+	}
+	pol := &headless.PolicyError{URL: "http://x.test/", Reason: "plain http to x.test refused"}
+	if got, want := shotFailCopy(pol), "text lane — headless render refused: plain http to x.test refused"; got != want {
+		t.Fatalf("the policy row carries the verbatim reason:\n got %q\nwant %q", got, want)
+	}
+	wantTimeout := fmt.Sprintf("text lane — headless render timed out (%ds)", int(browserShotDeadline.Seconds()))
+	if got := shotFailCopy(context.DeadlineExceeded); got != wantTimeout {
+		t.Fatalf("the timeout row = %q, want %q", got, wantTimeout)
+	}
+	if got := shotFailCopy(errors.New("kaboom")); got != "text lane — headless render failed: kaboom" {
+		t.Fatalf("the generic row degrades honest: %q", got)
+	}
+	// the chrome copy names the fix (the requirement's own words).
+	if !strings.Contains(shotFailChromeCopy, "install Chrome or export THEBORINGOFFICE_CHROME") {
+		t.Fatalf("the chrome-missing row names the fix: %q", shotFailChromeCopy)
+	}
+}
+
+// TestSaveShotPNG — the save convention: <$THEBORINGOFFICE_HOME>/shots/
+// <unixMillis>-<hash8>.png with the bytes round-tripping, and the
+// os.TempDir fallback when HOME is unset.
+func TestSaveShotPNG(t *testing.T) {
+	png := shotTestPNG(t)
+	pin := time.Date(2026, 8, 28, 12, 0, 0, 0, time.UTC)
+	defer SetShotNowForShot(func() time.Time { return pin })()
+
+	home := t.TempDir()
+	t.Setenv("THEBORINGOFFICE_HOME", home)
+	got, err := saveShotPNG(png)
+	if err != nil {
+		t.Fatalf("saveShotPNG: %v", err)
+	}
+	want := filepath.Join(home, "shots", "1787918400000-"+KittyIDHash8(KittyImageID(png))+".png")
+	if got != want {
+		t.Fatalf("the saved path = %q, want %q", got, want)
+	}
+	back, err := os.ReadFile(got)
+	if err != nil || !errors.Is(err, nil) || len(back) != len(png) {
+		t.Fatalf("the saved PNG round-trips: %v (%d bytes)", err, len(back))
+	}
+	for i := range png {
+		if back[i] != png[i] {
+			t.Fatalf("the saved PNG's bytes drifted at %d", i)
+		}
+	}
+
+	// the TempDir fallback: HOME unset → <os.TempDir>/shots.
+	t.Setenv("THEBORINGOFFICE_HOME", "")
+	got2, err := saveShotPNG(png)
+	if err != nil {
+		t.Fatalf("saveShotPNG (TempDir leg): %v", err)
+	}
+	if want2 := filepath.Join(os.TempDir(), "shots", filepath.Base(want)); got2 != want2 {
+		t.Fatalf("the fallback path = %q, want %q", got2, want2)
 	}
 }
 

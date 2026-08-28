@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev P2: tab screenshot display (@developer su... — tekton-2 (developer) · `issues`
+- summary: Everything is green and stable. Assembling the developer return.
+- files: `internal/panels/browser.go`, `internal/panels/zenbu_frame.go`, `internal/panels/browser_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/panels/browser_hint_test.go`, `internal/app/browser.go`, `internal/app/browser_test.go`, `internal/app/browser_frame_test.go`, `internal/app/browser_lane_test.go`, `cmd/uishot/main.go`
+- verify: ```
+- proof: *1. The shot-mode frame through the REAL app** (`go run ./cmd/uishot --browser --lane shot`, ANSI-stripped — the ` shot ` badge + strip in t
+- ledgerId: led-1787914456203-48a66ca2
+
+### 2026-08-28 · Dev P3: agent shot/snapshot tools (@developer... — tekton-3 (developer) · `issues`
+- summary: **Markers**: added `⟦browser-screenshot: URL⟧` (`MarkerShot`) and `⟦browser-snapshot: URL⟧` (`MarkerSnap`) to the marker protocol — whole-line rule, own regex p
+- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/browser_open_test.go`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`
+- verify: ```
+- proof: *The new PromptPreamble, verbatim (as it rides the first prompt on both backends):**
+- ledgerId: led-1787913705452-62a86d3a
+
+### 2026-08-28 · Dev P4: zenbu default-off + docs (@developer... — tekton-4 (developer) · `issues`
+- summary: All checks complete. Assembling the return.
+- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_kitty_test.go`, `install.sh`, `README.md`, `website/app/docs/browser-tab/page.tsx`, NOT touched
+- verify: ```
+- proof: *The new reason-matrix rows** (`TestBrowserLaneOptInGate`, verbatim env → `(lane, reason, var)`):
+- ledgerId: led-1787912379395-954f78bc
+
+### 2026-08-28 · Dev P1: headless engine pkg (@developer subag... — tekton-1 (developer) · `issues`
+- summary: Created `internal/headless` — the pure-Go CDP (chromedp) engine: `Available` (memoized discovery: `THEBORINGOFFICE_CHROME` → macOS `/Applications` Chrome/Chromi
+- files: `internal/headless/headless.go`, `internal/headless/euid_unix.go` / `euid_other.go`, `internal/headless/headless_test.go`, `internal/headless/live_test.go`, `internal/headless/testdata/fixture.html`, `go.mod`, `go.sum`
+- verify: $ `go test ./... -count=1 -p 4 2>&1 | grep -cE '^FAIL'` → **6, not 0** — all foreign (`internal/panels`, `internal/app`, one transient mid-e
+- proof: *Discovery on this machine** (from live test logs):
+- ledgerId: led-1787911901187-88662352
+
 ### 2026-08-28 · Dev N: fix freeze chain-tail leak (@developer... — tekton-2 (developer) · `issues`
 - summary: All gates green, 5× stability run clean, final tree state confirmed. The `.opencode/office-ledger.md` modification is the office app's own recorder, not mine.
 - files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (none)
 - proof: (none)
 - ledgerId: led-1787771277501-ba9faf07
-
-### 2026-08-26 · Dev: open-in-browser hotkey (links/img) (@gen... — tekton-12 (developer) · `issues`
-- summary: All work is complete and every gate passes. Final return per the contract:
-- files: | path | why |, |---|---|, | `internal/panels/links.go` | NEW, | `internal/panels/links_test.go` | NEW, | `internal/panels/chat.go` | struct fields + Update claim rank + cardClaims + View splice + `· o, | `internal/app/model.go` | hotkey registration only: `case "o"` claim, msg types, New() wiring, Upd, | `internal/app/model_browser_test.go` | NEW, | `cmd/uishot/main.go` | `--links` flag + dispatcher + `linksDrive`/`runLinksProof` + header comment, | `README.md` | keys-table `o` row + beacon/mark/open sentence |
-- verify: ```
-- proof: *Frame A — the boss bubble wearing the beacon (chat region, ANSI-stripped):**
-- ledgerId: led-1787770923262-ad14c19d
-
-### 2026-08-26 · Dev: image protocol lanes (kitty+OSC1337) (@g... — tekton-11 (developer) · `issues`
-- summary: All gates green. **DONE — native image lanes landed:** kitty/ghostty detects emit the real `ESC_G` placeholder strip, the iTerm family emits OSC 1337, everythin
-- files: | path | why |, |---|---|, | `internal/panels/kitty_lanes.go` | NEW, | `internal/panels/kitty_lanes_test.go` | NEW, | `internal/panels/chat_raster.go` | `PlaceholderStrip`, | `internal/panels/chat.go` | `chatMediaView.frame/cellRows`, `SetImageFrame`, `renderMediaRows` fra, | `internal/app/images.go` | lane resolve + detect memo, lane-aware probe cmd/landing, `onImagesLane, | `internal/app/images_lane_test.go` | NEW, | `internal/app/model_image_test.go` | 2 one-line `pinNeutralImageEnv(t)` pins, | `internal/app/model.go` | +`imgLaneDet`/`imgLaneDetOK` fields, one `m.onImagesLaneChanged()` call , | `cmd/uishot/main.go` | hermetic `stubTermEnv`/`asciiTermEnv`, `--images` base legs neutral-env'd, , NOT touched
-- verify: (gofmt clean on all nine touched files; NO git commits.)
-- proof: *The kitty placeholder strip (byte-pinned, checker 8×8, `i=8f1dc842` = sha1(fixture)[:8] hex):**
-- ledgerId: led-1787770715110-c4eccbda
-
-### 2026-08-26 · Dev: transcript image previews (v1) (@general... — theboringcto-2 (cto) · `issues`
-- summary: All gates green. Here is my developer return per the contract.
-- files: | path | why |, |---|---|, | `internal/state/state.go` | `Event.Media`, `EvChatMedia`, `MediaItem`, `MediaMeta`/`ParseMediaMeta, | `internal/backend/events.go` | `ocPart` FilePart fields, `mediaFromParts`+`imageDims`+`mapMediaPar, | `internal/backend/opencode.go` | `messageText` media return, boss pin Meta+Media, `sessionMessageR, | `internal/backend/media_test.go` | NEW, | `internal/panels/chat_raster.go` | NEW, | `internal/panels/image_detect.go` | NEW, | `internal/panels/chat.go` | media view store, `SetImageRaster/SetImageFailed`, `renderMediaRows`+`, | `internal/panels/chat_raster_test.go` | NEW, | `internal/panels/image_detect_test.go` | NEW, | `internal/panels/testdata/checker-8x8.png` | NEW
-- verify: FAIL count: **0** (17 packages `ok`). `gofmt -l` on every touched file: clean.
-- proof: The `go run ./cmd/uishot --images` frame, chat-panel region, ANSI-stripped (the chip + 4 half-block raster rows + body, each `▀` painted 255
-- ledgerId: led-1787768157105-7adc4c3c
-
-### 2026-08-26 · Dev: plan editor cut/copy/paste/select (@gene... — tekton-10 (developer) · `issues`
-- summary: All gates green. Here is my developer return per the contract.
-- files: | path | why |, |---|---|, | `internal/panels/plan_editor_selection.go` | NEW, | `internal/panels/plan_editor_selection_test.go` | NEW, | `internal/panels/plan_editor.go` | `sel` field, Update interception, | `internal/app/model.go` | the selection-aware ctrl+x/ctrl+c/esc claim gates, `planCopySelectionCmd, | `internal/app/plan_mode_test.go` | additions: 4 new app tests (cut-skips-arm, copy-skips-quit, esc, | `internal/app/plan_shape_test.go` | 1 same one-line `ctrl+end` adaptation in an existing click-the, | `README.md` | plan bullet gains the editor sentence; key-table `ctrl+x` row splits cut-vs-approve-
-- verify: ```
-- proof: From `TestPlanSelFrameDump` (focused pane, ANSI-stripped; `▸…◂` annotates the inserted `\x1b[7m`/`\x1b[27m`):
-- ledgerId: led-1787765636120-98d0a504
 

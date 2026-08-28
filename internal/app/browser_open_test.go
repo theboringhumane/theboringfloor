@@ -4,20 +4,32 @@
 // browser pane's existing open path (a real localhost fetch through the
 // pane's own guard) + posts the dim confirmation notice, a REFUSED
 // verdict opens nothing and posts the red reason row, and every other
-// event kind no-ops (the batch-leg contract).
+// event kind no-ops (the batch-leg contract). The screenshot/snapshot
+// legs: a fake headless engine (NO live chrome in unit tests) proves
+// the PNG save + notice + slot flip (shot) and the synthetic follow-up
+// prompt + member note (snapshot).
 package app
 
 import (
+	"context"
+	"crypto/sha1"
+	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/cursor"
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -143,7 +155,9 @@ func TestBrowserOpenHandlerNoopsOnOtherKinds(t *testing.T) {
 	for _, ev := range []state.Event{
 		{Kind: state.EvStatus, Text: "noise"},
 		{Kind: state.EvChatBoss, Msg: state.ChatMsg{ID: "bossmsg-x", Text: "hi"}},
-		{Kind: state.EvBrowserOpen, Text: "", BrowserOpenAllowed: true}, // shapeless: no URL, silent
+		{Kind: state.EvBrowserOpen, Text: "", BrowserOpenAllowed: true},       // shapeless: no URL, silent
+		{Kind: state.EvBrowserScreenshot, Text: "", BrowserOpenAllowed: true}, // shapeless shot, silent
+		{Kind: state.EvBrowserSnapshot, Text: "", BrowserOpenAllowed: true},   // shapeless snapshot, silent
 	} {
 		if cmd := m.applyBrowserOpen(ev); cmd != nil {
 			t.Fatalf("kind %q must no-op, got a cmd", ev.Kind)
@@ -151,5 +165,331 @@ func TestBrowserOpenHandlerNoopsOnOtherKinds(t *testing.T) {
 	}
 	if len(m.st.Chat) != before {
 		t.Fatalf("no-op kinds must never post notices, got %d new rows", len(m.st.Chat)-before)
+	}
+}
+
+// ---------------------------------------------------------------- screenshot
+
+// pinFakeBrowserEngines swaps the headless engine seams for fakes (NO
+// live chrome in unit tests) and restores them at cleanup.
+func pinFakeBrowserEngines(t *testing.T,
+	shot func(ctx context.Context, rawurl string, w, h int) (*headless.Result, error),
+	snap func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error)) {
+	t.Helper()
+	oldShot, oldSnap := browserShotFn, browserSnapFn
+	if shot != nil {
+		browserShotFn = shot
+	}
+	if snap != nil {
+		browserSnapFn = snap
+	}
+	t.Cleanup(func() { browserShotFn, browserSnapFn = oldShot, oldSnap })
+}
+
+func TestBrowserShotFlowSavesPNGAndFlipsSlot(t *testing.T) {
+	pinBrowserTextLane(t) // hermetic: the lane resolve must never spawn a real child here
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(`<html><head><title>The Boring Gazette</title></head><body><h1>agent shot me</h1></body></html>`))
+	}))
+	t.Cleanup(srv.Close)
+	home := t.TempDir()
+	t.Setenv("THEBORINGOFFICE_HOME", home)
+
+	fakePNG := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4}
+	var gotW, gotH int
+	var gotDeadline bool
+	pinFakeBrowserEngines(t, func(ctx context.Context, rawurl string, w, h int) (*headless.Result, error) {
+		gotW, gotH = w, h
+		_, gotDeadline = ctx.Deadline()
+		return &headless.Result{URL: rawurl, Title: "The Boring Gazette", PNG: fakePNG}, nil
+	}, nil)
+
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+
+	cmd := m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserScreenshot, Text: srv.URL, BrowserOpenAllowed: true,
+	})
+	if cmd == nil {
+		t.Fatal("an allowed screenshot request must return the engine + pane-open batch")
+	}
+	// the REQUEST leg flips the left slot to the browser tab immediately.
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("an allowed screenshot flips the left slot to the browser (%d), got %d", leftTabBrowser, got)
+	}
+	m = drainBrowserCmd(t, m, cmd)
+
+	// the engine got the default 990x540 box under a bounded context.
+	if gotW != 990 || gotH != 540 {
+		t.Fatalf("the shot box is 990x540, got %dx%d", gotW, gotH)
+	}
+	if !gotDeadline {
+		t.Fatal("the engine ctx must carry the 15s bound")
+	}
+	// the PNG landed under <THEBORINGOFFICE_HOME>/shots/<ts>-<hash8>.png
+	// (the tab's own display path may save ITS shot here too — find MINE
+	// by the deterministic hash8 tail of the fake PNG bytes).
+	entries, err := os.ReadDir(filepath.Join(home, "shots"))
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("the shot PNG lands in the shots dir, got %v (err %v)", entries, err)
+	}
+	sum := sha1.Sum(fakePNG)
+	hash8 := hex.EncodeToString(sum[:4])
+	var name string
+	for _, e := range entries {
+		if regexp.MustCompile(`^[0-9]+-[0-9a-f]{8}\.png$`).MatchString(e.Name()) && strings.Contains(e.Name(), hash8) {
+			name = e.Name()
+		}
+	}
+	if name == "" {
+		t.Fatalf("no <ts>-%s.png among %v — my shot never saved", hash8, entries)
+	}
+	path := filepath.Join(home, "shots", name)
+	if raw, err := os.ReadFile(path); err != nil || string(raw) != string(fakePNG) {
+		t.Fatalf("the saved PNG carries the engine's exact bytes (err %v)", err)
+	}
+	// the transcript notice carries the path, verbatim contract.
+	if !lastOfficeNoticeHas(m, "browser: shot of "+srv.URL+" → "+path+" (asked by the boss)") {
+		t.Fatalf("the shot notice must post with the PNG path, office rows: %+v", officeRows(m))
+	}
+	// the pane's normal open rode along (the tab's display path picks up there).
+	frame := ansi.Strip(m.browser.View())
+	if !strings.Contains(frame, "The Boring Gazette") {
+		t.Fatalf("the pane's normal open must drive the page, got:\n%s", frame)
+	}
+	// and NO red error row landed.
+	for _, c := range officeRows(m) {
+		if c.Meta == "error" {
+			t.Fatalf("an allowed shot must never post a red row, got %q", c.Text)
+		}
+	}
+}
+
+func TestBrowserShotEngineFailurePostsReason(t *testing.T) {
+	pinBrowserTextLane(t)
+	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	called := false
+	pinFakeBrowserEngines(t, func(ctx context.Context, rawurl string, w, h int) (*headless.Result, error) {
+		called = true
+		return nil, errors.New("headless: no Chrome-family browser found")
+	}, nil)
+
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = drainBrowserCmd(t, m, m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserScreenshot, Text: "https://theboring.name", BrowserOpenAllowed: true,
+	}))
+
+	if !called {
+		t.Fatal("the allowed request must reach the engine")
+	}
+	if !lastOfficeNoticeHas(m, "browser: shot of https://theboring.name — headless: no Chrome-family browser found") {
+		t.Fatalf("the engine failure lands as the red reason row, office rows: %+v", officeRows(m))
+	}
+	rows := officeRows(m)
+	if rows[len(rows)-1].Meta != "error" {
+		t.Fatalf("the failure row is RED, got %+v", rows[len(rows)-1])
+	}
+}
+
+func TestBrowserShotRefusedPostsReason(t *testing.T) {
+	pinBrowserTextLane(t)
+	called := false
+	pinFakeBrowserEngines(t, func(ctx context.Context, rawurl string, w, h int) (*headless.Result, error) {
+		called = true
+		return nil, nil
+	}, nil)
+
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	before := len(m.st.Chat)
+
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	if cmd := m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserScreenshot, Text: "http://theboring.name",
+		BrowserOpenAllowed: false, BrowserOpenReason: reason,
+	}); cmd != nil {
+		t.Fatal("a refused screenshot must never kick an engine cmd")
+	}
+	if called {
+		t.Fatal("a refused screenshot must never reach the engine")
+	}
+	if m.LeftTabIndex() == leftTabBrowser {
+		t.Fatal("a refused screenshot must never flip the left slot")
+	}
+	if len(m.st.Chat) != before+1 {
+		t.Fatalf("exactly ONE notice row lands, got %d new", len(m.st.Chat)-before)
+	}
+	row := m.st.Chat[len(m.st.Chat)-1]
+	if row.From != "office" || row.Meta != "error" || row.Text != "browser: http://theboring.name — "+reason {
+		t.Fatalf("the refusal is the red reason row, got %+v", row)
+	}
+}
+
+// ----------------------------------------------------------------- snapshot
+
+func TestBrowserSnapFlowSendsFollowup(t *testing.T) {
+	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	var gotMaxText int
+	pinFakeBrowserEngines(t, nil, func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error) {
+		gotMaxText = maxText
+		return &headless.SnapResult{
+			URL: rawurl, Title: "The Boring Gazette", Text: "hello world",
+			Links: []headless.Link{{Text: "a", URL: "https://a.example/x"}, {Text: "b", URL: "https://b.example/y"}},
+		}, nil
+	})
+
+	rb := &recBackend{}
+	m := New(rb, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+
+	cmd := m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserSnapshot, Text: "https://theboring.name/docs", BrowserOpenAllowed: true,
+	})
+	if cmd == nil {
+		t.Fatal("an allowed snapshot request must return the engine cmd")
+	}
+	m = drainBrowserCmd(t, m, cmd)
+
+	// the engine read with the 6000-rune text cap.
+	if gotMaxText != 6000 {
+		t.Fatalf("the snapshot text cap is 6000, got %d", gotMaxText)
+	}
+	// the synthetic follow-up posted BACK to the agent on the SAME
+	// backend session (the attachment seam's plain-text call), verbatim:
+	if len(rb.sentTexts) != 1 {
+		t.Fatalf("exactly ONE follow-up prompt posts back to the agent, got %v", rb.sentTexts)
+	}
+	want := "[theboringoffice] snapshot of https://theboring.name/docs (title: The Boring Gazette)\n" +
+		"hello world\n" +
+		"links: [1] https://a.example/x [2] https://b.example/y"
+	if rb.sentTexts[0] != want {
+		t.Fatalf("the follow-up the agent receives:\n got %q\nwant %q", rb.sentTexts[0], want)
+	}
+	// the member sees a one-line dim note — never the full text.
+	if !lastOfficeNoticeHas(m, `browser: snapshot of https://theboring.name/docs ("The Boring Gazette") → text + 2 links sent to the boss (asked by the boss)`) {
+		t.Fatalf("the member note must post, office rows: %+v", officeRows(m))
+	}
+	for _, c := range officeRows(m) {
+		if c.Meta == "error" {
+			t.Fatalf("an allowed snapshot must never post a red row, got %q", c.Text)
+		}
+		if strings.Contains(c.Text, "hello world") {
+			t.Fatalf("the member note must never carry the full text, got %q", c.Text)
+		}
+	}
+	// the read never flips the left slot (nothing renders for the member).
+	if m.LeftTabIndex() == leftTabBrowser {
+		t.Fatal("a snapshot must never flip the left slot to the browser tab")
+	}
+}
+
+func TestBrowserSnapRefusedPostsReason(t *testing.T) {
+	called := false
+	pinFakeBrowserEngines(t, nil, func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error) {
+		called = true
+		return nil, nil
+	})
+
+	rb := &recBackend{}
+	m := New(rb, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	before := len(m.st.Chat)
+
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	if cmd := m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserSnapshot, Text: "http://theboring.name",
+		BrowserOpenAllowed: false, BrowserOpenReason: reason,
+	}); cmd != nil {
+		t.Fatal("a refused snapshot must never kick an engine cmd")
+	}
+	if called {
+		t.Fatal("a refused snapshot must never reach the engine")
+	}
+	if len(rb.sentTexts) != 0 {
+		t.Fatalf("a refused snapshot must never post back to the agent, got %v", rb.sentTexts)
+	}
+	if len(m.st.Chat) != before+1 {
+		t.Fatalf("exactly ONE notice row lands, got %d new", len(m.st.Chat)-before)
+	}
+	row := m.st.Chat[len(m.st.Chat)-1]
+	if row.From != "office" || row.Meta != "error" || row.Text != "browser: http://theboring.name — "+reason {
+		t.Fatalf("the refusal is the red reason row, got %+v", row)
+	}
+}
+
+func TestBrowserSnapEngineFailurePostsReason(t *testing.T) {
+	pinFakeBrowserEngines(t, nil, func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error) {
+		return nil, errors.New("headless: timed out")
+	})
+
+	rb := &recBackend{}
+	m := New(rb, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = drainBrowserCmd(t, m, m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserSnapshot, Text: "https://theboring.name", BrowserOpenAllowed: true,
+	}))
+
+	if len(rb.sentTexts) != 0 {
+		t.Fatalf("a failed snapshot must never post back to the agent, got %v", rb.sentTexts)
+	}
+	if !lastOfficeNoticeHas(m, "browser: snapshot of https://theboring.name — headless: timed out") {
+		t.Fatalf("the engine failure lands as the red reason row, office rows: %+v", officeRows(m))
+	}
+}
+
+// TestSnapshotFollowupShapes — the follow-up builder's unit contract:
+// the no-links shape, the 8KB total bound (links tail trims first, then
+// the text cuts rune-safe), and the truncation marker.
+func TestSnapshotFollowupShapes(t *testing.T) {
+	// no links → "links: (none)".
+	got := buildSnapshotFollowup("https://x.example", &headless.SnapResult{
+		URL: "https://x.example", Title: "T", Text: "body text",
+	})
+	want := "[theboringoffice] snapshot of https://x.example (title: T)\nbody text\nlinks: (none)"
+	if got != want {
+		t.Fatalf("no-links followup = %q, want %q", got, want)
+	}
+	// the 8KB bound: a 6000-rune text + 50 long links overruns — the
+	// links TAIL trims first (the text survives whole), the truncated
+	// list ends with " …".
+	long := &headless.SnapResult{URL: "https://x.example", Title: "T", Text: strings.Repeat("x", 6000)}
+	for i := 0; i < 50; i++ {
+		long.Links = append(long.Links, headless.Link{Text: "l", URL: "https://example.com/" + strings.Repeat("a", 60)})
+	}
+	got = buildSnapshotFollowup("https://x.example", long)
+	if len(got) > browserSnapMaxFollowup {
+		t.Fatalf("the follow-up is bounded at %d bytes, got %d", browserSnapMaxFollowup, len(got))
+	}
+	if !strings.Contains(got, strings.Repeat("x", 6000)) {
+		t.Fatal("the links tail trims FIRST — the full text must survive")
+	}
+	if !strings.HasSuffix(got, " …") {
+		t.Fatalf("a truncated links list ends with the ellipsis marker, got tail %q", got[len(got)-40:])
+	}
+	if !strings.HasPrefix(got, "[theboringoffice] snapshot of https://x.example (title: T)\n") {
+		t.Fatal("the header always survives the bound")
+	}
+	// no links + an over-long text → the TEXT cuts on a rune boundary.
+	huge := &headless.SnapResult{URL: "https://x.example", Title: "T", Text: strings.Repeat("é", 10000)}
+	got = buildSnapshotFollowup("https://x.example", huge)
+	if len(got) > browserSnapMaxFollowup {
+		t.Fatalf("the text cut respects the %d-byte bound, got %d", browserSnapMaxFollowup, len(got))
+	}
+	if !utf8.ValidString(got) {
+		t.Fatal("the text cut must never split a multi-byte rune")
+	}
+}
+
+// the shots dir falls back to <os.TempDir>/shots without the home override.
+func TestBrowserShotsDirFallback(t *testing.T) {
+	t.Setenv("THEBORINGOFFICE_HOME", "")
+	if got := browserShotsDir(); got != filepath.Join(os.TempDir(), "shots") {
+		t.Fatalf("no home override → os.TempDir()/shots, got %q", got)
+	}
+	t.Setenv("THEBORINGOFFICE_HOME", "/tmp/member-home")
+	if got := browserShotsDir(); got != "/tmp/member-home/shots" {
+		t.Fatalf("the home override wins, got %q", got)
 	}
 }

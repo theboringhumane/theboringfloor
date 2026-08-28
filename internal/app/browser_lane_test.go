@@ -43,7 +43,10 @@ import (
 
 // pinBrowserLaneEnv — the hermetic kitty-capable host stub for the
 // app-level lane tests (panels' pinKittyEnv checklist, one package up;
-// zenbuLookPath stays REAL — the planted PATH pins the fake).
+// zenbuLookPath stays REAL — the planted PATH pins the fake). The wave-85
+// opt-in flag is SET here: this is the "premium resolves" stub (panels'
+// pinKittyEnv's exact discipline — tests wanting the default-off world
+// clear the flag after pinning).
 func pinBrowserLaneEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("TERM_PROGRAM", "ghostty")
@@ -56,6 +59,7 @@ func pinBrowserLaneEnv(t *testing.T) {
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv(panels.BrowserLaneOffEnv, "")
 	t.Setenv(panels.TerminalBrowserOffEnv, "")
+	t.Setenv(panels.BrowserLaneOptInEnv, "1")
 }
 
 // plantFakeTerminalBrowser — the hermetic fake: logs every invocation's

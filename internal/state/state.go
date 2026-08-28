@@ -491,6 +491,22 @@ const (
 	// refusal). The reducer passes it through untouched (unknown-kind
 	// default); the APP owns the reaction (internal/app/browser_open.go).
 	EvBrowserOpen EventKind = "browser-open"
+	// EvBrowserScreenshot — an AGENT-originated request to RENDER a page
+	// for the member (ADDITIVE; the ⟦browser-screenshot: URL⟧ marker):
+	// the app runs the headless engine (internal/headless), saves the
+	// PNG, flips the left slot to the browser tab, and drives the pane's
+	// normal open (the tab's own display path picks the shot up there).
+	// Same field contract as EvBrowserOpen, plus the result-leg fields
+	// below. The reducer passes it through untouched.
+	EvBrowserScreenshot EventKind = "browser-screenshot"
+	// EvBrowserSnapshot — an AGENT-originated request to READ a page
+	// (ADDITIVE; the ⟦browser-snapshot: URL⟧ marker): the app runs the
+	// headless engine and posts the page's text+links BACK to the agent
+	// as a synthetic follow-up prompt on the same backend session; the
+	// member sees a one-line dim note (never the full text). Same field
+	// contract as EvBrowserOpen, plus the result-leg fields below. The
+	// reducer passes it through untouched.
+	EvBrowserSnapshot EventKind = "browser-snapshot"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -558,6 +574,19 @@ type Event struct {
 	// drives the browser pane's open path.
 	BrowserOpenAllowed bool   `json:"browserOpenAllowed,omitempty"`
 	BrowserOpenReason  string `json:"browserOpenReason,omitempty"`
+	// Browser screenshot/snapshot RESULT-leg fields (EvBrowserScreenshot/
+	// EvBrowserSnapshot). The REQUEST leg carries Text + the verdict
+	// exactly like EvBrowserOpen; the app's engine cmd (tea.Cmd) lands
+	// the RESULT leg back through Update's state.Event case with
+	// BrowserToolDone=true: success re-uses BrowserOpenAllowed=true
+	// (BrowserShotPath holds the saved PNG path; BrowserSnapTitle/
+	// BrowserSnapLinks describe the snapshot delivered back to the
+	// agent), failure keeps BrowserOpenAllowed=false and carries the
+	// member-facing engine/save/send error in BrowserOpenReason.
+	BrowserToolDone  bool   `json:"browserToolDone,omitempty"`
+	BrowserShotPath  string `json:"browserShotPath,omitempty"`
+	BrowserSnapTitle string `json:"browserSnapTitle,omitempty"`
+	BrowserSnapLinks int    `json:"browserSnapLinks,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

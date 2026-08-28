@@ -18,7 +18,9 @@ import (
 // pinLaneDetectEnv — the hermetic detect-layer checklist for the hint
 // tests (pinKittyEnv's shape; kitty=false stubs the iTerm2 family — a
 // terminal that can NEVER host the embedded browser). Kill-switches
-// cleared; the binary probe rides pinLaneLook.
+// cleared AND the wave-85 opt-in flag cleared (the default-off world —
+// cases wanting premium pin it themselves). The binary probe rides
+// pinLaneLook.
 func pinLaneDetectEnv(t *testing.T, kitty bool) {
 	t.Helper()
 	if kitty {
@@ -34,6 +36,7 @@ func pinLaneDetectEnv(t *testing.T, kitty bool) {
 	t.Setenv("TERM", "xterm-256color")
 	t.Setenv(BrowserLaneOffEnv, "")
 	t.Setenv(TerminalBrowserOffEnv, "")
+	t.Setenv(BrowserLaneOptInEnv, "")
 }
 
 // pinLaneLook swaps the binary probe (found = the fixture PATH hit).
@@ -55,14 +58,17 @@ const (
 	hintNoTerminal = "text lane — this terminal can't host the embedded browser (kitty/ghostty only)"
 	hintKillOwn    = "text lane — " + BrowserLaneOffEnv + "=1 set; unset it for the embedded browser"
 	hintKillWave70 = "text lane — " + TerminalBrowserOffEnv + "=1 set; unset it for the embedded browser"
+	hintOptInOff   = "text lane — the embedded browser is opt-in: " + BrowserLaneOptInEnv + "=1 to enable it"
 )
 
 // TestBrowserLaneReasonMatrix — the reasoned resolve's pure table: binary
-// present/absent × kitty/non-kitty × each kill-switch spelling (+ the
-// resolve's own precedence: kill-switch → terminal → binary). The lane
-// half must match ResolveBrowserLaneFrom's historic table exactly.
+// present/absent × kitty/non-kitty × each kill-switch spelling × the
+// wave-85 opt-in flag (+ the resolve's own precedence: kill-switch →
+// terminal → binary → opt-in). The lane half must match
+// ResolveBrowserLaneFrom's historic table exactly.
 func TestBrowserLaneReasonMatrix(t *testing.T) {
 	ghostty := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color"}
+	ghosttyOptIn := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color", BrowserLaneOptInEnv: "1"}
 	iterm := map[string]string{"TERM_PROGRAM": "iTerm.app", "TERM": "xterm-256color"}
 	cases := []struct {
 		name       string
@@ -72,15 +78,20 @@ func TestBrowserLaneReasonMatrix(t *testing.T) {
 		wantReason BrowserLaneReason
 		wantVar    string
 	}{
-		{"premium: kitty host + binary + no kill-switch", ghostty, lookFound, BrowserLaneZenbu, BrowserLanePremium, ""},
-		{"binary missing on a kitty host", ghostty, lookMissing, BrowserLaneText, BrowserLaneNoBinary, ""},
+		{"premium: kitty host + binary + no kill-switch + opted in", ghosttyOptIn, lookFound, BrowserLaneZenbu, BrowserLanePremium, ""},
+		{"binary missing on a kitty host (opted in)", ghosttyOptIn, lookMissing, BrowserLaneText, BrowserLaneNoBinary, ""},
+		{"binary missing beats the opt-in-off class (the resolve's precedence)", ghostty, lookMissing, BrowserLaneText, BrowserLaneNoBinary, ""},
 		{"terminal unsupported (iTerm2), binary present", iterm, lookFound, BrowserLaneText, BrowserLaneNoTerminal, ""},
 		{"terminal unsupported (iTerm2), binary absent — the terminal gate wins precedence", iterm, lookMissing, BrowserLaneText, BrowserLaneNoTerminal, ""},
-		{"terminal unsupported: tmux folds out conservatively", map[string]string{"TERM_PROGRAM": "ghostty", "TMUX": "/tmp/tmux-1000/default,1,0"}, lookFound, BrowserLaneText, BrowserLaneNoTerminal, ""},
-		{"kill-switch: own spelling, kitty + binary", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
-		{"kill-switch: wave-70 spelling, kitty + binary", map[string]string{"TERM_PROGRAM": "ghostty", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, TerminalBrowserOffEnv},
+		{"terminal unsupported: tmux folds out conservatively (opted in)", map[string]string{"TERM_PROGRAM": "ghostty", "TMUX": "/tmp/tmux-1000/default,1,0", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneNoTerminal, ""},
+		{"kill-switch: own spelling, kitty + binary + opted in", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
+		{"kill-switch: wave-70 spelling, kitty + binary + opted in", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, TerminalBrowserOffEnv},
 		{"kill-switch beats a non-kitty terminal (the resolve's precedence)", map[string]string{"TERM_PROGRAM": "iTerm.app", BrowserLaneOffEnv: "1"}, lookMissing, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
-		{"kill-switch '0' is NOT armed", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "0"}, lookFound, BrowserLaneZenbu, BrowserLanePremium, ""},
+		{"kill-switch beats the opt-in-off class", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv},
+		{"kill-switch '0' is NOT armed (opted in)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "0"}, lookFound, BrowserLaneZenbu, BrowserLanePremium, ""},
+		{"opt-in-off: qualified host, the flag UNSET (the default-off pivot)", ghostty, lookFound, BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv},
+		{"opt-in-off: '0' is NOT set", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "0"}, lookFound, BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv},
+		{"opt-in does NOT rescue a non-kitty terminal", map[string]string{"TERM_PROGRAM": "iTerm.app", BrowserLaneOptInEnv: "1"}, lookFound, BrowserLaneText, BrowserLaneNoTerminal, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -124,6 +135,10 @@ func TestBrowserHintStarterCardPerClass(t *testing.T) {
 			pinLaneLook(t, true)
 			t.Setenv(TerminalBrowserOffEnv, "1")
 		}, hintKillWave70},
+		{"opt-in-off: qualified host, the flag unset (the default-off pivot)", func(t *testing.T) {
+			pinLaneDetectEnv(t, true)
+			pinLaneLook(t, true)
+		}, hintOptInOff},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
