@@ -1,7 +1,9 @@
 #!/bin/sh
 # theboringoffice — TheBoringMajdoor attribution hook (git commit-msg).
 #
-# Installed per-repo by scripts/install-majdoor-hook.sh — git invokes it as:
+# Auto-installed by the office into the repo it boots in when attribution is
+# on (the default); scripts/install-majdoor-hook.sh covers repos the office
+# never boots in. Either way git invokes it as:
 #   .git/hooks/commit-msg <message-file>
 #
 # Every commit gets exactly one

@@ -210,6 +210,21 @@ func main() {
 	fmt.Printf("[cfg] boss=%q model=%q backend: server=%q agentmemoryUrl=%q agentmemoryPollS=%d\n",
 		cfg.Boss.Name, cfg.Boss.Model, cfg.Backend.Server, cfg.Backend.AgentmemoryURL, cfg.Backend.AgentmemoryPollS)
 
+	// Majdoor attribution (brain.json "attribution", default on): install the
+	// office's commit-msg hook into the current repo — or remove our own when
+	// off. Same best-effort contract as the UI binary's boot call: never
+	// fatal, one short line.
+	cwd, cwdErr := os.Getwd()
+	if cwdErr != nil {
+		cwd = "."
+	}
+	hookStatus, hookErr := app.EnsureMajdoorHook(cwd, cfg.Attribution == config.AttributionDefault)
+	if hookErr != nil {
+		fmt.Printf("[attribution] hook: %v\n", hookErr)
+	} else {
+		fmt.Printf("[attribution] hook: %s\n", hookStatus)
+	}
+
 	if *prompt2 != "" && *prompt == "" {
 		fmt.Fprintln(os.Stderr, "--prompt2 requires --prompt")
 		os.Exit(2)
@@ -716,6 +731,12 @@ func loadConfig(path string) (*config.Config, error) {
 	}
 	if cfg.Backend.AgentmemoryURL == "" {
 		cfg.Backend.AgentmemoryURL = "http://localhost:3111"
+	}
+	// Attribution normalization (same policy as config.Load): an explicit
+	// --cfg file with an absent/bogus key resolves to the default-on
+	// posture — a typo must not silently switch a default-on feature off.
+	if !config.ValidAttribution(cfg.Attribution) {
+		cfg.Attribution = config.AttributionDefault
 	}
 	return cfg, nil
 }

@@ -11,10 +11,11 @@
 //	    the RIGHT strip unmoved, and the text fetch rode underneath;
 //	(b) unclaimed keys reach the child (a typed letter echoes through
 //	    the real PTY) while the office's own claims (ctrl+b, q/esc)
-//	    still win — q closes the session AND returns to the floor;
-//	(c) ctrl+b SUSPENDS the lane (child reaped, spawn log stops) and
-//	    returning RESUMES it (a fresh spawn for the same url — never a
-//	    flap for a fell-back one);
+//	    still win — q FREEZES the session (keep-alive) AND returns to
+//	    the floor;
+//	(c) ctrl+b SUSPENDS the lane (the child FREEZES — SIGSTOPped,
+//	    alive, the spawn log stops at ONE) and returning RESUMES it
+//	    (the SAME child thaws — the PID is unchanged, never a respawn);
 //	(d) an early exit (<300ms) lands the text fallback THROUGH THE APP:
 //	    the pane's real viewer (warm from the fetch) + the dim
 //	    "zenbu exited (0) — falling back to text mode" note, and the
@@ -29,6 +30,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -189,22 +191,36 @@ func TestBrowserLaneLiveEmbed(t *testing.T) {
 		t.Fatalf("the premium lane owns typed keys (no draft leak):\n%s", f)
 	}
 
-	// q leaves AND closes the session (SuspendLane rides the leave).
+	// q leaves AND FREEZES the session (SuspendLane rides the leave —
+	// keep-alive: the child stays alive behind the floor, spawn log 1).
+	pid := m.BrowserLanePid()
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 	if got := m.LeftTabIndex(); got != leftTabFloor {
 		t.Fatalf("q on the premium slot must land on the floor, got %d", got)
 	}
 	if m.BrowserPremiumActive() {
-		t.Fatal("q closed the premium session with the leave")
+		t.Fatal("q hides the premium session with the leave")
+	}
+	if !m.BrowserLaneSuspended() {
+		t.Fatal("q FREEZES the premium session (the keep-alive posture)")
+	}
+	if m.BrowserLanePid() != pid {
+		t.Fatalf("the leave never respawns: pid %d → %d", pid, m.BrowserLanePid())
 	}
 	if got := laneSpawnCount(t, logPath); got != 1 {
 		t.Fatalf("the leave never re-spawns: spawn log = %d, want 1", got)
 	}
+	// the frozen child never leaks past the test (the quit path's reap).
+	m.browser.Close()
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatalf("the quit path reaps the frozen child: kill(%d, 0) = %v", pid, err)
+	}
 }
 
 // TestBrowserLaneLiveSuspendResume — (c): ctrl+b to the floor SUSPENDS
-// the lane (the child is reaped, the spawn log stops); ctrl+b back
-// RESUMES it (a fresh spawn for the same url — no new fetch, no flap).
+// the lane (the child FREEZES — SIGSTOPped, ALIVE, the spawn log stops
+// at ONE); ctrl+b back RESUMES it (the SAME child thaws — the PID is
+// unchanged, NO respawn, no new fetch, no flap).
 func TestBrowserLaneLiveSuspendResume(t *testing.T) {
 	pinBrowserLaneEnv(t)
 	logPath := plantFakeTerminalBrowser(t, "sleep")
@@ -216,28 +232,52 @@ func TestBrowserLaneLiveSuspendResume(t *testing.T) {
 	if got := laneSpawnCount(t, logPath); got != 1 {
 		t.Fatalf("setup: one spawn, got %d", got)
 	}
+	pid := m.BrowserLanePid()
+	if pid <= 0 {
+		t.Fatalf("setup: the premium child's pid reads through the harness seam, got %d", pid)
+	}
 
-	m = runMsg(t, m, ctrlB()) // → floor: SUSPEND
+	m = runMsg(t, m, ctrlB()) // → floor: SUSPEND (FREEZE — keep-alive)
 	if got := m.LeftTabIndex(); got != leftTabFloor {
 		t.Fatalf("ctrl+b flips to the floor, got %d", got)
 	}
 	if m.BrowserPremiumActive() {
 		t.Fatal("ctrl+b to the floor suspends the premium lane")
 	}
+	if !m.BrowserLaneSuspended() {
+		t.Fatal("the frozen child keeps the keep-alive posture")
+	}
+	if got := m.BrowserLanePid(); got != pid {
+		t.Fatalf("the freeze never respawns: pid %d → %d", pid, got)
+	}
+	if err := syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("the frozen child stays ALIVE behind the floor: kill(%d, 0) = %v", pid, err)
+	}
 	if got := laneSpawnCount(t, logPath); got != 1 {
 		t.Fatalf("a suspend never spawns: log %d, want 1", got)
 	}
 
-	m = runMsg(t, m, ctrlB()) // → browser: RESUME (a fresh spawn, same url)
+	m = runMsg(t, m, ctrlB()) // → browser: RESUME (the SAME child thaws)
 	if got := m.LeftTabIndex(); got != leftTabBrowser {
 		t.Fatalf("ctrl+b flips back to the browser, got %d", got)
 	}
 	if !m.BrowserPremiumActive() {
 		t.Fatal("returning to the slot resumes the premium lane")
 	}
-	m = waitLaneGrid(t, m, "zenbu-fake open file:///")
-	if got := laneSpawnCount(t, logPath); got != 2 {
-		t.Fatalf("the resume re-spawns for the SAME url: log %d, want 2", got)
+	if m.BrowserLaneSuspended() {
+		t.Fatal("the thaw clears the keep-alive posture")
+	}
+	if got := m.BrowserLanePid(); got != pid {
+		t.Fatalf("the flip's PID never changes: %d → %d", pid, got)
+	}
+	if got := laneSpawnCount(t, logPath); got != 1 {
+		t.Fatalf("the resume THAWS — never a respawn: log %d, want 1", got)
+	}
+
+	// the frozen/thawed child never leaks past the test (the quit path).
+	m.browser.Close()
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatalf("Close reaps the child: kill(%d, 0) = %v", pid, err)
 	}
 }
 
@@ -307,6 +347,7 @@ func TestBrowserLaneLiveResize(t *testing.T) {
 	if wantC, wantR := m.floorW, m.middleH-1-2; cols != wantC || rows != wantR {
 		t.Fatalf("the resize SIGWINCHes the child to the slot: %dx%d, want %dx%d", cols, rows, wantC, wantR)
 	}
+	m.browser.Close() // the live child never leaks past the test
 }
 
 // TestBrowserLaneLiveKillSwitch — the universal default THROUGH THE APP:

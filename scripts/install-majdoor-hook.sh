@@ -2,6 +2,11 @@
 # theboringoffice — install the TheBoringMajdoor commit-msg attribution hook
 # into any git repo.
 #
+# Normally unnecessary: the office auto-installs this hook into the repo it
+# boots in whenever attribution is on (the default — opt out with
+# "attribution": "off" in ~/.theboringoffice/configs/brain.json). This script
+# is for repos the office never boots in.
+#
 #   scripts/install-majdoor-hook.sh [path-to-repo]          (default: .)
 #   scripts/install-majdoor-hook.sh --uninstall [path-to-repo]
 #
@@ -32,6 +37,10 @@ trap cleanup EXIT
 usage() {
     cat <<'USAGE'
 install-majdoor-hook — stamp commits with the TheBoringMajdoor co-author trailer
+
+Normally unnecessary: the office auto-installs this hook into the repo it
+boots in when attribution is on (the default). This script is for repos the
+office never boots in.
 
 Usage:
   scripts/install-majdoor-hook.sh [path-to-repo]          (default: current dir)

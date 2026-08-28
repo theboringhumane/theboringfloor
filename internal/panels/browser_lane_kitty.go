@@ -56,12 +56,15 @@
 // supplied c=/r=, because the child sends NONE (kitty then displays at
 // native pixel size: the capture's 992x960px frame painted from the pane
 // origin instead of scaling to the pane — the "small window"/spill bug);
-// (e) deletes ride ahead of placements (the wrapper's splice order), and
-// on suspend/close they ALSO flush DIRECTLY to the terminal (the pane is
-// gone — no frame will carry them) through the zenbuEmit seam (main.go
-// wires it to the wrapper's DirectEmit — serialized with frame flushes;
-// the sound bell's os.Stdout precedent: one self-contained APC, atomic
-// at write granularity, invisible when no images live).
+// (e) deletes ride ahead of placements (the wrapper's splice order). On
+// the keep-alive SUSPEND the terminal-side image deletes ride the
+// registry clear → the wrapper's next-flush a=d (the floor's frame
+// still flushes — the freeze only hides the page); on close/quit they
+// ALSO flush DIRECTLY to the terminal (the pane is gone — no frame will
+// carry them) through the zenbuEmit seam (main.go wires it to the
+// wrapper's DirectEmit — serialized with frame flushes; the sound
+// bell's os.Stdout precedent: one self-contained APC, atomic at write
+// granularity, invisible when no images live).
 //
 // MID-CHAIN DEATH + INTERLEAVES (the wave-82 leak): the child dies
 // mid-chunked-frame on session churn (the capture ends with an
@@ -786,7 +789,11 @@ func (s *zenbuImageStore) dropStats() (int, string) {
 // aborts the command → the tail discards to its terminator, NEVER
 // downstream — the wave-82 base64-leak fix) are all first-class. The
 // mutex serializes the reader loop's Write against a session-Close
-// reset (both touch pending/chain).
+// reset (both touch pending/chain). The PARK gate (the keep-alive
+// freeze) makes the suspended window a hard boundary: while parked
+// every byte is consumed and dropped (the frozen child's in-flight tail
+// draining the kernel PTY buffer can never mutate the retained store,
+// the grid, or the scrollback), and the SIGSTOP throttles the source.
 type kittyStream struct {
 	dst   io.Writer
 	grid  *term.Grid
@@ -796,6 +803,7 @@ type kittyStream struct {
 	pending []byte // undispatched tail (APC body in APC mode, ESC tail in text mode)
 	inAPC   bool
 	discard bool // an aborted APC's tail is being eaten to its terminator
+	parked  bool // the keep-alive freeze: consume + drop EVERYTHING
 
 	chain    *kittyCmd       // the open chunk chain's first-chunk command
 	chainB64 strings.Builder // the chain's joined payload text
@@ -806,10 +814,15 @@ func newKittyStream(dst io.Writer, grid *term.Grid, store *zenbuImageStore) *kit
 }
 
 // Write implements io.Writer (the reader loop's only entry): never
-// errors (io.Copy keeps draining), O(len(p)) in text mode.
+// errors (io.Copy keeps draining), O(len(p)) in text mode. PARKED (the
+// session is frozen): the bytes are consumed and discarded on the spot
+// — the suspended lane's store/grid/scrollback are a frozen snapshot.
 func (k *kittyStream) Write(p []byte) (int, error) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	if k.parked {
+		return len(p), nil
+	}
 	n := len(p)
 	k.pending = append(k.pending, p...)
 	for {
@@ -838,6 +851,11 @@ func (k *kittyStream) Write(p []byte) (int, error) {
 func (k *kittyStream) reset() {
 	k.mu.Lock()
 	defer k.mu.Unlock()
+	k.resetLocked()
+}
+
+// resetLocked — the mutex-held reset core (park shares it).
+func (k *kittyStream) resetLocked() {
 	if k.chain != nil || len(k.pending) > 0 {
 		k.store.malformed("session reset dropped %d pending APC bytes (chain open: %v)", len(k.pending), k.chain != nil)
 	}
@@ -846,6 +864,28 @@ func (k *kittyStream) reset() {
 	k.discard = false
 	k.chain = nil
 	k.chainB64.Reset()
+}
+
+// park — the keep-alive FREEZE boundary: the pending tail + any open
+// chain drop (the wave-82 churn discipline — the child may be frozen
+// mid-frame, and the thawed continuation chunks land as chainless and
+// are dropped by commit's "chunk without an open chain" gate), then the
+// discard gate rises: every further byte (the in-flight tail draining
+// the kernel PTY buffer ahead of the SIGSTOP) is consumed and dropped
+// until unpark — ZERO store/grid/scrollback mutations while suspended.
+func (k *kittyStream) park() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.resetLocked()
+	k.parked = true
+}
+
+// unpark — the keep-alive THAW: the discard gate falls; the resumed
+// child's bytes flow the normal split path again.
+func (k *kittyStream) unpark() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.parked = false
 }
 
 // dropChainLocked — an open chunk chain dies with the command/stream that

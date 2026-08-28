@@ -94,6 +94,19 @@ func ValidImagesMode(mode string) bool {
 	return mode == "auto" || mode == "ascii" || mode == "off"
 }
 
+// AttributionDefault — the majdoor commit-attribution posture every
+// brain.json resolves to when the top-level "attribution" key is
+// absent/empty (pre-schema files keep meaning exactly what they meant:
+// the majdoor's trailer rides every commit).
+const AttributionDefault = "on"
+
+// ValidAttribution reports whether v names a real attribution posture:
+// "on" auto-installs the office's commit-msg hook (the MajdoorTrailer on
+// every commit), "off" removes our hook and stamps nothing.
+func ValidAttribution(v string) bool {
+	return v == "on" || v == "off"
+}
+
 type BackendConfig struct {
 	// Name selects the LLM transport the office boots on: "opencode" (the
 	// default — `opencode serve` + SSE) or "claudecode" (the claude CLI in
@@ -142,18 +155,25 @@ func (c BackendConfig) ResolvedName() string {
 }
 
 type Config struct {
-	Version int                   `json:"version"`
-	Boss    BossConfig            `json:"boss"`
-	Roles   map[string]RoleConfig `json:"roles"` // developer|scout|reviewer|runner|hr
-	UI      UIConfig              `json:"ui"`
-	Backend BackendConfig         `json:"backend"`
+	Version int `json:"version"`
+	// Attribution is the office-wide majdoor commit-attribution switch:
+	// "on" (the default) makes boot install the office's commit-msg hook
+	// into the current repo (every commit carries the MajdoorTrailer);
+	// "off" removes our own hook and stamps nothing. The boot-time ensure
+	// lives in internal/app (EnsureMajdoorHook).
+	Attribution string                `json:"attribution"` // "on" | "off"
+	Boss        BossConfig            `json:"boss"`
+	Roles       map[string]RoleConfig `json:"roles"` // developer|scout|reviewer|runner|hr
+	UI          UIConfig              `json:"ui"`
+	Backend     BackendConfig         `json:"backend"`
 }
 
 // Default returns the stock config (also the file skeleton written on first boot).
 func Default() *Config {
 	return &Config{
-		Version: 1,
-		Boss:    BossConfig{Name: "boss (oikonomos)", Model: "", Concierge: true},
+		Version:     1,
+		Attribution: AttributionDefault,
+		Boss:        BossConfig{Name: "boss (oikonomos)", Model: "", Concierge: true},
 		Roles: map[string]RoleConfig{
 			"developer": {NamePrefix: "tekton"},
 			"scout":     {NamePrefix: "skopos"},
@@ -226,6 +246,14 @@ func Load() (*Config, error) {
 	// means, and keeps meaning, previews on in auto mode.
 	if cfg.UI.Images == "" {
 		cfg.UI.Images = ImagesDefault
+	}
+	// Attribution backfill (same house rule): a brain.json written before
+	// the attribution knob landed carries no key — it means, and keeps
+	// meaning, attribution ON. A bogus value is tolerated the same way:
+	// normalized to the default, never fatal — a typo must not silently
+	// switch a default-on feature off.
+	if !ValidAttribution(cfg.Attribution) {
+		cfg.Attribution = AttributionDefault
 	}
 	return cfg, nil
 }

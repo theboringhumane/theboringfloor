@@ -369,7 +369,8 @@ in-pane link follow) paints the live page (CSS, images, full rendering)
 inside the left-pane slot under the ` zenbu ` badge and the `▸ zenbu
 terminal-browser · <url>` top strip; keys reach the embedded browser
 while `ctrl+b` / `q` / `esc` still belong to the office (leaving the slot
-suspends the session, returning resumes it). The text lane is the
+FREEZES the session — SIGSTOPped, page kept — and returning repaints the
+retained frame instantly, no reload). The text lane is the
 universal default everywhere else — non-kitty terminals, the binary
 absent, or either kill-switch (`THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1`
 or `THEBORINGOFFICE_NO_TERMINAL_BROWSER=1`) armed — and the automatic
@@ -447,21 +448,36 @@ setup step. (If the account ever hides behind GitHub's noreply shield,
 swap the trailer's address for its `<id>+themajdoor@users.noreply.github.com`
 one.)
 
-To stamp the same trailer on commits you write by hand, install the
-`commit-msg` hook into any repo (idempotent, backs up a pre-existing hook to
-`commit-msg.bak-majdoor`, and resolves the real hooks dir so `core.hooksPath`
-and worktrees work):
+Attribution is **on by default**: the office auto-installs its `commit-msg`
+hook into the repo it boots in — idempotent, honoring `core.hooksPath`, and
+never overwriting a pre-existing foreign hook — so every commit there,
+office-authored or hand-written, picks up the trailer. To opt out, set
+`"attribution": "off"` in `~/.theboringoffice/configs/brain.json`:
+
+```json
+{
+  "attribution": "off"
+}
+```
+
+Off also removes the hook again — only when it is byte-identical to the one
+the office installed; a foreign hook is never touched. A brain.json written
+before this key existed backfills to `"on"`: it keeps meaning exactly what it
+meant.
+
+For repos the office never boots in, install the same hook by hand
+(idempotent, backs up a pre-existing hook to `commit-msg.bak-majdoor`, and
+resolves the real hooks dir so `core.hooksPath` and worktrees work):
 
 ```bash
 curl -fsSL \
   https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/scripts/install-majdoor-hook.sh | sh -s -- /path/to/repo
 ```
 
-From a checkout it's just `scripts/install-majdoor-hook.sh /path/to/repo`;
-either way `--uninstall` peels the hook back off and restores the backup. The
-office's own installer can do it in the same breath —
-`install.sh --majdoor-hook /path/to/repo` — and office-authored commits stamp
-the identical trailer automatically, no hook needed.
+From a checkout it's just `scripts/install-majdoor-hook.sh /path/to/repo`,
+still for repos the office never boots in; either way `--uninstall` peels
+the hook back off and restores the backup. The office's own installer can do
+it in the same breath — `install.sh --majdoor-hook /path/to/repo`.
 
 ### Author vs co-author
 

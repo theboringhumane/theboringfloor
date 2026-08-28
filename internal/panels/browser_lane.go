@@ -52,10 +52,25 @@
 // re-fetch: this layer never fetches at all). A clean long-run exit
 // (the member quit the browser) returns to text mode silently.
 //
-// LIFECYCLE (never leak a child): the zenbu process group is SIGKILLed +
-// bounded-reaped (zenbuKillGrace, opencode.go's stopKillGrace discipline)
-// on: pane switch-away (Suspend), browser.Close / office shutdown
-// (Close), and a fresh OpenURL (kill + spawn fresh). Close is idempotent.
+// LIFECYCLE (the member's keep-alive ruling — the page is "always
+// shown"): leaving the browser tab (ctrl+b to the floor, the pane's
+// q/esc) FREEZES the premium child instead of killing it — the process
+// group is SIGSTOPped (CPU off; the PTY's kernel buffer backpressures
+// the child naturally), the splitter parks (its in-flight tail +
+// pending chain drop per the wave-82 churn discipline; zero store
+// mutations while suspended), the terminal-side image deletes ride the
+// registry clear → the wrapper's a=d (the floor never shows the page),
+// and the image store RETAINS the latest joined frame. Returning THAWS
+// the SAME child (SIGCONT — the PID never changes across a flip, one
+// backgrounded Electron's RAM is the accepted cost) and the retained
+// frame re-emits through the frame-splice wrapper on the very next
+// flush: the member sees the last painted page INSTANTLY, before the
+// child emits a byte. The KILL paths are unchanged: office quit /
+// lane Close, a fresh OpenURL (kill + spawn fresh), and the early-exit
+// fallback still group-SIGKILL + bounded-reap (zenbuKillGrace,
+// opencode.go's stopKillGrace discipline) + delete the images exactly
+// as before; a child that died while frozen is observed by Poll and
+// rides the existing fallback. Close is idempotent.
 package panels
 
 import (
@@ -260,8 +275,9 @@ func (r *BrowserLaneResolver) Reset() { r.ok = false }
 
 // zenbuSess — the controller's session seam: termSess (terminal.go's
 // EXACT panel contract — Alive/Close/Write/Resize/Size/ExitCode/Grid/
-// Scrollback) plus the exit introspection the fallback rules need.
-// *ZenbuSession satisfies it in production; tests drive a fake.
+// Scrollback) plus the exit introspection the fallback rules need and
+// the keep-alive freeze/thaw pair (Suspend/Resume). *ZenbuSession
+// satisfies it in production; tests drive a fake.
 type zenbuSess interface {
 	termSess
 	// Exited — cmd.Wait returned (the process is fully reaped).
@@ -271,6 +287,17 @@ type zenbuSess interface {
 	Lifetime() time.Duration
 	// URL — the page this process was opened with.
 	URL() string
+	// Freeze — the keep-alive suspend: SIGSTOP the process group, park
+	// the splitter, clear the frame registry; the store RETAINS the
+	// latest joined frame. Idempotent; an already-dead child is a
+	// silent no-op (Poll's fallback owns it).
+	Freeze() error
+	// Unfreeze — the keep-alive resume: unpark the splitter and SIGCONT
+	// the SAME process group (never a respawn). Idempotent.
+	Unfreeze() error
+	// Frozen — the keep-alive posture (parked + SIGSTOPped, store
+	// retained, PID unchanged).
+	Frozen() bool
 }
 
 // Timing discipline (vars, not consts — opencode.go's stopKillGrace
@@ -300,12 +327,13 @@ type ZenbuSession struct {
 	split   *kittyStream     // the stream splitter (Close resets its pending tail/chain)
 	started time.Time
 
-	mu     sync.Mutex
-	alive  bool
-	exited bool
-	code   int           // exit code, -1 while alive / unknown
-	life   time.Duration // frozen at reap
-	closed bool
+	mu        sync.Mutex
+	alive     bool
+	exited    bool
+	code      int           // exit code, -1 while alive / unknown
+	life      time.Duration // frozen at reap
+	closed    bool
+	suspended bool // the keep-alive freeze (SIGSTOPped, store retained)
 }
 
 // newZenbuSession spawns `terminal-browser open <url>` on a cols×rows PTY
@@ -453,7 +481,11 @@ func (s *ZenbuSession) Write(p []byte) (int, error) {
 // RegionView flushes them in-frame) and the child repaints fresh frames
 // into the new box, re-placing from scratch — and the store's body box
 // moves WITH the resize, so those fresh frames emit the NEW c=/r= dims
-// immediately (FIX B).
+// immediately (FIX B). While FROZEN the placements are deliberately
+// KEPT (they ARE Resume's instant repaint — retiring them would blank
+// the thawed pane): the PTY size + body box still move (kernel state;
+// SIGWINCH pends and delivers at SIGCONT) and the waking child repaints
+// the new box fresh under the same office ids.
 func (s *ZenbuSession) Resize(cols, rows int) error {
 	if cols < 2 {
 		cols = 2
@@ -463,7 +495,9 @@ func (s *ZenbuSession) Resize(cols, rows int) error {
 	}
 	s.grid.SetSize(cols, rows)
 	s.images.setBodyBox(cols, rows)
-	s.images.retirePlacements()
+	if !s.Frozen() {
+		s.images.retirePlacements()
+	}
 	return pty.Setsize(s.mf, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 }
 
@@ -478,6 +512,85 @@ func (s *ZenbuSession) Grid() *term.Grid { return s.grid }
 // Scrollback exposes the retained byte stream.
 func (s *ZenbuSession) Scrollback() *term.Scrollback { return s.sb }
 
+// Freeze — the keep-alive suspend (the pane flipped to the floor, the
+// q/esc leave): the child process group is SIGSTOPped (the CPU freezes;
+// the PTY's kernel buffer backpressures a mid-write child naturally)
+// and the lane's render state becomes a SNAPSHOT — the splitter parks
+// (the frozen child's in-flight tail, still draining the kernel buffer,
+// is consumed and DISCARDED: zero store/grid/scrollback mutations while
+// suspended) with its pending APC tail + open chunk chain dropped at
+// the boundary (the wave-82 churn discipline), and the frame-splice
+// registry CLEARS so the wrapper's next flush deletes the terminal-side
+// image (the floor never shows the page). The image store RETAINS the
+// latest joined frame — it IS Resume's instant repaint. The PID never
+// changes. Idempotent; an already-exited child skips the signal (Poll
+// owns the fallback); a closed session no-ops.
+func (s *ZenbuSession) Freeze() error {
+	s.mu.Lock()
+	if s.closed || s.suspended {
+		s.mu.Unlock()
+		return nil
+	}
+	s.suspended = true
+	pid := -1
+	if s.cmd != nil && s.cmd.Process != nil {
+		pid = s.cmd.Process.Pid
+	}
+	exited := s.exited
+	s.mu.Unlock()
+
+	// park FIRST: the discard gate must be up before the signal so no
+	// in-flight byte can mutate the store after Freeze returns.
+	if s.split != nil {
+		s.split.park()
+	}
+	ZenbuRegistry().Clear()
+	if !exited && pid > 0 {
+		return syscall.Kill(-pid, syscall.SIGSTOP)
+	}
+	return nil
+}
+
+// Unfreeze — the keep-alive resume (the pane flipped back): the
+// splitter unparks and the SAME process group is SIGCONTed — NO
+// respawn, NO reload, the PID is the one Freeze pinned. The store's
+// retained frame never rides this call: the app's next Frame()
+// republishes it to the frame-splice registry and the wrapper re-emits
+// it on the very next flush (the member sees the last painted page
+// BEFORE the thawed child emits anything new). Idempotent; a dead
+// child skips the signal (Poll's fallback owns it); a closed session
+// no-ops.
+func (s *ZenbuSession) Unfreeze() error {
+	s.mu.Lock()
+	if s.closed || !s.suspended {
+		s.mu.Unlock()
+		return nil
+	}
+	s.suspended = false
+	pid := -1
+	if s.cmd != nil && s.cmd.Process != nil {
+		pid = s.cmd.Process.Pid
+	}
+	alive := s.alive && !s.exited
+	s.mu.Unlock()
+
+	if s.split != nil {
+		s.split.unpark()
+	}
+	if alive && pid > 0 {
+		return syscall.Kill(-pid, syscall.SIGCONT)
+	}
+	return nil
+}
+
+// Frozen — the keep-alive posture: the child is SIGSTOPped (alive, PID
+// unchanged), the splitter parked, the image store retained.
+func (s *ZenbuSession) Frozen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.suspended && !s.closed
+}
+
 // Close group-kills the child (the pty-spawned session leader: -pid takes
 // the WHOLE group — chromium helpers included), closes the master so the
 // reader unblocks, and waits BOUNDED by zenbuKillGrace for the reap
@@ -489,7 +602,10 @@ func (s *ZenbuSession) Scrollback() *term.Scrollback { return s.sb }
 // must not linger over the floor or past the office exit), and the
 // frame-splice registry CLEARS on the spot — the QUIT path renders no
 // further Frame to publish the empty state, so the renderer's final
-// flush (the alt-screen exit) must already find the registry empty.
+// flush (the alt-screen exit) must already find the registry empty. A
+// FROZEN child is SIGCONTed first (insurance: SIGKILL already terminates
+// a stopped process on darwin/linux, but no kernel queues the KILL
+// behind a CONT this way) — the freeze never becomes a reap wedge.
 func (s *ZenbuSession) Close() error {
 	s.mu.Lock()
 	if s.closed {
@@ -497,6 +613,8 @@ func (s *ZenbuSession) Close() error {
 		return nil
 	}
 	s.closed = true
+	wasFrozen := s.suspended
+	s.suspended = false
 	pid := -1
 	if s.cmd != nil && s.cmd.Process != nil {
 		pid = s.cmd.Process.Pid
@@ -509,6 +627,9 @@ func (s *ZenbuSession) Close() error {
 	// flush to the grid or the scrollback.
 	if s.split != nil {
 		s.split.reset()
+	}
+	if wasFrozen && pid > 0 {
+		_ = syscall.Kill(-pid, syscall.SIGCONT) // thaw into the KILL (see the doc)
 	}
 	if s.images != nil {
 		if frames := s.images.dropAll(); frames != "" {
@@ -676,15 +797,36 @@ func (c *BrowserLaneController) Poll() (changed bool) {
 	return true
 }
 
-// Suspend — the pane switched away (tab change): the premium child is
-// killed + reaped, the URL state keeps. Silent (not a failure — no note).
-func (c *BrowserLaneController) Suspend() { c.killSess() }
+// Suspend — the pane switched away (ctrl+b to the floor, the pane's
+// q/esc): the premium child FREEZES in place (SIGSTOP, keep-alive — the
+// member's "always shown" ruling): the terminal-side image deletes ride
+// the registry clear → the wrapper's a=d, the splitter parks (zero
+// store mutations while suspended), the image store RETAINS the latest
+// joined frame for Resume's instant repaint, the PID never changes, and
+// the URL state keeps. Silent (not a failure — no note). Idempotent.
+func (c *BrowserLaneController) Suspend() {
+	if c.sess == nil {
+		return
+	}
+	// an already-dead child's ESRCH is swallowed: the next Poll owns
+	// the fallback contract for it.
+	_ = c.sess.Freeze()
+}
 
-// Resume — the pane became active again: re-spawn the premium embed for
-// the CURRENT url when the lane still resolves premium and the url never
-// fell back (a fell-back url stays text — no flap). No new history entry.
+// Resume — the pane became active again: the SAME child THAWS (SIGCONT
+// — NO respawn, NO reload, NO blank beyond one frame flush; the store's
+// retained frame re-emits through the frame-splice wrapper on the next
+// flush, before the child emits anything new). A missing session (the
+// child died while frozen and Poll already dropped it) takes the old
+// respawn path: re-spawn the premium embed for the CURRENT url when the
+// lane still resolves premium and the url never fell back (a fell-back
+// url stays text — no flap). No new history entry.
 func (c *BrowserLaneController) Resume() {
-	if c.closed || c.sess != nil || c.url == "" {
+	if c.closed || c.url == "" {
+		return
+	}
+	if c.sess != nil {
+		_ = c.sess.Unfreeze() // keep-alive: thaw the SAME child
 		return
 	}
 	if c.resolver.Lane() != BrowserLaneZenbu || c.failed[c.url] {
@@ -727,9 +869,17 @@ func (c *BrowserLaneController) killSess() {
 // termSess contract verbatim.
 func (c *BrowserLaneController) Session() termSess { return c.sess }
 
-// PremiumActive — the premium embed is live RIGHT NOW (the strip +
-// " zenbu " badge paint; otherwise the text location bar + " text ").
-func (c *BrowserLaneController) PremiumActive() bool { return c.sess != nil }
+// PremiumActive — the premium embed is live AND painting RIGHT NOW (the
+// strip + " zenbu " badge paint; otherwise the text location bar +
+// " text "). A FROZEN child is NOT active: the floor owns the slot, the
+// registry stays clear, and no zenbu chrome paints until Resume thaws
+// the same session (Suspended reads the keep-alive posture).
+func (c *BrowserLaneController) PremiumActive() bool { return c.sess != nil && !c.sess.Frozen() }
+
+// Suspended — the keep-alive posture: the premium child is FROZEN
+// (SIGSTOPped, alive, the PID unchanged, the image store retained)
+// behind the floor. The harness proves the flip cycle through this.
+func (c *BrowserLaneController) Suspended() bool { return c.sess != nil && c.sess.Frozen() }
 
 // Note — the dim fallback note ("" while premium is healthy or the last
 // exit was clean). Rendered dim by the tab / RegionView.
@@ -772,6 +922,33 @@ func BrowserLaneBadge(premiumActive bool) string {
 		return chrome.TabActive.Render(" zenbu ")
 	}
 	return chrome.TabInactive.Render(" text ")
+}
+
+// -------------------------------------------------------------------
+// the pane's keep-alive seams (the LaneFrameState precedent: *Browser
+// methods placed with the lane code — the app drives the flip cycle
+// through these, the harness proves it)
+// -------------------------------------------------------------------
+
+// LaneSuspended — the pane's premium child is FROZEN behind the floor
+// (the keep-alive posture: SIGSTOPped, alive, PID unchanged, the image
+// store retained).
+func (b *Browser) LaneSuspended() bool {
+	return b.lane != nil && b.lane.Suspended()
+}
+
+// LaneSessionPid — the live OR frozen premium child's process id (-1
+// while the text lane paints or the session is a test fake): the
+// keep-alive proof's PID-stability read (the flip must never respawn).
+func (b *Browser) LaneSessionPid() int {
+	if b.lane == nil || b.lane.Session() == nil {
+		return -1
+	}
+	zs, ok := b.lane.Session().(*ZenbuSession)
+	if !ok {
+		return -1
+	}
+	return zs.Pid()
 }
 
 // RegionView — the browser tab's pane region, lane-aware, exactly cols×

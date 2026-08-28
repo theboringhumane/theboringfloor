@@ -93,6 +93,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "[theboringoffice] brain.json: %v (using defaults)\n", err)
 		cfg = config.Default()
 	}
+	// Majdoor attribution (brain.json top-level "attribution", default
+	// on): install the office's commit-msg hook into the current repo —
+	// or remove our own when off. One synchronous call, never fatal: a
+	// repo-less cwd, a foreign hook, or a git hiccup must never block
+	// boot (EnsureMajdoorHook's contract); the status is one short line.
+	hookStatus, hookErr := app.EnsureMajdoorHook(mustGetwd(), cfg.Attribution == config.AttributionDefault)
+	if hookErr != nil {
+		fmt.Fprintf(os.Stderr, "[theboringoffice] attribution hook: %v\n", hookErr)
+	} else {
+		fmt.Fprintf(os.Stderr, "[theboringoffice] attribution hook: %s\n", hookStatus)
+	}
 	if v := envOr("THEBORINGOFFICE_SERVER", "GRAFEIO_SERVER"); v != "" && *server == "" {
 		*server = v
 	}

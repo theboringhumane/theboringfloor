@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -98,9 +99,11 @@ func assertFrameSplice(t *testing.T, tag, got string, wantCols, wantRows int) {
 
 // TestZenbuFramePublishDesktop — the DESKTOP geometry (140x30): the left
 // slot at x=0, the grid's absolute origin (0,3) — topbar 1 + switcher
-// strip 1 + the RegionView badge row 1. The leave then flushes the
-// delete through BOTH riders (the lane Close's direct seam + the
-// wrapper's emitted-set diff — redundant, q=2-hushed no-ops).
+// strip 1 + the RegionView badge row 1. The leave then FREEZES the lane
+// (keep-alive: NO direct emit — the child lives on): the registry clear
+// makes the wrapper's emitted-set diff flush the a=d on the next frame;
+// the office-quit path (ctrl+c → Close) still flushes the delete
+// DIRECTLY through the seam (redundant, q=2-hushed no-ops).
 func TestZenbuFramePublishDesktop(t *testing.T) {
 	pinBrowserLaneEnv(t)
 	plantKittyFrameFake(t)
@@ -119,24 +122,38 @@ func TestZenbuFramePublishDesktop(t *testing.T) {
 	// the controller reserves the strip + note rows → bodyH = middleH-3.
 	assertFrameSplice(t, "desktop", frameSpliceOut(t, w, out, "FLUSH"), m.floorW, m.middleH-3)
 
-	// the leave: the lane closes — its Close flushes the a=d DIRECTLY
-	// (captured through the wrapper's DirectEmit) and clears the registry.
+	// the leave: the lane FREEZES (keep-alive) — the direct seam stays
+	// SILENT (the child lives on); the registry clear makes the wrapper's
+	// emitted-set diff flush exactly one a=d on the next frame.
 	out.Reset()
+	pid := m.BrowserLanePid()
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'q', Text: "q"}))
 	if m.BrowserPremiumActive() {
-		t.Fatal("q left + closed the premium session")
+		t.Fatal("q left + suspended the premium session")
 	}
-	if got := out.String(); got != frameTestDeleteFrame() {
-		t.Fatalf("the lane Close flushed the delete through the direct seam:\n got %q\nwant %q", got, frameTestDeleteFrame())
+	if !m.BrowserLaneSuspended() {
+		t.Fatal("q FREEZES the lane (the keep-alive posture)")
+	}
+	if got := out.String(); got != "" {
+		t.Fatalf("a freeze direct-emits NOTHING (the delete rides the wrapper's diff): %q", got)
 	}
 	_ = m.Frame() // publishes the empty state
-	// the next flush: the wrapper's emitted-set diff re-deletes (the two
-	// paths are redundant belts — kitty no-ops the dupe, q=2 hushes it).
 	if got := frameSpliceOut(t, w, out, "F2"); got != "F2"+frameTestDeleteFrame() {
 		t.Fatalf("the wrapper's diff flushes the emitted id once:\n got %q\nwant %q", got, "F2"+frameTestDeleteFrame())
 	}
 	if got := frameSpliceOut(t, w, out, "F3"); got != "F3" {
 		t.Fatalf("…and the next flush passes through clean: %q", got)
+	}
+
+	// the quit path: ctrl+c → closeBrowser → the lane's Close — the
+	// frozen child is reaped AND its delete rides the direct seam.
+	out.Reset()
+	_ = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	if got := out.String(); got != frameTestDeleteFrame() {
+		t.Fatalf("the quit's lane Close flushed the delete through the direct seam:\n got %q\nwant %q", got, frameTestDeleteFrame())
+	}
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatalf("the quit path reaps the frozen child: kill(%d, 0) = %v", pid, err)
 	}
 }
 
@@ -177,5 +194,88 @@ func TestZenbuFramePublishInactive(t *testing.T) {
 	_ = m.Frame() // the floor shows — no lane
 	if got := frameSpliceOut(t, w, out, "FLOOR"); got != "FLOOR" {
 		t.Fatalf("the floor frame passes through untouched: %q", got)
+	}
+}
+
+// TestZenbuFrameKeepAliveCycle — THE keep-alive flip cycle, byte-pinned
+// at the wrapper: /open paints (a=T under the stable office id) → ctrl+b
+// to the floor (the child FREEZES — PID stable + alive + SIGSTOPped —
+// and the wrapper's diff flushes exactly one a=d) → ctrl+b back (the
+// SAME pid thaws and the RETAINED frame re-emits BYTE-IDENTICALLY —
+// the fake child parked at `exec sleep` emits ZERO new bytes, so any
+// a=T is definitionally the store's cached frame, proven BEFORE any new
+// child output) → ctrl+c (the quit path's Close reaps the thawed child,
+// its delete riding the direct seam). The full trace:
+//
+//	a=T(same id) … a=d(floor) … a=T(same id, instant) … a=d(quit)
+func TestZenbuFrameKeepAliveCycle(t *testing.T) {
+	pinBrowserLaneEnv(t)
+	plantKittyFrameFake(t)
+	panels.ZenbuRegistry().Clear()
+	t.Cleanup(panels.ZenbuRegistry().Clear)
+	w, out := frameTestWrapper(t)
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, slashMsg{text: "/open " + laneFixtureURL(t)})
+	m = waitLaneGrid(t, m, "zenbu-fake open file:///")
+	pid := m.BrowserLanePid()
+	if pid <= 0 {
+		t.Fatalf("the premium child's pid reads through the harness seam, got %d", pid)
+	}
+
+	// OPEN: one flush publishes + splices the retained frame (a=T).
+	_ = m.Frame()
+	spliceOpen := frameSpliceOut(t, w, out, "FLUSH")
+	assertFrameSplice(t, "keepalive open", spliceOpen, m.floorW, m.middleH-3)
+	apcOpen := strings.TrimPrefix(spliceOpen, "FLUSH")
+	if !strings.Contains(apcOpen, "\x1b_Ga=T,") {
+		t.Fatalf("the open splice carries the a=T: %q", apcOpen)
+	}
+
+	// ctrl+b → FLOOR: the child FREEZES (PID stable, alive, SIGSTOPped);
+	// the wrapper's emitted-set diff flushes exactly one a=d.
+	m = runMsg(t, m, ctrlB())
+	if m.BrowserPremiumActive() || !m.BrowserLaneSuspended() {
+		t.Fatalf("the floor flip freezes the lane: active=%v suspended=%v", m.BrowserPremiumActive(), m.BrowserLaneSuspended())
+	}
+	if got := m.BrowserLanePid(); got != pid {
+		t.Fatalf("the freeze never respawns: pid %d → %d", pid, got)
+	}
+	if err := syscall.Kill(pid, 0); err != nil {
+		t.Fatalf("the frozen child stays ALIVE: kill(%d, 0) = %v", pid, err)
+	}
+	_ = m.Frame()
+	if got := frameSpliceOut(t, w, out, "FLOOR"); got != "FLOOR"+frameTestDeleteFrame() {
+		t.Fatalf("the floor flip flushes exactly one a=d:\n got %q\nwant %q", got, "FLOOR"+frameTestDeleteFrame())
+	}
+
+	// ctrl+b → BROWSER: the SAME pid thaws; the RETAINED frame re-emits
+	// BYTE-IDENTICALLY (the parked fake emits zero new bytes — the a=T
+	// is definitionally the store's cached frame, BEFORE any child output).
+	m = runMsg(t, m, ctrlB())
+	if !m.BrowserPremiumActive() || m.BrowserLaneSuspended() {
+		t.Fatalf("the return thaws the lane: active=%v suspended=%v", m.BrowserPremiumActive(), m.BrowserLaneSuspended())
+	}
+	if got := m.BrowserLanePid(); got != pid {
+		t.Fatalf("the flip's PID never changes: %d → %d", pid, got)
+	}
+	_ = m.Frame()
+	spliceResume := frameSpliceOut(t, w, out, "BACK")
+	if got, want := strings.TrimPrefix(spliceResume, "BACK"), apcOpen; got != want {
+		t.Fatalf("the resume re-emits the RETAINED frame byte-identically:\n got %q\nwant %q", got, want)
+	}
+	if strings.Contains(spliceResume, "\x1b_Ga=d,") {
+		t.Fatalf("no a=d may interleave the thaw (same-id atomic replace): %q", spliceResume)
+	}
+
+	// ctrl+c — the quit path: Close reaps the thawed child; its delete
+	// rides the direct seam.
+	out.Reset()
+	_ = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	if got := out.String(); got != frameTestDeleteFrame() {
+		t.Fatalf("the quit's lane Close flushed the delete through the direct seam:\n got %q\nwant %q", got, frameTestDeleteFrame())
+	}
+	if err := syscall.Kill(pid, 0); err == nil {
+		t.Fatalf("the quit path reaps the child: kill(%d, 0) = %v", pid, err)
 	}
 }

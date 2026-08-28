@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev N: lane keep-alive suspend (@developer su... — tekton-2 (developer) · `issues`
+- summary: All green, no foreign leakage, no commits. The work is complete — assembling the return.
+- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/app/browser.go`, `internal/app/browser_lane_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, `/tmp/drive_office_pty_keepalive.py` + rebuilt `/tmp/tb-office`, NOT touched
+- verify: ```
+- proof: *The flip cycle's byte trace (REAL office + REAL Electron terminal-browser, 160×48 PTY, ghostty env — run 2, pid 49126):**
+- ledgerId: led-1787906810427-c11441a2
+
+### 2026-08-28 · Dev A: attribution default-on core (@develope... — tekton-3 (developer) · `issues`
+- summary: All checks green. Assembling the final return.
+- files: `internal/config/config.go`, `internal/config/config_attribution_test.go`, `internal/app/attribution.go`, `internal/app/attribution_test.go`, `cmd/theboringoffice/main.go`
+- verify: ```
+- proof: *(a) The new brain.json skeleton** — verbatim head of `go run ./cmd/theboringoffice --print-default-config` (what a first boot writes):
+- ledgerId: led-1787906218308-ceabf988
+
+### 2026-08-28 · Dev B: attribution docs + scripts (@developer... — tekton-4 (developer) · `issues`
+- summary: All checks green. Assembling the final return.
+- files: `README.md`, `scripts/install-majdoor-hook.sh`, `scripts/majdoor-commit-msg-hook.sh`, `install.sh`, NOT touched: `scripts/majdoor-env.sh`
+- verify: ```
+- proof: *The rewritten README attribution section, verbatim as a reader will see it (README.md L434–479):**
+- ledgerId: led-1787905461465-2aa38b80
+
+### 2026-08-28 · Scout: majdoor default-on seams (@explore sub... — skopos-1 (scout) · `issues`
+- summary: All evidence gathered; the tree was never touched. Return per contract:
+- files: No files written or modified
+- verify: Grep `WithMajdoorAuthorEnv|MajdoorEnvMerge` repo-wide (`*.go`) → 13 matches across 6 files (callers: term.go:112, headless/main.go:1076, ope
+- proof: The recon itself is the artifact — see **Findings** (Q1–Q9 with verbatim snippets), **Seam recommendation** (main.go after L95; function in
+- ledgerId: led-1787905355035-7b614236
+
 ### 2026-08-28 · Dev M: lane flicker/size/leak fixes (@develop... — tekton-1 (developer) · `issues`
 - summary: All 32 kitty/zenbu tests pass (25 pre-existing + 7 new). Every gate verified. Final return:
 - files: `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, (`internal/panels/zenbu_frame.go`, `zenbu_frame_test.go`
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (none)
 - proof: (none)
 - ledgerId: led-1787763357467-c6682144
-
-### 2026-08-26 · Scout: BFF seam inside office (@explore subag... — skopos-2 (scout) · `issues`
-- summary: Recon complete. The only dirty file is `.opencode/office-ledger.md`, appended by the office app's own ledger recorder (not by me — my tool calls were exclusivel
-- files: | path | why read |, |---|---|, | `cmd/theboringoffice/main.go` | boot/teardown order; `envOr` legacy-env pattern; `sink` wiring; `s, | `internal/app/model.go`, | `internal/state/state.go` | the whole BFF wire contract: `Event`, | `internal/backend/backend.go` | `flow.emit` unlocked-callback discipline, | `internal/backend/opencode.go` | `SendWith`/`postPrompt`/`AnswerPermission`/`AnswerQuestion`/`Reje, | `internal/backend/events.go` | `normCtx`, | `internal/app/sessions.go` | `primarySeamBackend`, snapshot/persist loop, `PrimarySessionID()` |, | `internal/config/config.go` | where a `mobile`/`remote` config block + backfill would go |, | `internal/panels/thread_focus.go`, `chat.go`, `threads_opencode.go` | the worker-thread filter (`F, | `cmd/headless/main.go`
-- verify: Tool inventory used: `read`, `grep`, `glob`, `bash` (`ls`, `git status/diff`, `rg`). Zero file writes, zero mutations.
-- proof: # Manager Report — Mobile BFF seam map (Flutter ↔ theboringoffice over LAN)
-- ledgerId: led-1787762024879-1efe48a5
-
-### 2026-08-26 · Scout: flutter env + LAN surface (@explore su... — skopos-1 (scout) · `issues`
-- summary: Recon complete. Zero files modified. Full report:
-- files: (none)
-- verify: `git status` untouched — no writes performed
-- proof: (none)
-- ledgerId: led-1787761862085-1ba7c3fc
-
-### 2026-08-26 · Commit + push docs wave et al (@developer sub... — tekton-9 (developer) · `done`
-- summary: All work committed and pushed; tree is clean and fully in sync with origin/main. Final return:
-- files: **wave 66**, **wave 67**, **wave 68**, **wave 69**, Zero file-content edits made by me; staging was explicit per path, never `git add -A`.
-- verify: ```
-- proof: *The four new wave commits on origin/main** (`git log --oneline -4` equivalent, post-push):
-- ledgerId: led-1787761276183-bec4caa9
-
-### 2026-08-26 · Dev: docs screenshot pipeline (@developer sub... — tekton-4 (developer) · `issues`
-- summary: freeze setup: `freeze version v0.2.2` already on PATH (`/Users/theboringhumane/go/bin/freeze`); pilot `--tab agents` → ANSI file (SGR colors intact) → `freeze -
-- files: `website/scripts/docs-shots.sh`, `website/public/shots/docs/office-overview.png`, `website/public/shots/docs/first-run-chat.png`, `website/public/shots/docs/backend-claude.png`, `website/public/shots/docs/chat-thinking.png`, `website/public/shots/docs/work-threads.png`, `website/public/shots/docs/thread-focus.png`, `website/public/shots/docs/permission-modal.png`, `website/public/shots/docs/question-modal.png`, `website/public/shots/docs/concierge.png`, `website/public/shots/docs/plan-gated.png`, `website/public/shots/docs/plan-presented.png`
-- verify: ```
-- proof: | shot | uishot command | frame | dims | what the frame shows (verified from extracted ANSI / rendered PNG) |
-- ledgerId: led-1787761090907-18cd5208
 

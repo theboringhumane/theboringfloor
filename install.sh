@@ -10,7 +10,9 @@
 #   --backend NAME       LLM transport the office boots on: opencode (default)
 #                        or claudecode (needs the claude CLI; warn-only when absent)
 #   --majdoor-hook DIR   Also install the TheBoringMajdoor commit-msg attribution
-#                        hook into the repo at DIR (opt-in)
+#                        hook into the repo at DIR — meant for repos the office
+#                        never boots in (it auto-installs into its boot repo
+#                        when attribution is on, the default)
 #   --skip-agentmemory   Do not install/start the agentmemory background service
 #   --skip-terminal-browser
 #                        Do not install the zenbu terminal-browser bundle
@@ -148,7 +150,9 @@ Flags:
                        (premium kitty/ghostty browser lane)
   --backend NAME       LLM transport: opencode (default) | claudecode
   --majdoor-hook DIR   Install the TheBoringMajdoor commit-msg attribution
-                       hook into the repo at DIR (opt-in)
+                       hook into the repo at DIR — meant for repos the office
+                       never boots in (it auto-installs into its boot repo
+                       when attribution is on, the default)
   --uninstall          Remove the theboringoffice binary, the agentmemory
                        service, and the terminal-browser bundle + shim
 USAGE
@@ -933,11 +937,14 @@ setup_backend() {
 
 # ---------------------------------------------------------------- majdoor hook
 
-# setup_majdoor_hook — opt-in (--majdoor-hook DIR): stamp the TheBoringMajdoor
-# co-author trailer onto commits in ONE repo the member names. Pure delegation
-# to scripts/install-majdoor-hook.sh (single source of truth for the hook body
-# and the backup/hooks-dir rules): run from the checkout when install.sh runs
-# in one, fetched from the raw URL into the temp workdir when curl-piped.
+# setup_majdoor_hook — flag-gated (--majdoor-hook DIR): stamp the
+# TheBoringMajdoor co-author trailer onto commits in ONE extra repo the
+# member names — for repos the office never boots in (the office itself
+# auto-installs the same hook into its boot repo when attribution is on, the
+# default). Pure delegation to scripts/install-majdoor-hook.sh (the single
+# source of truth for the hook body and the backup/hooks-dir rules): run
+# from the checkout when install.sh runs in one, fetched from the raw URL
+# into the temp workdir when curl-piped.
 setup_majdoor_hook() {
     [ -n "$MAJDOOR_HOOK_DIR" ] || return 0
     stage "TheBoringMajdoor commit-msg hook"

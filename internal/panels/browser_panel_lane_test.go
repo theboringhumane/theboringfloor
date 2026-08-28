@@ -187,8 +187,10 @@ func TestBrowserPanelLaneResize(t *testing.T) {
 }
 
 // TestBrowserPanelLaneSuspendResume — the app's slot-flip hooks: Suspend
-// kills the embed silently (no note), Resume re-spawns for the SAME url
-// (no new lane-history entry), Close seals the controller.
+// FREEZES the embed silently (keep-alive — no kill, no note, the pane's
+// premium chrome hides behind the floor), Resume THAWS the SAME session
+// (no respawn — made stays 1, no new lane-history entry), Close seals
+// the controller.
 func TestBrowserPanelLaneSuspendResume(t *testing.T) {
 	r := newLaneRig(t, map[string]*Page{
 		"https://a.dev/x": navPage("https://a.dev/x", "Xray"),
@@ -196,23 +198,30 @@ func TestBrowserPanelLaneSuspendResume(t *testing.T) {
 	r.driveOpen(t, "https://a.dev/x")
 
 	r.b.SuspendLane()
-	if !(*r.made)[0].closed {
-		t.Fatal("SuspendLane group-kills the embedded child")
+	if !(*r.made)[0].frozen {
+		t.Fatal("SuspendLane freezes the embedded child (SIGSTOP, keep-alive)")
+	}
+	if (*r.made)[0].closed {
+		t.Fatal("SuspendLane must NOT kill the child (keep-alive)")
 	}
 	if r.b.PremiumActive() {
-		t.Fatal("SuspendLane drops the pane back to the text lane")
+		t.Fatal("a frozen child hides the premium chrome behind the floor")
+	}
+	if !r.b.LaneSuspended() {
+		t.Fatal("the pane reads the keep-alive posture")
 	}
 	if n := r.b.LaneNote(); n != "" {
 		t.Fatalf("a pane switch is not a failure — no note: %q", n)
 	}
 
 	r.b.ResumeLane()
-	if len(*r.made) != 2 || !r.b.PremiumActive() {
-		t.Fatalf("ResumeLane re-spawns the embed for the same url: made=%d active=%v", len(*r.made), r.b.PremiumActive())
+	if len(*r.made) != 1 || !r.b.PremiumActive() || r.b.LaneSuspended() {
+		t.Fatalf("ResumeLane thaws the SAME embed (no respawn): made=%d active=%v suspended=%v",
+			len(*r.made), r.b.PremiumActive(), r.b.LaneSuspended())
 	}
 
 	r.b.Close()
-	if !(*r.made)[1].closed {
+	if !(*r.made)[0].closed {
 		t.Fatal("Close reaps the live embed at pane teardown")
 	}
 }

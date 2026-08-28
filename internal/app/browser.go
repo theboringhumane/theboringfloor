@@ -26,13 +26,20 @@
 // switch can never misdeliver a page. BrowserLeaveMsg (the pane's q/esc)
 // flips the slot back to the floor.
 //
-// PREMIUM LANE LIFECYCLE: the pane consults its lane controller on every
-// open (kitty-capable host + `terminal-browser` on PATH + no kill-switch
-// → the embedded zenbu child paints the slot); THIS file owns the flips —
+// PREMIUM LANE LIFECYCLE (the member's keep-alive ruling — the page is
+// "always shown"): the pane consults its lane controller on every open
+// (kitty-capable host + `terminal-browser` on PATH + no kill-switch →
+// the embedded zenbu child paints the slot); THIS file owns the flips —
 // leaving the slot (ctrl+b to the floor, the pane's q/esc) SUSPENDS the
-// lane (the child is group-killed + reaped, never leaked behind the
-// floor), returning RESUMES it (a fresh spawn for the current url unless
-// it fell back before), and the quit paths seal it through Close.
+// lane: the child FREEZES (SIGSTOP, alive — its PID never changes, one
+// backgrounded Electron's RAM accepted), the terminal-side image
+// deletes ride the registry clear → the wrapper's a=d (the floor never
+// shows the page), and the lane's image store RETAINS the latest joined
+// frame; returning RESUMES it: the SAME child thaws (SIGCONT — no
+// respawn, no reload) and the retained frame re-emits through the
+// frame-splice wrapper on the very next flush — an instant repaint,
+// before the child emits a byte. The quit paths still seal the lane
+// through Close (group-kill + bounded reap), exactly as before.
 package app
 
 import (
@@ -62,10 +69,11 @@ func (m *Model) browserActive() bool {
 }
 
 // toggleLeftTab — ctrl+b: flip the floor slot floor ↔ browser. Leaving
-// the browser SUSPENDS its premium lane (the embedded child dies with the
-// flip — never a leak behind the floor); returning RESUMES it (a fresh
-// spawn for the current url unless that url fell back before — the
-// controller's no-flap latch).
+// the browser SUSPENDS its premium lane (the embedded child FREEZES with
+// the flip — SIGSTOPped, alive, PID unchanged, the image store retained
+// for the instant repaint); returning RESUMES it (the SAME child thaws
+// on SIGCONT — no respawn, no reload — unless it died while frozen,
+// which rides the controller's fallback latch).
 func (m *Model) toggleLeftTab() {
 	if m.leftTab == leftTabBrowser {
 		m.leftTab = leftTabFloor
@@ -182,9 +190,28 @@ func (m *Model) handleBrowserOpened(msg panels.BrowserOpenedMsg) tea.Cmd {
 // ---------------------------------------------------------------------------
 
 // BrowserPremiumActive — the left-pane browser's premium embed (the
-// embedded zenbu terminal-browser child) is live RIGHT NOW.
+// embedded zenbu terminal-browser child) is live AND painting RIGHT NOW
+// (a FROZEN child behind the floor is not active — the keep-alive
+// suspend hides the page; BrowserLaneSuspended reads that posture).
 func (m Model) BrowserPremiumActive() bool {
 	return m.browser != nil && m.browser.PremiumActive()
+}
+
+// BrowserLaneSuspended — the left-pane browser's premium child is FROZEN
+// behind the floor (the keep-alive posture: SIGSTOPped, alive, the PID
+// unchanged, the image store retained for Resume's instant repaint).
+func (m Model) BrowserLaneSuspended() bool {
+	return m.browser != nil && m.browser.LaneSuspended()
+}
+
+// BrowserLanePid — the live OR frozen premium child's process id (-1
+// while the text lane paints): the keep-alive flip proof's PID-stability
+// read (a flip must NEVER respawn the child).
+func (m Model) BrowserLanePid() int {
+	if m.browser == nil {
+		return -1
+	}
+	return m.browser.LaneSessionPid()
 }
 
 // BrowserLaneGridHas — needle appears in the live premium child's screen
@@ -205,8 +232,9 @@ func (m Model) BrowserLanePoll() {
 }
 
 // handleBrowserLeave — the pane's q/esc: back to the floor tab (the right
-// strip never moves) AND the lane session closes (the premium child never
-// outlives the slot).
+// strip never moves) AND the lane session FREEZES (the keep-alive
+// suspend: the premium child keeps the page warm — the slot repaints
+// instantly on return).
 func (m *Model) handleBrowserLeave() {
 	if m.browser != nil {
 		m.browser.SuspendLane()

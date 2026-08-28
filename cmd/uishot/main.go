@@ -203,6 +203,18 @@
 //	                                to text mode
 //	                                with the exact dim note, URL state
 //	                                intact; byte-identical twice)
+//	                    [--browser --lane keepalive] (the freeze/thaw flip
+//	                                cycle (synchronous, REAL fake binary):
+//	                                /open → ctrl+b (floor — the child
+//	                                FREEZES: PID stable + alive + ps T…,
+//	                                ONE a=d through the wrapper's diff) →
+//	                                ctrl+b (the SAME pid thaws; the
+//	                                RETAINED frame re-emits byte-
+//	                                identically, ZERO new child bytes) →
+//	                                ctrl+b → ctrl+c (the quit path reaps
+//	                                the frozen child, the delete riding
+//	                                the direct seam); ONE spawn total;
+//	                                byte-identical twice)
 //	                    [--browser --lane hint] (the text lane's "why" row
 //	                                (synchronous, hermetic): PATH pinned to
 //	                                an EMPTY fixture dir — the probe misses
@@ -235,6 +247,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -5700,22 +5713,27 @@ func browserAssertKill(tag string, out browserKillOut) error {
 // frame wears the " zenbu " badge + the "▸ zenbu terminal-browser ·
 // <url>" strip + the child's painted marker (the RIGHT strip unmoved on
 // chat). Leg C then presses esc — the pane's leave rides BrowserLeaveMsg,
-// the app's SuspendLane kills the child, the floor returns. Leg D (the
-// fake exits 1) lands the text fallback THROUGH THE APP: the pane's real
-// viewer (warm — the fetch rode under the embed) + the dim "zenbu exited
-// (1) — falling back to text mode" note, and a re-open never re-spawns
-// (the no-flap latch, read off the fake's call log). Every leg
-// byte-identical across two drives (the paint-convergence waits poll the
-// app's harness seams — no state events, the digest stays frozen).
+// the app's SuspendLane FREEZES the child (keep-alive: SIGSTOPped,
+// ALIVE behind the floor, PID unchanged, ONE spawn total), the floor
+// returns, and the ctrl+c quit path reaps the frozen child (no leak).
+// Leg D (the fake exits 1) lands the text fallback THROUGH THE APP: the
+// pane's real viewer (warm — the fetch rode under the embed) + the dim
+// "zenbu exited (1) — falling back to text mode" note, and a re-open
+// never re-spawns (the no-flap latch, read off the fake's call log).
+// Every leg byte-identical across two drives (the paint-convergence
+// waits poll the app's harness seams — no state events, the digest
+// stays frozen).
 
 // browserLiveFrameOut — ONE live drive's observed artifacts.
 type browserLiveFrameOut struct {
-	frameLive  string // after /open — the premium frame (badge + strip + marker)
-	frameFloor string // after esc — the floor restored, the lane suspended
-	frameFell  string // leg D: the text lane + the dim fallback note
-	leftTab    int
-	activeTab  int
-	spawns     int // the fake's call-log line count (the no-flap evidence)
+	frameLive     string // after /open — the premium frame (badge + strip + marker)
+	frameFloor    string // after esc — the floor restored, the lane FROZEN (keep-alive)
+	frameFell     string // leg D: the text lane + the dim fallback note
+	leftTab       int
+	activeTab     int
+	spawns        int  // the fake's call-log line count (the no-flap evidence)
+	pidFloorAlive bool // leg C: the frozen child stays ALIVE behind the floor
+	pidQuitGone   bool // leg C: the ctrl+c quit path reaps the frozen child
 }
 
 // browserLiveFake — the live proof's fake binary: logs every invocation
@@ -5876,13 +5894,25 @@ func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 		out.activeTab = m.ActiveTabIndex() // returns the slot to the floor
 		runExec(state.Event{Kind: state.EvStatus, Text: "live lane painting"})
 		out.frameLive = m.Frame()
-		// esc leaves to the floor AND suspends the lane (the child dies
-		// with the slot flip — the drain runs the bounded reap inline).
+		// esc leaves to the floor AND FREEZES the lane (the keep-alive
+		// suspend: the child stays ALIVE behind the floor, its PID
+		// unchanged — the page repaints instantly on return); the ctrl+c
+		// quit path then reaps the frozen child (never a leak).
+		pid := m.BrowserLanePid()
 		runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
 		if m.BrowserPremiumActive() {
-			return out, fmt.Errorf("browser-live C: esc must close the premium session")
+			return out, fmt.Errorf("browser-live C: esc must hide the premium session")
 		}
+		if !m.BrowserLaneSuspended() {
+			return out, fmt.Errorf("browser-live C: esc must FREEZE the premium session (keep-alive)")
+		}
+		if m.BrowserLanePid() != pid {
+			return out, fmt.Errorf("browser-live C: the freeze never respawns (pid %d → %d)", pid, m.BrowserLanePid())
+		}
+		out.pidFloorAlive = pid > 0 && syscall.Kill(pid, 0) == nil
 		out.frameFloor = m.Frame()
+		runExec(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl})) // the quit path reaps the frozen child
+		out.pidQuitGone = pid > 0 && errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 	}
 	if b, err := os.ReadFile(filepath.Join(root, "calls.log")); err == nil {
 		out.spawns = strings.Count(strings.TrimSpace(string(b)), "\n") + 1
@@ -5893,7 +5923,8 @@ func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 // browserLiveIdentical — the two-drives byte-identity gate.
 func browserLiveIdentical(a, b browserLiveFrameOut) bool {
 	return a.frameLive == b.frameLive && a.frameFloor == b.frameFloor && a.frameFell == b.frameFell &&
-		a.leftTab == b.leftTab && a.activeTab == b.activeTab && a.spawns == b.spawns
+		a.leftTab == b.leftTab && a.activeTab == b.activeTab && a.spawns == b.spawns &&
+		a.pidFloorAlive == b.pidFloorAlive && a.pidQuitGone == b.pidQuitGone
 }
 
 func runBrowserLiveProof() error {
@@ -5955,6 +5986,12 @@ func runBrowserLiveProof() error {
 	if c1.spawns != 1 {
 		return fail("browser-live C: exactly ONE spawn (esc never re-spawns), log %d", c1.spawns)
 	}
+	if !c1.pidFloorAlive {
+		return fail("browser-live C: the frozen child stays ALIVE behind the floor (keep-alive)")
+	}
+	if !c1.pidQuitGone {
+		return fail("browser-live C: the ctrl+c quit path reaps the frozen child (no leak)")
+	}
 	if !browserLiveIdentical(c1, c2) {
 		return fail("browser-live C: two drives must be byte-identical")
 	}
@@ -5999,7 +6036,305 @@ func runBrowserLiveProof() error {
 	fmt.Println(d1.frameFell)
 	fmt.Println("===== UI SHOT =====")
 
-	fmt.Println("asserts: OK — the LIVE wiring (never the controller direct): \"/open file://<fixture>\" through the REAL chat input (bracketed paste → Enter → slashMsg → the pane's Open) on the hermetic ghostty stub (PATH pinned \"<fixture>:<orig>\", both kill-switch spellings cleared); leg C: the pane's Open spawned the real fake child on the PTY seam — the LEFT slot's frame wears the \" zenbu \" badge + the \"▸ zenbu terminal-browser · <url>\" strip + the child's painted marker (strip LEFT of the sidebar's chat tab, the RIGHT strip unmoved, NO text-lane hint row anywhere), then esc rode BrowserLeaveMsg → SuspendLane (the child reaped with the flip, ONE spawn total, the floor restored); leg D (the fake exits 1): the pane's poll ride landed the text fallback THROUGH THE APP — the fixture page warm underneath (never re-fetched), the exact dim \"zenbu exited (1) — falling back to text mode\" note, and the re-open never re-spawned (the no-flap latch read off the fake's call log); every leg byte-identical across two drives")
+	fmt.Println("asserts: OK — the LIVE wiring (never the controller direct): \"/open file://<fixture>\" through the REAL chat input (bracketed paste → Enter → slashMsg → the pane's Open) on the hermetic ghostty stub (PATH pinned \"<fixture>:<orig>\", both kill-switch spellings cleared); leg C: the pane's Open spawned the real fake child on the PTY seam — the LEFT slot's frame wears the \" zenbu \" badge + the \"▸ zenbu terminal-browser · <url>\" strip + the child's painted marker (strip LEFT of the sidebar's chat tab, the RIGHT strip unmoved, NO text-lane hint row anywhere), then esc rode BrowserLeaveMsg → SuspendLane (the child FROZEN with the flip — keep-alive, ALIVE behind the floor, PID unchanged, ONE spawn total, the floor restored — and the ctrl+c quit path reaped it, no leak); leg D (the fake exits 1): the pane's poll ride landed the text fallback THROUGH THE APP — the fixture page warm underneath (never re-fetched), the exact dim \"zenbu exited (1) — falling back to text mode\" note, and the re-open never re-spawned (the no-flap latch read off the fake's call log); every leg byte-identical across two drives")
+	return nil
+}
+
+// --- browser tab KEEP-ALIVE lane (--browser --lane keepalive) ----------------
+// THE flip-cycle proof (the member's ruling: the page is "always shown" —
+// keep-alive over fresh reloads, one backgrounded Electron's RAM while
+// suspended): a REAL fake `terminal-browser` on the pinned PATH under the
+// hermetic ghostty stub streams ONE chunked kitty frame and parks at
+// `exec sleep`; "/open file://<fixture>" rides the REAL chat input, then
+// ctrl+b flips the LEFT slot floor-ward and back THROUGH THE APP GLUE
+// while the frame-splice wrapper (the production emission seam over the
+// shared registry, its DirectEmit captured) records every byte:
+//
+//	open:        a=T under the STABLE office id (the retained frame)
+//	ctrl+b:      the child FREEZES — PID stable + ALIVE + ps state T…
+//	             (SIGSTOPped) — and the wrapper's diff flushes ONE a=d
+//	ctrl+b back: the SAME pid thaws; the RETAINED frame re-emits
+//	             BYTE-IDENTICALLY (the parked fake emits ZERO new bytes —
+//	             the a=T is definitionally the store's cached frame,
+//	             BEFORE any child output), ZERO a=d between
+//	ctrl+b:      a=d again; ctrl+c: the quit path's Close reaps the
+//	             frozen child, the delete riding the direct seam
+//
+// The spawn log stays at ONE across the whole cycle (a respawn would log
+// a second line AND re-print the marker). Every leg byte-identical
+// across two drives (the pid VALUES vary — only the stability verdicts
+// are compared).
+
+// browserKeepaliveFake — the flip cycle's scripted child: log the spawn,
+// home, toolbar, ONE chunked kitty frame (browserStreamB64A, m=1/m=0 —
+// the commit lands pane-local (0,1)), the marker, park forever.
+func browserKeepaliveFake(root string) error {
+	b64 := browserStreamB64A
+	fake := "#!/bin/sh\n" +
+		"echo \"$@\" >> \"" + filepath.Join(root, "calls.log") + "\"\n" +
+		"printf '\\033[2J\\033[H'\n" +
+		"printf 'TB-TOOLBAR\\r\\n'\n" +
+		"printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:7] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=0;" + b64[7:] + "\\033\\\\'\n" +
+		"printf '\\033[3;1H'\n" +
+		"printf 'zenbu-fake open %s\\n' \"$2\"\n" +
+		"exec sleep 1000000\n"
+	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
+}
+
+// browserKeepaliveOut — ONE keep-alive drive's observed artifacts (the
+// pid VALUES are excluded from the byte-pin — the verdicts ride).
+type browserKeepaliveOut struct {
+	spliceOpen      string // the open flush: a=T under the stable office id
+	floorFlush      string // the floor-ward flip: exactly ONE a=d
+	spliceResume    string // the return flush: the RETAINED frame, byte-identical
+	floorFlush2     string // the second floor-ward flip: the a=d again
+	quitEmit        string // the quit path's direct-seam delete
+	floorState      string // the frozen child's ps state ("T…" — SIGSTOPped)
+	spawns          int    // the fake's call-log line count (MUST be 1)
+	pidStable       bool   // ONE pid across the whole cycle
+	pidAliveOnFloor bool   // the frozen child stays alive (keep-alive)
+	pidGoneAfter    bool   // the quit path reaps (no leak)
+}
+
+// browserKeepaliveDrive — ONE hermetic keep-alive drive.
+func browserKeepaliveDrive() (browserKeepaliveOut, error) {
+	var out browserKeepaliveOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range browserEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() { // restore EVERY key (the drive pairs share the process)
+		for _, k := range browserEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-browser-keepalive-")
+	if err != nil {
+		return out, fmt.Errorf("browser-keepalive fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	if err := browserKeepaliveFake(root); err != nil {
+		return out, fmt.Errorf("browser-keepalive fixture terminal-browser: %w", err)
+	}
+	os.Setenv("TERM_PROGRAM", "ghostty") // the hermetic kitty-capable host stub
+	for _, k := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM_VERSION", "WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID"} {
+		os.Setenv(k, "")
+	}
+	os.Setenv("TERM", "xterm-256color")
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv(panels.BrowserLaneOffEnv, "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
+
+	// the frame-splice wrapper over the SHARED registry (the production
+	// seam's exact shape), the lane's direct deletes captured.
+	reg := panels.ZenbuRegistry()
+	reg.Clear()
+	defer reg.Clear()
+	var buf strings.Builder
+	w := panels.NewZenbuFrameWriter(&buf, reg)
+	restoreEmit := panels.SetZenbuEmitForShot(w.DirectEmit)
+	defer restoreEmit()
+
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	runExec := func(msg tea.Msg) {
+		tm, cmd := m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped, exactly as runMsg does
+			default:
+				tm2, next := m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	flush := func(tag string) string {
+		buf.Reset()
+		_, _ = w.Write([]byte(tag))
+		return buf.String()
+	}
+
+	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — keep-alive lane stub online"})
+	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
+	if err != nil {
+		return out, fmt.Errorf("browser-keepalive fixture path: %w", err)
+	}
+	url := "file://" + fixtureAbs
+	runExec(tea.PasteMsg{Content: "/open " + url})
+	runExec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // sends → slashMsg → applyOpenSlash → the pane's Open
+
+	// the child's paint converges (the harness seam, never the frame cache).
+	painted := false
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline) && !painted; {
+		if m.BrowserLaneGridHas("zenbu-fake open file:///") {
+			painted = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !painted {
+		return out, fmt.Errorf("browser-keepalive: the fake's marker row never painted the embedded grid")
+	}
+	if !m.BrowserPremiumActive() {
+		return out, fmt.Errorf("browser-keepalive: the premium embed must be live after /open")
+	}
+	pid := m.BrowserLanePid()
+	if pid <= 0 {
+		return out, fmt.Errorf("browser-keepalive: the child's pid must read through the harness seam, got %d", pid)
+	}
+
+	// OPEN: one rendered frame publishes the registry; one flush splices.
+	_ = m.Frame()
+	out.spliceOpen = flush("OPEN")
+
+	ctrlB := tea.KeyPressMsg(tea.Key{Code: 'b', Mod: tea.ModCtrl})
+	// ctrl+b → FLOOR: the freeze (PID stable, alive, SIGSTOPped) + ONE a=d.
+	runExec(ctrlB)
+	if m.BrowserPremiumActive() || !m.BrowserLaneSuspended() {
+		return out, fmt.Errorf("browser-keepalive: the floor flip must FREEZE (active=%v suspended=%v)", m.BrowserPremiumActive(), m.BrowserLaneSuspended())
+	}
+	out.pidStable = m.BrowserLanePid() == pid
+	out.pidAliveOnFloor = syscall.Kill(pid, 0) == nil
+	if st, err := exec.Command("ps", "-o", "stat=", "-p", fmt.Sprint(pid)).Output(); err == nil {
+		out.floorState = strings.TrimSpace(string(st))
+	}
+	_ = m.Frame()
+	out.floorFlush = flush("FLOOR")
+
+	// ctrl+b → BROWSER: the SAME pid thaws; the RETAINED frame re-emits.
+	runExec(ctrlB)
+	if !m.BrowserPremiumActive() || m.BrowserLaneSuspended() {
+		return out, fmt.Errorf("browser-keepalive: the return must THAW (active=%v suspended=%v)", m.BrowserPremiumActive(), m.BrowserLaneSuspended())
+	}
+	out.pidStable = out.pidStable && m.BrowserLanePid() == pid
+	_ = m.Frame()
+	out.spliceResume = flush("BACK")
+
+	// ctrl+b → FLOOR again (the a=d repeats), then the ctrl+c QUIT PATH
+	// reaps the frozen child (the delete rides the direct seam).
+	runExec(ctrlB)
+	if !m.BrowserLaneSuspended() {
+		return out, fmt.Errorf("browser-keepalive: the second floor flip freezes again")
+	}
+	_ = m.Frame()
+	out.floorFlush2 = flush("FLOOR2")
+	buf.Reset()
+	runExec(tea.KeyPressMsg(tea.Key{Code: 'c', Mod: tea.ModCtrl}))
+	out.quitEmit = buf.String()
+	out.pidGoneAfter = errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
+
+	if b, err := os.ReadFile(filepath.Join(root, "calls.log")); err == nil {
+		out.spawns = strings.Count(strings.TrimSpace(string(b)), "\n") + 1
+	}
+	return out, nil
+}
+
+// browserKeepaliveIdentical — the two-drives byte-identity gate (the pid
+// values vary; the verdicts + the wrapper bytes are the pin).
+func browserKeepaliveIdentical(a, b browserKeepaliveOut) bool {
+	return a.spliceOpen == b.spliceOpen && a.floorFlush == b.floorFlush &&
+		a.spliceResume == b.spliceResume && a.floorFlush2 == b.floorFlush2 &&
+		a.quitEmit == b.quitEmit && a.floorState == b.floorState &&
+		a.spawns == b.spawns && a.pidStable == b.pidStable &&
+		a.pidAliveOnFloor == b.pidAliveOnFloor && a.pidGoneAfter == b.pidGoneAfter
+}
+
+func runBrowserKeepaliveProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	k1, err := browserKeepaliveDrive()
+	if err != nil {
+		return err
+	}
+	k2, err := browserKeepaliveDrive()
+	if err != nil {
+		return err
+	}
+
+	// OPEN: the retained frame's a=T under the STABLE office id.
+	if !strings.Contains(k1.spliceOpen, "\x1b_Ga=T,t=d,q=2,C=1,i="+browserStreamIDHash8+",f=100,") {
+		return fail("browser-keepalive: the open splice carries the stable-id a=T:\n%q", k1.spliceOpen)
+	}
+	if !strings.Contains(k1.spliceOpen, browserStreamB64A) {
+		return fail("browser-keepalive: the open splice carries the frame payload verbatim")
+	}
+	// FLOOR: the wrapper's diff flushes EXACTLY ONE a=d.
+	if want := "FLOOR" + browserStreamDeleteFrame; k1.floorFlush != want {
+		return fail("browser-keepalive: the floor flip flushes exactly one a=d:\n got %q\nwant %q", k1.floorFlush, want)
+	}
+	// the freeze's process verdicts: PID stable + alive + SIGSTOPped.
+	if !k1.pidStable {
+		return fail("browser-keepalive: the flip never respawns (the PID is stable)")
+	}
+	if !k1.pidAliveOnFloor {
+		return fail("browser-keepalive: the frozen child stays ALIVE behind the floor")
+	}
+	if !strings.Contains(k1.floorState, "T") {
+		return fail("browser-keepalive: the frozen child is SIGSTOPped (ps state %q, want T…)", k1.floorState)
+	}
+	// BACK: the RETAINED frame re-emits BYTE-IDENTICALLY — the parked
+	// fake emits ZERO new bytes, so the a=T is definitionally the store's
+	// cached frame (BEFORE any child output), with NO a=d interleaved.
+	if got, want := k1.spliceResume, "BACK"+strings.TrimPrefix(k1.spliceOpen, "OPEN"); got != want {
+		return fail("browser-keepalive: the resume re-emits the retained frame byte-identically:\n got %q\nwant %q", got, want)
+	}
+	if strings.Contains(k1.spliceResume, "\x1b_Ga=d,") {
+		return fail("browser-keepalive: no a=d may interleave the thaw: %q", k1.spliceResume)
+	}
+	// the second floor flip: the a=d again; the quit: the direct delete.
+	if want := "FLOOR2" + browserStreamDeleteFrame; k1.floorFlush2 != want {
+		return fail("browser-keepalive: the second floor flip flushes the a=d again:\n got %q\nwant %q", k1.floorFlush2, want)
+	}
+	if !strings.Contains(k1.quitEmit, browserStreamDeleteFrame) {
+		return fail("browser-keepalive: the quit path's Close flushes the delete through the direct seam, got %q", k1.quitEmit)
+	}
+	if !k1.pidGoneAfter {
+		return fail("browser-keepalive: the quit path reaps the frozen child (no leak)")
+	}
+	if k1.spawns != 1 {
+		return fail("browser-keepalive: exactly ONE spawn across the whole cycle, log %d", k1.spawns)
+	}
+	if !browserKeepaliveIdentical(k1, k2) {
+		return fail("browser-keepalive: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER KEEP-ALIVE — the flip cycle: a=T … a=d (floor, child FROZEN + ALIVE, ps " + k1.floorState + ") … a=T (SAME id, the retained frame — byte-identical, instant) … a=d (quit) =====")
+	fmt.Println("open splice:   " + fmt.Sprintf("%q", k1.spliceOpen))
+	fmt.Println("floor flush:   " + fmt.Sprintf("%q", k1.floorFlush))
+	fmt.Println("resume splice: " + fmt.Sprintf("%q", k1.spliceResume))
+	fmt.Println("floor2 flush:  " + fmt.Sprintf("%q", k1.floorFlush2))
+	fmt.Println("quit emit:     " + fmt.Sprintf("%q", k1.quitEmit))
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("asserts: OK — the KEEP-ALIVE flip cycle through the LIVE app glue (the fake child parked at `exec sleep` after ONE chunked kitty frame — ZERO new child bytes after the thaw, so the resume's a=T is definitionally the store's retained frame): ONE spawn across open → ctrl+b (floor) → ctrl+b (browser) → ctrl+b (floor) → ctrl+c; the PID stable + ALIVE + SIGSTOPped (ps state \"" + k1.floorState + "\") behind the floor; each floor-ward flip flushed exactly ONE `ESC_Ga=d,d=I,i=" + browserStreamIDHash8 + ",q=2;ESC\\` through the wrapper's emitted-set diff; the return re-emitted the RETAINED frame BYTE-IDENTICALLY (no respawn, no reload, one frame flush) with ZERO a=d interleaved; the ctrl+c quit path reaped the frozen child (pid gone) with the delete riding the direct seam; every leg byte-identical across two drives")
 	return nil
 }
 
@@ -6610,7 +6945,7 @@ func main() {
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
-	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
+	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc FREEZES the session (keep-alive: alive behind the floor, PID unchanged) + returns to the floor, the ctrl+c quit path reaps it; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane keepalive: the freeze/thaw flip cycle — /open → ctrl+b (floor: the child FREEZES, PID stable + alive + ps T…, ONE a=d through the wrapper's diff) → ctrl+b (the SAME pid thaws; the RETAINED frame re-emits byte-identically — the parked fake emits zero new bytes — with ZERO a=d interleaved) → ctrl+b → ctrl+c (the quit path reaps the frozen child, the delete riding the direct seam); ONE spawn total. --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
 
@@ -6843,13 +7178,18 @@ func main() {
 				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 				os.Exit(1)
 			}
+		case "keepalive":
+			if err := runBrowserKeepaliveProof(); err != nil {
+				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+				os.Exit(1)
+			}
 		case "hint":
 			if err := runBrowserHintProof(); err != nil {
 				fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 				os.Exit(1)
 			}
 		default:
-			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller), --lane live (the LIVE app-glue wiring), or --lane hint (the text-lane why row), got %q\n", lane)
+			fmt.Fprintf(os.Stderr, "uishot: --browser supports --lane kitty (the controller), --lane live (the LIVE app-glue wiring), --lane keepalive (the freeze/thaw flip cycle), or --lane hint (the text-lane why row), got %q\n", lane)
 			os.Exit(1)
 		}
 		return
