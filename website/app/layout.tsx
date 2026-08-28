@@ -1,6 +1,7 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
+import Script from 'next/script'
 import { SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
 import './globals.css'
 
@@ -109,6 +110,20 @@ export default function RootLayout({
       <body className="antialiased font-sans">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
+        {process.env.NODE_ENV === 'production' && (
+          <>
+            <Script
+              src="https://www.googletagmanager.com/gtag/js?id=G-GFXLK7H4HN"
+              strategy="afterInteractive"
+            />
+            <Script id="google-analytics-gtag" strategy="afterInteractive">
+              {`window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-GFXLK7H4HN');`}
+            </Script>
+          </>
+        )}
       </body>
     </html>
   )
