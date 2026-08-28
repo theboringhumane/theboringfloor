@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	state "github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -63,6 +64,60 @@ func TestChatAttachRender(t *testing.T) {
 	}
 	if got, want := c.popoverH(), len(strings.Split(ansi.Strip(c.renderAttachPopover()), "\n")); got != want {
 		t.Fatalf("popoverH budget %d != drawn %d", got, want)
+	}
+}
+
+// TestAttachMatchHighlight: with a LIVE @fragment every non-selected row
+// re-inks — the matched span of the path renders ACCENTED, the rest DIM
+// (accentMatches, the house search highlight) — case-insensitively,
+// while the selected row, the n/m footer, the (no matches) row and the
+// empty-fragment face stay byte-identical (the query itself keeps living
+// in the draft textarea — ONLY the row ink changes).
+func TestAttachMatchHighlight(t *testing.T) {
+	c := NewChat(nil)
+	c.SetSize(60, 30)
+	inner := 58 // c.w - 2 PanelBox border columns
+	c.atOpen = true
+	c.atFrag = "model"
+	c.onAttachWalk(attachWalkMsg{files: []string{
+		"internal/app/model.go", "internal/panels/model_picker.go", "README.md",
+	}})
+
+	raw := c.renderAttachPopover()
+	// the selected row (idx 0) keeps its whole-row accent, unchanged.
+	if !strings.Contains(raw, chrome.AccentText.Render(fitPlain("› internal/app/model.go", inner))) {
+		t.Fatalf("the selected row must stay whole-row accent:\n%q", raw)
+	}
+	// the non-selected match re-inks: "model" accented, the rest dim.
+	want := chrome.DimText.Render("internal/panels/") +
+		chrome.AccentText.Render("model") + chrome.DimText.Render("_picker.go")
+	if !strings.Contains(raw, want) {
+		t.Fatalf("the match span must render accent/dim — missing %q:\n%q", want, raw)
+	}
+	// the footer + the stripped text stay exactly as before.
+	if !strings.Contains(raw, chrome.DimText.Render(fitPlain("2/3", inner))) {
+		t.Fatalf("the n/m footer must be unchanged:\n%q", raw)
+	}
+	if stripped := ansi.Strip(raw); !strings.Contains(stripped, "  internal/panels/model_picker.go") {
+		t.Fatalf("highlighting must never change the row's text:\n%s", stripped)
+	}
+
+	// case-insensitive: an UPPERCASE fragment accents the lowercase span.
+	c.atFrag = "MODEL"
+	c.refilterAttach()
+	if raw := c.renderAttachPopover(); !strings.Contains(raw, want) {
+		t.Fatalf("the match highlight must be case-insensitive:\n%q", raw)
+	}
+
+	// empty fragment → the pre-highlight face: plain rows, NO match ink.
+	c.atFrag = ""
+	c.refilterAttach()
+	raw = c.renderAttachPopover()
+	if !strings.Contains(raw, fitPlain("  internal/panels/model_picker.go", inner)) {
+		t.Fatalf("an empty fragment must render the classic plain row:\n%q", raw)
+	}
+	if strings.Contains(raw, chrome.DimText.Render("internal/panels/")) {
+		t.Fatalf("an empty fragment must not re-ink any row:\n%q", raw)
 	}
 }
 

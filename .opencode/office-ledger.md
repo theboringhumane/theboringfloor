@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev S2: picker harmonization (@developer suba... — tekton-9 (developer) · `issues`
+- summary: All gates green on the settled tree. Composing the return.
+- files: `internal/panels/session_picker.go`, `internal/panels/chat_attach.go`, `internal/panels/chat_attach_test.go`, `internal/panels/session_picker_search_test.go`, `internal/panels/chat.go`, NOT touched: `chat_attach_ignore.go`
+- verify: (21 packages `ok`, incl. `internal/backend 33.105s`, `internal/panels 13.710s`, `internal/app 79.979s`. A first full-suite run flaked `TestC
+- proof: *1. /session card mid-filter (typed `a`) — ANSI-stripped render** (cursor row reversed; rows 2–3 re-inked):
+- ledgerId: led-1787925672531-0028a687
+
+### 2026-08-28 · Dev S1: docs (site + README) (@developer suba... — tekton-8 (developer) · `issues`
+- summary: **browser-tab/page.tsx** — "Getting around" gains `e` (inline URL editor: prefilled, enter opens, esc cancels) and `O`/shift+o (current page → OS browser), in p
+- files: `website/app/docs/browser-tab/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/getting-started/page.tsx`, `website/app/docs/terminal-and-git-tabs/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`, `README.md`
+- verify: ```
+- proof: *browser-tab → "Getting around" (rendered, tag-stripped from exported HTML):**
+- ledgerId: led-1787925326122-bad9612a
+
 ### 2026-08-28 · Dev R3: model picker search (@developer subag... — tekton-7 (developer) · `issues`
 - summary: All verification complete. Final tree state: only my two scoped files changed. Composing the return.
 - files: `internal/panels/model_picker.go`, `internal/panels/model_picker_search_test.go` *(new)*, `/tmp/overlay_browser_fix/browser.go` + `/tmp/overlay_browser_fix/overlay.json` *(scratch only, NOT 
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *opencode → `/backend claudecode` → Start returns nil immediately → send a prompt → system/init maps on arrival → primaryID pinned + turn pr
 - ledgerId: led-1787807516525-e1344b4d
-
-### 2026-08-27 · Dev B: email+account in scripts/docs (@develo... — tekton-8 (developer) · `done`
-- summary: Swapped every `majdoor@office.theboring.name` → `themajdoor@theboring.name` in the three scripts and README, including the escaped grep/marker patterns (`majdoo
-- files: `scripts/majdoor-commit-msg-hook.sh`, `scripts/install-majdoor-hook.sh`, `scripts/majdoor-env.sh`, `README.md`
-- verify: (repo-wide `grep -rln "majdoor@office"` now returns NOTHING — the parallel Go-lane developer's files no longer carry the old email either; m
-- proof: *Rendered README account paragraph (README.md L394–409, verbatim from `sed -n '394,410p'`):**
-- ledgerId: led-1787806050847-faf32bb5
-
-### 2026-08-27 · Dev A: email swap in Go lane (@developer suba... — tekton-7 (developer) · `done`
-- summary: All gates green. Final return:
-- files: `internal/gitx/attribution.go`, `internal/gitx/attribution_test.go`, `internal/gitx/attribution_env_test.go`, `internal/term/term_test.go`
-- verify: (zero matches — brief-required grep returns NOTHING; case-insensitive sweep `grep -rni` also exit 1, zero matches)
-- proof: New const lines (`internal/gitx/attribution.go` L12–20, pasted verbatim from `sed -n '12,20p'`):
-- ledgerId: led-1787806022904-e40224a2
 

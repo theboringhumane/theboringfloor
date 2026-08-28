@@ -101,6 +101,38 @@ Config file: `~/.theboringoffice/configs/brain.json` (`theboringoffice --print-d
 
 ![diffs](docs/shots-go/chat-diff.png)
 
+## Keys
+
+One line per key — the full table lives at [keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash).
+
+| Key | Does |
+|---|---|
+| `tab` / `shift+tab` / `1..7` | switch the right panel: chat · terminal · agents · board · mail · activity · git |
+| `ctrl+b` | flip the left pane: floor ↔ browser |
+| `enter` | send to the boss — free-sends into the backlog while it's busy |
+| `shift+enter` / `ctrl+j` | newline in the chat input |
+| `@` | attach-file picker — type to filter, enter/tab attach |
+| `ctrl+v` | paste text — attaches the image instead when the clipboard holds one |
+| big paste | chat pastes >20 lines or >2000 chars collapse to a `[pasted N lines · M chars]` chip — one backspace unit, full text sent on submit |
+| `/model` · `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
+| `y` `a` `n` `esc` | answer a permission prompt — allow once / always / reject / defer |
+| `ctrl+q` | arm quit — works everywhere |
+
+Browser tab (the left pane, behind `ctrl+b`):
+
+| Key | Does |
+|---|---|
+| `↑`/`↓` or `j`/`k` | move the link cursor |
+| `o` | open the focused link |
+| `e` | edit the URL inline in the location bar — prefilled, enter opens, esc cancels |
+| `O` | open the current page in the OS browser |
+| `[` / `]` | back / forward, 100-page history ring |
+| `r` | reload in place |
+| `pgup` / `pgdn` | scroll the body |
+| `q` / `esc` | back to the floor |
+
+On kitty/ghostty with Chrome, pages render as headless screenshots — ` shot ` badge, PNGs under `~/.theboringoffice/shots/` — and the boss can screenshot pages for you, snapshot pages to read for itself, and (with your approve-once permission) click, fill and eval on them. Pastes into the terminal tab reach the shell bracketed-paste-wrapped. Everywhere else the browser is text on purpose.
+
 ## Community
 
 <p>

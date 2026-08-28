@@ -12,10 +12,20 @@
 // is DISABLED): typing NARROWS the list (case-insensitive substring over
 // the title + session id, the @ picker's forgiving match), ↑/↓/tab walk
 // the cursor, enter accepts the highlighted row (fires onSessionPick),
-// esc cancels (fires onSessionCancel — zero side effects of its own; the
-// app closes the card). pgup/pgdown still scroll the transcript. While a
+// esc is TWO-STAGE — the first press clears a live filter (the list
+// restores), only an empty-filter esc cancels (fires onSessionCancel —
+// zero side effects of its own; the app closes the card). pgup/pgdown
+// still scroll the transcript. A bracketed paste lands in the filter too
+// (Paste — the office paste router's duck-typed seam, newlines flattened
+// to single spaces, the /model picker's exact contract). While a
 // permission/question float owns the slot the picker yields its keys and
 // simply waits underneath (a parked turn outranks browsing).
+//
+// With a live filter every non-cursor row re-inks: the matched spans
+// render ACCENTED, the rest DIM (accentMatches — the house search
+// highlight; the cursor row stays the whole-row reversed accent, and an
+// empty filter keeps the pre-search face: the current session's title
+// accented, every meta dim).
 //
 // The picker opens in a LOADING state ("listing sessions…") — the app's
 // ListSessions hop rides a tea.Cmd — and SetSessionPickerRows fills it;
@@ -104,10 +114,14 @@ func (c *Chat) CloseSessionPicker() { c.sessPick = nil }
 // filled) — the app drops a late landing row set after an esc-cancel.
 func (c *Chat) SessionPickerOpen() bool { return c.sessPick != nil }
 
-// sessRefilter recomputes the narrowed slice (case-insensitive substring
+// sessRefilter — the Chat-level wrapper every picker mutation funnels
+// through; the work lives on the state (refilter) so the paste seam can
+// reach it without a Chat receiver.
+func (c *Chat) sessRefilter() { c.sessPick.refilter() }
+
+// refilter recomputes the narrowed slice (case-insensitive substring
 // over title + full session id) and clamps the cursor.
-func (c *Chat) sessRefilter() {
-	p := c.sessPick
+func (p *sessionPickState) refilter() {
 	frag := strings.ToLower(strings.TrimSpace(p.filter))
 	p.filtered = p.filtered[:0]
 	for _, row := range p.rows {
@@ -121,6 +135,62 @@ func (c *Chat) sessRefilter() {
 	if p.sel < 0 {
 		p.sel = 0
 	}
+}
+
+// Paste — the office paste router's duck-typed seam (Paste(string)
+// tea.Cmd — the /model picker's exact contract): a bracketed paste
+// (cmd+v) lands in the FILTER, newline/CR runs flattened to single
+// spaces (flattenPasteLines — the one-line-input paste rule), the list
+// refilters, and the paste is fully consumed (nil cmd — it never sinks
+// into the disabled textarea underneath). The chat panel's PasteMsg arm
+// routes here while the card is open.
+func (p *sessionPickState) Paste(content string) tea.Cmd {
+	if p == nil {
+		return nil
+	}
+	p.filter += flattenPasteLines(content)
+	p.refilter()
+	return nil
+}
+
+// accentMatches — the house filtered-row match highlight: every
+// case-insensitive occurrence of frag in s renders ACCENTED, the rest
+// DIM (a live query's rows read match-bright / context-dim). An empty
+// (or whitespace) frag returns s untouched — the pre-search face stays
+// plain. The /session picker's rows and the @ attach picker's paths both
+// re-ink through this.
+func accentMatches(s, frag string) string {
+	f := strings.ToLower(strings.TrimSpace(frag))
+	if f == "" || s == "" {
+		return s
+	}
+	fr := []rune(f)
+	runes := []rune(s)
+	var out strings.Builder
+	seg := 0
+	for i := 0; i < len(runes); {
+		// prefix-probe the lowered tail — the same semantics the
+		// refilter's strings.Contains applies, so a span highlights IFF
+		// it matched.
+		if strings.HasPrefix(strings.ToLower(string(runes[i:])), f) {
+			m := len(fr)
+			if i+m > len(runes) {
+				m = len(runes) - i
+			}
+			if seg < i {
+				out.WriteString(chrome.DimText.Render(string(runes[seg:i])))
+			}
+			out.WriteString(chrome.AccentText.Render(string(runes[i : i+m])))
+			i += m
+			seg = i
+			continue
+		}
+		i++
+	}
+	if seg < len(runes) {
+		out.WriteString(chrome.DimText.Render(string(runes[seg:])))
+	}
+	return out.String()
 }
 
 // sessMove wraps the cursor by d rows through the narrowed list (the
@@ -144,11 +214,20 @@ func (c *Chat) sessCurrent() (SessionPickRow, bool) {
 // sessKey handles EVERY key while the picker is open (claimed in
 // Chat.Update after the question/permission floats — a parked turn's
 // modal outranks browsing; with neither open the picker owns the input):
-// typing narrows, ↑/↓/tab move, enter accepts, esc cancels, pgup/pgdown
-// scroll the transcript like the question modal's.
+// typing narrows, ↑/↓/tab move, enter accepts, esc is TWO-STAGE (the
+// first press clears a live filter, the second cancels — the /model
+// picker's exact contract), pgup/pgdown scroll the transcript like the
+// question modal's.
 func (c *Chat) sessKey(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc":
+		if c.sessPick.filter != "" {
+			// stage one: clear the live filter and restore the full
+			// list — the card stays open, onCancel stays silent.
+			c.sessPick.filter = ""
+			c.sessRefilter()
+			return nil
+		}
 		if c.onSessionCancel != nil {
 			return c.onSessionCancel()
 		}
@@ -251,7 +330,7 @@ func (c *Chat) sessCard() (rows []string, cardW int) {
 			end = len(p.filtered)
 		}
 		for i := start; i < end; i++ {
-			rows = append(rows, rail(sessMenuRow(p.filtered[i], i == p.sel, inner)))
+			rows = append(rows, rail(sessMenuRow(p.filtered[i], i == p.sel, inner, p.filter)))
 		}
 	}
 	rows = append(rows, rail(blank))
@@ -269,8 +348,12 @@ func (c *Chat) sessCard() (rows []string, cardW int) {
 // as its standing mark), the dim meta right ("<age> · <N msgs> · <short>"
 // plus the " · current" suffix on the attached session), ANSI-aware-
 // truncated (fitLabel, never rune-sliced). The highlighted row runs
-// reversed-accent across the WHOLE content column.
-func sessMenuRow(row SessionPickRow, on bool, inner int) string {
+// reversed-accent across the WHOLE content column. With a LIVE filter
+// every non-cursor row re-inks instead: the matched spans of the fitted
+// title + meta render accented, the rest dim (accentMatches) — accent
+// then means "the match", so the current session's standing accent only
+// shows on the unfiltered face.
+func sessMenuRow(row SessionPickRow, on bool, inner int, frag string) string {
 	mark := "  "
 	if on {
 		mark = "› "
@@ -292,6 +375,9 @@ func sessMenuRow(row SessionPickRow, on bool, inner int) string {
 	body := mark + title + " " + meta
 	if on {
 		return sessHigh.Render(fitLabel(body, inner))
+	}
+	if strings.TrimSpace(frag) != "" {
+		return fitLabel(mark+accentMatches(title, frag)+" "+accentMatches(meta, frag), inner)
 	}
 	out := mark
 	if row.Current {

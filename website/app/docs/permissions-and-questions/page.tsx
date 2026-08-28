@@ -44,7 +44,7 @@ const conciergeKeys = [
 const questionKinds = [
   {
     kind: 'text',
-    body: 'A free-answer field. The boss gets your sentence back verbatim — names, flags, judgment calls.',
+    body: 'A free-answer field. The boss gets your sentence back verbatim — names, flags, judgment calls. A multi-line paste lands in the field verbatim too, newlines and all.',
   },
   {
     kind: 'radio',

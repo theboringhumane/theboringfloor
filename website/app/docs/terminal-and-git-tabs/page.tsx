@@ -79,7 +79,9 @@ export default function TerminalAndGitTabsPage() {
               (creack/pty). It is lazily spawned on first visit — the office never pays
               for a shell you never open — it resizes with the panel, the mouse scrolls
               the scrollback, and when the shell dies <Code>r</Code> respawns it in
-              place.
+              place. A paste while the terminal is focused lands in the shell wrapped
+              in bracketed-paste markers, so readline and zle treat the blob as a
+              paste, not as typed commands.
             </p>
             <Shot
               src="/shots/docs/terminal-tab.png"

@@ -1906,15 +1906,13 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 		// boss question popover's answer field (the main textarea is
 		// DISABLED while the turn is parked — before this arm a paste
 		// silently landed in that dead textarea), then the /session
-		// picker's filter; the open-target card swallows (its keys
-		// swallow too — no text surface).
+		// picker's filter (its Paste seam); the open-target card swallows
+		// (its keys swallow too — no text surface).
 		if c.question != nil {
 			return c.questPaste(msg.Content)
 		}
 		if c.sessPick != nil && c.perm == nil {
-			c.sessPick.filter += flattenPasteLines(msg.Content)
-			c.sessRefilter()
-			return nil
+			return c.sessPick.Paste(msg.Content)
 		}
 		if c.openPick != nil && c.perm == nil {
 			return nil

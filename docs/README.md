@@ -32,7 +32,7 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 | Page | |
 |---|---|
 | [Terminal & git tabs](https://theboringoffice.pages.dev/docs/terminal-and-git-tabs) | PTY shell + live git |
-| [Browser tab](https://theboringoffice.pages.dev/docs/browser-tab) | text lane + optional zenbu |
+| [Browser tab](https://theboringoffice.pages.dev/docs/browser-tab) | text lane · headless screenshots · opt-in zenbu |
 | [Layout, themes & power](https://theboringoffice.pages.dev/docs/layout-themes-power) | compact, themes, battery |
 | [Keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash) | every binding, every `/` |
 

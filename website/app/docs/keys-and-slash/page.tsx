@@ -108,14 +108,21 @@ const paneKeys: Key[] = [
 
 const composerKeys: Key[] = [
   { combo: 'enter', action: 'send to the boss — free-sends into the backlog while the boss is busy' },
-  { combo: 'shift+enter', action: 'newline' },
+  {
+    combo: 'shift+enter / ctrl+j',
+    action: 'newline — ctrl+j covers terminals that deliver shift+enter as a bare enter',
+  },
   {
     combo: '@',
-    action: 'at a word start: attach-file picker — arrows choose, enter / tab attach, esc close',
+    action: 'at a word start: attach-file picker — type to filter, arrows choose, enter / tab attach, esc close',
   },
   {
     combo: 'ctrl+v',
     action: 'paste text — attaches the image instead when the clipboard holds one',
+  },
+  {
+    combo: 'paste >20 lines / >2000 chars',
+    action: 'collapses to a one-line [pasted N lines · M chars] chip — deletes as one backspace unit, expands back to the full text on send',
   },
   { combo: 'backspace', action: 'on an empty input: drop the newest attachment chip' },
   { combo: 'y a n esc', action: 'answer a permission prompt — allow once / always / reject / defer' },
@@ -143,6 +150,19 @@ const terminalKeys: Key[] = [
   { combo: 'r', action: 'respawn the shell when it dies' },
   { combo: 'drag + release', action: 'select terminal text; release copies, · Copied N chars rides the badge row' },
   { combo: 'esc / typing', action: 'cancel the selection highlight' },
+  { combo: 'paste', action: 'into the shell, wrapped in bracketed-paste markers — readline / zle safe' },
+]
+
+const browserKeys: Key[] = [
+  { combo: 'ctrl+b', action: 'flip the left pane between the floor and the browser — the only way in' },
+  { combo: 'up / down / j / k', action: 'move the link cursor' },
+  { combo: 'o', action: 'open the focused link — a file rides to the OS browser, http(s) navigates in place' },
+  { combo: 'e', action: 'inline URL editor in the location bar — prefilled, enter opens, esc cancels' },
+  { combo: 'O (shift+o)', action: 'open the current page in the OS browser' },
+  { combo: '[ / ]', action: 'back / forward in the 100-page history ring, scroll offsets restored' },
+  { combo: 'r', action: 'reload in place, no duplicate history' },
+  { combo: 'pgup / pgdn', action: 'scroll the body' },
+  { combo: 'q / esc', action: 'back to the floor' },
 ]
 
 export default function KeysAndSlashPage() {
@@ -218,6 +238,16 @@ export default function KeysAndSlashPage() {
               out as prompt file parts; the echoed bubble shows an attachment-count
               suffix. <Code>/clear</Code> or a send clears the chips.
             </p>
+            <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
+              Pastes route to the focused surface, one deliberate path. In the chat
+              input a paste over twenty lines or two thousand chars collapses to a
+              one-line <Code>[pasted N lines · M chars]</Code> chip — it deletes as a
+              single backspace unit and expands back to the full text on send. A
+              question dialog&apos;s free-answer field takes a multi-line paste
+              verbatim. The terminal tab wraps the paste in bracketed-paste markers
+              for the shell. And picker filter inputs — <Code>/model</Code>,{' '}
+              <Code>/session</Code>, <Code>@</Code> — take paste as filter text.
+            </p>
 
             <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
               Threads
@@ -228,6 +258,11 @@ export default function KeysAndSlashPage() {
               Terminal tab
             </h3>
             <KeyTable keys={terminalKeys} />
+
+            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              Browser tab
+            </h3>
+            <KeyTable keys={browserKeys} />
           </div>
         </section>
 
@@ -250,6 +285,15 @@ export default function KeysAndSlashPage() {
               One honest caveat from the engine room: role models ride as best-effort
               notes. Which model a sub-agent actually gets is opencode&apos;s call at
               dispatch time, not the office&apos;s.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              The picker filters as you type: a <Code>filter: …</Code> row shows the
+              live query, the title badge runs <Code>N/M</Code> (narrowed of total), a
+              dead query says <Code>(no matches)</Code>, <Code>backspace</Code> edits,{' '}
+              <Code>ctrl+u</Code> clears, and <Code>esc</Code> clears a live filter
+              first — a second <Code>esc</Code> closes the picker. Pastes land in the
+              filter too. The <Code>/session</Code> picker and the <Code>@</Code>{' '}
+              attach picker filter the same way.
             </p>
             <Shot
               src="/shots/docs/model-picker.png"

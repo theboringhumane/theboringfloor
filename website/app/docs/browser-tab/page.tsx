@@ -87,10 +87,13 @@ export default function BrowserTabPage() {
               <Code>↑</Code>/<Code>↓</Code> (or <Code>j</Code>/<Code>k</Code>) move the
               link cursor — link rows go dim to bright as it lands, auto-scrolled
               into view. <Code>o</Code> opens the focused link: a local file rides to
-              the OS browser, an http(s) link navigates in place. <Code>[</Code> and{' '}
-              <Code>]</Code> walk a 100-page history ring with scroll offsets
-              restored, <Code>r</Code> reloads in place without duplicating history,
-              and <Code>q</Code> / <Code>esc</Code> leaves back to the floor.
+              the OS browser, an http(s) link navigates in place. <Code>e</Code> opens
+              an inline URL editor right in the location bar — prefilled with the
+              current URL, <Code>enter</Code> opens the edit, <Code>esc</Code> cancels
+              — and <Code>O</Code> (shift+o) sends the current page to the OS browser.{' '}
+              <Code>[</Code> and <Code>]</Code> walk a 100-page history ring with scroll
+              offsets restored, <Code>r</Code> reloads in place without duplicating
+              history, and <Code>q</Code> / <Code>esc</Code> leaves back to the floor.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The browser lives on the left pane, in the slot that usually holds the
@@ -104,6 +107,8 @@ export default function BrowserTabPage() {
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Chip combo="↑ / ↓" action="move the link cursor" />
               <Chip combo="o" action="open the focused link" />
+              <Chip combo="e" action="edit the URL inline, in the location bar" />
+              <Chip combo="O" action="open the page in the OS browser" />
               <Chip combo="[ / ]" action="back / forward, 100-page ring" />
               <Chip combo="r" action="reload in place" />
               <Chip combo="pgup / pgdn" action="scroll the body" />
@@ -134,6 +139,19 @@ export default function BrowserTabPage() {
               <Code>browser: opening &lt;url&gt; (asked by the boss)</Code> marks who
               sent you there. A refused open posts the reason instead of a page.
             </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              The boss&apos;s reach goes past opening. It can take a screenshot of a
+              page for you — rendered in the tab on kitty-capable terminals, the PNG
+              saved under <Code>~/.theboringoffice/shots/</Code> with the path posted
+              to the transcript — or snapshot a page for itself, the text and links
+              riding back to it as a follow-up message so it can read what it sent you
+              to. And when reading is not enough it can ask to <strong className="text-foreground">act</strong>{' '}
+              on a page — click an element, fill a field, evaluate JavaScript — which
+              always routes through your permission prompt first: approve-once only,
+              no standing grant, not even for localhost. Each action drives a fresh
+              page load, and the outcome — the result, the error, or your rejection —
+              goes back to the boss as a follow-up.
+            </p>
           </div>
         </section>
 
@@ -147,9 +165,20 @@ export default function BrowserTabPage() {
               On a kitty-capable terminal — kitty or ghostty; tmux and the iTerm2
               family stay text — with Chrome installed, the tab shows rendered
               screenshots of the page: the headless browser runs out-of-process
-              and the pane paints the result. The text viewer remains the
-              universal default everywhere else; the premium path is an upgrade
-              the tab resolves live, not a dependency.
+              and the pane paints the result under a <Code> shot </Code> badge and a{' '}
+              <Code>▸ headless chromium · &lt;url&gt;</Code> strip. The text viewer
+              remains the universal default everywhere else; the premium path is an
+              upgrade the tab resolves live, not a dependency.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Every shot also lands on disk —{' '}
+              <Code>~/.theboringoffice/shots/&lt;ts&gt;-&lt;hash&gt;.png</Code>, or the
+              temp dir when the office home is overridden — with the path posted to
+              the transcript, so your <Code>o</Code>-to-open habit works on the file
+              too. On a terminal without kitty graphics the text lane carries a dim{' '}
+              <Code>screenshot: &lt;path&gt;</Code> row in place of the paint, and a
+              failed shot — Chrome absent, navigation refused, timeout — stays text
+              with one dim classified reason row, never a blank pane.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The older EMBEDDED lane — zenbu&apos;s <Code>terminal-browser</Code>,

@@ -135,6 +135,15 @@ export default function GettingStartedPage() {
               </Link>
               .
             </p>
+            <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Two browser-lane flags ride the installer.{' '}
+              <code className="font-mono text-xs text-foreground">--with-terminal-browser</code>{' '}
+              pulls the zenbu terminal-browser bundle — the opt-in embedded lane, default-off
+              now that the browser tab&apos;s premium path is headless screenshots.{' '}
+              <code className="font-mono text-xs text-foreground">--skip-terminal-browser</code>{' '}
+              survives as a deprecated no-op guard: a plain run already skips the bundle, so the
+              flag changes nothing.
+            </p>
           </div>
         </section>
 

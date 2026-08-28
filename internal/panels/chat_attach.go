@@ -755,7 +755,12 @@ func (c *Chat) atWindow() ([]string, int) {
 // renderAttachPopover draws the picker as a bordered box (the textarea
 // region's own row budget — popoverH): bold "attach file" header, up to
 // atVisibleRows entries with the selected one accented under a "›"
-// marker, and a dim "filtered/total" count footer.
+// marker, and a dim "filtered/total" count footer. With a LIVE @fragment
+// every non-selected row re-inks: the matched span of the path renders
+// accented, the rest dim (accentMatches — the /session picker's search
+// highlight; fitLabel, NOT fitPlain — the styled spans carry ANSI). The
+// query stays in the draft textarea by design — only the row ink changes
+// here.
 func (c *Chat) renderAttachPopover() string {
 	inner := c.w - 2 // PanelBox border columns
 	if inner < 1 {
@@ -769,9 +774,12 @@ func (c *Chat) renderAttachPopover() string {
 	}
 	for i, p := range vis {
 		idx := start + i
-		if idx == c.atSel {
+		switch {
+		case idx == c.atSel:
 			lines = append(lines, chrome.AccentText.Render(fitPlain("› "+p, inner)))
-		} else {
+		case c.atFrag != "":
+			lines = append(lines, fitLabel("  "+accentMatches(p, c.atFrag), inner))
+		default:
 			lines = append(lines, fitPlain("  "+p, inner))
 		}
 	}
