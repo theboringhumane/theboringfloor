@@ -4947,16 +4947,25 @@ func runOpenURLProof() error {
 // EXACT dim note "zenbu exited (0) — falling back to text mode", the
 // " text " badge, the text fixture body, the strip GONE, and the URL
 // state (current + visited) intact. Leg S (the kitty STREAM
-// passthrough — the rendering proof): the fake streams a CHUNKED kitty
-// frame (m=1/m=1/m=0, cut mid-quad) interleaved with text chrome; the
+// passthrough — the rendering proof): the fake streams TWO CHUNKED kitty
+// frames (m=1/m=1/m=0, cut mid-quad) under the SAME child i=1 (the real
+// child's every-repaint id reuse) interleaved with text chrome; the
 // lane's splitter extracts every APC (the grid + scrollback keep ONLY
 // the chrome; the RegionView frame carries ZERO APC bytes), the frame
-// wrapper re-emits the image to the OUTER terminal after a renderer
-// flush as cursor-save + CUP(absolute cell) + ONE cached
-// a=T,t=d,q=2,C=1 APC under the office content id + cursor-restore, and
-// Close flushes ESC_Ga=d,d=I directly through the (captured) emit seam.
-// Every leg byte-identical across two drives (the pid-varying reap line
-// is printed, never compared).
+// wrapper re-emits BOTH generations to the OUTER terminal after renderer
+// flushes as cursor-save + CUP(absolute cell) + ONE cached
+// a=T,t=d,q=2,C=1 APC under the STABLE office id carrying the pane's
+// body box c=/r= + cursor-restore — with ZERO a=d between the
+// generations (kitty's atomic same-id replace) — and Close flushes
+// ESC_Ga=d,d=I directly through the (captured) emit seam. Leg K (the
+// MID-CHAIN DEATH — the leak proof): the fake streams 3 chunks of an
+// m=1 chain (chunk 2 with a racy OSC-7 report interleaved INSIDE the
+// base64 payload — the wave-82 capture's exact shape) and DIES with
+// chunk 3 UNTERMINATED; the grid + scrollback contain ZERO base64 (the
+// aborted tail discards to its terminator; Close resets the pending
+// chain), and Poll latches the text fallback. Every leg byte-identical
+// across two drives (the pid-varying reap line is printed, never
+// compared).
 
 // browserEnvKeys — every env the lane drive touches, snapshotted +
 // restored per drive (the leg pairs share the process).
@@ -5231,10 +5240,33 @@ func runBrowserLaneProof() error {
 	if !browserStreamIdentical(s1, s2) {
 		return fmt.Errorf("browser S: two drives must be byte-identical")
 	}
-	fmt.Println("===== UI SHOT · BROWSER S — the kitty stream split: pure-text View, the frame wrapper emits the image after the flush =====")
+	fmt.Println("===== UI SHOT · BROWSER S — the kitty stream split: pure-text View, the frame wrapper emits BOTH generations after the flush =====")
 	fmt.Println(s1.frame)
 	fmt.Println("===== UI SHOT =====")
-	fmt.Println("asserts: OK — the fake child streamed a CHUNKED kitty frame (m=1/m=1/m=0, the first chunk cut mid-quad) interleaved with ANSI text chrome; the lane's splitter extracted every APC byte (the grid + the retained scrollback paint ONLY the toolbar + marker — zero base64 glyphs in any text row, ZERO APC bytes in the View — the renderer would eat them), the image store pinned the joined payload under the OFFICE content id i=" + browserStreamIDHash8 + " (the child's i=1 never leaks), and the FRAME WRAPPER re-emitted it after a renderer flush as cursor-save + CUP(5;1) (the desktop origin (0,3) + the pane-local commit (0,1)) + ONE cached a=T,t=d,q=2,C=1 APC (" + fmt.Sprintf("%d", s1.emitLen) + " APC bytes, byte-identical per repaint — ghostty dedupes by id) + cursor-restore; the registry clear flushed exactly one `ESC_Ga=d,d=I,i=" + browserStreamIDHash8 + ",q=2;ESC\\`, and Close flushed it DIRECTLY through the emit seam (captured: " + fmt.Sprintf("%d", len(s1.emitted)) + " delete frame(s)) — the terminal never keeps a stale image; every leg byte-identical across two drives")
+	fmt.Println("asserts: OK — the fake child streamed TWO CHUNKED kitty frames (m=1/m=1/m=0, the first chunk cut mid-quad) under the SAME child id i=1 (the real child's every-repaint id reuse) interleaved with ANSI text chrome; the lane's splitter extracted every APC byte (the grid + the retained scrollback paint ONLY the chrome — zero base64 glyphs in any text row, ZERO APC bytes in the View — the renderer would eat them), the image store re-ided BOTH generations to the STABLE office id i=" + browserStreamIDHash8 + " (ZenbuOfficeID(child id, placement) — never the payload, never the child's i=1), and the FRAME WRAPPER re-emitted each generation after a renderer flush as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC carrying the pane's body box c=64,r=14 + cursor-restore — with ZERO a=d between the generations (kitty's same-id atomic replace: no flicker, no empty gap); the registry clear flushed exactly one `ESC_Ga=d,d=I,i=" + browserStreamIDHash8 + ",q=2;ESC\\`, and Close flushed it DIRECTLY through the emit seam (captured: " + fmt.Sprintf("%d", len(s1.emitted)) + " delete frame(s)) — the terminal never keeps a stale image; every leg byte-identical across two drives")
+
+	// leg K — the MID-CHAIN DEATH: the fake streams 3 chunks of an m=1
+	// chain (chunk 2 carrying the REAL child's OSC-7 interleave mid-
+	// payload, the wave-82 capture's exact shape) and DIES with chunk 3
+	// UNTERMINATED — the grid + scrollback must contain ZERO base64.
+	k1, err := browserKillDrive()
+	if err != nil {
+		return err
+	}
+	k2, err := browserKillDrive()
+	if err != nil {
+		return err
+	}
+	if err := browserAssertKill("browser K", k1); err != nil {
+		return err
+	}
+	if !browserKillIdentical(k1, k2) {
+		return fmt.Errorf("browser K: two drives must be byte-identical")
+	}
+	fmt.Println("===== UI SHOT · BROWSER K — the mid-chain death: the split tail + the OSC-7 interleave leak ZERO base64 =====")
+	fmt.Println(k1.frame)
+	fmt.Println("===== UI SHOT =====")
+	fmt.Println("asserts: OK — the fake child died MID-CHUNKED-FRAME (3 chunks of an m=1 chain: chunk 2 with a racy OSC-7 report interleaved INSIDE the base64 payload — the wave-82 capture's exact shape — chunk 3 UNTERMINATED at the PTY's EOF); the splitter aborted the corrupt command, DISCARDED the tail to its terminator, and the session Close reset the pending chain: the grid + the retained scrollback contain ZERO base64 runs (" + fmt.Sprintf("%d", k1.gridLeak) + " grid / " + fmt.Sprintf("%d", k1.sbLeak) + " scrollback), the chrome painted before the chain survived, and Poll latched the text fallback with the exact dim note \"" + k1.note + "\"; every leg byte-identical across two drives")
 	return nil
 }
 
@@ -5243,61 +5275,81 @@ func runBrowserLaneProof() error {
 // internal/panels' browser_lane_kitty_test.go + zenbu_frame_test.go):
 // the fake `terminal-browser` streams the REAL child's wire shape
 // (ground-truthed against v0.6.0's native engine) at fixture scale —
-// cursor home, a toolbar text row, then ONE full-window frame as a
-// CHUNKED kitty APC (ESC_G a=T,…,m=1;<b64 chunk> ESC\ × 2 + m=0, the
-// first chunk cut at a NON-4-aligned base64 boundary to prove the join),
-// then the marker row. Asserts (the wave-81 emission redesign): the
-// frame's text rows (ANSI-stripped) carry ONLY the chrome (badge + strip
-// + toolbar + marker — no base64 glyph anywhere) and the raw frame
-// carries ZERO APC bytes (bubbletea's cell renderer eats zero-width
-// sequences — the image NEVER rides the View); the controller's registry
-// contribution through the tea.WithOutput frame wrapper appends, after a
-// renderer flush, cursor-save + CUP(5;1) (the desktop origin (0,3) + the
-// pane-local commit (0,1)) + ONE cached a=T,t=d,q=2,C=1 APC under the
-// office content id + cursor-restore; a cleared registry flushes exactly
-// one ESC_Ga=d,d=I; and Close flushes the same delete DIRECTLY through
-// the (captured) emit seam (panels.SetZenbuEmitForShot). Every leg
+// cursor home, a toolbar text row, then TWO full-window frames as
+// CHUNKED kitty APCs (ESC_G a=T,…,m=1;<b64 chunk> ESC\ × 2 + m=0, the
+// first chunk cut at a NON-4-aligned base64 boundary to prove the join)
+// under the SAME child i=1 (the real child reuses it for EVERY repaint —
+// kitty's atomic same-id replace), a marker row between the generations.
+// Asserts (the wave-82 fixes): the frame's text rows (ANSI-stripped)
+// carry ONLY the chrome (badge + strip + toolbar + markers — no base64
+// glyph anywhere) and the raw frame carries ZERO APC bytes (bubbletea's
+// cell renderer eats zero-width sequences — the image NEVER rides the
+// View); the controller's registry contribution through the
+// tea.WithOutput frame wrapper appends, after a renderer flush,
+// cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC
+// under the STABLE office id (ZenbuOfficeID(child id, placement)) +
+// cursor-restore; EVERY emitted frame carries the pane's body box
+// c=64,r=14 (FIX B); the gen-A → gen-B splice carries ZERO a=d (FIX A —
+// no flicker, no empty gap); a cleared registry flushes exactly one
+// ESC_Ga=d,d=I; and Close flushes the same delete DIRECTLY through the
+// (captured) emit seam (panels.SetZenbuEmitForShot). Every leg
 // byte-identical across two drives.
 
-// browserStreamPayload — the drive's deterministic fake frame (content
-// irrelevant — the office never image-decodes it; the bytes only round-
-// trip base64 + hash).
-var browserStreamPayload = []byte("\x89PNG\r\n\x1a\nFAKEKITTYFRAME0123456789abcdefghijklmnopqrstuvwxyz")
+// browserStreamPayloadA/B — the drive's TWO deterministic fake frames
+// (content irrelevant — the office never image-decodes them; the bytes
+// only round-trip base64). TWO generations, because FIX A's proof needs
+// the child's repaint pattern: EVERY frame reuses child i=1 (kitty's
+// atomic same-id replace — the anti-flicker mechanism).
+var browserStreamPayloadA = []byte("\x89PNG\r\n\x1a\nFAKEKITTYFRAME0123456789abcdefghijklmnopqrstuvwxyz")
+var browserStreamPayloadB = []byte("\x89PNG\r\n\x1a\nFAKEKITTYFRAME-GEN-B-9876543210zyxwvutsrqponmlkjihgfedcba")
 
-// browserStreamB64 — the payload's base64 (the fake script chunks it).
-var browserStreamB64 = base64.StdEncoding.EncodeToString(browserStreamPayload)
+// browserStreamB64A/B — the payloads' base64 (the fake script chunks it).
+var browserStreamB64A = base64.StdEncoding.EncodeToString(browserStreamPayloadA)
+var browserStreamB64B = base64.StdEncoding.EncodeToString(browserStreamPayloadB)
 
-// browserStreamIDHash8 — the office-side content id (the child's i=1 is
-// NEVER re-emitted — sha1(payload)[:8] hex, the chat lane's helper).
-var browserStreamIDHash8 = panels.KittyIDHash8(panels.KittyImageID(browserStreamPayload))
+// browserStreamIDHash8 — the STABLE office-side id (ZenbuOfficeID over
+// child i=1 + placement 0 — NEVER the payload: the wave-81 content hash
+// re-ided every repaint, the flicker bug). BOTH generations share it.
+var browserStreamIDHash8 = panels.KittyIDHash8(panels.ZenbuOfficeID(1, 0))
 
-// browserStreamEmitHead — the office re-emission's control head (the
-// payload + ESC\ follow verbatim).
-var browserStreamEmitHead = "\x1b_Ga=T,t=d,q=2,C=1,i=" + browserStreamIDHash8 + ",f=100;"
+// browserStreamEmit — one generation's office re-emission: the control
+// head (a=T,t=d,q=2,C=1 + the stable id + f=100 + THE PANE'S BODY BOX
+// c=64,r=14 — FIX B; the controller drives at 64x16, bodyH = 16-2) +
+// the payload + ESC\ verbatim.
+func browserStreamEmit(b64 string) string {
+	return "\x1b_Ga=T,t=d,q=2,C=1,i=" + browserStreamIDHash8 + ",f=100,c=64,r=14;" + b64 + "\x1b\\"
+}
 
 // browserStreamDeleteFrame — Close's direct-flush delete.
 var browserStreamDeleteFrame = "\x1b_Ga=d,d=I,i=" + browserStreamIDHash8 + ",q=2;\x1b\\"
 
 // browserStreamOut — ONE stream drive's observed artifacts.
 type browserStreamOut struct {
-	frame   string   // the RegionView frame at the assert moment
-	emitted []string // the direct-emit seam's captured writes (the Close deletes)
-	emitLen int      // the cached APC's byte length (the no-re-encode evidence)
-	wrap1   string   // the frame wrapper's bytes for a flush over the live registry
-	wrap2   string   // the wrapper's bytes after the registry clears (the a=d)
+	frame    string   // the RegionView frame at the assert moment (gen B live)
+	emitted  []string // the direct-emit seam's captured writes (the Close deletes)
+	wrap1    string   // the wrapper's flush over the gen-A registry
+	wrap2    string   // the wrapper's flush over the gen-B registry (SAME id, ZERO a=d)
+	wrap3    string   // the registry-clear flush (exactly one a=d)
+	deletesN int      // the store's drained deletes between gen A → gen B (MUST be 0)
 }
 
-// browserStreamFake — the scripted child: home, toolbar, the chunked
-// frame, the marker, park.
+// browserStreamFake — the scripted child: home, toolbar, ONE chunked
+// frame (gen A), a marker, a SECOND chunked frame (gen B — SAME child
+// i=1, the real child's every-repaint id reuse), the marker, park.
 func browserStreamFake(root string) error {
-	b64 := browserStreamB64
+	chunked := func(b64 string) string {
+		return "printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:7] + "\\033\\\\'\n" +
+			"printf '\\033_Gm=1;" + b64[7:41] + "\\033\\\\'\n" +
+			"printf '\\033_Gm=0;" + b64[41:] + "\\033\\\\'\n"
+	}
 	fake := "#!/bin/sh\n" +
 		"printf '\\033[2J\\033[H'\n" +
 		"printf 'TB-TOOLBAR\\r\\n'\n" +
-		"printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:7] + "\\033\\\\'\n" +
-		"printf '\\033_Gm=1;" + b64[7:41] + "\\033\\\\'\n" +
-		"printf '\\033_Gm=0;" + b64[41:] + "\\033\\\\'\n" +
-		"printf '\\033[3;1H'\n" +
+		chunked(browserStreamB64A) +
+		"printf 'GEN-A-PAINTED\\r\\n'\n" +
+		"sleep 0.5\n" + // pace the generations: the drive observes gen A BEFORE gen B streams
+		chunked(browserStreamB64B) +
+		"printf '\\033[4;1H'\n" +
 		"printf 'zenbu-fake open %s\\n' \"$2\"\n" +
 		"exec sleep 1000000\n"
 	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
@@ -5355,9 +5407,231 @@ func browserStreamDrive() (browserStreamOut, error) {
 	if !ok {
 		return out, fmt.Errorf("browser-stream: the premium lane must embed a live *ZenbuSession, got %T", c.Session())
 	}
-	// the marker comes AFTER the frame APC in the script: a visible
-	// marker guarantees the chunked transmission committed.
-	marker := "zenbu-fake open " + browserLanePage
+	// the marker comes AFTER its frame's APCs in the script: a visible
+	// marker guarantees that generation's chunked transmission committed.
+	waitMarker := func(marker string) error {
+		for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+			for y := 0; y < sess.Grid().Rows(); y++ {
+				if strings.Contains(sess.Grid().LineText(y), marker) {
+					return nil
+				}
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		return fmt.Errorf("browser-stream: the fake's %q never painted the embedded grid", marker)
+	}
+	if err := waitMarker("GEN-A-PAINTED"); err != nil {
+		return out, err
+	}
+	// GEN A committed at pane-local (0,1) (home → toolbar row 0 → \r\n).
+	imgsA, delsA := c.FrameState()
+	if err := waitMarker("zenbu-fake open " + browserLanePage); err != nil {
+		return out, err
+	}
+	// GEN B committed at pane-local (0,2) (the GEN-A marker row pushed
+	// the cursor down one) — and its same-(child id, placement) replace
+	// must have queued ZERO deletes (FIX A: kitty replaces atomically
+	// terminal-side under the SAME office id — no flicker, no empty gap).
+	imgsB, delsB := c.FrameState()
+	out.deletesN = len(delsA) + len(delsB)
+	out.frame = c.RegionView(browserLaneTextFixture)
+	// the WRAPPER-level proof (zenbu_frame.go — the production emission
+	// seam the View string can never be): each generation's registry
+	// contribution publishes at the desktop origin (0,3); one renderer
+	// flush through the tea.WithOutput wrapper appends cursor-save +
+	// CUP(the absolute cell) + the cached verbatim APC (the STABLE id +
+	// the pane body box c=64,r=14) + cursor-restore — and the gen-A →
+	// gen-B flush carries ZERO a=d (the SAME id re-emits); a cleared
+	// registry then flushes exactly one a=d. A FRESH registry keeps the
+	// proof isolated from the app drives.
+	reg := &panels.ZenbuFrameRegistry{}
+	var buf strings.Builder
+	w := panels.NewZenbuFrameWriter(&buf, reg)
+	reg.Publish(true, 0, 3, imgsA, nil)
+	_, _ = w.Write([]byte("FLUSH-A"))
+	out.wrap1 = buf.String()
+	buf.Reset()
+	reg.Publish(true, 0, 3, imgsB, nil)
+	_, _ = w.Write([]byte("FLUSH-B"))
+	out.wrap2 = buf.String()
+	buf.Reset()
+	reg.Clear()
+	_, _ = w.Write([]byte("F3"))
+	out.wrap3 = buf.String()
+	c.Close() // the deletes flush through the captured emit seam
+	return out, nil
+}
+
+// browserStreamIdentical — the two-drives byte-identity gate (frames +
+// the wrapper bytes + the delete counts + the captured delete flushes).
+func browserStreamIdentical(a, b browserStreamOut) bool {
+	return a.frame == b.frame && a.wrap1 == b.wrap1 && a.wrap2 == b.wrap2 && a.wrap3 == b.wrap3 &&
+		a.deletesN == b.deletesN &&
+		strings.Join(a.emitted, "\x00") == strings.Join(b.emitted, "\x00")
+}
+
+// browserAssertStream — the stream leg's shared surface.
+func browserAssertStream(tag string, out browserStreamOut) error {
+	plain := ansi.Strip(out.frame)
+	for _, want := range []string{" zenbu ", "▸ zenbu terminal-browser · " + browserLanePage, "TB-TOOLBAR", "GEN-A-PAINTED", "zenbu-fake open " + browserLanePage} {
+		if !strings.Contains(plain, want) {
+			return fmt.Errorf("%s: the premium frame carries %q:\n%s", tag, want, plain)
+		}
+	}
+	for _, b64 := range []string{browserStreamB64A, browserStreamB64B} {
+		if strings.Contains(plain, b64[:16]) {
+			return fmt.Errorf("%s: base64 glyphs must never reach a text row:\n%s", tag, plain)
+		}
+	}
+	// the View path is PURE TEXT (the renderer eats zero-width sequences —
+	// the wave-80 in-View splice never painted; it only bloated frames).
+	if strings.Contains(out.frame, "\x1b_G") {
+		return fmt.Errorf("%s: the RegionView frame must carry ZERO APC bytes (the wrapper emits):\n%q", tag, out.frame)
+	}
+	// (a) the emitted frame keys carry the pane's body box c=64,r=14 —
+	// byte-pinned in the full splices below.
+	// (b) TWO generations, ONE id, ZERO interleaved deletes: the gen-A →
+	// gen-B replace queued NOTHING (kitty's a=T replaces atomically
+	// terminal-side under the SAME office id — the anti-flicker fix).
+	if out.deletesN != 0 {
+		return fmt.Errorf("%s: same-(child id, placement) replace must queue ZERO deletes, got %d", tag, out.deletesN)
+	}
+	// gen A: flush → cursor-save + CUP(5;1) (origin (0,3) + the pane-local
+	// commit (0,1), 1-based) + the cached verbatim APC (stable id + the
+	// pane box) + cursor-restore.
+	if want := "FLUSH-A" + "\x1b7\x1b[5;1H" + browserStreamEmit(browserStreamB64A) + "\x1b8"; out.wrap1 != want {
+		return fmt.Errorf("%s: the gen-A splice bytes:\n got %q\nwant %q", tag, out.wrap1, want)
+	}
+	// gen B: SAME id, commit (0,2) → CUP(6;1) — and NEVER an a=d.
+	if want := "FLUSH-B" + "\x1b7\x1b[6;1H" + browserStreamEmit(browserStreamB64B) + "\x1b8"; out.wrap2 != want {
+		return fmt.Errorf("%s: the gen-B splice bytes:\n got %q\nwant %q", tag, out.wrap2, want)
+	}
+	for _, wrap := range []string{out.wrap1, out.wrap2} {
+		if strings.Contains(wrap, ",i=1,") {
+			return fmt.Errorf("%s: the child's id i=1 must never be re-emitted", tag)
+		}
+		if strings.Contains(wrap, "\x1b_Ga=d,") {
+			return fmt.Errorf("%s: NO a=d may interleave two same-id generations:\n%q", tag, wrap)
+		}
+		if !strings.Contains(wrap, ",c=64,r=14;") {
+			return fmt.Errorf("%s: every emitted frame carries the pane's body box c=64,r=14:\n%q", tag, wrap)
+		}
+	}
+	// the registry clear flushes exactly one a=d for the emitted id.
+	if want := "F3" + browserStreamDeleteFrame; out.wrap3 != want {
+		return fmt.Errorf("%s: the registry clear flushes %q:\n got %q\nwant %q", tag, browserStreamDeleteFrame, out.wrap3, want)
+	}
+	// Close: the lane-lifecycle delete rides the direct seam.
+	if len(out.emitted) == 0 || !strings.Contains(strings.Join(out.emitted, ""), browserStreamDeleteFrame) {
+		return fmt.Errorf("%s: Close must flush %q through the emit seam, got %q", tag, browserStreamDeleteFrame, out.emitted)
+	}
+	return nil
+}
+
+// --- browser tab MID-CHAIN DEATH (--browser --lane kitty, leg K) --------------
+// FIX C's harness proof (the byte-level suite lives in internal/panels'
+// browser_lane_kitty_test.go): a REAL fake `terminal-browser` on the
+// pinned PATH streams chrome + 3 chunks of an m=1 kitty chain — chunk 2
+// with a racy OSC-7 cwd report INTERLEAVED inside the base64 payload
+// (terminal-browser v0.6.0's exact shape: 4 interleaves in the 26MB
+// wave-82 capture), chunk 3 UNTERMINATED — and exits 1 (the PTY's EOF
+// lands mid-chain, the session-churn shape). The grid text rows AND the
+// retained scrollback must contain ZERO base64 runs (the pre-fix pane
+// painted ~30 dense rows of it), the chrome painted before the chain
+// survives, and Poll latches the text fallback with the exact dim note.
+// Byte-identical across two drives.
+
+// browserKillFake — the dying-mid-chain scripted child.
+func browserKillFake(root string) error {
+	b64 := browserStreamB64A
+	fake := "#!/bin/sh\n" +
+		"printf '\\033[2J\\033[H'\n" +
+		"printf 'TB-TOOLBAR\\r\\n'\n" +
+		"printf 'mid-chain death next\\r\\n'\n" +
+		"printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:20] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=1;" + b64[20:36] + "\\033]7;file://host/tmp/x\\a" + b64[36:52] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=1;" + b64[52:] + "'\n" + // UNTERMINATED — the death lands mid-chunk
+		"exit 1\n"
+	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
+}
+
+// browserKillOut — ONE kill drive's observed artifacts.
+type browserKillOut struct {
+	frame    string // the fallback frame after Poll
+	note     string // the latched fallback note
+	gridLeak int    // base64 runs in the grid text rows (MUST be 0)
+	sbLeak   int    // base64 runs in the retained scrollback (MUST be 0)
+	chrome   string // grid row 0 (the toolbar, painted before the chain)
+}
+
+// browserKillB64Runs — the leak signature: base64-ish runs ≥ 40 chars.
+func browserKillB64Runs(s string) int {
+	n, run := 0, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=' {
+			run++
+			if run == 40 {
+				n++
+			}
+		} else {
+			run = 0
+		}
+	}
+	return n
+}
+
+// browserKillDrive — ONE hermetic mid-chain-death drive.
+func browserKillDrive() (browserKillOut, error) {
+	var out browserKillOut
+	saved, present := map[string]string{}, map[string]bool{}
+	for _, k := range browserEnvKeys {
+		if v, ok := os.LookupEnv(k); ok {
+			saved[k], present[k] = v, true
+		}
+	}
+	defer func() {
+		for _, k := range browserEnvKeys {
+			if present[k] {
+				os.Setenv(k, saved[k])
+			} else {
+				os.Unsetenv(k)
+			}
+		}
+	}()
+
+	root, err := os.MkdirTemp("", "uishot-browser-kill-")
+	if err != nil {
+		return out, fmt.Errorf("browser-kill fixture: %w", err)
+	}
+	defer os.RemoveAll(root)
+	if err := browserKillFake(root); err != nil {
+		return out, fmt.Errorf("browser-kill fixture terminal-browser: %w", err)
+	}
+	os.Setenv("TERM_PROGRAM", "ghostty")
+	for _, k := range []string{"TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM_VERSION", "WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID"} {
+		os.Setenv(k, "")
+	}
+	os.Setenv("TERM", "xterm-256color")
+	os.Setenv("COLORTERM", "truecolor")
+	os.Setenv(panels.BrowserLaneOffEnv, "")
+	os.Setenv(panels.TerminalBrowserOffEnv, "")
+	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
+
+	restoreEmit := panels.SetZenbuEmitForShot(func(string) {})
+	defer restoreEmit()
+
+	c := panels.NewBrowserLaneController(64, 16)
+	if err := c.OpenURL(browserLanePage); err != nil {
+		return out, fmt.Errorf("browser-kill open: %w", err)
+	}
+	sess, ok := c.Session().(*panels.ZenbuSession)
+	if !ok {
+		return out, fmt.Errorf("browser-kill: the premium lane must embed a live *ZenbuSession, got %T", c.Session())
+	}
+	// the marker is printed BEFORE the chain — a visible marker guarantees
+	// the chrome painted; then wait the reap (the fake exits 1).
+	marker := "mid-chain death next"
 	painted := false
 	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline) && !painted; {
 		for y := 0; y < sess.Grid().Rows(); y++ {
@@ -5371,73 +5645,47 @@ func browserStreamDrive() (browserStreamOut, error) {
 		}
 	}
 	if !painted {
-		return out, fmt.Errorf("browser-stream: the fake's marker row never painted the embedded grid")
+		return out, fmt.Errorf("browser-kill: the fake's marker row never painted the embedded grid")
 	}
+	for deadline := time.Now().Add(3 * time.Second); !sess.Exited() && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !sess.Exited() {
+		return out, fmt.Errorf("browser-kill: the dying fake never reaped")
+	}
+	// THE pin: zero base64 in the grid text rows AND the retained
+	// scrollback (the split tail + the OSC-7 interleave leak nothing).
+	for y := 0; y < sess.Grid().Rows(); y++ {
+		out.gridLeak += browserKillB64Runs(sess.Grid().LineText(y))
+	}
+	out.sbLeak = browserKillB64Runs(string(sess.Scrollback().Raw()))
+	out.chrome = sess.Grid().LineText(0)
+	c.Poll()
+	out.note = c.Note()
 	out.frame = c.RegionView(browserLaneTextFixture)
-	out.emitLen = len(browserStreamEmitHead) + len(browserStreamB64) + 2
-	// the WRAPPER-level proof (zenbu_frame.go — the production emission
-	// seam the View string can never be): the lane's registry contribution
-	// publishes at the desktop origin (0,3); one renderer flush through the
-	// tea.WithOutput wrapper must append cursor-save + CUP(5;1) (origin
-	// (0,3) + the pane-local commit (0,1), 1-based) + the cached verbatim
-	// APC + cursor-restore; a cleared registry then flushes exactly one
-	// a=d. A FRESH registry keeps the proof isolated from the app drives.
-	imgs, _ := c.FrameState()
-	reg := &panels.ZenbuFrameRegistry{}
-	reg.Publish(true, 0, 3, imgs, nil)
-	var buf strings.Builder
-	w := panels.NewZenbuFrameWriter(&buf, reg)
-	_, _ = w.Write([]byte("FLUSH"))
-	out.wrap1 = buf.String()
-	buf.Reset()
-	reg.Clear()
-	_, _ = w.Write([]byte("F2"))
-	out.wrap2 = buf.String()
-	c.Close() // the deletes flush through the captured emit seam
+	c.Close()
 	return out, nil
 }
 
-// browserStreamIdentical — the two-drives byte-identity gate (frames +
-// the wrapper bytes + the captured delete flushes).
-func browserStreamIdentical(a, b browserStreamOut) bool {
-	return a.frame == b.frame && a.emitLen == b.emitLen && a.wrap1 == b.wrap1 && a.wrap2 == b.wrap2 &&
-		strings.Join(a.emitted, "\x00") == strings.Join(b.emitted, "\x00")
+// browserKillIdentical — the two-drives gate.
+func browserKillIdentical(a, b browserKillOut) bool {
+	return a.frame == b.frame && a.note == b.note && a.gridLeak == b.gridLeak && a.sbLeak == b.sbLeak && a.chrome == b.chrome
 }
 
-// browserAssertStream — the stream leg's shared surface.
-func browserAssertStream(tag string, out browserStreamOut) error {
+// browserAssertKill — the kill leg's shared surface.
+func browserAssertKill(tag string, out browserKillOut) error {
+	if out.gridLeak != 0 || out.sbLeak != 0 {
+		return fmt.Errorf("%s: base64 must NEVER leak downstream (grid %d runs, scrollback %d runs)", tag, out.gridLeak, out.sbLeak)
+	}
+	if out.chrome != "TB-TOOLBAR" {
+		return fmt.Errorf("%s: the chrome painted before the chain survives, got %q", tag, out.chrome)
+	}
+	if want := fmt.Sprintf(panels.ZenbuFallbackNoteFmt, 1); out.note != want {
+		return fmt.Errorf("%s: the exit-1 fallback note = %q, want %q", tag, out.note, want)
+	}
 	plain := ansi.Strip(out.frame)
-	for _, want := range []string{" zenbu ", "▸ zenbu terminal-browser · " + browserLanePage, "TB-TOOLBAR", "zenbu-fake open " + browserLanePage} {
-		if !strings.Contains(plain, want) {
-			return fmt.Errorf("%s: the premium frame carries %q:\n%s", tag, want, plain)
-		}
-	}
-	if strings.Contains(plain, browserStreamB64[:16]) {
-		return fmt.Errorf("%s: base64 glyphs must never reach a text row:\n%s", tag, plain)
-	}
-	// the View path is PURE TEXT (the renderer eats zero-width sequences —
-	// the wave-80 in-View splice never painted; it only bloated frames).
-	if strings.Contains(out.frame, "\x1b_G") {
-		return fmt.Errorf("%s: the RegionView frame must carry ZERO APC bytes (the wrapper emits):\n%q", tag, out.frame)
-	}
-	// the frame-splice wrapper: one flush over the live registry appends
-	// cursor-save + CUP(5;1) (origin (0,3) + the pane-local commit (0,1),
-	// 1-based) + the cached verbatim APC under the OFFICE content id +
-	// cursor-restore.
-	emit := browserStreamEmitHead + browserStreamB64 + "\x1b\\"
-	if want := "FLUSH" + "\x1b7\x1b[5;1H" + emit + "\x1b8"; out.wrap1 != want {
-		return fmt.Errorf("%s: the wrapper's splice bytes:\n got %q\nwant %q", tag, out.wrap1, want)
-	}
-	if strings.Contains(out.wrap1, ",i=1,") {
-		return fmt.Errorf("%s: the child's id i=1 must never be re-emitted", tag)
-	}
-	// the registry clear flushes exactly one a=d for the emitted id.
-	if want := "F2" + browserStreamDeleteFrame; out.wrap2 != want {
-		return fmt.Errorf("%s: the registry clear flushes %q:\n got %q\nwant %q", tag, browserStreamDeleteFrame, out.wrap2, want)
-	}
-	// Close: the lane-lifecycle delete rides the direct seam.
-	if len(out.emitted) == 0 || !strings.Contains(strings.Join(out.emitted, ""), browserStreamDeleteFrame) {
-		return fmt.Errorf("%s: Close must flush %q through the emit seam, got %q", tag, browserStreamDeleteFrame, out.emitted)
+	if !strings.Contains(plain, out.note) || !strings.Contains(plain, " text ") {
+		return fmt.Errorf("%s: the fallback frame carries the note + the text badge:\n%s", tag, plain)
 	}
 	return nil
 }
@@ -6362,7 +6610,7 @@ func main() {
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
-	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams a CHUNKED kitty frame + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits the image to the OUTER terminal after a renderer flush as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the office content id + cursor-restore, and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam). --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
+	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc closes the session + returns to the floor; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
 

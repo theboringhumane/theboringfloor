@@ -7,6 +7,13 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev M: lane flicker/size/leak fixes (@develop... — tekton-1 (developer) · `issues`
+- summary: All 32 kitty/zenbu tests pass (25 pre-existing + 7 new). Every gate verified. Final return:
+- files: `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, (`internal/panels/zenbu_frame.go`, `zenbu_frame_test.go`
+- verify: ```
+- proof: *Before → after, the drive's APC key lines** (the manager's wave-81 analysis of the same child: every frame a *new* content-hash id, `a=d` b
+- ledgerId: led-1787904770440-a1216f17
+
 ### 2026-08-27 · Dev L: move splice to WithOutput (@developer... — tekton-2 (developer) · `issues`
 - summary: All gates green. Assembling the final return.
 - files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser.go`, `internal/app/model.go`, `internal/app/browser_frame_test.go`, `cmd/theboringoffice/main.go`, `cmd/uishot/main.go`
@@ -349,11 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: | shot | uishot command | frame | dims | what the frame shows (verified from extracted ANSI / rendered PNG) |
 - ledgerId: led-1787761090907-18cd5208
-
-### 2026-08-26 · Dev: gitignore-aware @ file picker (@general... — tekton-8 (developer) · `issues`
-- summary: # Developer Return — @ picker gitignore-aware filtering
-- files: | path | why |, |---|---|, | `internal/panels/chat_attach_ignore.go` | NEW, | `internal/panels/chat_attach_ignore_test.go` | NEW, | `internal/panels/chat_attach.go` | walker consults the rule set; header comment updated |, | `README.md` | one line: the picker honors `.gitignore` + built-in noise filters |, |
-- verify: (14/14 packages ok — app, backend, charter, chrome, config, gitx, netwatch, notify, office, panels, projinfo, sound, state, term, version.)
-- proof: ```
-- ledgerId: led-1787761026578-1258e5fc
 

@@ -297,6 +297,7 @@ type ZenbuSession struct {
 	sb      *term.Scrollback
 	grid    *term.Grid
 	images  *zenbuImageStore // the kitty passthrough's live state (browser_lane_kitty.go)
+	split   *kittyStream     // the stream splitter (Close resets its pending tail/chain)
 	started time.Time
 
 	mu     sync.Mutex
@@ -340,6 +341,11 @@ func newZenbuSession(url string, cols, rows int) (*ZenbuSession, error) {
 		alive:   true,
 		code:    -1,
 	}
+	// FIX B: the image store knows the pane's body box from the PTY's
+	// first byte — every re-emitted frame carries c=cols,r=rows so the
+	// outer terminal SCALES the image to the pane (the child sends no
+	// c=/r=; kitty's native-pixel default painted the wrong size).
+	s.images.setBodyBox(cols, rows)
 	// the reader loop (term.Session.startReader's twin + the kitty
 	// passthrough): the stream SPLITTER (browser_lane_kitty.go) extracts
 	// the child's kitty graphics APCs into the image store, and every
@@ -348,6 +354,7 @@ func newZenbuSession(url string, cols, rows int) (*ZenbuSession, error) {
 	// the outer terminal at RegionView time instead); the PTY going away
 	// flips Alive even if Wait is still reaping.
 	split := newKittyStream(io.MultiWriter(s.sb, s.grid), s.grid, s.images)
+	s.split = split
 	go func() {
 		_, _ = io.Copy(split, s.mf)
 		s.mu.Lock()
@@ -444,7 +451,9 @@ func (s *ZenbuSession) Write(p []byte) (int, error) {
 // model first (term.Session.Resize's exact order). Every live kitty
 // placement's geometry is now stale: the deletes queue (the next
 // RegionView flushes them in-frame) and the child repaints fresh frames
-// into the new box, re-placing from scratch.
+// into the new box, re-placing from scratch — and the store's body box
+// moves WITH the resize, so those fresh frames emit the NEW c=/r= dims
+// immediately (FIX B).
 func (s *ZenbuSession) Resize(cols, rows int) error {
 	if cols < 2 {
 		cols = 2
@@ -453,6 +462,7 @@ func (s *ZenbuSession) Resize(cols, rows int) error {
 		rows = 1
 	}
 	s.grid.SetSize(cols, rows)
+	s.images.setBodyBox(cols, rows)
 	s.images.retirePlacements()
 	return pty.Setsize(s.mf, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
 }
@@ -493,6 +503,13 @@ func (s *ZenbuSession) Close() error {
 	}
 	s.mu.Unlock()
 
+	// FIX C: the splitter's pending APC tail + open chunk chain are
+	// DISCARDED on the spot — a child dying mid-frame (suspend /
+	// killSess / respawn churn) leaves both behind, and they must never
+	// flush to the grid or the scrollback.
+	if s.split != nil {
+		s.split.reset()
+	}
 	if s.images != nil {
 		if frames := s.images.dropAll(); frames != "" {
 			zenbuEmit(frames)

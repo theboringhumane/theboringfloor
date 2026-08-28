@@ -28,31 +28,58 @@
 // RGB), o=z, s=/v= pixel dims, c=/r= cell size, x=/y=/z= placement
 // attrs, p= placement ids, C=1 cursor-stay, a=T/t/p/d/q.
 //
-// OFFICE-SIDE IDS are content-addressed (KittyImageID over the decoded
-// payload — the chat lane's exact helper): the child's ids (i=1) are
-// NEVER re-emitted, so a zenbu frame can never collide with a chat
-// preview's id in the terminal's shared image namespace, and identical
-// content re-transmits under the SAME office id (ghostty dedupes).
+// OFFICE-SIDE IDS are STABLE per (child image id, placement id) —
+// ZenbuOfficeID (sha1 over the namespaced encoding "zenbu"‖i‖p, the chat
+// lane's KittyImageID shape). The child reuses i=1,p=1 for EVERY repaint
+// (the wave-82 capture: 34/34 frames — kitty's a=T under the same id
+// REPLACES atomically terminal-side, the child's own anti-flicker
+// mechanism), so the office id must ride the SAME key: re-emission under
+// one id means ZERO delete between frames, no flicker, no empty gap.
+// (The wave-81 CONTENT hash re-ided every repaint — delete(old)+
+// transmit(new) at ~2fps: the flicker + the empty-pane gap.) The "zenbu"
+// namespace keeps the id out of the chat lane's content-hash space (a
+// chat preview's id is sha1 over real image bytes; a 13-byte ASCII
+// header is never a valid image payload), and the child's ids (i=1) are
+// still NEVER re-emitted verbatim.
 //
 // RE-EMISSION CONTRACT: (a) the payload rides the child's OWN base64
-// VERBATIM — decoded ONCE at commit for validation + the content hash,
+// VERBATIM — decoded ONCE at commit for validation (the malformed gate),
 // never re-encoded per frame (the assembled APC string is cached on the
 // image; a repaint reuses it); (b) the image's cell origin is captured
 // from the grid's cursor at the moment the transmission completed, which
 // is exactly where the child's own cursor stood (C=1 frames never move
 // it) — the frame wrapper CUPs to that pane-local offset PLUS the
 // registry's absolute origin; (c) C=1 is forced on re-emission so the
-// outer terminal's cursor never jumps past the image mid-row; (d)
-// deletes ride ahead of placements (the wrapper's splice order), and on
-// suspend/close they ALSO flush DIRECTLY to the terminal (the pane is
+// outer terminal's cursor never jumps past the image mid-row; (d) every
+// re-emitted frame carries c=<paneBodyCols>,r=<paneBodyRows> — the
+// lane's CURRENT body box (the PTY spawn dims) — REPLACING any child-
+// supplied c=/r=, because the child sends NONE (kitty then displays at
+// native pixel size: the capture's 992x960px frame painted from the pane
+// origin instead of scaling to the pane — the "small window"/spill bug);
+// (e) deletes ride ahead of placements (the wrapper's splice order), and
+// on suspend/close they ALSO flush DIRECTLY to the terminal (the pane is
 // gone — no frame will carry them) through the zenbuEmit seam (main.go
 // wires it to the wrapper's DirectEmit — serialized with frame flushes;
 // the sound bell's os.Stdout precedent: one self-contained APC, atomic
 // at write granularity, invisible when no images live).
+//
+// MID-CHAIN DEATH + INTERLEAVES (the wave-82 leak): the child dies
+// mid-chunked-frame on session churn (the capture ends with an
+// UNTERMINATED 156-byte chunk tail), AND its racy Chromium threads
+// interleave complete OSC-7 cwd reports INSIDE a chunk's base64 payload
+// (4× in 26MB). Both are handled WITHOUT a byte of payload ever reaching
+// the grid/scrollback: a stray ESC inside an APC body aborts the command
+// and the splitter enters a DISCARD mode that eats the aborted
+// transmission's tail up to its own terminator (interleaved sequences
+// skipped properly — OSC/DCS/APC to BEL/ST, CSI to its final byte; a
+// FRESH ESC_G resyncs as a new command); a session Close/reset drops the
+// splitter's pending tail + open chain outright (kittyStream.reset, the
+// ZenbuSession.Close wiring).
 package panels
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"os"
@@ -72,10 +99,33 @@ const zenbuMaxLiveImages = 8
 var (
 	// maxKittyAPCBody caps ONE APC's accumulated bytes (a full-window
 	// compressed frame runs ~100KB–2MB; this is crash-runaway headroom).
+	// It also bounds the DISCARD region of an aborted APC's tail (the
+	// discard CONTINUES after the drop — a runaway tail can never wedge
+	// the lane nor paint a byte downstream).
 	maxKittyAPCBody = 64 << 20
-	// maxKittyChainB64 caps a chunk chain's joined base64 text.
-	maxKittyChainB64 = 96 << 20
+	// maxKittyChainB64 caps a chunk chain's joined base64 text (real
+	// full-window frames join to ~2MB — 8MiB is generous headroom; the
+	// overflow drops the chain log-once, never flushes it downstream).
+	maxKittyChainB64 = 8 << 20
 )
+
+// ZenbuOfficeID — the premium lane's STABLE office-side image id: sha1
+// over the namespaced fixed encoding "zenbu"‖childID‖place, first 4
+// bytes big-endian (KittyImageID's exact shape — the protocol's 32-bit
+// image-id space). STABLE per (child image id, placement id): the child
+// reuses i=1,p=1 for every repaint, and kitty's a=T under the same id
+// replaces ATOMICALLY terminal-side — no delete between frames, no
+// flicker, no empty gap. The "zenbu" prefix namespaces the id away from
+// the chat lane's content-hash ids (sha1 over real image bytes — this
+// 13-byte ASCII header is never a valid image payload). Exported for the
+// uishot harness's byte-proofs.
+func ZenbuOfficeID(childID, place uint32) uint32 {
+	var b [13]byte
+	copy(b[:5], "zenbu")
+	binary.BigEndian.PutUint32(b[5:9], childID)
+	binary.BigEndian.PutUint32(b[9:13], place)
+	return KittyImageID(b[:])
+}
 
 // zenbuEmit — the DIRECT-to-terminal seam for image deletes that can no
 // longer ride a frame (suspend / close / office shutdown): the pane is
@@ -391,10 +441,39 @@ type zenbuImageStore struct {
 	pendSeen map[uint32]bool
 	drops    int
 	note     string // the FIRST malformed reason (log-once)
+
+	// bodyCols/bodyRows — the pane's CURRENT body box (the PTY spawn
+	// dims, set at session construction + Resize): every re-emitted
+	// frame carries c=bodyCols,r=bodyRows so the outer terminal SCALES
+	// the image to the pane (FIX B — the child sends no c=/r=, and
+	// kitty's native-pixel display spilled/shrank the frame). (0,0) =
+	// unknown (bare unit-test stores): the child's geometry passes
+	// through verbatim, the wave-81 shape.
+	bodyCols int
+	bodyRows int
 }
 
 func newZenbuImageStore() *zenbuImageStore {
 	return &zenbuImageStore{images: map[uint32]*zenbuImage{}, pendSeen: map[uint32]bool{}}
+}
+
+// setBodyBox — pin the pane's body box (pane cols × body rows): SUBSEQUENT
+// applies (transmits AND placements) emit c=cols,r=rows, overriding any
+// child-supplied c=/r=. ZenbuSession pairs this with retirePlacements on
+// resize (live placements' geometry is stale; the child repaints after
+// SIGWINCH and the fresh frames carry the new dims immediately).
+func (s *zenbuImageStore) setBodyBox(cols, rows int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.bodyCols, s.bodyRows = cols, rows
+}
+
+// bodyBoxLocked — the box as emit-ready strings ("" while unknown).
+func (s *zenbuImageStore) bodyBoxLocked() (cols, rows string, ok bool) {
+	if s.bodyCols > 0 && s.bodyRows > 0 {
+		return strconv.Itoa(s.bodyCols), strconv.Itoa(s.bodyRows), true
+	}
+	return "", "", false
 }
 
 // malformed — the log-once discipline: the first reason pins, every
@@ -436,9 +515,11 @@ func (s *zenbuImageStore) apply(cmd kittyCmd, ox, oy int) {
 	}
 }
 
-// applyTransmitLocked — a=T / a=t: decode+validate ONCE (the content
-// hash + the malformed gate), latest-wins replace, the replaced image's
-// office delete queued (the terminal must not composite stale frames).
+// applyTransmitLocked — a=T / a=t: decode+validate ONCE (the malformed
+// gate), latest-wins replace under the STABLE (child id, placement)
+// office id — a same-key repaint keeps the id (kitty replaces atomically
+// terminal-side: NO delete, NO flicker); only a placement-id change (or
+// eviction) queues the old office id's delete.
 func (s *zenbuImageStore) applyTransmitLocked(cmd kittyCmd, ox, oy int) {
 	if cmd.ukey != "" {
 		s.malformed("unicode-placeholder frames (U=%s) unsupported", cmd.ukey)
@@ -457,15 +538,13 @@ func (s *zenbuImageStore) applyTransmitLocked(cmd kittyCmd, ox, oy int) {
 		s.malformed("transmit without image id")
 		return
 	}
-	decoded, err := base64.StdEncoding.DecodeString(cmd.b64)
-	if err != nil {
-		decoded, err = base64.RawStdEncoding.DecodeString(strings.TrimRight(cmd.b64, "="))
-		if err != nil {
+	if _, err := base64.StdEncoding.DecodeString(cmd.b64); err != nil {
+		if _, err2 := base64.RawStdEncoding.DecodeString(strings.TrimRight(cmd.b64, "=")); err2 != nil {
 			s.malformed("undecodable payload (%v)", err)
 			return
 		}
 	}
-	officeID := KittyImageID(decoded)
+	officeID := ZenbuOfficeID(key, cmd.place)
 	if old := s.images[key]; old != nil && old.placed && old.officeID != officeID {
 		s.queueDeleteLocked(old.officeID)
 	}
@@ -483,7 +562,7 @@ func (s *zenbuImageStore) applyTransmitLocked(cmd kittyCmd, ox, oy int) {
 		s.order = append(s.order, key)
 	}
 	s.seq++
-	s.images[key] = &zenbuImage{
+	im := &zenbuImage{
 		childID: key, officeID: officeID,
 		format: cmd.format, okey: cmd.okey, pw: cmd.pw, ph: cmd.ph,
 		b64:    cmd.b64,
@@ -492,6 +571,14 @@ func (s *zenbuImageStore) applyTransmitLocked(cmd kittyCmd, ox, oy int) {
 		cols: cmd.cols, rows: cmd.rows, x: cmd.x, y: cmd.y, z: cmd.z,
 		seq: s.seq,
 	}
+	// FIX B: the office's OWN body box rides every re-emission, REPLACING
+	// any child-supplied c=/r= (forward-compat) — with no c=/r= kitty
+	// displays at native pixel size from the pane origin (the capture's
+	// 992x960px frame — the "small window"/spill bug).
+	if bc, br, ok := s.bodyBoxLocked(); ok {
+		im.cols, im.rows = bc, br
+	}
+	s.images[key] = im
 }
 
 // applyPlaceLocked — a=p: (re)place an already-transmitted image; the
@@ -526,6 +613,11 @@ func (s *zenbuImageStore) applyPlaceLocked(cmd kittyCmd, ox, oy int) {
 	}
 	if cmd.z != "" {
 		im.z = cmd.z
+	}
+	// FIX B: the placement's c=/r= is REPLACED by the office's body box
+	// too (a re-placement after a resize carries the new dims immediately).
+	if bc, br, ok := s.bodyBoxLocked(); ok {
+		im.cols, im.rows = bc, br
 	}
 	s.seq++
 	im.seq = s.seq
@@ -690,14 +782,20 @@ func (s *zenbuImageStore) dropStats() (int, string) {
 // scrollback+grid: complete kitty graphics APCs are extracted to the
 // store (chunked m=1 chains joined until m=0), EVERY other byte flows
 // downstream untouched. Split reads, malformed sequences (drop, log-once,
-// never panic), and interleaved text are all first-class.
+// never panic), interleaved text, and CORRUPT APC tails (a stray ESC
+// aborts the command → the tail discards to its terminator, NEVER
+// downstream — the wave-82 base64-leak fix) are all first-class. The
+// mutex serializes the reader loop's Write against a session-Close
+// reset (both touch pending/chain).
 type kittyStream struct {
 	dst   io.Writer
 	grid  *term.Grid
 	store *zenbuImageStore
 
+	mu      sync.Mutex
 	pending []byte // undispatched tail (APC body in APC mode, ESC tail in text mode)
 	inAPC   bool
+	discard bool // an aborted APC's tail is being eaten to its terminator
 
 	chain    *kittyCmd       // the open chunk chain's first-chunk command
 	chainB64 strings.Builder // the chain's joined payload text
@@ -710,10 +808,16 @@ func newKittyStream(dst io.Writer, grid *term.Grid, store *zenbuImageStore) *kit
 // Write implements io.Writer (the reader loop's only entry): never
 // errors (io.Copy keeps draining), O(len(p)) in text mode.
 func (k *kittyStream) Write(p []byte) (int, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
 	n := len(p)
 	k.pending = append(k.pending, p...)
 	for {
-		if k.inAPC {
+		if k.discard {
+			if !k.scanDiscard() {
+				break
+			}
+		} else if k.inAPC {
 			if !k.scanAPC() {
 				break
 			}
@@ -724,6 +828,35 @@ func (k *kittyStream) Write(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// reset — the session Close/churn path: any pending APC tail + any OPEN
+// chunk chain are DISCARDED on the spot (a child dying mid-frame leaves
+// both behind; they must NEVER flush to the grid or the scrollback).
+// Log-once through the store when something was actually held. Mutex-
+// serialized with the reader loop's in-flight Write.
+func (k *kittyStream) reset() {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.chain != nil || len(k.pending) > 0 {
+		k.store.malformed("session reset dropped %d pending APC bytes (chain open: %v)", len(k.pending), k.chain != nil)
+	}
+	k.pending = k.pending[:0]
+	k.inAPC = false
+	k.discard = false
+	k.chain = nil
+	k.chainB64.Reset()
+}
+
+// dropChainLocked — an open chunk chain dies with the command/stream that
+// broke it (a chunk chain is only ever valid back-to-back).
+func (k *kittyStream) dropChainLocked(why string) {
+	if k.chain == nil {
+		return
+	}
+	k.store.malformed("chunk chain dropped: %s", why)
+	k.chain = nil
+	k.chainB64.Reset()
 }
 
 // scanText — text mode: flush plain runs downstream, hold trailing
@@ -763,9 +896,15 @@ func (k *kittyStream) scanText() bool {
 }
 
 // scanAPC — APC mode: accumulate until the ST (ESC\) or BEL terminator,
-// commit the completed command, resync on a stray ESC (malformed). The
-// body is capped (maxKittyAPCBody) so a runaway unterminated stream
-// drops instead of wedging the lane.
+// commit the completed command. A stray ESC inside the body means the
+// command is CORRUPT (payloads are base64 — never ESC): drop any open
+// chain and switch to DISCARD mode so the aborted transmission's tail
+// rides to its own terminator without a single byte leaking downstream
+// (the wave-82 capture: the real child's racy OSC-7 cwd reports
+// interleave mid-chunk 4× in 26MB — the old resync-at-ESC let the
+// remaining base64 paint ~30 dense rows of the pane). The body is
+// capped (maxKittyAPCBody) so a runaway unterminated stream drops
+// instead of wedging the lane.
 func (k *kittyStream) scanAPC() bool {
 	for j := 0; j < len(k.pending); j++ {
 		switch k.pending[j] {
@@ -784,12 +923,13 @@ func (k *kittyStream) scanAPC() bool {
 				k.inAPC = false
 				return true
 			}
-			// a stray ESC inside an APC: payloads are base64 (never ESC)
-			// — drop the body and resync AT the ESC (it may open a fresh
-			// sequence).
-			k.store.malformed("APC aborted by stray ESC (resync)")
+			// the stray ESC: abort, drop the chain, discard the tail
+			// (scanDiscard reclassifies a FRESH ESC_G as a resync).
+			k.dropChainLocked("APC aborted by a stray ESC")
+			k.store.malformed("APC aborted by a stray ESC — the tail discards to its terminator")
 			k.pending = k.pending[j:]
 			k.inAPC = false
+			k.discard = true
 			return true
 		}
 	}
@@ -806,6 +946,126 @@ func (k *kittyStream) capAPC() bool {
 	k.pending = k.pending[:0]
 	k.inAPC = false
 	return true
+}
+
+// scanDiscard — the aborted-APC tail-discard: NOTHING in this mode ever
+// goes downstream. The tail ends ONLY at the aborted transmission's own
+// terminator (ESC\, or a bare BEL outside any interleaved sequence).
+// Interleaved sequences are SKIPPED properly (the real child's OSC-7
+// rides to its BEL; OSC/DCS/APC/PM/SOS run to BEL or ST, CSI to its
+// final byte) so the base64 RESUMING after them keeps discarding; a
+// FRESH graphics APC (ESC_G) resyncs as a new command (the child aborted
+// + restarted). Returns false when more bytes are needed.
+func (k *kittyStream) scanDiscard() bool {
+	j := 0
+	for j < len(k.pending) {
+		switch b := k.pending[j]; {
+		case b == 0x07:
+			// a bare BEL (outside any interleaved sequence — those are
+			// consumed by the skips below): the aborted APC's terminator.
+			k.pending = k.pending[j+1:]
+			k.discard = false
+			return true
+		case b != 0x1b:
+			j++
+			continue
+		}
+		// pending[j] == ESC
+		if j+1 >= len(k.pending) {
+			break // the escape's second byte is still coming — hold
+		}
+		switch n := k.pending[j+1]; n {
+		case '\\': // the aborted APC's ST — discard complete
+			k.pending = k.pending[j+2:]
+			k.discard = false
+			return true
+		case '_':
+			if j+2 >= len(k.pending) {
+				return k.capDiscard() // ESC_ could still grow into ESC_G — hold
+			}
+			if k.pending[j+2] == 'G' {
+				// a FRESH graphics APC: the child aborted + restarted.
+				k.pending = k.pending[j+3:]
+				k.discard = false
+				k.inAPC = true
+				return true
+			}
+			// a non-graphics APC interloper: skip to its BEL/ST.
+			end, ok := skipToStringTerminator(k.pending, j+2)
+			if !ok {
+				return k.capDiscard()
+			}
+			j = end
+		case ']', 'P', 'X', '^': // OSC / DCS / SOS / PM: BEL- or ST-terminated
+			end, ok := skipToStringTerminator(k.pending, j+2)
+			if !ok {
+				return k.capDiscard()
+			}
+			j = end
+		case '[': // CSI: runs to its final byte (0x40–0x7E)
+			end, ok := skipCSI(k.pending, j+2)
+			if !ok {
+				return k.capDiscard()
+			}
+			j = end
+		default: // any other escape: two bytes, keep discarding
+			j += 2
+		}
+	}
+	return k.capDiscard()
+}
+
+// capDiscard — the discard region NEVER flushes downstream: at the cap
+// the accumulated bytes drop and the discard CONTINUES (a runaway tail
+// can neither wedge the lane nor paint base64). False while the region
+// can still grow.
+func (k *kittyStream) capDiscard() bool {
+	if len(k.pending) <= maxKittyAPCBody {
+		return false
+	}
+	k.store.malformed("aborted APC tail over the %d-byte cap (dropped, still discarding)", maxKittyAPCBody)
+	k.pending = k.pending[:0]
+	return true
+}
+
+// skipToStringTerminator — an interleaved BEL/ST-terminated sequence
+// (OSC/DCS/APC/PM/SOS), scanned from `from` (just past the introducer):
+// the index JUST PAST its terminator, or (0,false) while it is still
+// arriving. A nested stray ESC (not ST) aborts the interloper itself —
+// the returned index lands AT that ESC so the discard scanner
+// reclassifies it.
+func skipToStringTerminator(p []byte, from int) (int, bool) {
+	for i := from; i < len(p); i++ {
+		switch p[i] {
+		case 0x07:
+			return i + 1, true
+		case 0x1b:
+			if i+1 >= len(p) {
+				return 0, false
+			}
+			if p[i+1] == '\\' {
+				return i + 2, true
+			}
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// skipCSI — an interleaved CSI, scanned from `from` (just past "ESC["):
+// the index just past its final byte (0x40–0x7E), or (0,false) while it
+// is still arriving. A stray ESC aborts the CSI — the returned index
+// lands AT it for reclassification.
+func skipCSI(p []byte, from int) (int, bool) {
+	for i := from; i < len(p); i++ {
+		if p[i] == 0x1b {
+			return i, true
+		}
+		if p[i] >= 0x40 && p[i] <= 0x7e {
+			return i + 1, true
+		}
+	}
+	return 0, false
 }
 
 // commit — one completed APC body: parse, join chunk chains (m=1 …

@@ -32,12 +32,16 @@ import (
 
 // kittyTestPayload — the deterministic fake frame (content irrelevant —
 // the store never image-decodes; the bytes only need to base64/decode
-// round-trip and hash deterministically).
+// round-trip).
 var kittyTestPayload = []byte("\x89PNG\r\n\x1a\nFAKEKITTYFRAME0123456789abcdefghijklmnopqrstuvwxyz")
 
 func kittyTestB64() string { return base64.StdEncoding.EncodeToString(kittyTestPayload) }
 
-func kittyTestID() uint32 { return KittyImageID(kittyTestPayload) }
+// kittyTestID — the STABLE office-side id for the fake's canonical frame
+// (child i=1, no placement key → placement 0): ZenbuOfficeID over (child
+// id, placement), NOT the payload (the wave-81 content hash was the
+// flicker bug).
+func kittyTestID() uint32 { return ZenbuOfficeID(1, 0) }
 
 func kittyTestIDHash8() string { return KittyIDHash8(kittyTestID()) }
 
@@ -113,7 +117,7 @@ func TestKittyStreamSplitCleanGrid(t *testing.T) {
 		t.Fatalf("the image is keyed by the child's id i=1: %v", store.images)
 	}
 	if im.officeID != kittyTestID() {
-		t.Fatalf("office id = %08x, want KittyImageID %08x", im.officeID, kittyTestID())
+		t.Fatalf("office id = %08x, want the STABLE ZenbuOfficeID(1,0) %08x", im.officeID, kittyTestID())
 	}
 	if !im.placed || im.ox != 0 || im.oy != 1 {
 		t.Fatalf("placement = (%d,%d) placed=%v, want (0,1) true", im.ox, im.oy, im.placed)
@@ -226,7 +230,11 @@ func TestKittyStreamMalformed(t *testing.T) {
 		{"unicode-placeholder U=1", kittyAPC("a=T,t=d,f=32,i=1,U=1", b64) + "after5", 1},
 		{"chunk without a chain", kittyAPC("m=0", b64) + "after6", 1},
 		{"interrupted chain", kittyAPC("a=T,t=d,f=100,i=1,m=1", b64[:8]) + kittyAPC("a=d,d=a", "") + "after7", 1},
-		{"stray ESC resync", "\x1b_Ga=T,t=d,f=100,i=1;" + b64[:8] + "\x1b[2J" + "after8", 1},
+		// the stray-ESC abort: an interleaved CSI corrupts the APC — the
+		// body + the base64 TAIL discard to the aborted APC's own
+		// terminator (NEVER downstream — the wave-82 leak fix), and the
+		// text AFTER the terminator still paints.
+		{"stray ESC tail-discard", "\x1b_Ga=T,t=d,f=100,i=1;" + b64[:8] + "\x1b[2J" + b64[8:24] + "\x1b\\" + "after8", 1},
 		{"bad key token", kittyAPC("a=T,zzz", b64) + "after9", 1},
 		{"placement for unknown id", kittyAPC("a=p,i=77", "") + "after10", 1},
 	}
@@ -291,16 +299,20 @@ func TestKittyStreamAPCBodyCap(t *testing.T) {
 	}
 }
 
-// TestZenbuImageStoreLatestWins — id reuse (the child's per-frame
-// pattern): the new transmission replaces, and the STALE frame's office
-// delete queues (the terminal never composites two generations).
+// TestZenbuImageStoreLatestWins — FIX A's core regression: the child
+// reuses i=1 for EVERY repaint (the wave-82 capture: 34/34 frames) —
+// two sequential frames with the same child id + placement emit the SAME
+// office id with ZERO a=d between them (kitty's a=T replaces atomically
+// terminal-side: no flicker, no empty gap). Only a PLACEMENT-id change
+// re-ids (the old placement's delete queues — the terminal never
+// composites two generations).
 func TestZenbuImageStoreLatestWins(t *testing.T) {
 	store := newZenbuImageStore()
 	payloadA := []byte("frame generation A")
 	payloadB := []byte("frame generation B")
 	b64A := base64.StdEncoding.EncodeToString(payloadA)
 	b64B := base64.StdEncoding.EncodeToString(payloadB)
-	idA, idB := KittyImageID(payloadA), KittyImageID(payloadB)
+	idA := ZenbuOfficeID(1, 0)
 
 	ks, _, g, _ := newKittyRig(40, 8)
 	ks.store = store
@@ -310,19 +322,47 @@ func TestZenbuImageStoreLatestWins(t *testing.T) {
 
 	store.mu.Lock()
 	im := store.images[1]
-	if im == nil || im.b64 != b64B || im.officeID != idB {
-		t.Fatalf("latest transmission wins: %+v", im)
+	if im == nil || im.b64 != b64B || im.officeID != idA {
+		t.Fatalf("latest transmission wins under the STABLE id: %+v (want id %08x)", im, idA)
 	}
 	if len(store.images) != 1 {
 		t.Fatalf("id reuse never grows the store: %d", len(store.images))
 	}
 	store.mu.Unlock()
+	if dels := store.drainPendingIDs(); len(dels) != 0 {
+		t.Fatalf("same-(id,placement) replace queues ZERO deletes (atomic terminal-side): %v", dels)
+	}
+
+	// a PLACEMENT change re-ids: the old placement's delete queues.
+	store.apply(mustParse(t, "a=T,t=d,f=100,i=1,p=2,q=2;"+b64B), 0, 0)
+	store.mu.Lock()
+	im = store.images[1]
+	if im == nil || im.officeID != ZenbuOfficeID(1, 2) {
+		t.Fatalf("a placement change re-ids: %+v (want %08x)", im, ZenbuOfficeID(1, 2))
+	}
+	store.mu.Unlock()
 	dels := store.drainPendingIDs()
 	if len(dels) != 1 || dels[0] != idA {
-		t.Fatalf("the stale generation's delete queued: %v", dels)
+		t.Fatalf("the old placement's delete queued: %v (want [%08x])", dels, idA)
 	}
-	if dels[0] == idB {
+	if dels[0] == ZenbuOfficeID(1, 2) {
 		t.Fatalf("the LIVE generation is never deleted: %v", dels)
+	}
+}
+
+// TestZenbuOfficeIDStableAndNamespaced — the id's contract: stable per
+// (child id, placement), sensitive to BOTH halves, and namespaced away
+// from the chat lane's content-hash ids (a KittyImageID over payload
+// bytes never equals the lane id for the same bytes).
+func TestZenbuOfficeIDStableAndNamespaced(t *testing.T) {
+	if ZenbuOfficeID(1, 1) != ZenbuOfficeID(1, 1) {
+		t.Fatal("deterministic per (child id, placement)")
+	}
+	if ZenbuOfficeID(1, 1) == ZenbuOfficeID(2, 1) || ZenbuOfficeID(1, 1) == ZenbuOfficeID(1, 2) {
+		t.Fatal("sensitive to BOTH the child id and the placement id")
+	}
+	if ZenbuOfficeID(1, 0) == KittyImageID(kittyTestPayload) {
+		t.Fatal("namespaced away from the chat lane's content-hash ids")
 	}
 }
 
@@ -331,7 +371,7 @@ func TestZenbuImageStoreDeletes(t *testing.T) {
 	mk := func() (*zenbuImageStore, uint32) {
 		store := newZenbuImageStore()
 		store.apply(mustParse(t, "a=T,t=d,f=100,i=1,p=7,q=2;"+kittyTestB64()), 0, 0)
-		return store, kittyTestID()
+		return store, ZenbuOfficeID(1, 7)
 	}
 
 	// d=i (the explicit id delete).
@@ -382,7 +422,7 @@ func TestZenbuImageStoreBound(t *testing.T) {
 		payload := []byte(fmt.Sprintf("frame %03d", i))
 		b64 := base64.StdEncoding.EncodeToString(payload)
 		if i == 0 {
-			wantEvictedDelete = KittyImageID(payload)
+			wantEvictedDelete = ZenbuOfficeID(100, 0) // the fake's i=100, no placement key
 		}
 		store.apply(mustParse(t, fmt.Sprintf("a=T,t=d,f=100,i=%d,q=2;%s", 100+i, b64)), 0, 0)
 	}
@@ -420,8 +460,9 @@ func TestZenbuImageStoreTransmitOnlyThenPlace(t *testing.T) {
 }
 
 // TestKittyEmitAndDeleteFrames — the office-side APC shapes byte-pinned:
-// the emit is a=T,t=d with q=2 + C=1 forced, the office content id, the
-// child's geometry keys verbatim; the delete is d=I (delete+free).
+// the emit is a=T,t=d with q=2 + C=1 forced, the STABLE office id, the
+// child's geometry keys verbatim (no body box pinned → pass-through);
+// the delete is d=I (delete+free).
 func TestKittyEmitAndDeleteFrames(t *testing.T) {
 	store := newZenbuImageStore()
 	store.apply(mustParse(t, "a=T,t=d,f=32,o=z,s=1600,v=960,i=1,p=1,q=2;"+kittyTestB64()), 0, 0)
@@ -429,7 +470,8 @@ func TestKittyEmitAndDeleteFrames(t *testing.T) {
 	if len(ps) != 1 {
 		t.Fatalf("one placement: %v", ps)
 	}
-	want := "\x1b_Ga=T,t=d,q=2,C=1,i=" + kittyTestIDHash8() + ",f=32,o=z,s=1600,v=960,p=1;" + kittyTestB64() + "\x1b\\"
+	hash8 := KittyIDHash8(ZenbuOfficeID(1, 1)) // the fake's i=1,p=1
+	want := "\x1b_Ga=T,t=d,q=2,C=1,i=" + hash8 + ",f=32,o=z,s=1600,v=960,p=1;" + kittyTestB64() + "\x1b\\"
 	if ps[0].frame != want {
 		t.Fatalf("the emit frame is byte-pinned:\n got %q\nwant %q", ps[0].frame, want)
 	}
@@ -446,8 +488,44 @@ func TestKittyEmitAndDeleteFrames(t *testing.T) {
 	if s := ansi.Strip(want); s != "" {
 		t.Fatalf("the emit frame strips clean, got %q", s)
 	}
-	if got, want := kittyDeleteFrame(kittyTestID()), "\x1b_Ga=d,d=I,i="+kittyTestIDHash8()+",q=2;\x1b\\"; got != want {
+	if got, want := kittyDeleteFrame(ZenbuOfficeID(1, 1)), "\x1b_Ga=d,d=I,i="+hash8+",q=2;\x1b\\"; got != want {
 		t.Fatalf("the delete frame is byte-pinned: %q vs %q", got, want)
+	}
+}
+
+// TestZenbuImageStoreBodyBox — FIX B: with the pane's body box pinned,
+// EVERY re-emission carries c=bodyCols,r=bodyRows — a child-supplied
+// c=/r= is REPLACED (forward-compat), an absent one is ADDED, and a
+// box change (the resize wiring) lands in the very next apply.
+func TestZenbuImageStoreBodyBox(t *testing.T) {
+	store := newZenbuImageStore()
+	store.setBodyBox(64, 14)
+	// child-supplied c=/r= is replaced by the office box:
+	store.apply(mustParse(t, "a=T,t=d,f=32,o=z,s=992,v=960,c=999,r=999,i=1,p=1,q=2;"+kittyTestB64()), 0, 0)
+	ps := store.placements()
+	if len(ps) != 1 {
+		t.Fatalf("one placement: %v", ps)
+	}
+	hash8 := KittyIDHash8(ZenbuOfficeID(1, 1))
+	want := "\x1b_Ga=T,t=d,q=2,C=1,i=" + hash8 + ",f=32,o=z,s=992,v=960,c=64,r=14,p=1;" + kittyTestB64() + "\x1b\\"
+	if ps[0].frame != want {
+		t.Fatalf("the office box REPLACES child c=/r=:\n got %q\nwant %q", ps[0].frame, want)
+	}
+	// an absent child c=/r= is added from the box:
+	store.apply(mustParse(t, "a=T,t=d,f=32,o=z,s=992,v=960,i=1,p=1,q=2;"+kittyTestB64()), 0, 0)
+	if ps := store.placements(); ps[0].frame != want {
+		t.Fatalf("the office box is ADDED when the child sends none:\n got %q\nwant %q", ps[0].frame, want)
+	}
+	// the box changes (the resize wiring): the NEXT apply carries the new
+	// dims immediately — transmit AND placement paths alike.
+	store.setBodyBox(40, 8)
+	store.apply(mustParse(t, "a=T,t=d,f=32,o=z,s=992,v=960,i=1,p=1,q=2;"+kittyTestB64()), 0, 0)
+	if ps := store.placements(); !strings.Contains(ps[0].frame, ",c=40,r=8,") {
+		t.Fatalf("the new box lands on the next transmit: %q", ps[0].frame[:120])
+	}
+	store.apply(mustParse(t, "a=p,i=1,p=1"), 0, 0)
+	if ps := store.placements(); !strings.Contains(ps[0].frame, ",c=40,r=8,") {
+		t.Fatalf("the new box lands on the next placement: %q", ps[0].frame[:120])
 	}
 }
 
@@ -582,9 +660,11 @@ func TestBrowserLaneKittyFrameState(t *testing.T) {
 	if strings.Contains(frame, "\x1b_G") {
 		t.Fatalf("the RegionView must stay APC-free (the wrapper emits):\n%q", frame)
 	}
-	// (c) the registry contribution: ONE image — the OFFICE content id,
-	// the pane-local origin (0,1) (the child homed, painted the toolbar,
-	// then transmitted), and the cached verbatim APC.
+	// (c) the registry contribution: ONE image — the OFFICE stable id
+	// (ZenbuOfficeID over child i=1 + placement 0), the pane-local origin
+	// (0,1) (the child homed, painted the toolbar, then transmitted),
+	// and the cached verbatim APC — carrying the pane's body box c=64,
+	// r=14 (FIX B: the controller is 64x16, bodyH = 16-2).
 	imgs, deletes := c.FrameState()
 	if len(deletes) != 0 {
 		t.Fatalf("no deletes pending on a healthy frame: %v", deletes)
@@ -592,7 +672,7 @@ func TestBrowserLaneKittyFrameState(t *testing.T) {
 	if len(imgs) != 1 {
 		t.Fatalf("one live image for the registry, got %d", len(imgs))
 	}
-	emitHead := "\x1b_Ga=T,t=d,q=2,C=1,i=" + kittyTestIDHash8() + ",f=100;"
+	emitHead := "\x1b_Ga=T,t=d,q=2,C=1,i=" + kittyTestIDHash8() + ",f=100,c=64,r=14;"
 	im := imgs[0]
 	if im.OfficeID != kittyTestID() || im.OX != 0 || im.OY != 1 {
 		t.Fatalf("registry image = id %08x @(%d,%d), want %08x @(0,1)", im.OfficeID, im.OX, im.OY, kittyTestID())
@@ -673,4 +753,248 @@ func TestZenbuSessionCloseDeleteIdempotent(t *testing.T) {
 	if ps := store.placements(); len(ps) != 0 {
 		t.Fatalf("dropAll un-places everything: %v", ps)
 	}
+}
+
+// -------------------------------------------------------------------
+// FIX C — the wave-82 base64-leak regressions
+// -------------------------------------------------------------------
+
+// b64Runs — count base64-ish runs (len ≥ 40) in a text blob (the leak
+// signature: ~30 dense rows of payload glyphs).
+func b64Runs(s string) int {
+	n, run := 0, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '+' || c == '/' || c == '=' {
+			run++
+			if run == 40 {
+				n++
+			}
+		} else {
+			run = 0
+		}
+	}
+	return n
+}
+
+// gridB64Runs — the base64-run count across every grid row.
+func gridB64Runs(g *term.Grid) int {
+	n := 0
+	for y := 0; y < g.Rows(); y++ {
+		n += b64Runs(g.LineText(y))
+	}
+	return n
+}
+
+// TestKittyStreamInterleavedSequenceDropsTail — the EXACT wave-82 leak
+// shape from the real capture (terminal-browser v0.6.0): a racy OSC-7
+// cwd report lands INSIDE a chunk's base64 payload, the payload RESUMES
+// after the OSC's BEL, and the chunk's own ESC\ ends it. The aborted
+// frame's tail must NEVER paint the grid or the scrollback (the old
+// resync-at-ESC let ~30 dense base64 rows through), the open chain dies
+// with it, the surrounding chrome survives, and the NEXT well-formed
+// frame lands cleanly.
+func TestKittyStreamInterleavedSequenceDropsTail(t *testing.T) {
+	b64 := kittyTestB64()
+	osc7 := "\x1b]7;file://host/var/folders/x\x07"
+	stream := "\x1b[2J\x1b[H" + "TB-TOOLBAR\r\n" +
+		kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20]) + // the chain opens
+		"\x1b_Gm=1;" + b64[20:40] + osc7 + b64[40:64] + "\x1b\\" + // CORRUPT: OSC-7 interleaved mid-payload
+		kittyAPC("m=1", b64[64:80]) + // chain-less continuation (the frame is lost)
+		"\x1b[4;1H" + "STILL-ALIVE\r\n" +
+		kittyAPC("a=T,t=d,f=100,i=1,q=2", b64) + // the NEXT frame lands clean
+		"\x1b[5;1H" + "done"
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.Write([]byte(stream))
+	// THE regression pin: zero base64 downstream — grid AND scrollback.
+	if n := gridB64Runs(g); n != 0 {
+		t.Fatalf("base64 leaked into the grid (%d runs):\n%s", n, g.ScreenText())
+	}
+	if n := b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("base64 leaked into the scrollback (%d runs)", n)
+	}
+	// the corrupt frame dropped (chain aborted + chain-less chunk)…
+	drops, note := store.dropStats()
+	if drops < 2 || !strings.Contains(note, "stray ESC") {
+		t.Fatalf("the abort + chain drop log-once: drops=%d note=%q", drops, note)
+	}
+	// …the surrounding chrome survived…
+	if got := g.LineText(0); got != "TB-TOOLBAR" {
+		t.Fatalf("the toolbar painted: %q", got)
+	}
+	found := false
+	for y := 0; y < g.Rows(); y++ {
+		if strings.Contains(g.LineText(y), "STILL-ALIVE") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("text after the corrupt frame still paints:\n%s", g.ScreenText())
+	}
+	// …and the NEXT well-formed frame under the same child id landed.
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	im := store.images[1]
+	if im == nil || !im.placed || im.b64 != b64 || im.officeID != kittyTestID() {
+		t.Fatalf("the next frame lands cleanly: %+v", im)
+	}
+}
+
+// TestKittyStreamDiscardResyncsFreshAPC — a stray ESC that OPENS a fresh
+// graphics APC (the child aborted + restarted) resyncs straight into the
+// new command — no tail follows an aborted-then-restarted transmission.
+func TestKittyStreamDiscardResyncsFreshAPC(t *testing.T) {
+	b64 := kittyTestB64()
+	ks, store, g, _ := newKittyRig(40, 8)
+	ks.Write([]byte("\x1b[H" +
+		"\x1b_Ga=T,t=d,f=100,i=9;" + b64[:16] + // aborted mid-body, no terminator
+		kittyAPC("a=T,t=d,f=100,i=1,q=2", b64) + // the fresh frame
+		"after",
+	))
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if im := store.images[1]; im == nil || !im.placed {
+		t.Fatalf("the fresh APC lands: %+v", store.images)
+	}
+	if store.images[9] != nil {
+		t.Fatal("the aborted command never stores")
+	}
+	if got := g.LineText(0); got != "after" {
+		t.Fatalf("the text after resyncs: %q", got)
+	}
+}
+
+// TestKittyStreamChainCap — the pending-chain bound (8MiB production;
+// shrunk here): an over-cap chain DROPS log-once and its remaining
+// chunks drop chain-less — never a flush downstream, and the lane keeps
+// working.
+func TestKittyStreamChainCap(t *testing.T) {
+	old := maxKittyChainB64
+	maxKittyChainB64 = 32 // shrunk for the test
+	t.Cleanup(func() { maxKittyChainB64 = old })
+	b64 := kittyTestB64() // 76 chars > the 32-char cap once joined
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.Write([]byte("\x1b[H" +
+		kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20]) + // chain opens (20)
+		kittyAPC("m=1", b64[20:60]) + // 20+40 = 60 > 32 → the chain drops
+		kittyAPC("m=0", b64[60:]) + // chain-less → dropped
+		"alive",
+	))
+	drops, note := store.dropStats()
+	if drops < 2 || !strings.Contains(note, "cap") {
+		t.Fatalf("the cap drop + the chain-less remainder log-once: drops=%d note=%q", drops, note)
+	}
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if len(store.images) != 0 {
+		t.Fatalf("the over-cap chain never stores: %d", len(store.images))
+	}
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("the over-cap chain never leaks downstream (%d runs)", n)
+	}
+	if got := g.LineText(0); got != "alive" {
+		t.Fatalf("the lane survives the cap drop: %q", got)
+	}
+}
+
+// TestKittyStreamResetDropsChain — the splitter-level half of the
+// session-churn contract: 3 chunks of an m=1 chain arrive, the session
+// then dies (reset mid-chain) — ZERO bytes of the chain reach the grid
+// or the scrollback, and a fresh splitter/session parses cleanly.
+func TestKittyStreamResetDropsChain(t *testing.T) {
+	b64 := kittyTestB64()
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.Write([]byte("\x1b[2J\x1b[H" + "TB-TOOLBAR\r\n" +
+		kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20]) +
+		kittyAPC("m=1", b64[20:48]) +
+		"\x1b_Gm=1;" + b64[48:], // the death lands mid-chunk: no terminator
+	))
+	ks.reset()
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("the reset dropped the chain with ZERO downstream bytes (%d runs):\n%s", n, g.ScreenText())
+	}
+	if got := g.LineText(0); got != "TB-TOOLBAR" {
+		t.Fatalf("the chrome survives the reset: %q", got)
+	}
+	drops, note := store.dropStats()
+	if drops != 1 || !strings.Contains(note, "reset") {
+		t.Fatalf("the reset drop logs once: drops=%d note=%q", drops, note)
+	}
+	store.mu.Lock()
+	if len(store.images) != 0 {
+		t.Fatalf("no partial frame stored: %d", len(store.images))
+	}
+	store.mu.Unlock()
+	// the next session (a fresh splitter+store) parses cleanly.
+	ks2, store2, g2, _ := newKittyRig(40, 8)
+	ks2.Write([]byte("\x1b[H" + kittyAPC("a=T,t=d,f=100,i=1,q=2", b64)))
+	store2.mu.Lock()
+	defer store2.mu.Unlock()
+	if im := store2.images[1]; im == nil || !im.placed || im.b64 != b64 {
+		t.Fatalf("the next session's frames parse cleanly: %+v", store2.images[1])
+	}
+	_ = g2
+}
+
+// kittyLaneMidChainDeathFake — the session-churn fake: homes, paints the
+// toolbar + marker, streams 3 chunks of an m=1 chain — chunk 2 with the
+// REAL child's OSC-7 interleave mid-payload — and DIES with chunk 3
+// UNTERMINATED (the capture's exact EOF tail).
+func kittyLaneMidChainDeathFake(root string) error {
+	b64 := kittyTestB64()
+	fake := "#!/bin/sh\n" +
+		"printf '\\033[2J\\033[H'\n" +
+		"printf 'TB-TOOLBAR\\r\\n'\n" +
+		"printf 'mid-chain death next\\r\\n'\n" +
+		"printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:20] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=1;" + b64[20:36] + "\\033]7;file://host/tmp/x\\a" + b64[36:52] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=1;" + b64[52:] + "'\n" + // UNTERMINATED — the death lands mid-chunk
+		"exit 1\n"
+	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
+}
+
+// TestBrowserLaneSessionMidChainDeath — FIX C's session-level regression
+// (requirement 3): a REAL fake child streams 3 chunks of an m=1 chain
+// (one carrying the OSC-7 interleave) then DIES mid-chunk — the grid +
+// scrollback contain ZERO base64, the chrome painted before the chain
+// survives, and Close (the churn path) resets the splitter cleanly.
+func TestBrowserLaneSessionMidChainDeath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PTY seam is darwin/linux (creack/pty)")
+	}
+	pinKittyEnv(t)
+	root := t.TempDir()
+	if err := kittyLaneMidChainDeathFake(root); err != nil {
+		t.Fatalf("plant the dying fake: %v", err)
+	}
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	restore := SetZenbuEmitForShot(func(string) {})
+	t.Cleanup(restore)
+
+	c := NewBrowserLaneController(64, 16)
+	if err := c.OpenURL("https://x.dev/dies"); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	sess, ok := c.Session().(*ZenbuSession)
+	if !ok {
+		t.Fatalf("the premium lane embeds a *ZenbuSession, got %T", c.Session())
+	}
+	waitLaneGrid(t, sess.Grid(), "mid-chain death next")
+	for deadline := time.Now().Add(3 * time.Second); !sess.Exited() && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !sess.Exited() {
+		t.Fatal("the dying fake never reaped")
+	}
+	// THE pin: zero base64 in the grid AND the retained scrollback.
+	if n := gridB64Runs(sess.Grid()); n != 0 {
+		t.Fatalf("base64 leaked into the grid (%d runs):\n%s", n, sess.Grid().ScreenText())
+	}
+	if n := b64Runs(string(sess.Scrollback().Raw())); n != 0 {
+		t.Fatalf("base64 leaked into the scrollback (%d runs)", n)
+	}
+	if got := sess.Grid().LineText(0); got != "TB-TOOLBAR" {
+		t.Fatalf("the chrome painted before the chain survives: %q", got)
+	}
+	c.Close() // the churn path: reset + deletes + kill, idempotent, no panic
 }

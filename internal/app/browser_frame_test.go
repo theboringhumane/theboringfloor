@@ -10,6 +10,7 @@ package app
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,19 +72,23 @@ func frameSpliceOut(t *testing.T, w *panels.ZenbuFrameWriter, out *strings.Build
 	return out.String()
 }
 
-// frameTestDeleteFrame — the office-side a=d for the fixture payload.
+// frameTestDeleteFrame — the office-side a=d for the fixture frame's
+// STABLE office id (ZenbuOfficeID over child i=1 + placement 0 — the
+// wave-82 fix; the content-hash id was the flicker bug).
 func frameTestDeleteFrame() string {
-	return "\x1b_Ga=d,d=I,i=" + panels.KittyIDHash8(panels.KittyImageID(frameTestPayload)) + ",q=2;\x1b\\"
+	return "\x1b_Ga=d,d=I,i=" + panels.KittyIDHash8(panels.ZenbuOfficeID(1, 0)) + ",q=2;\x1b\\"
 }
 
 // assertFrameSplice — the shared geometry gate: after /open + paint, ONE
 // flush through the wrapper must carry EXACTLY cursor-save + CUP(5;1)
 // (registry origin (0,3) + the pane-local commit (0,1), 1-based) + the
-// office-id APC (the child's payload verbatim) + cursor-restore.
-func assertFrameSplice(t *testing.T, tag, got string) {
+// office-id APC (the STABLE id + the child's payload verbatim + the
+// pane's body box c=wantCols,r=wantRows — the wave-82 pane-exact sizing)
+// + cursor-restore.
+func assertFrameSplice(t *testing.T, tag, got string, wantCols, wantRows int) {
 	t.Helper()
-	hash8 := panels.KittyIDHash8(panels.KittyImageID(frameTestPayload))
-	wantAPC := "\x1b_Ga=T,t=d,q=2,C=1,i=" + hash8 + ",f=100;" +
+	hash8 := panels.KittyIDHash8(panels.ZenbuOfficeID(1, 0))
+	wantAPC := "\x1b_Ga=T,t=d,q=2,C=1,i=" + hash8 + ",f=100,c=" + fmt.Sprintf("%d", wantCols) + ",r=" + fmt.Sprintf("%d", wantRows) + ";" +
 		base64.StdEncoding.EncodeToString(frameTestPayload) + "\x1b\\"
 	want := "FLUSH" + "\x1b7\x1b[5;1H" + wantAPC + "\x1b8"
 	if got != want {
@@ -110,7 +115,9 @@ func TestZenbuFramePublishDesktop(t *testing.T) {
 	m = runMsg(t, m, slashMsg{text: "/open " + laneFixtureURL(t)})
 	m = waitLaneGrid(t, m, "zenbu-fake open file:///")
 	_ = m.Frame() // renders + publishes the registry
-	assertFrameSplice(t, "desktop", frameSpliceOut(t, w, out, "FLUSH"))
+	// the lane's body box: resize() gave the browser (floorW, middleH-1);
+	// the controller reserves the strip + note rows → bodyH = middleH-3.
+	assertFrameSplice(t, "desktop", frameSpliceOut(t, w, out, "FLUSH"), m.floorW, m.middleH-3)
 
 	// the leave: the lane closes — its Close flushes the a=d DIRECTLY
 	// (captured through the wrapper's DirectEmit) and clears the registry.
@@ -151,7 +158,9 @@ func TestZenbuFramePublishMobile(t *testing.T) {
 	m = runMsg(t, m, slashMsg{text: "/open " + laneFixtureURL(t)})
 	m = waitLaneGrid(t, m, "zenbu-fake open file:///")
 	_ = m.Frame()
-	assertFrameSplice(t, "mobile", frameSpliceOut(t, w, out, "FLUSH"))
+	// mobile: the browser rides the band — SetSize(width, floorBandH()-1);
+	// the controller's strip + note rows → bodyH = floorBandH()-3.
+	assertFrameSplice(t, "mobile", frameSpliceOut(t, w, out, "FLUSH"), m.width, m.floorBandH()-3)
 }
 
 // TestZenbuFramePublishInactive — the floor posture: no /open (or the
