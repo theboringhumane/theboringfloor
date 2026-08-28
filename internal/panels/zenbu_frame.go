@@ -52,11 +52,15 @@
 // right after p.Run returns) sweeps one last a=d per still-emitted id
 // for the FATAL path (an external kill skips the Update quit paths).
 //
-// IDEMPOTENCE: the wrapper re-emits the current live images after EVERY
-// flush (kitty dedupes by image id; q=2 suppresses the responses), so
-// any screen-clearing the renderer performs (resize ED and friends) is
-// repaired on the very next flush. Only the cached assembled APC strings
-// ride — never a per-frame re-encode (emitLocked's cache).
+// IDEMPOTENCE (wave-86 shape): an image whose resolved emission (id +
+// absolute cell + APC bytes) is unchanged since the last flush is NOT
+// re-emitted — the terminal already holds it (the bandwidth ruling). The
+// repair idempotence the always-emit design carried now rides two
+// force-emit paths: a flush containing ED/EL (resize + line clears —
+// anything that could have clobbered terminal-side images) re-emits
+// EVERYTHING live, and a just-deleted id re-places inside the same
+// flush. Only the cached assembled APC strings ever ride — never a
+// per-frame re-encode (emitLocked's cache).
 //
 // CURSOR DISCIPLINE: DECSC (ESC 7) + DECRC (ESC 8) around every splice;
 // the emitted APC itself is C=1 (cursor-stay), so the renderer's cursor
@@ -89,6 +93,17 @@ type ZenbuFrameImage struct {
 // goroutine, the lane's Close clears from the Update goroutine). The
 // entry is replaced WHOLESALE per publish — a snapshot is always one
 // coherent frame's truth.
+//
+// TWO INDEPENDENT REGIONS share the one registry (the wave-86 chat
+// splice): the BROWSER region (active/origin/images/deletes — the
+// premium lane's publish contract, unchanged) and the CHAT-MEDIA region
+// (chat — each entry's OX/OY are ABSOLUTE 0-based screen cells already,
+// no shared origin: the sidebar's x offset and the transcript's scroll
+// offset move per frame, so the app publishes resolved cells). The
+// regions never touch each other: the browser lane's Clear empties ONLY
+// the browser region (the chat keeps painting while the lane closes),
+// and PublishChatMedia(nil) empties ONLY the chat region (the lane
+// keeps painting while a tab flip hides the transcript).
 type ZenbuFrameRegistry struct {
 	mu      sync.Mutex
 	active  bool
@@ -96,6 +111,7 @@ type ZenbuFrameRegistry struct {
 	originY int
 	images  []ZenbuFrameImage
 	deletes []uint32
+	chat    []ZenbuFrameImage // the chat-media region: ABSOLUTE 0-based cells
 }
 
 // zenbuRegistry — the process singleton (one office, one browser pane):
@@ -116,12 +132,31 @@ func (r *ZenbuFrameRegistry) Publish(active bool, originX, originY int, images [
 	r.deletes = append([]uint32(nil), deletes...)
 }
 
-// Clear — the lane paints nothing (floor / text lane / zen / focus /
-// plan slot / closed): the wrapper's next flush emits no images and
-// diff-deletes whatever it emitted before.
+// PublishChatMedia — the chat-media region's wholesale publish (the
+// app's publishChatMediaFrame, once per rendered Frame): every VISIBLE
+// kitty preview as {office id = KittyImageID(png), ABSOLUTE 0-based
+// cell, the cached verbatim f=100 APC}. nil/empty clears ONLY the chat
+// region — the wrapper's emitted-set diff then flushes one a=d per
+// preview it held (a scroll past, a tab flip, zen: previews vanish
+// cleanly). Scrolling re-publishes fresh absolute origins per Frame —
+// the wholesale-publish discipline, never a delta.
+func (r *ZenbuFrameRegistry) PublishChatMedia(images []ZenbuFrameImage) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.chat = append([]ZenbuFrameImage(nil), images...)
+}
+
+// Clear — the BROWSER region paints nothing (floor / text lane / zen /
+// focus / plan slot / closed): the wrapper's next flush emits no lane
+// images and diff-deletes whatever the lane emitted before. The chat
+// region is deliberately UNTOUCHED — a lane Close must never kill the
+// transcript's previews.
 func (r *ZenbuFrameRegistry) Clear() { r.Publish(false, 0, 0, nil, nil) }
 
-// snapshot — the wrapper's read: one coherent copy of the entry.
+// snapshot — the wrapper's read of the BROWSER region: one coherent
+// copy of the entry. (The chat region rides snapshotChat — the two
+// regions are independent by design, so the wrapper's two reads never
+// need cross-region atomicity.)
 func (r *ZenbuFrameRegistry) snapshot() (active bool, originX, originY int, images []ZenbuFrameImage, deletes []uint32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -130,10 +165,24 @@ func (r *ZenbuFrameRegistry) snapshot() (active bool, originX, originY int, imag
 		append([]uint32(nil), r.deletes...)
 }
 
+// snapshotChat — the wrapper's read of the CHAT-MEDIA region: one
+// coherent copy (absolute 0-based cells + cached APCs).
+func (r *ZenbuFrameRegistry) snapshotChat() []ZenbuFrameImage {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]ZenbuFrameImage(nil), r.chat...)
+}
+
 // SnapshotForTest — the harness's read of the published entry (the
 // wrapper's snapshot, exported for the app-level splice proofs).
 func (r *ZenbuFrameRegistry) SnapshotForTest() (active bool, originX, originY int, images []ZenbuFrameImage, deletes []uint32) {
 	return r.snapshot()
+}
+
+// ChatSnapshotForTest — the harness's read of the published CHAT-MEDIA
+// region (absolute 0-based cells + cached APCs).
+func (r *ZenbuFrameRegistry) ChatSnapshotForTest() []ZenbuFrameImage {
+	return r.snapshotChat()
 }
 
 // -------------------------------------------------------------------
@@ -144,7 +193,7 @@ func (r *ZenbuFrameRegistry) SnapshotForTest() (active bool, originX, originY in
 // (tea.WithOutput): EVERY byte of the renderer passes through unchanged;
 // after each Write (one renderer flush — cursed_renderer's one-io.Copy-
 // per-frame, bytes.Buffer's single-Write WriteTo) the current registry's
-// images are re-emitted at their absolute cells (cursor-saved/restored),
+// images splice at their absolute cells (cursor-saved/restored),
 // preceded by that flush's deletes (the store's drained queue + the
 // emitted-set diff). Concurrency: every write to the underlying stream —
 // renderer flush, DirectEmit lane-lifecycle delete, Finish sweep — is
@@ -155,19 +204,39 @@ func (r *ZenbuFrameRegistry) SnapshotForTest() (active bool, originX, originY in
 // by delegation: bubbletea's ttyOutput detection (tty_unix.go:30) and
 // colorprofile.Detect (env.go:33) type-assert the output to term.File —
 // without Fd() the office's color profile and size probing would degrade.
+//
+// BANDWIDTH (the wave-86 ruling): an image whose resolved emission
+// (office id + absolute cell + APC bytes) is UNCHANGED since the last
+// flush is NOT re-emitted — kitty already holds it, and the chat preview
+// payloads are far too fat to re-transmit per frame. Two force-emit
+// riders keep the repair idempotence the old always-emit design relied
+// on: (1) a flush carrying an erase-display/erase-line sequence (ED/EL —
+// the resize ED and friends could have clobbered terminal-side image
+// state) re-emits EVERYTHING live; (2) an id the store's delete queue
+// just dropped re-places inside the same flush (delete-then-add
+// convergence, never a skip). Deletes themselves ALWAYS flush.
 type ZenbuFrameWriter struct {
 	dst io.Writer
 	reg *ZenbuFrameRegistry
 
 	mu      sync.Mutex
-	emitted map[uint32]bool // office ids the terminal currently holds (the diff base)
-	closed  bool            // Finish ran: passthrough-only from then on
+	emitted map[uint32]emittedImage // office ids the terminal currently holds (the diff base + the skip's fingerprint)
+	closed  bool                    // Finish ran: passthrough-only from then on
+}
+
+// emittedImage — the wrapper's ledger of ONE terminal-side image: the
+// ABSOLUTE 1-based CUP cell + the verbatim APC bytes last emitted for
+// the id. The bandwidth skip's fingerprint: an unchanged triple on an
+// erase-free flush needs NO re-emission — the terminal already holds it.
+type emittedImage struct {
+	row, col int
+	frame    string
 }
 
 // NewZenbuFrameWriter wraps dst (os.Stdout in production) with the
 // frame-splice seam reading reg.
 func NewZenbuFrameWriter(dst io.Writer, reg *ZenbuFrameRegistry) *ZenbuFrameWriter {
-	return &ZenbuFrameWriter{dst: dst, reg: reg, emitted: map[uint32]bool{}}
+	return &ZenbuFrameWriter{dst: dst, reg: reg, emitted: map[uint32]emittedImage{}}
 }
 
 // Write implements io.Writer: the renderer's bytes pass through FIRST
@@ -179,25 +248,83 @@ func (w *ZenbuFrameWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	n, err := w.dst.Write(p)
 	if err == nil && !w.closed {
-		w.spliceLocked()
+		w.spliceLocked(p)
 	}
 	return n, err
 }
 
+// cupCell — 0-based absolute → CUP's 1-based, clamped into the screen.
+func cupCell(y, x int) (row, col int) {
+	row, col = y+1, x+1
+	if row < 1 {
+		row = 1
+	}
+	if col < 1 {
+		col = 1
+	}
+	return row, col
+}
+
+// hasEraseSequence — an ED (CSI … J) or EL (CSI … K) final byte anywhere
+// in the flush: either could have clobbered terminal-side image state
+// (the resize ED paints the whole grid blank; an EL erases the row's
+// tail), so the splice re-emits every live image instead of trusting
+// the bandwidth skip. The CSI walk consumes parameter (0x30–0x3F) and
+// intermediate (0x20–0x2F) bytes, then reads the final byte (0x40–0x7E)
+// — CUP (H), SGR (m), DECSET/DECRST (h/l) all pass through cleanly.
+func hasEraseSequence(p []byte) bool {
+	for i := 0; i+1 < len(p); i++ {
+		if p[i] != 0x1b || p[i+1] != '[' {
+			continue
+		}
+		j := i + 2
+		for j < len(p) && ((p[j] >= 0x30 && p[j] <= 0x3f) || (p[j] >= 0x20 && p[j] <= 0x2f)) {
+			j++
+		}
+		if j < len(p) && (p[j] == 'J' || p[j] == 'K') {
+			return true
+		}
+		i = j // past this CSI (its final byte, or the truncated tail)
+	}
+	return false
+}
+
 // spliceLocked — the post-flush emission: (1) the store's drained
 // deletes, (2) the emitted-set diff (ids the terminal holds that the
-// registry no longer lists — the active→empty transition included),
-// (3) every live image re-emitted at its absolute cell (idempotent:
-// kitty dedupes by id, q=2 hushes the answer). Deletes ride ahead of
-// placements so a same-id delete-then-add converges inside one flush.
-func (w *ZenbuFrameWriter) spliceLocked() {
+// registry no longer lists — the active→empty transition AND the chat
+// region's scroll-off/tab-flip transitions included), (3) every live
+// image whose emission CHANGED since the last flush (new, moved, or
+// re-encoded — plus EVERYTHING when the flush carried an erase). Deletes
+// ride ahead of placements so a same-id delete-then-add converges inside
+// one flush; q=2 hushes kitty's answers throughout.
+func (w *ZenbuFrameWriter) spliceLocked(flush []byte) {
 	active, ox, oy, images, deletes := w.reg.snapshot()
-	live := map[uint32]bool{}
+	chat := w.reg.snapshotChat()
+	// the resolved live set: office id → absolute 1-based CUP cell + the
+	// verbatim APC (browser region: registry origin + pane-local offset;
+	// chat region: the app publishes resolved absolute cells). A "" Frame
+	// never emits (the lane's placeholder-slot contract).
+	live := map[uint32]emittedImage{}
+	var order []uint32 // splice order: the lane's paint order, then the transcript order
 	if active {
 		for _, im := range images {
-			live[im.OfficeID] = true
+			if im.Frame == "" {
+				continue
+			}
+			row, col := cupCell(oy+im.OY, ox+im.OX)
+			live[im.OfficeID] = emittedImage{row: row, col: col, frame: im.Frame}
+			order = append(order, im.OfficeID)
 		}
 	}
+	for _, im := range chat {
+		if im.Frame == "" {
+			continue
+		}
+		row, col := cupCell(im.OY, im.OX)
+		live[im.OfficeID] = emittedImage{row: row, col: col, frame: im.Frame}
+		order = append(order, im.OfficeID)
+	}
+	erase := hasEraseSequence(flush)
 	var b strings.Builder
 	deleted := map[uint32]bool{} // one a=d per id per flush (queue ∪ diff)
 	for _, id := range deletes {
@@ -209,7 +336,7 @@ func (w *ZenbuFrameWriter) spliceLocked() {
 	}
 	var stale []uint32
 	for id := range w.emitted {
-		if !live[id] {
+		if _, ok := live[id]; !ok {
 			stale = append(stale, id)
 		}
 	}
@@ -218,26 +345,19 @@ func (w *ZenbuFrameWriter) spliceLocked() {
 		if !deleted[id] {
 			b.WriteString(kittyDeleteFrame(id))
 		}
-		delete(w.emitted, id)
 	}
-	if active {
-		for _, im := range images {
-			if im.Frame == "" {
-				continue
+	for _, id := range order {
+		r := live[id]
+		if !erase && !deleted[id] {
+			if prev, ok := w.emitted[id]; ok && prev == r {
+				continue // unchanged AND unclobbered — the terminal already holds it (the bandwidth skip)
 			}
-			row, col := oy+im.OY+1, ox+im.OX+1 // CUP is 1-based
-			if row < 1 {
-				row = 1
-			}
-			if col < 1 {
-				col = 1
-			}
-			fmt.Fprintf(&b, "\x1b7\x1b[%d;%dH", row, col)
-			b.WriteString(im.Frame)
-			b.WriteString("\x1b8")
-			w.emitted[im.OfficeID] = true
 		}
+		fmt.Fprintf(&b, "\x1b7\x1b[%d;%dH", r.row, r.col)
+		b.WriteString(r.frame)
+		b.WriteString("\x1b8")
 	}
+	w.emitted = live
 	if b.Len() > 0 {
 		_, _ = io.WriteString(w.dst, b.String())
 	}
@@ -280,7 +400,7 @@ func (w *ZenbuFrameWriter) Finish() {
 		b.WriteString(kittyDeleteFrame(id))
 	}
 	_, _ = io.WriteString(w.dst, b.String())
-	w.emitted = map[uint32]bool{}
+	w.emitted = map[uint32]emittedImage{}
 }
 
 // Fd — the x/term File contract, delegated to the underlying writer when

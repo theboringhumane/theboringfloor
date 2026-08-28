@@ -2761,11 +2761,13 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 		}
 		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
 	}
-	// Browser-tool markers (⟦open-browser: URL⟧ and the
+	// Browser-tool markers (⟦open-browser: URL⟧, the
 	// ⟦browser-screenshot: URL⟧/⟦browser-snapshot: URL⟧ read-only
-	// siblings) never reach the transcript: scrub the pinned text and
+	// siblings, and the ⟦browser-action: URL | op⟧ MUTATING sibling)
+	// never reach the transcript: scrub the pinned text and
 	// fire the requests (the policy runs inside the bridge, one event
-	// kind per directive kind; the app owns the reaction).
+	// kind per directive kind; the app owns the reaction — for
+	// browser-action that's the member's permission modal).
 	text = browsertools.Scrub(text, b.browserBridge)
 	// Boss edits surface as diff events on message completion.
 	b.fetchDiffAndEmit(primaryID)

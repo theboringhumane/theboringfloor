@@ -32,6 +32,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 // LaneRender — ONE image's paint for a resolved lane: the native escape
@@ -77,6 +79,32 @@ func KittyIDHash8(id uint32) string {
 	var b [4]byte
 	binary.BigEndian.PutUint32(b[:], id)
 	return hex.EncodeToString(b[:])
+}
+
+// kittyFrameID — the office id a kitty placeholder strip carries (the
+// i=<8-hex> word), plus whether the frame IS a kitty strip at all. The
+// chat pane's frame-splice routing reads this at SetImageFrame time: a
+// kitty strip with a parseable id rides the splice (the wrapper's
+// emitted-set diff targets the id for a=d); an OSC 1337 frame carries
+// NO id (iTerm2 has no image-delete escape either) and keeps the
+// embedded-row behavior — the splice could never delete it, so a scroll
+// would ghost it forever. A kitty frame whose id fails to parse reports
+// id=0 (the caller falls back to embedding — never splice an image the
+// diff cannot target).
+func kittyFrameID(frame string) (uint32, bool) {
+	if !strings.HasPrefix(frame, "\x1b_G") {
+		return 0, false
+	}
+	const key = ",i="
+	i := strings.Index(frame, key)
+	if i < 0 || i+len(key)+8 > len(frame) {
+		return 0, true
+	}
+	v, err := strconv.ParseUint(frame[i+len(key):i+len(key)+8], 16, 32)
+	if err != nil {
+		return 0, true
+	}
+	return uint32(v), true
 }
 
 // Render implements LaneRenderer.

@@ -256,10 +256,14 @@ func TestNativeLaneCorruptFallsBack(t *testing.T) {
 	}
 }
 
-// TestChatBubbleLaneNativeFrameSlot — the renderMediaRows routing hook:
-// a kitty frame lands as ONE verbatim row + the cellRows-1 reservation
-// rows between chip and body (no folding, no ▀), while the pending twin
-// never previews. The OSC 1337 frame routes identically.
+// TestChatBubbleLaneNativeFrameSlot — the renderMediaRows routing hook
+// (the wave-86 splice routing): a KITTY frame never rides the View
+// string — the media rows are PURE reservation rows (zero APC bytes,
+// the renderer would drop them anyway) and the paint slot rides the
+// block for the registry publish — while the OSC 1337 (iterm) frame
+// keeps the OLD embedded-row behavior (ONE verbatim row + cellRows-1
+// reservations; no id, no delete escape — the splice could never target
+// it). The pending twin never previews.
 func TestChatBubbleLaneNativeFrameSlot(t *testing.T) {
 	raw := loadCheckerFixture(t)
 	lr, err := KittyLaneRenderer{}.Render(raw, 64, 20)
@@ -286,27 +290,31 @@ func TestChatBubbleLaneNativeFrameSlot(t *testing.T) {
 	}
 	convo := mkChat().renderConversation()
 	plain := ansi.Strip(convo)
-	// BOTH frames ride the transcript VERBATIM (raw convo).
-	if !strings.Contains(convo, lr.Frame) {
-		t.Fatal("the kitty placeholder strip rides verbatim")
+	// the kitty strip NEVER rides the transcript (the splice paints it);
+	// the OSC 1337 frame still rides VERBATIM (the embedded contract).
+	if strings.Contains(convo, lr.Frame) {
+		t.Fatal("the kitty placeholder strip left the View string (the splice owns it)")
+	}
+	if strings.Contains(convo, "\x1b_G") {
+		t.Fatal("ZERO kitty APC bytes ride the transcript")
 	}
 	if !strings.Contains(convo, itermFrame) {
-		t.Fatal("the OSC 1337 frame rides verbatim")
+		t.Fatal("the OSC 1337 frame rides verbatim (the embedded lane)")
 	}
-	// chip → frame → body ordering on the kitty bubble (the stripped
-	// plain: the frame vanishes, chip/body land in order).
+	// chip → body ordering on the kitty bubble (the stripped plain: the
+	// reservation rows are blank, chip/body land in order).
 	chipIdx := strings.Index(plain, "🖼 paste-diagram.png · 8×8 · image/png")
 	bodyIdx := strings.Index(plain, "kitty paints it.")
 	if chipIdx < 0 || bodyIdx < 0 || chipIdx >= bodyIdx {
 		t.Fatalf("chip above body:\n%s", plain)
 	}
-	// the raw ordering: chip < strip < body (glamour splits the body into
-	// styled word segments, so search a same-word substring).
-	rawChip := strings.Index(convo, "🖼 paste-diagram.png")
-	rawStrip := strings.Index(convo, lr.Frame)
-	rawBody := strings.Index(convo, "kitty paints")
-	if !(rawChip >= 0 && rawStrip > rawChip && rawBody > rawStrip) {
-		t.Fatalf("order must be chip → frame → body (%d %d %d)", rawChip, rawStrip, rawBody)
+	// the iterm raw ordering: chip < frame < body (the chip's own text
+	// anchors — the iterm bubble is the SECOND chip).
+	rawChip2 := strings.LastIndex(convo, "🖼 paste-diagram.png")
+	rawIterm := strings.Index(convo, itermFrame)
+	rawBody2 := strings.Index(convo, "iterm paints")
+	if !(rawChip2 >= 0 && rawIterm > rawChip2 && rawBody2 > rawIterm) {
+		t.Fatalf("iterm order must be chip → frame → body (%d %d %d)", rawChip2, rawIterm, rawBody2)
 	}
 	// a frame paints zero half-blocks and the chips render exactly once
 	// per completed bubble (the pending twin previews nothing).
@@ -316,16 +324,43 @@ func TestChatBubbleLaneNativeFrameSlot(t *testing.T) {
 	if n := strings.Count(plain, "🖼 paste-diagram.png"); n != 2 {
 		t.Fatalf("chips: exactly the two completed bubbles, got %d", n)
 	}
-	// the cell-box reservation: between the strip's end and the body
-	// there are cellRows (4) row boundaries — the frame row's own break
-	// plus the cellRows-1 (3) reservation rows; the bubble spends the
-	// SAME vertical budget a 4-row ASCII paint would.
-	seg := convo[rawStrip+len(lr.Frame) : rawBody]
-	if n := strings.Count(seg, "\n"); n != lr.CellRows {
-		t.Fatalf("the kitty frame reserves cellRows-1 continuation rows (%d boundaries), got %d", lr.CellRows, n)
+	// the kitty cell-box reservation: between the chip row's end and the
+	// body there are cellRows (4) BLANK reservation rows — the bubble
+	// spends the SAME vertical budget a 4-row ASCII paint would.
+	rawChip := strings.Index(convo, "🖼 paste-diagram.png")
+	rawBody := strings.Index(convo, "kitty paints")
+	if rawChip < 0 || rawBody < 0 {
+		t.Fatalf("the kitty chip + body render: %d %d", rawChip, rawBody)
+	}
+	seg := convo[rawChip:rawBody]
+	if n := strings.Count(seg, "\n"); n != lr.CellRows+1 {
+		t.Fatalf("the kitty preview reserves cellRows blank rows (chip break + %d reservation breaks), got %d", lr.CellRows, n)
 	}
 	if !strings.Contains(plain, "streaming…") {
 		t.Fatal("the pending bubble's own text still renders")
+	}
+	// the paint slot rides the block: ONE kitty slot at the first
+	// reservation row (block-local row 1 — the chip is row 0), the
+	// strip's i= id, the cached verbatim APC; the iterm bubble registers
+	// NOTHING (the embedded lane).
+	c := mkChat()
+	_ = c.renderConversation()
+	var kSlots, iSlots int
+	for _, blk := range c.blocks {
+		switch blk.id {
+		case "bossmsg-k":
+			kSlots = len(blk.media)
+			if kSlots == 1 {
+				if blk.media[0].row != 1 || blk.media[0].id != KittyImageID(raw) || blk.media[0].frame != lr.Frame {
+					t.Fatalf("the kitty slot: row=%d id=%08x frame-match=%v", blk.media[0].row, blk.media[0].id, blk.media[0].frame == lr.Frame)
+				}
+			}
+		case "bossmsg-i":
+			iSlots = len(blk.media)
+		}
+	}
+	if kSlots != 1 || iSlots != 0 {
+		t.Fatalf("slots: kitty bubble registers exactly one slot, iterm none — got %d/%d", kSlots, iSlots)
 	}
 }
 

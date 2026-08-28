@@ -32,6 +32,7 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/app"
 	"github.com/theboringhumane/theboringoffice/internal/backend"
+	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/notify"
@@ -178,7 +179,31 @@ func main() {
 	// colorprofile.Detect type-assert the output to term.File).
 	frameOut := panels.NewZenbuFrameWriter(os.Stdout, panels.ZenbuRegistry())
 	panels.SetZenbuEmit(frameOut.DirectEmit)
-	p := tea.NewProgram(model, tea.WithOutput(frameOut))
+	// The cell-metrics probe (internal/cellmetrics): ask the terminal its
+	// cell's pixel size (CSI 16t → CSI 6;<h>;<w>t) so the browser tab's
+	// headless shots size their viewport in TRUE pixels instead of the
+	// 9x18 guess. The query rides the frame writer's serialized
+	// DirectEmit (never interleaved mid-frame); the answer is snipped out
+	// of stdin by the input wrapper BEFORE bubbletea's parser (no new msg
+	// type reaches the app). Non-answering terminals (tmux, iTerm) stay
+	// on the fallback after one 150ms window; a late answer still lands
+	// for the next shot.
+	cellmetrics.SetQueryFunc(func() { frameOut.DirectEmit(cellmetrics.QueryCellSize) })
+	cellmetrics.Query() // the boot probe — BEFORE p.Run
+	p := tea.NewProgram(model,
+		tea.WithOutput(frameOut),
+		tea.WithInput(cellmetrics.WrapInput(os.Stdin)),
+		// Re-arm the probe on every WindowSizeMsg after the boot's first
+		// (font zoom — ctrl+= / ctrl+- in ghostty/kitty — changes the
+		// cell's px; Requery owns the skip-first). The msg itself passes
+		// through untouched — the app's resize routing is unchanged.
+		tea.WithFilter(func(_ tea.Model, msg tea.Msg) tea.Msg {
+			if _, ok := msg.(tea.WindowSizeMsg); ok {
+				cellmetrics.Requery()
+			}
+			return msg
+		}),
+	)
 
 	// theme auto mode: with nothing pinned anywhere, ask the terminal for
 	// its background color (OSC 11) — the reply lands in app.Update as

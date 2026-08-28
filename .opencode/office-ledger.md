@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev Q4: chat previews + bandwidth (@developer... — theboringcto-1 (cto) · `issues`
+- summary: Everything is verified. Composing the final return:
+- files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/kitty_lanes.go`, `internal/panels/kitty_lanes_test.go`, `internal/app/images.go`, `internal/app/model.go`, `internal/app/images_lane_test.go`, `internal/app/model_image_splice_test.go`, `cmd/uishot/main.go`, NOT touched: `internal/panels/chat_raster.go` (in scope; needed no change
+- verify: (the pre-fix capture DOES contain the chip text `paste-diagram` — the office ran and rendered; only the APC was eaten. Post-fix, `/tmp/tb-of
+- proof: *1. The wrapper's chat-media splice bytes for the pinned layout** (130×32, sidebar 80 → chat content origin (51,3), media col 51+9=60, slot
+- ledgerId: led-1787919903555-dfe6e47f
+
+### 2026-08-28 · Dev Q1: real cell metrics (@developer subagent) — tekton-1 (developer) · `issues`
+- summary: All verified. Assembling the return.
+- files: `internal/cellmetrics/cellmetrics.go`, `internal/cellmetrics/input.go`, `internal/cellmetrics/cellmetrics_test.go`, `internal/cellmetrics/input_test.go`, `cmd/theboringoffice/main.go`, `internal/panels/browser.go`, `internal/panels/browser_test.go`, `/tmp/drive_cellmetrics.py`, `/tmp/tb-office`
+- verify: ```
+- proof: *The office's query bytes, live on the PTY** (boot probe lands before bubbletea's own init queries; the re-arm probe lands mid-stream at the
+- ledgerId: led-1787919496400-8f1f0b35
+
+### 2026-08-28 · Dev Q3: browser action tools (@developer suba... — tekton-3 (developer) · `issues`
+- summary: The `uishot` binary is a foreign build artifact (wave-86's rebuilds — I never build into the repo). All my gates are green. Final return:
+- files: `internal/state/state.go`, `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/browsertools/action/action.go`, `internal/browsertools/action/euid_unix.go` / `euid_other.go`, `internal/browsertools/action/action_test.go`, `internal/browsertools/action/live_test.go`, `internal/browsertools/action/testdata/fixture.html`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`, `internal/app/model.go`, `internal/backend/opencode.go` / `claude.go`
+- verify: ```
+- proof: *The new preamble block, verbatim** (appended; everything above it byte-identical — strict-prefix test):
+- ledgerId: led-1787919294859-dcdc32a8
+
+### 2026-08-28 · Dev Q2: engine render cache (@developer subag... — tekton-2 (developer) · `issues`
+- summary: My hunks are intact and every gate is green. Assembling the return.
+- files: `internal/headless/cache.go`, `internal/headless/cache_test.go`, `internal/headless/headless.go`, `internal/app/browser_open.go`
+- verify: (all 20 test packages `ok`, incl. `internal/headless 2.171s`, `internal/app 71.222s`, `internal/backend 38.987s`, `internal/panels 13.764s`)
+- proof: *1. The singleflight test** (`TestScreenshotSingleflightShare`, through the PUBLIC `Screenshot` front, executor seam swapped): 3 goroutines
+- ledgerId: led-1787918541838-9f28997e
+
 ### 2026-08-28 · Dev P2: tab screenshot display (@developer su... — tekton-2 (developer) · `issues`
 - summary: Everything is green and stable. Assembling the developer return.
 - files: `internal/panels/browser.go`, `internal/panels/zenbu_frame.go`, `internal/panels/browser_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/panels/browser_hint_test.go`, `internal/app/browser.go`, `internal/app/browser_test.go`, `internal/app/browser_frame_test.go`, `internal/app/browser_lane_test.go`, `cmd/uishot/main.go`
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: Real test case (passing subtest `existing other trailer → appended inside the block, no blank line`), BEFORE → AFTER:
 - ledgerId: led-1787804671681-a5a7aa6a
-
-### 2026-08-27 · Scout: map office commit paths (@explore suba... — skopos-1 (scout) · `issues`
-- summary: Recon complete. Return per the contract:
-- files: | path | why read |, |---|---|, | `internal/gitx/gitx.go` | The only production package that shells to git for repo data, | `internal/gitx/gitx_test.go` | Only place `git commit` runs, | `internal/panels/gitpanel.go` | Git tab, | `internal/backend/boardsync.go` | Suspected commit path per brief, | `internal/projinfo/projinfo.go` | Second git shell-out (L42), | `internal/projinfo/projinfo_test.go` | Second test-fixture commit, | `internal/term/term.go` | L92–119 `Spawn`: the one place a real `git commit` can execute *inside* , | `install.sh` | Full read (830 lines), | `README.md` | Full read, | `website/scripts/docs-shots.sh` | Only existing scripts-dir file
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787804645202-04426fd8
-
-### 2026-08-27 · Dev B: zenbu lane inside browser tab (@genera... — tekton-2 (developer) · `issues`
-- summary: All gates green after final edits. Assembling the developer return.
-- files: | path | why |, |---|---|, | `internal/panels/browser_lane.go` | NEW, | `internal/panels/browser_lane_test.go` | NEW, | `cmd/uishot/main.go` | `syscall` import, header doc block for `--browser --lane kitty`, the `brows, | `README.md` | one premium-lane paragraph at the bottom of the browser-lane section |, NOT touched
-- verify: `gofmt -l internal/panels/browser_lane.go internal/panels/browser_lane_test.go` → (empty — clean).
-- proof: *Leg A — premium lane live in the browser tab region (ANSI-stripped):** the ` zenbu ` badge, the exact strip, and the REAL child's bytes pai
-- ledgerId: led-1787803438738-810184ce
-
-### 2026-08-26 · Dev: zenbu terminal-browser seam (@general su... — tekton-13 (developer) · `issues`
-- summary: All work is complete and every gate passes. Developer return per the contract:
-- files: | path | why |, |---|---|, | `internal/panels/links.go` | `OpenTool`/`ResolveOpenTool(From)`/`terminalBrowserHostOK`/`terminalB, | `internal/app/open_url.go` | NEW, | `internal/app/open_url_test.go` | NEW, | `cmd/uishot/main.go` | `--openurl` flag + dispatcher + `openURLDrive`/`openURLAssertLeg`/`openURLI, | `README.md` | `o` row parenthetical + browser-lane env sentence |, | `internal/config/config.go` | NOT touched (deliberate, NOT touched: `systemOpen` (byte-identical), `internal/panels/links_test.go`, `internal/app/model_bro
-- verify: (the swapped runner wholesale replaces the chain — the candidate is never probed in shots/suites on ANY host)
-- proof: *Assert line captured from the `--openurl` run — the branch chosen:**
-- ledgerId: led-1787772042974-1d2709fe
-
-### 2026-08-26 · Scout: zenbu terminal-browser package (@explo... — skopos-6 (scout) · `done`
-- summary: Read-only confirmed: the only dirty file is `.opencode/office-ledger.md` (the office app's own recorder). All my evidence is from the Go module proxy, the GitHu
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787771277501-ba9faf07
 

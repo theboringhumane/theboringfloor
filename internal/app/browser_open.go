@@ -26,16 +26,31 @@
 //     6000), the text+links post BACK TO THE AGENT as a synthetic
 //     follow-up prompt on the SAME backend session (sendChat — the
 //     harness-authored user-message precedent; bounded 8KB total), and
-//     the member gets a one-line dim note (never the full text).
+//     the member gets a one-line dim note (never the full text);
+//   - browser-action allowed (the MUTATING sibling — click/fill/eval):
+//     the request PARKS as a synthetic permission hold (the existing
+//     permQueue + popover modal, toolName "browser") — actions mutate,
+//     so the member ALWAYS decides, approve-once only (the modal's
+//     "always" answer maps to "once"). The permAnswerMsg HOOKUP in
+//     model.go routes the answer back here (consumeBrowserActionPerm):
+//     approve runs the action engine (internal/browsertools/action,
+//     chromedp, 20s budget, FRESH navigation per action) and posts the
+//     outcome BACK TO THE AGENT as a synthetic follow-up (the
+//     snapshot's send-in-closure precedent); reject posts the REJECTED
+//     follow-up + a dim member row. A policy refusal posts the red
+//     reason row and NEVER opens the modal.
 //
 // EVENT CONTRACT (the read model for the manager's glue): Kind is one
-// of the three above; Text == the policy-decided URL;
+// of the four above; Text == the policy-decided URL;
 // BrowserOpenAllowed == the verdict; BrowserOpenReason == the
 // member-facing refusal when !Allowed. The async RESULT leg re-uses the
 // same event with BrowserToolDone=true: success carries
 // BrowserOpenAllowed=true + BrowserShotPath (screenshot) or
-// BrowserSnapTitle/BrowserSnapLinks (snapshot); failure carries the
-// member-facing error in BrowserOpenReason.
+// BrowserSnapTitle/BrowserSnapLinks (snapshot) or
+// BrowserActionFinalURL/BrowserActionResult (action); failure carries
+// the member-facing error in BrowserOpenReason. The browser-action
+// REQUEST leg additionally carries BrowserActionOp/Sel/Arg (the parsed
+// action payload the hold parks).
 //
 // The VIEW SWITCH for EvBrowserScreenshot lives HERE (applyBrowserShot
 // sets m.leftTab = leftTabBrowser on the allowed request leg —
@@ -44,9 +59,8 @@ package app
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -56,6 +70,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/theboringhumane/theboringoffice/internal/browsertools/action"
 	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -74,15 +89,39 @@ const (
 	// byte bound (header + text + links): the agent's context window
 	// never eats an unbounded page.
 	browserSnapMaxFollowup = 8 * 1024
+	// browserActionTimeout — the app-side bound ON TOP of the action
+	// engine's own 20s budget (wider than the engine's, so the engine's
+	// OWN classification — navigation vs selector vs eval — wins the
+	// race; this only backstops a wedged chrome).
+	browserActionTimeout = 25 * time.Second
+	// browserActionClip — the selector/value clip width for the
+	// permission modal's toolSummary (manager-pinned: 40 cols).
+	browserActionClip = 40
+	// browserActionMemberClip — the eval JSON's clip width in the
+	// member's result row (the AGENT gets the full 4KB-capped payload;
+	// the member's transcript gets the shape, not the wall).
+	browserActionMemberClip = 120
 )
 
 // Engine seams — the ONE swap point per call: prod wires the real
-// internal/headless engine (another wave owns it); tests pin fakes (NO
-// live chrome in unit tests).
+// internal/headless engine (another wave owns it) for the read-only
+// tools and internal/browsertools/action for the mutating one; tests
+// pin fakes (NO live chrome in unit tests).
 var (
-	browserShotFn = headless.Screenshot
-	browserSnapFn = headless.Snapshot
+	browserShotFn   = headless.Screenshot
+	browserSnapFn   = headless.Snapshot
+	browserActionFn = action.NavigateAndAct
 )
+
+// browserActionHold — one PARKED mutating request: the marker payload
+// sitting behind the member's permission modal (keyed on the synthetic
+// permission id) until the answer lands.
+type browserActionHold struct {
+	url string
+	op  string
+	sel string
+	arg string
+}
 
 // applyBrowserOpen — the browser-tool leg of applyEvent: nil for every
 // other kind (safe as an unconditional batch leg), so the model.go
@@ -93,6 +132,8 @@ func (m *Model) applyBrowserOpen(ev state.Event) tea.Cmd {
 		return m.applyBrowserShot(ev)
 	case state.EvBrowserSnapshot:
 		return m.applyBrowserSnap(ev)
+	case state.EvBrowserAction:
+		return m.applyBrowserAction(ev)
 	}
 	if ev.Kind != state.EvBrowserOpen {
 		return nil
@@ -189,16 +230,11 @@ func browserShotsDir() string {
 
 // saveBrowserShot writes one PNG as <ts>-<hash8>.png (ts = unix millis,
 // hash8 = sha1(png)[:8] hex — a re-shot of the same page lands a new
-// file per ts while identical bytes share the hash tail).
+// file per ts while identical bytes share the hash tail). Since wave 86
+// the convention lives in the engine: this delegates to headless.SaveShot
+// (same dir selection, same perms).
 func saveBrowserShot(png []byte) (string, error) {
-	dir := browserShotsDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	sum := sha1.Sum(png)
-	name := fmt.Sprintf("%d-%s.png", time.Now().UnixMilli(), hex.EncodeToString(sum[:4]))
-	path := filepath.Join(dir, name)
-	return path, os.WriteFile(path, png, 0o644)
+	return headless.SaveShot(png)
 }
 
 // applyBrowserSnap — the EvBrowserSnapshot leg. REQUEST: fire the
@@ -322,4 +358,177 @@ func cutUTF8(s string, max int) string {
 		max--
 	}
 	return s[:max]
+}
+
+// ------------------------------------------------------------------ action
+//
+// The MUTATING sibling. REQUEST leg: a policy refusal posts the red
+// reason row (NO modal — the URL policy speaks first); an allowed
+// request PARKS as a synthetic permission hold and the member's EXISTING
+// popover modal decides (handlePermissionEvent does the enqueue, the
+// notify cohort ping, and the sound — one code path with the boss's own
+// tool asks). The permAnswerMsg HOOKUP in model.go routes the answer to
+// consumeBrowserActionPerm: approve-once (the modal's "always" maps to
+// "once" — a mutating action never earns a standing grant) runs the
+// engine; reject posts the REJECTED follow-up + a dim member row. The
+// modal's own lifecycle is the only timeout (esc defers, /perm
+// re-opens — exactly like a backend permission ask; an unanswered hold
+// simply never executes).
+
+// applyBrowserAction — the EvBrowserAction leg.
+func (m *Model) applyBrowserAction(ev state.Event) tea.Cmd {
+	url := strings.TrimSpace(ev.Text)
+	if ev.BrowserToolDone {
+		// RESULT leg: the agent follow-up already rode the wire inside
+		// the cmd; only the member's transcript row lands here.
+		if ev.BrowserOpenAllowed {
+			m.notice("browser: action ok on " + ev.BrowserActionFinalURL + ": " +
+				browserActionResultDisplay(ev) + " (approved by the member)")
+			return nil
+		}
+		reason := ev.BrowserOpenReason
+		if reason == "" {
+			reason = "the headless engine failed"
+		}
+		m.noticeErr("browser: action on " + url + " — " + reason)
+		return nil
+	}
+	if !ev.BrowserOpenAllowed {
+		reason := ev.BrowserOpenReason
+		if reason == "" {
+			reason = "refused by office policy"
+		}
+		m.noticeErr("browser: " + url + " — " + reason)
+		return nil
+	}
+	if url == "" || ev.BrowserActionOp == "" {
+		return nil // shapeless: never an action (degrade silent)
+	}
+	// park the hold + open the member's permission modal (the SAME
+	// enqueue path a backend EvPermission takes — one queue, one
+	// popover, one notify cohort).
+	if m.browserActionHolds == nil {
+		m.browserActionHolds = map[string]browserActionHold{}
+	}
+	m.browserActionSeq++
+	pid := "browser-action-" + strconv.Itoa(m.browserActionSeq)
+	m.browserActionHolds[pid] = browserActionHold{
+		url: url, op: ev.BrowserActionOp, sel: ev.BrowserActionSel, arg: ev.BrowserActionArg,
+	}
+	m.handlePermissionEvent(state.Event{
+		Kind:         state.EvPermission,
+		PermissionID: pid,
+		EmployeeName: "boss",
+		ToolName:     "browser",
+		ToolSummary:  browserActionSummary(ev.BrowserActionOp, ev.BrowserActionSel, ev.BrowserActionArg) + " on " + browserActionHost(url),
+		ToolState:    "pending",
+	})
+	return nil
+}
+
+// consumeBrowserActionPerm — the permAnswerMsg HOOKUP (model.go): when
+// the answered modal front is a PARKED browser action, resolve it
+// LOCALLY and report handled=true (the hold's pid never rides the
+// backend's AnswerPermission wire — the backend knows nothing about
+// office-minted ids). "always" maps to "once": approve-once ONLY.
+func (m *Model) consumeBrowserActionPerm(pid, response string) (bool, tea.Cmd) {
+	hold, ok := m.browserActionHolds[pid]
+	if !ok {
+		return false, nil
+	}
+	delete(m.browserActionHolds, pid)
+	b := m.backend
+	summary := browserActionSummary(hold.op, hold.sel, hold.arg)
+	if response == "reject" {
+		m.notice("browser: action REJECTED by the member: " + summary + " on " + hold.url)
+		return true, func() tea.Msg {
+			if b != nil {
+				if err := sendChat(b, "[theboringoffice] browser-action REJECTED by the member: "+summary+" on "+hold.url, nil); err != nil {
+					return sendErrMsg{err: err}
+				}
+			}
+			return nil
+		}
+	}
+	// "once" AND "always" land here (always → once).
+	return true, browserActionCmd(b, hold)
+}
+
+// browserActionCmd — the execution half: run the engine (bounded, OFF
+// the UI goroutine), post the outcome BACK to the agent as a synthetic
+// follow-up on the SAME backend session (the snapshot's send-in-closure
+// precedent), and land the member's result row via the state.Event leg
+// (Update's state.Event case routes it back through applyBrowserAction
+// with BrowserToolDone=true).
+func browserActionCmd(b state.Backend, hold browserActionHold) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), browserActionTimeout)
+		defer cancel()
+		summary := browserActionSummary(hold.op, hold.sel, hold.arg)
+		res, err := browserActionFn(ctx, hold.url, action.Action{Op: hold.op, Sel: hold.sel, Arg: hold.arg})
+		if err != nil {
+			reason := err.Error()
+			if b != nil {
+				if serr := sendChat(b, "[theboringoffice] browser-action failed on "+hold.url+": "+summary+" — "+reason, nil); serr != nil {
+					reason += " (and the follow-up post failed: " + serr.Error() + ")"
+				}
+			}
+			return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
+				BrowserToolDone: true, BrowserActionOp: hold.op, BrowserOpenReason: reason}
+		}
+		// the follow-up phrasing: click/fill name the REQUEST; eval
+		// reports the JSON-stringified result (already 4KB rune-safe
+		// capped by the engine).
+		tail := summary
+		if hold.op == action.OpEval {
+			tail = "eval → " + res.Text
+		}
+		if b != nil {
+			if serr := sendChat(b, "[theboringoffice] browser-action ok on "+res.URL+": "+tail, nil); serr != nil {
+				return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
+					BrowserToolDone: true, BrowserActionOp: hold.op,
+					BrowserOpenReason: "the action ran but the follow-up post failed: " + serr.Error()}
+			}
+		}
+		return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
+			BrowserToolDone: true, BrowserOpenAllowed: true, BrowserActionOp: hold.op,
+			BrowserActionFinalURL: res.URL, BrowserActionResult: res.Text}
+	}
+}
+
+// browserActionSummary — the request's ONE-LINE phrasing, shared by the
+// modal's toolSummary and every follow-up/member row: `click '#buy'` /
+// `fill '#q' = 'a = b'` / `eval document.title` (selector + value
+// clipped at browserActionClip cols, newlines flattened by clipRunes).
+func browserActionSummary(op, sel, arg string) string {
+	switch op {
+	case action.OpClick:
+		return "click '" + clipRunes(sel, browserActionClip) + "'"
+	case action.OpFill:
+		return "fill '" + clipRunes(sel, browserActionClip) + "' = '" + clipRunes(arg, browserActionClip) + "'"
+	case action.OpEval:
+		return "eval " + clipRunes(arg, browserActionClip)
+	default:
+		return clipRunes(op+" '"+sel+"'", browserActionClip)
+	}
+}
+
+// browserActionHost — the modal summary's "on <host>" tail (host:port
+// when the URL parses, the clipped raw URL otherwise).
+func browserActionHost(rawurl string) string {
+	if u, err := url.Parse(rawurl); err == nil && u.Host != "" {
+		return u.Host
+	}
+	return clipRunes(rawurl, browserActionClip)
+}
+
+// browserActionResultDisplay — the member result row's tail: the
+// engine's own result string for click/fill ("clicked #buy"), the
+// clipped JSON for eval (the agent's follow-up carries the full 4KB
+// payload; the member's row carries the shape).
+func browserActionResultDisplay(ev state.Event) string {
+	if ev.BrowserActionOp == action.OpEval {
+		return "eval → " + clipRunes(ev.BrowserActionResult, browserActionMemberClip)
+	}
+	return clipRunes(ev.BrowserActionResult, browserActionMemberClip)
 }

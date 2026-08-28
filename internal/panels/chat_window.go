@@ -124,6 +124,7 @@ type chatBlock struct {
 	text   string          // transcript fragment, WITHOUT the inter-item "\n\n" glue
 	plines []string        // the fragment's PADDED lines — selLines' row material
 	hits   blockHits       // LOCAL row space
+	media  []chatMediaSlot // kitty previews' paint slots, LOCAL row space (MediaFrameState's merge input)
 	rows   int             // == len(plines) — the HEIGHT metadata
 	wide   int             // widest PADDED line, CELLS (ANSI-aware) — the rogue-row guard's input
 	src    state.ChatMsg   // MSG blocks: the message this block rendered

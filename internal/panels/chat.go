@@ -1110,13 +1110,24 @@ func (c *Chat) refreshPlaceholder() {
 
 // chatMediaView — ONE inbound boss-turn image as the bubble renders it:
 // the painted raster rows (nil until the lazy probe lands — the chip
-// alone meanwhile), a native-lane escape frame (kitty strip / OSC 1337 —
-// the frame bytes ride OUTSIDE the stateful half-block view: they paint
-// at the cursor, never inside grid cells, and are NEVER folded), or
-// failed=true (the dim "unsupported image" copy).
+// alone meanwhile), a native-lane escape frame (kitty strip / OSC 1337),
+// or failed=true (the dim "unsupported image" copy).
+//
+// NATIVE-FRAME ROUTING (the wave-86 splice): a KITTY strip (kitty=true,
+// id = the parsed i= word) never rides the View string — bubbletea's
+// renderer decodes the View into cells and DROPS zero-width APCs (the
+// wave-81 forensics), so the strip only bloated the differ and never
+// painted. Instead renderMediaRows emits PURE reservation rows and the
+// frame SPLICES through the ZenbuFrameWriter (zenbu_frame.go's chat
+// region — the app publishes the absolute cell per Frame). An OSC 1337
+// frame carries no id and iTerm2 has no image-delete escape, so it
+// keeps the OLD embedded-row behavior (the splice's emitted-set diff
+// could never target it — a scrolled-off image would ghost forever).
 type chatMediaView struct {
 	rows     []string // ASCII lane: the half-block truecolor rows
 	frame    string   // native lane: ONE atomic escape frame
+	id       uint32   // kitty lane: the strip's parsed i= id (0 = unparseable → embed)
+	kitty    bool     // the frame is a kitty strip (splice-routed); OSC 1337 stays embedded
 	cellRows int      // native lane: the reserved cell-box height (frame row included)
 	failed   bool
 }
@@ -1150,7 +1161,9 @@ func (c *Chat) SetImageRaster(msgID, hash string, rows []string) {
 // frame visually spends (the SAME box the ASCII lane would occupy), so
 // renderMediaRows pads the bubble identically on every lane. The frame
 // is stored VERBATIM and never folded; push is idempotent and bumps the
-// owning bubble's media revision, exactly like SetImageRaster.
+// owning bubble's media revision, exactly like SetImageRaster. The
+// kitty-ness + the i= id are parsed ONCE here (kittyFrameID) — the
+// splice routing + the registry publish read them off the stored view.
 func (c *Chat) SetImageFrame(msgID, hash, frame string, cellRows int) {
 	if msgID == "" || hash == "" || frame == "" || cellRows < 1 {
 		return
@@ -1164,7 +1177,8 @@ func (c *Chat) SetImageFrame(msgID, hash, frame string, cellRows int) {
 	if c.media[msgID] == nil {
 		c.media[msgID] = map[string]chatMediaView{}
 	}
-	c.media[msgID][hash] = chatMediaView{frame: frame, cellRows: cellRows}
+	id, kitty := kittyFrameID(frame)
+	c.media[msgID][hash] = chatMediaView{frame: frame, id: id, kitty: kitty, cellRows: cellRows}
 	c.mediaRev[msgID]++
 	c.forceRender()
 }
@@ -2237,6 +2251,7 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 	}
 	var b strings.Builder
 	hits := blockHits{}
+	var mediaSlots []chatMediaSlot // boss bubbles: the kitty previews' paint slots (block-local rows)
 	switch {
 	case m.Kind == thinkKind:
 		c.renderThink(&b, m)
@@ -2326,10 +2341,15 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		lines = foldStyledLines(lines, c.mdWidth)
 		// Inbound image previews slot the chip + raster ABOVE the body
 		// (completed bubbles only — a pending stream never previews).
-		lines = append(c.renderMediaRows(m), lines...)
+		// Kitty previews ride the frame splice: the media rows are PURE
+		// reservation rows and the paint slots ride the block (MediaFrameState
+		// offsets them into absolute transcript rows at publish time).
+		var mediaLines []string
+		mediaLines, mediaSlots = c.renderMediaRows(m)
+		lines = append(mediaLines, lines...)
 		writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(bossPrefix)), lines)
 	}
-	blk := &chatBlock{id: m.ID, key: key, text: b.String(), hits: hits, src: m, unstable: streaming}
+	blk := &chatBlock{id: m.ID, key: key, text: b.String(), hits: hits, src: m, unstable: streaming, media: mediaSlots}
 	blk.finish()
 	if m.ID != "" {
 		c.blockCache[m.ID] = blk
@@ -3133,6 +3153,27 @@ func writePrefixed(b *strings.Builder, prefix, indent string, lines []string) {
 	}
 }
 
+// chatMediaSlot — ONE splice-routed kitty preview's paint slot, in
+// BLOCK-LOCAL row space (the same convention blockHits carries): row =
+// the FIRST reservation row's local index (the image's paint cell —
+// where the pre-splice APC row's cursor stood), id = the strip's i=
+// office id (the wrapper's a=d target), frame = the cached verbatim APC
+// (PlaceholderStrip — q=2, f=100, NO c=/r=: the wave-81 emission
+// ruling). Stored on the chatBlock like the local hit-maps: the merge
+// offsets it into absolute transcript rows exactly like them.
+type chatMediaSlot struct {
+	row   int
+	id    uint32
+	frame string
+}
+
+// chatMediaCol — the media image's cell column inside the chat content
+// box (0-based): the transcript's left gutter + the boss bubble's
+// hanging indent (cellWidth("boss › ") = 7 — the reservation rows sit
+// at the bubble's body indent, exactly where the pre-splice APC row's
+// cursor stood).
+const chatMediaCol = chatPadL + 7
+
 // renderMediaRows — the boss bubble's inbound image rows (the v1 preview):
 // ONE dim chip per image ("🖼 name · WxH · mime", or the dim
 // "unsupported image · click txt link" copy when the payload is remote,
@@ -3142,30 +3183,46 @@ func writePrefixed(b *strings.Builder, prefix, indent string, lines []string) {
 // pre-folded paint — foldStyledRows refolds the ANSI atoms, never bursts
 // mid-glyph). Empty for plain turns: no carrier Meta, or the bubble is
 // still pending (the pin alone previews).
-func (c *Chat) renderMediaRows(m state.ChatMsg) []string {
+//
+// THE KITTY LANE RIDES THE FRAME SPLICE (the wave-86 routing): the
+// strip is NEVER embedded in the View string (bubbletea's renderer drops
+// zero-width APCs — the wave-81 forensics — so an embedded strip only
+// bloated the differ): the media rows are PURE reservation rows (blank,
+// the SAME cell-box height) and the slot registers the paint cell for
+// the registry publish. The OSC 1337 (iterm) lane keeps the OLD
+// embedded frame row — no id, no delete escape: the splice could never
+// target it.
+func (c *Chat) renderMediaRows(m state.ChatMsg) ([]string, []chatMediaSlot) {
 	if m.Pending {
-		return nil
+		return nil, nil
 	}
 	items, ok := state.ParseMediaMeta(m.Meta)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	var lines []string
+	var slots []chatMediaSlot
 	for _, it := range items {
 		v := c.media[m.ID][it.Hash]
 		lines = append(lines, mediaChipLine(it, v))
 		if v.failed {
 			continue
 		}
-		// The lane routing hook: the probe already picked the transport
-		// (kitty/ghostty → the kitty strip, the iterm family → OSC 1337,
-		// else → ASCII). A native frame is ONE atomic row written
-		// VERBATIM (folding could burst the escape mid-sequence and
-		// corrupt the terminal — seqLen knows OSC but a kitty strip's
-		// base64 payload is opaque to it) plus cellRows-1 reservation
-		// rows: the SAME cell-box ledger the ASCII paint's row count
-		// spends, so the bubble layout is lane-independent.
 		if v.frame != "" {
+			if v.kitty && v.id != 0 {
+				// the splice routing: cellRows PURE reservation rows (the
+				// wrapper paints the pixels at the slot's absolute cell) —
+				// ZERO APC bytes in the View string.
+				slots = append(slots, chatMediaSlot{row: len(lines), id: v.id, frame: v.frame})
+				for i := 0; i < v.cellRows; i++ {
+					lines = append(lines, "")
+				}
+				continue
+			}
+			// OSC 1337 (and an unparseable-id kitty frame — never splice
+			// what the diff cannot target): the OLD embedded row — ONE
+			// atomic frame written VERBATIM (folding could burst the
+			// escape mid-sequence) plus cellRows-1 reservation rows.
 			lines = append(lines, v.frame)
 			for i := 1; i < v.cellRows; i++ {
 				lines = append(lines, "")
@@ -3176,7 +3233,43 @@ func (c *Chat) renderMediaRows(m state.ChatMsg) []string {
 			lines = append(lines, foldStyledRows(row, c.mdWidth, c.mdWidth)...)
 		}
 	}
-	return lines
+	return lines, slots
+}
+
+// MediaFrameState — the chat pane's registry contribution for the frame
+// splice (zenbu_frame.go's CHAT-MEDIA region): every VISIBLE kitty
+// preview as {office id, chat-content-local cell (0-based), the cached
+// verbatim APC}. Block-local slots stack into absolute transcript rows
+// by the SAME +1-separator plan mergeBlockHits owns, then the viewport's
+// scroll offset maps them into the window — rows scrolled above/below
+// never publish (the wrapper's emitted-set diff flushes their a=d:
+// scrolled-off media vanishes cleanly). OSC 1337 previews are never
+// here (no id — see chatMediaView). The app adds the sidebar/band
+// origin and publishes per Frame; a stale read between renders is
+// impossible (blocks and the scroll offset are the same goroutine's
+// state the Frame just painted).
+func (c *Chat) MediaFrameState() []ZenbuFrameImage {
+	vpH := c.vp.Height()
+	if vpH < 1 || len(c.blocks) == 0 {
+		return nil
+	}
+	yoff := c.vp.YOffset()
+	var out []ZenbuFrameImage
+	row := 0
+	for i, blk := range c.blocks {
+		if i > 0 {
+			row++ // the ONE separator row between timeline items
+		}
+		for _, s := range blk.media {
+			vr := row + s.row - yoff
+			if vr < 0 || vr >= vpH {
+				continue
+			}
+			out = append(out, ZenbuFrameImage{OfficeID: s.id, OX: chatMediaCol, OY: vr, Frame: s.frame})
+		}
+		row += blk.rows
+	}
+	return out
 }
 
 // mediaChipLine — the ONE dim chip row per inbound image. The unsupported

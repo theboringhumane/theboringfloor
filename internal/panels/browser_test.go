@@ -24,6 +24,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
 	"github.com/theboringhumane/theboringoffice/internal/headless"
 )
 
@@ -346,6 +347,101 @@ func TestBrowserShotCellPx(t *testing.T) {
 				t.Fatalf("browserShotCellPx(%q) = %dx%d, want %dx%d", tc.env, w, h, tc.w, tc.h)
 			}
 		})
+	}
+}
+
+// TestBrowserShotCellPxRealMetrics — the metric win order end to end: the
+// terminal's LEARNED cell size (cellmetrics' registry) beats the 9x18
+// default, and the THEBORINGOFFICE_CELL_PX pin beats BOTH.
+func TestBrowserShotCellPxRealMetrics(t *testing.T) {
+	restore := cellmetrics.ResetForShot()
+	t.Cleanup(restore)
+	t.Setenv("THEBORINGOFFICE_CELL_PX", "")
+
+	// the zero-state registry: the 9x18 fallback stands (the old tests'
+	// exact expectation — zero behavioral change without an answer).
+	if w, h := browserShotCellPx(); w != 9 || h != 18 {
+		t.Fatalf("no metric learned → the 9x18 fallback: got %dx%d", w, h)
+	}
+
+	// the terminal answered (16w × 32h — ghostty's default at 2x DPR):
+	// the REAL metric wins.
+	cellmetrics.SetForShot(16, 32)
+	if w, h := browserShotCellPx(); w != 16 || h != 32 {
+		t.Fatalf("the learned metric beats the fallback: got %dx%d, want 16x32", w, h)
+	}
+
+	// the member's pin still wins outright.
+	t.Setenv("THEBORINGOFFICE_CELL_PX", "10:20")
+	if w, h := browserShotCellPx(); w != 10 || h != 20 {
+		t.Fatalf("the override beats the learned metric: got %dx%d, want 10x20", w, h)
+	}
+}
+
+// TestShotBoxPxRealMetrics — the viewport math with the pinned metric:
+// an 80×45 pane (43 body rows) at cell 16w×32h renders EXACTLY
+// 1280×1376 CSS px (the engine doubles to 2560×2752 device px).
+func TestShotBoxPxRealMetrics(t *testing.T) {
+	restore := cellmetrics.ResetForShot()
+	t.Cleanup(restore)
+	cellmetrics.SetForShot(16, 32)
+	b := NewBrowser()
+	b.SetSize(80, 45)
+	w, h := b.ShotBoxPx()
+	if w != 1280 || h != 1376 {
+		t.Fatalf("ShotBoxPx = %dx%d, want 1280x1376 (80 cols × 16, 43 body rows × 32)", w, h)
+	}
+}
+
+// TestBrowserShotOpenRealMetrics — the render's dims ride the learned
+// metric END TO END: the fake engine records 1280×1376 for the 80×45
+// pane, never the 9x18 guess's 720×774.
+func TestBrowserShotOpenRealMetrics(t *testing.T) {
+	restore := cellmetrics.ResetForShot()
+	t.Cleanup(restore)
+	cellmetrics.SetForShot(16, 32)
+	r := newShotRig(t, true, true)
+	r.b.SetSize(80, 45)
+	r.e.res = &headless.Result{URL: "https://a.dev/x", Title: "Xray", PNG: shotTestPNG(t)}
+	r.driveShotOpen(t, "https://a.dev/x")
+	if r.e.calls != 1 || r.e.lastW != 1280 || r.e.lastH != 1376 {
+		t.Fatalf("the render fired %d× (%dx%d), want 1× (1280x1376)", r.e.calls, r.e.lastW, r.e.lastH)
+	}
+}
+
+// TestBrowserShotResizeRequeries — the resize re-shot debounce re-arms
+// the cell-size probe (a font zoom changes the cell's px under the same
+// pane box): the settled tick's re-render fires the emitter AND rides the
+// registry's CURRENT metric (100 cols × 16, (30-2) body rows × 32 =
+// 1600×896).
+func TestBrowserShotResizeRequeries(t *testing.T) {
+	restore := cellmetrics.ResetForShot()
+	t.Cleanup(restore)
+	queries := 0
+	cellmetrics.SetQueryFunc(func() { queries++ })
+	cellmetrics.SetForShot(16, 32)
+	r := newShotRig(t, true, true)
+	r.b.SetSize(80, 45)
+	r.e.res = &headless.Result{URL: "https://a.dev/x", Title: "Xray", PNG: shotTestPNG(t)}
+	r.driveShotOpen(t, "https://a.dev/x")
+	if queries != 0 {
+		t.Fatalf("the open path never probes (the boot + resize arms own that): %d", queries)
+	}
+	r.b.SetSize(100, 30)                 // stamp the resize
+	armed := r.b.Update(browserKey("j")) // the sweep arms the debounce tick
+	if armed == nil {
+		t.Fatal("the routed msg arms the debounce tick")
+	}
+	fire := r.b.Update(armed()) // the tick lands → re-query + re-render
+	if fire == nil {
+		t.Fatal("the settled debounce fires the re-render")
+	}
+	if queries != 1 {
+		t.Fatalf("the settled debounce re-armed the probe %d×, want 1", queries)
+	}
+	r.b.Update(fire())
+	if r.e.calls != 2 || r.e.lastW != 1600 || r.e.lastH != 896 {
+		t.Fatalf("the re-render fired %d× (%dx%d), want 2× (1600x896)", r.e.calls, r.e.lastW, r.e.lastH)
 	}
 }
 

@@ -306,6 +306,84 @@ func TestBrowserShotMarkerOnlyFallback(t *testing.T) {
 	}
 }
 
+// TestBrowserActionMarkerScrubbedAtPin — opencode lane: the MUTATING
+// marker scrubs off the pinned bubble exactly like its read-only
+// siblings and lands as ONE EvBrowserAction carrying the allowed
+// verdict AND the parsed payload (op/sel/arg) — the app parks THAT
+// behind the member's permission modal. A refused action marker
+// degrades the bubble to the kind-named refusal note and the event
+// carries the exact reason (the app posts the red row, NO modal).
+func TestBrowserActionMarkerScrubbedAtPin(t *testing.T) {
+	t.Setenv(browsertools.AllowHTTPEnv, "")
+	rows := `[
+	  {"info":{"id":"u-1","sessionID":"ses-primary","role":"user","time":{"created":100}},"parts":[]},
+	  {"info":{"id":"m-1","sessionID":"ses-primary","role":"assistant","finish":"stop","time":{"created":110,"completed":120},"cost":0,"tokens":{"input":1,"output":1,"reasoning":0,"cache":{"read":0,"write":0}}},"parts":[]}
+	]`
+	// the fixture embeds the text raw into JSON — \n must arrive ESCAPED.
+	b, log := reconcileFixture(t, rows, map[string]string{
+		"m-1": "Clicking buy now.\\n⟦browser-action: https://theboring.name | click: #buy⟧",
+	})
+	b.mu.Lock()
+	b.pendingBoss = []string{"boss-1"}
+	b.mu.Unlock()
+
+	b.sseRecovered()
+
+	pins := bossPins(log)
+	if len(pins) != 1 {
+		t.Fatalf("want ONE boss pin, got %d", len(pins))
+	}
+	if pins[0].Msg.Text != "Clicking buy now." {
+		t.Fatalf("the pinned text must be scrubbed of the action marker, got %q", pins[0].Msg.Text)
+	}
+	acts := eventsMatching(log, func(e state.Event) bool { return e.Kind == state.EvBrowserAction })
+	if len(acts) != 1 {
+		t.Fatalf("want ONE EvBrowserAction, got %+v", acts)
+	}
+	if acts[0].Text != "https://theboring.name" || !acts[0].BrowserOpenAllowed || acts[0].BrowserOpenReason != "" ||
+		acts[0].BrowserActionOp != "click" || acts[0].BrowserActionSel != "#buy" || acts[0].BrowserActionArg != "" {
+		t.Fatalf("the action event must carry the allowed verdict + payload, got %+v", acts[0])
+	}
+
+	// a refused action marker (plain http, flag off): scrubs to the
+	// kind-named refusal note + the reason event on the action kind.
+	b2, log2 := reconcileFixture(t, rows, map[string]string{
+		"m-1": "⟦browser-action: http://theboring.name | fill: #q = a = b⟧",
+	})
+	b2.mu.Lock()
+	b2.pendingBoss = []string{"boss-1"}
+	b2.mu.Unlock()
+	b2.sseRecovered()
+
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	pins2 := bossPins(log2)
+	if len(pins2) != 1 || pins2[0].Msg.Text != "[theboringoffice] browser-action refused: "+reason {
+		t.Fatalf("the refused action-only bubble degrades to the kind-named note, got %+v", pins2)
+	}
+	acts2 := eventsMatching(log2, func(e state.Event) bool { return e.Kind == state.EvBrowserAction })
+	if len(acts2) != 1 || acts2[0].BrowserOpenAllowed || acts2[0].BrowserOpenReason != reason ||
+		acts2[0].BrowserActionOp != "fill" || acts2[0].BrowserActionSel != "#q" || acts2[0].BrowserActionArg != "a = b" {
+		t.Fatalf("the refused action event carries the exact reason + payload, got %+v", acts2)
+	}
+
+	// a MALFORMED action marker never extracts: the pinned text keeps it
+	// VISIBLE, untouched, and no event fires.
+	b3, log3 := reconcileFixture(t, rows, map[string]string{
+		"m-1": "⟦browser-action: https://theboring.name | click:⟧",
+	})
+	b3.mu.Lock()
+	b3.pendingBoss = []string{"boss-1"}
+	b3.mu.Unlock()
+	b3.sseRecovered()
+	pins3 := bossPins(log3)
+	if len(pins3) != 1 || pins3[0].Msg.Text != "⟦browser-action: https://theboring.name | click:⟧" {
+		t.Fatalf("a malformed action marker stays visible verbatim, got %+v", pins3)
+	}
+	if acts3 := eventsMatching(log3, func(e state.Event) bool { return e.Kind == state.EvBrowserAction }); len(acts3) != 0 {
+		t.Fatalf("a malformed action marker must never emit, got %+v", acts3)
+	}
+}
+
 // ---------------------------------------------------------------- claude
 
 // TestClaudeBrowserPreambleRidesFirstLine — the FIRST stdin user line
@@ -466,5 +544,48 @@ func TestClaudeBrowserShotSnapScrubbedAtPin(t *testing.T) {
 	}
 	if evs[4].Msg.Text != "[theboringoffice] browser-screenshot refused: "+reason {
 		t.Fatalf("the refused screenshot-only pin degrades to the kind-named note, got %q", evs[4].Msg.Text)
+	}
+}
+
+// TestClaudeBrowserActionScrubbedAtPin — the MUTATING marker scrubs off
+// the claude completion pin exactly like its read-only siblings: ONE
+// EvBrowserAction (allowed verdict + parsed payload) fires BEFORE the
+// pin lands, and the pinned text keeps only the prose.
+func TestClaudeBrowserActionScrubbedAtPin(t *testing.T) {
+	t.Setenv(browsertools.AllowHTTPEnv, "")
+	b := newClaudeBackend("true", t.TempDir(), nil) // bin never spawned (no Start)
+	log := &claudeEventLog{}
+	b.fl.setEmit(log.emit)
+
+	b.emitMapped(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m1", From: "boss", Kind: "boss",
+		Text:    "Reading the price first.\n⟦browser-action: https://theboring.name | eval: document.querySelector('#price').textContent⟧",
+		Pending: false,
+	}})
+
+	evs := log.snapshot()
+	if len(evs) != 2 {
+		t.Fatalf("want the action event THEN the pin (2 events), got %d: %+v", len(evs), evs)
+	}
+	if evs[0].Kind != state.EvBrowserAction || evs[0].Text != "https://theboring.name" ||
+		!evs[0].BrowserOpenAllowed || evs[0].BrowserActionOp != "eval" ||
+		evs[0].BrowserActionArg != "document.querySelector('#price').textContent" {
+		t.Fatalf("the action request lands FIRST with the allowed verdict + payload, got %+v", evs[0])
+	}
+	if evs[1].Kind != state.EvChatBoss || evs[1].Msg.Text != "Reading the price first." {
+		t.Fatalf("the pin lands SECOND, scrubbed of the action marker, got %+v", evs[1])
+	}
+
+	// a MALFORMED action marker stays VISIBLE on the pin and emits nothing.
+	b.emitMapped(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+		ID: "bossmsg-m2", From: "boss", Kind: "boss",
+		Text: "⟦browser-action: https://theboring.name | frobnicate: #a⟧", Pending: false,
+	}})
+	evs = log.snapshot()
+	if len(evs) != 3 {
+		t.Fatalf("a malformed action marker adds ONLY the pin (3 events total), got %d: %+v", len(evs), evs)
+	}
+	if evs[2].Msg.Text != "⟦browser-action: https://theboring.name | frobnicate: #a⟧" {
+		t.Fatalf("the malformed marker stays visible verbatim, got %q", evs[2].Msg.Text)
 	}
 }

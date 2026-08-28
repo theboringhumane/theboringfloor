@@ -457,6 +457,16 @@ type Model struct {
 	// statusbar/activity [blocked] lines come from EvBlocked, untouched.
 	permQ permQueue
 
+	// HOOKUP (browser_open.go): browserActionHolds parks the
+	// ⟦browser-action: URL | op⟧ marker's allowed requests behind the
+	// member's permission modal, keyed by their synthetic permission id
+	// ("browser-action-N", numbered by browserActionSeq). The member's
+	// answer resolves them LOCALLY via the permAnswerMsg hookup below
+	// (consumeBrowserActionPerm) — these office-minted ids NEVER ride
+	// the backend's AnswerPermission wire.
+	browserActionHolds map[string]browserActionHold
+	browserActionSeq   int
+
 	// Question holds (boss/primary session only): question is the OPEN
 	// hold whose WIZARD popover replaces the textarea (radio/checkbox/
 	// free-text pages, unlike the y/a/n permission popover); questionEscd
@@ -1660,6 +1670,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.permQ.escd = dropPrompt(m.permQ.escd, pid) // defensive: an ask lives in exactly one slice
 			delete(m.permNotifyIDs, pid)                 // the cohort shrinks; empty re-arms the next ping
 			m.chat.SetPermission(m.permQ.view())
+			// HOOKUP (browser_open.go): a parked browser-action hold
+			// resolves LOCALLY — the modal answer drives the executor or
+			// the rejection follow-up; the office-minted pid never rides
+			// the backend's AnswerPermission wire.
+			if handled, cmd := m.consumeBrowserActionPerm(pid, response); handled {
+				cmds = append(cmds, cmd)
+				break
+			}
 			cmds = append(cmds, func() tea.Msg {
 				if m.backend != nil {
 					if err := m.backend.AnswerPermission(pid, response); err != nil {
@@ -1979,6 +1997,11 @@ func (m Model) Frame() string {
 	// a cache-hit Frame republishes nothing because nothing it covers
 	// changed). browser.go owns the origin math + the empty-state clears.
 	m.publishZenbuFrame()
+	// the chat previews' registry region rides the SAME seam (images.go's
+	// publish — kitty previews splice through the wrapper, never the View
+	// string, the wave-86 routing). ADDITIVE: the browser publish above is
+	// untouched.
+	m.publishChatMediaFrame()
 	m.gov.frameKey, m.gov.frameCached = digest, frame
 	return frame
 }

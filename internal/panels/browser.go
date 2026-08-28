@@ -100,6 +100,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -331,8 +332,10 @@ func (b *Browser) wrapW() int {
 //
 // Every landed fetch (Open / Reload / link-nav / ring hop) arms ONE
 // headless render of the same URL at the pane body box's PIXEL dims
-// (widthPx = paneBodyCols*9, heightPx = paneBodyRows*18 — the default
-// cell metric; THEBORINGOFFICE_CELL_PX=W:H overrides). The render rides a
+// (widthPx = paneBodyCols*cellW, heightPx = paneBodyRows*cellH — the cell
+// metric's win order: THEBORINGOFFICE_CELL_PX=W:H's pin, then the
+// terminal's REAL cell size learned at runtime by internal/cellmetrics
+// (the CSI 16t dance), then the 9x18 default). The render rides a
 // tea.Cmd (15s bounded) and lands back as BrowserPageMsg{Shot:…} through
 // the app's existing forwarding hop. On a kitty-capable host
 // (DetectImageSupportFrom == KittyLane — the zenbu lane's own gate,
@@ -429,8 +432,12 @@ func shotFailCopy(err error) string {
 	}
 }
 
-// browserShotCellPx — the cell metric for the pixel-dims math:
-// THEBORINGOFFICE_CELL_PX=W:H read AT USE TIME, else the 9x18 default.
+// browserShotCellPx — the cell metric for the pixel-dims math, in win
+// order: (1) THEBORINGOFFICE_CELL_PX=W:H read AT USE TIME (the override
+// ALWAYS wins); (2) the terminal's REAL cell size learned at runtime by
+// internal/cellmetrics — Resolve waits out the ONE 150ms answer window
+// from the boot probe, then never blocks again; (3) the 9x18 default for
+// non-answering terminals (tmux, iTerm, most — zero behavioral change).
 func browserShotCellPx() (cellW, cellH int) {
 	raw := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_CELL_PX"))
 	if raw != "" {
@@ -438,6 +445,9 @@ func browserShotCellPx() (cellW, cellH int) {
 		if n, err := fmt.Sscanf(raw, "%d:%d", &w, &h); err == nil && n == 2 && w > 0 && h > 0 {
 			return w, h
 		}
+	}
+	if w, h, ok := cellmetrics.Resolve(); ok {
+		return w, h
 	}
 	return 9, 18
 }
@@ -454,8 +464,10 @@ func (b *Browser) shotBodyRows() int {
 
 // ShotBoxPx — the pane body box in CSS pixels for the engine: cols*cellW
 // × bodyRows*cellH (the render's EXACT viewport; the engine captures at
-// deviceScaleFactor 2 for retina). The harness asserts the recorded
-// engine dims against this.
+// deviceScaleFactor 2 for retina). cellW/cellH come from
+// browserShotCellPx's win order (the env pin, then the terminal's learned
+// metric, then 9x18). The harness asserts the recorded engine dims
+// against this.
 func (b *Browser) ShotBoxPx() (widthPx, heightPx int) {
 	cw, ch := browserShotCellPx()
 	cols := b.w
@@ -567,7 +579,12 @@ func (b *Browser) applyShot(s *BrowserShot) tea.Cmd {
 			return nil
 		}
 		// the debounce passed: re-render the CURRENT url at the CURRENT
-		// box (the PNG must match the pane).
+		// box (the PNG must match the pane) — and re-arm the cell-size
+		// probe: a font zoom (ctrl+= / ctrl+- in ghostty/kitty) changes the
+		// cell's px under the same pane box, so the NEXT render's dims ride
+		// the fresh answer (this one already carries the resize's metric —
+		// the WindowSizeMsg re-arm landed 300ms+ ago).
+		cellmetrics.Query()
 		b.shotLoading = true
 		b.shotLoadingURL = b.url
 		seq, rawurl := b.shotSeq, b.url

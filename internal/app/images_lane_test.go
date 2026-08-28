@@ -60,15 +60,21 @@ func kittyCheckerPin(t *testing.T) (frameStart, payloadHead, payloadTail string)
 	return frameStart, b64[:40], b64[len(b64)-16:]
 }
 
-// TestBossImageKittyLaneFrame — ghostty env + auto posture: the
-// completed boss turn's file part paints the kitty placeholder strip
-// (exact pinned start + base64 head/tail + ESC\ terminator), ZERO
-// half-blocks, the 🖼 chip intact, ONE probe for a repeated pin.
+// TestBossImageKittyLaneFrame — ghostty env + auto posture (the wave-86
+// splice routing): the completed boss turn's file part leaves ZERO APC
+// bytes in the View frame (the renderer would drop them — the wave-81
+// forensics); the chat-media REGION of the registry carries the preview
+// (the strip's exact pinned start + base64 head/tail + ESC\ terminator,
+// the office id, ONE entry), ZERO half-blocks, the 🖼 chip intact, ONE
+// probe for a repeated pin.
 func TestBossImageKittyLaneFrame(t *testing.T) {
 	pinImageEnv(t, "TERM_PROGRAM", "ghostty", "TERM", "xterm-ghostty")
 	if l := panels.DetectImageSupport(); l != panels.KittyLane {
 		t.Fatalf("hermetic stub: ghostty env detects kitty, got %s", l)
 	}
+	panels.ZenbuRegistry().Clear()
+	panels.ZenbuRegistry().PublishChatMedia(nil)
+	t.Cleanup(func() { panels.ZenbuRegistry().Clear(); panels.ZenbuRegistry().PublishChatMedia(nil) })
 	dataURL, hash := imageFixture(t)
 	m := imageModel(t, config.Default())
 	m = runMsg(t, m, bossMediaPin(dataURL, hash, "bossmsg-m1"))
@@ -76,11 +82,23 @@ func TestBossImageKittyLaneFrame(t *testing.T) {
 
 	frameStart, head, tail := kittyCheckerPin(t)
 	raw := m.Frame()
-	if !strings.Contains(raw, frameStart) {
-		t.Fatalf("the kitty strip's exact pinned start must ride the frame:\n%q", raw[:400])
+	if strings.Contains(raw, "\x1b_G") {
+		t.Fatal("ZERO kitty APC bytes ride the View frame (the splice owns them)")
 	}
-	if !strings.Contains(raw, head) || !strings.Contains(raw, tail+"\x1b\\") {
-		t.Fatal("the base64 payload (head…tail) + the ESC\\ terminator must ride the frame")
+	// the registry's chat-media region carries the preview instead.
+	chat := panels.ZenbuRegistry().ChatSnapshotForTest()
+	if len(chat) != 1 {
+		t.Fatalf("the chat region holds exactly the one preview, got %d", len(chat))
+	}
+	if !strings.HasPrefix(chat[0].Frame, frameStart) {
+		t.Fatalf("the registry's strip starts exactly pinned:\n got %q\nwant %q", chat[0].Frame[:60], frameStart)
+	}
+	if !strings.Contains(chat[0].Frame, head) || !strings.Contains(chat[0].Frame, tail+"\x1b\\") {
+		t.Fatal("the base64 payload (head…tail) + the ESC\\ terminator ride the registry's strip")
+	}
+	raw8 := panels.KittyIDHash8(panels.KittyImageID(mustReadChecker(t)))
+	if chat[0].OfficeID != panels.KittyImageID(mustReadChecker(t)) {
+		t.Fatalf("the office id is the payload's KittyImageID (%s), got %08x", raw8, chat[0].OfficeID)
 	}
 	plain := ansi.Strip(raw)
 	if !strings.Contains(plain, "🖼 paste-diagram.png · 8×8 · image/png") {
@@ -92,6 +110,17 @@ func TestBossImageKittyLaneFrame(t *testing.T) {
 	if len(m.imgProbed) != 1 {
 		t.Fatalf("probe-once on the kitty lane: %v", m.imgProbed)
 	}
+}
+
+// mustReadChecker — the shared gold fixture's raw bytes (the office-id
+// pin's input).
+func mustReadChecker(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile("../../internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		t.Fatalf("raster fixture: %v", err)
+	}
+	return raw
 }
 
 // TestBossImageITermLaneFrame — iTerm env + auto posture: the OSC 1337

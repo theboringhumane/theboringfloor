@@ -196,3 +196,67 @@ func (m *Model) applyImageRaster(msg imageRasterMsg) tea.Cmd {
 	m.chat.SetImageRaster(msg.msgID, msg.hash, msg.rows)
 	return nil
 }
+
+// ---------------------------------------------------------------------------
+// the chat media's frame-splice registry publish (panels/zenbu_frame.go's
+// CHAT-MEDIA region — the browser lane's twin seam)
+// ---------------------------------------------------------------------------
+
+// chatContentOrigin — the ABSOLUTE cell origin of the chat panel's
+// content box THIS frame, mirroring Frame()'s branch structure exactly
+// (browserGridOrigin's discipline): ok=false (the registry's chat region
+// clears) whenever the chat is not painted — zen owns the whole middle,
+// thread focus owns the middle, a NON-chat sidebar tab is active, or
+// mobile's plan pane owns the panel slot. DESKTOP keeps the sidebar
+// under a presented plan (the plan owns the FLOOR slot only — the tabs
+// still paint at x=floorW). The stack ABOVE the content is: topbar 1
+// row + the tabs' box chrome (ContentOffset dy=2); mobile adds the
+// floor band's rows.
+func (m Model) chatContentOrigin() (originX, originY int, ok bool) {
+	if m.chat == nil || m.tabs.ActiveIndex() != 0 { // the chat tab must own the strip
+		return 0, 0, false
+	}
+	if m.zen || m.threadFocus != nil {
+		return 0, 0, false
+	}
+	dx, dy := (&panels.Tabs{}).ContentOffset() // the sidebar's box chrome (1,2)
+	if m.mobile() {
+		if m.planPaneVisible() {
+			return 0, 0, false // mobile: the plan owns the panel slot
+		}
+		return dx, 1 + m.floorBandH() + dy, true // topbar + the band + the chrome
+	}
+	return m.floorW + dx, 1 + dy, true // the sidebar's x + chrome; topbar + chrome
+}
+
+// publishChatMediaFrame — Frame()'s chat-media registry write (called
+// once per RENDERED frame, right after publishZenbuFrame — the digest
+// covers every input: the scroll/tab/zen terms ride frameNonce and the
+// state loops, a media landing bumps frameNonce in the imageRasterMsg
+// case): the chat pane's VISIBLE kitty previews with their ABSOLUTE
+// screen cells (the pane's content-local slots + the sidebar/band
+// origin), or the empty list whenever the chat is not painted this
+// frame. The registry is wholesale-published per Frame — a scroll
+// re-publishes fresh origins, scrolled-off previews vanish via the
+// wrapper's emitted-set diff (THAT is the delete design — no explicit
+// a=d queue here).
+func (m Model) publishChatMediaFrame() {
+	reg := panels.ZenbuRegistry()
+	ox, oy, ok := m.chatContentOrigin()
+	if !ok {
+		reg.PublishChatMedia(nil)
+		return
+	}
+	slots := m.chat.MediaFrameState()
+	if len(slots) == 0 {
+		reg.PublishChatMedia(nil)
+		return
+	}
+	imgs := make([]panels.ZenbuFrameImage, 0, len(slots))
+	for _, s := range slots {
+		imgs = append(imgs, panels.ZenbuFrameImage{
+			OfficeID: s.OfficeID, OX: ox + s.OX, OY: oy + s.OY, Frame: s.Frame,
+		})
+	}
+	reg.PublishChatMedia(imgs)
+}

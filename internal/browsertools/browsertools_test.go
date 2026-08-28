@@ -3,17 +3,21 @@
 //	policy (Decide) — localhost always, https by default, plain http
 //	     non-localhost only under THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1,
 //	     every other scheme refused, each refusal carrying the exact
-//	     member-facing reason (ONE policy for all three marker kinds);
-//	protocol (Extract) — whole-line markers of ALL THREE kinds strip
+//	     member-facing reason (ONE policy for all four marker kinds);
+//	protocol (Extract) — whole-line markers of ALL FOUR kinds strip
 //	     cleanly (no ghost blank lines), mid-line/unterminated markers
-//	     are prose, and the per-reply cap spans kinds in order of
+//	     are prose, the STRICT browser-action grammar (click/fill/eval)
+//	     parses its payload or stays VISIBLE prose (malformed never
+//	     silently acts), and the per-reply cap spans kinds in order of
 //	     appearance;
 //	bridge (RequestAll/Scrub) — the fake-emit sink sees one correctly
-//	     shaped EvBrowserOpen/EvBrowserScreenshot/EvBrowserSnapshot per
-//	     request, and a marker-only reply degrades to the one-line
-//	     office note (never a blank pin);
+//	     shaped EvBrowserOpen/EvBrowserScreenshot/EvBrowserSnapshot/
+//	     EvBrowserAction per request (the action event carries the
+//	     parsed op/sel/arg payload), and a marker-only reply degrades
+//	     to the one-line office note (never a blank pin);
 //	preamble — the agent-facing text keeps the open-browser paragraph
-//	     byte-identical and carries the new directives verbatim.
+//	     + read-only block byte-identical (strict prefix) and carries
+//	     the browser-action block verbatim.
 package browsertools
 
 import (
@@ -106,49 +110,49 @@ func TestExtractTable(t *testing.T) {
 			"marker-only reply scrubs to empty",
 			"⟦open-browser: https://theboring.name⟧",
 			"",
-			[]Request{{KindOpen, "https://theboring.name"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}},
 		},
 		{
 			"trailing marker leaves prose",
 			"Sure — opening the docs now.\n⟦open-browser: https://theboring.name⟧",
 			"Sure — opening the docs now.",
-			[]Request{{KindOpen, "https://theboring.name"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}},
 		},
 		{
 			"mid-text marker leaves the two halves",
 			"first half\n⟦open-browser: https://theboring.name⟧\nsecond half",
 			"first half\nsecond half",
-			[]Request{{KindOpen, "https://theboring.name"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}},
 		},
 		{
 			"paragraph marker leaves ONE paragraph break",
 			"first half\n\n⟦open-browser: https://theboring.name⟧\n\nsecond half",
 			"first half\n\nsecond half",
-			[]Request{{KindOpen, "https://theboring.name"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}},
 		},
 		{
 			"two markers both land",
 			"⟦open-browser: https://theboring.name⟧\n⟦open-browser: http://localhost:3000⟧",
 			"",
-			[]Request{{KindOpen, "https://theboring.name"}, {KindOpen, "http://localhost:3000"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}, {Kind: KindOpen, URL: "http://localhost:3000"}},
 		},
 		{
 			"screenshot marker strips and kinds",
 			"Rendering it now.\n⟦browser-screenshot: https://theboring.name/docs⟧",
 			"Rendering it now.",
-			[]Request{{KindShot, "https://theboring.name/docs"}},
+			[]Request{{Kind: KindShot, URL: "https://theboring.name/docs"}},
 		},
 		{
 			"snapshot marker strips and kinds",
 			"Reading it for you.\n⟦browser-snapshot: http://localhost:3000/api⟧",
 			"Reading it for you.",
-			[]Request{{KindSnap, "http://localhost:3000/api"}},
+			[]Request{{Kind: KindSnap, URL: "http://localhost:3000/api"}},
 		},
 		{
 			"all three kinds keep order of appearance",
 			"⟦browser-snapshot: https://a.example⟧\n⟦open-browser: https://b.example⟧\n⟦browser-screenshot: https://c.example⟧",
 			"",
-			[]Request{{KindSnap, "https://a.example"}, {KindOpen, "https://b.example"}, {KindShot, "https://c.example"}},
+			[]Request{{Kind: KindSnap, URL: "https://a.example"}, {Kind: KindOpen, URL: "https://b.example"}, {Kind: KindShot, URL: "https://c.example"}},
 		},
 		{
 			"a mid-line marker is prose (the own-line rule)",
@@ -190,13 +194,13 @@ func TestExtractTable(t *testing.T) {
 			"leading/trailing whitespace on the marker line is fine",
 			"prose\n  ⟦open-browser:   https://theboring.name  ⟧  \ntail",
 			"prose\ntail",
-			[]Request{{KindOpen, "https://theboring.name"}},
+			[]Request{{Kind: KindOpen, URL: "https://theboring.name"}},
 		},
 		{
 			"whitespace on a snapshot marker line is fine",
 			"prose\n\t⟦browser-snapshot:  https://theboring.name\t⟧\ntail",
 			"prose\ntail",
-			[]Request{{KindSnap, "https://theboring.name"}},
+			[]Request{{Kind: KindSnap, URL: "https://theboring.name"}},
 		},
 	}
 	for _, c := range cases {
@@ -231,7 +235,7 @@ func TestExtractCapsRequestsPerReply(t *testing.T) {
 	if len(reqs) != MaxRequestsPerReply {
 		t.Fatalf("reqs capped at %d, got %v", MaxRequestsPerReply, reqs)
 	}
-	want := []Request{{KindOpen, "https://a.example"}, {KindShot, "https://b.example"}, {KindSnap, "https://c.example"}}
+	want := []Request{{Kind: KindOpen, URL: "https://a.example"}, {Kind: KindShot, URL: "https://b.example"}, {Kind: KindSnap, URL: "https://c.example"}}
 	for i, r := range reqs {
 		if r != want[i] {
 			t.Fatalf("the cap keeps the FIRST requests in order: reqs[%d] = %+v, want %+v (all %v)", i, r, want[i], reqs)
@@ -270,12 +274,12 @@ func TestBridgeEmitsOneEventPerRequest(t *testing.T) {
 	sink := &fakeSink{}
 	br := &Bridge{Emit: sink.emit, Getenv: flagEnv(false)}
 	decisions := br.RequestAll([]Request{
-		{KindOpen, "https://theboring.name"},  // allowed (https default)
-		{KindOpen, "http://localhost:3000"},   // allowed (loopback)
-		{KindOpen, "http://theboring.name"},   // refused (plain http, flag off)
-		{KindOpen, "file:///tmp/secret.html"}, // refused (scheme)
-		{KindShot, "https://theboring.name"},  // allowed screenshot
-		{KindSnap, "http://theboring.name"},   // refused snapshot
+		{Kind: KindOpen, URL: "https://theboring.name"},  // allowed (https default)
+		{Kind: KindOpen, URL: "http://localhost:3000"},   // allowed (loopback)
+		{Kind: KindOpen, URL: "http://theboring.name"},   // refused (plain http, flag off)
+		{Kind: KindOpen, URL: "file:///tmp/secret.html"}, // refused (scheme)
+		{Kind: KindShot, URL: "https://theboring.name"},  // allowed screenshot
+		{Kind: KindSnap, URL: "http://theboring.name"},   // refused snapshot
 	})
 	if len(decisions) != 6 {
 		t.Fatalf("one decision per request, got %d", len(decisions))
@@ -323,7 +327,7 @@ func TestBridgeEmitsOneEventPerRequest(t *testing.T) {
 
 func TestBridgeNilEmitIsSafe(t *testing.T) {
 	br := &Bridge{Getenv: flagEnv(true)}
-	if ds := br.RequestAll([]Request{{KindSnap, "https://theboring.name"}}); len(ds) != 1 || !ds[0].Allowed {
+	if ds := br.RequestAll([]Request{{Kind: KindSnap, URL: "https://theboring.name"}}); len(ds) != 1 || !ds[0].Allowed {
 		t.Fatalf("a nil sink still decides: %+v", ds)
 	}
 }
@@ -398,14 +402,21 @@ func TestScrubFallbackNamesNewKinds(t *testing.T) {
 
 func TestPromptPreambleTeachesTheContract(t *testing.T) {
 	// the agent-facing instruction must carry the marker shapes, the
-	// own-line rule, the policy flag, and the strip contract.
+	// own-line rule, the policy flag, the strip contract, and the
+	// mutating sibling's grammar + always-ask permission.
 	for _, want := range []string{
 		MarkerOpen + " URL" + MarkerClose,
 		MarkerShot + " URL" + MarkerClose,
 		MarkerSnap + " URL" + MarkerClose,
+		MarkerAct + " URL | click: CSS-SELECTOR" + MarkerClose,
+		MarkerAct + " URL | fill: CSS-SELECTOR = VALUE" + MarkerClose,
+		MarkerAct + " URL | eval: JS-EXPRESSION" + MarkerClose,
 		"ITS OWN line",
 		AllowHTTPEnv + "=1",
 		"strips the directive",
+		"permission prompt ALWAYS asks first",
+		"READ-ONLY",
+		"MUTATES",
 	} {
 		if !strings.Contains(PromptPreamble, want) {
 			t.Fatalf("PromptPreamble missing %q:\n%s", want, PromptPreamble)
@@ -413,10 +424,10 @@ func TestPromptPreambleTeachesTheContract(t *testing.T) {
 	}
 }
 
-// TestPromptPreambleByteContract — the open-browser paragraph is a
-// STABLE CONTRACT (backend tests build expected wire lines from it):
-// it must stay byte-identical, and the new capability lines append
-// after it verbatim.
+// TestPromptPreambleByteContract — the open-browser paragraph + the
+// read-only block are a STABLE CONTRACT (backend tests build expected
+// wire lines from them): they must stay byte-identical (a strict
+// prefix), and the browser-action block appends after them verbatim.
 func TestPromptPreambleByteContract(t *testing.T) {
 	const openParagraph = "[theboringoffice harness — browser tool]\n" +
 		"You can ask the office to open a web page in the member's in-app browser tab. " +
@@ -430,16 +441,294 @@ func TestPromptPreambleByteContract(t *testing.T) {
 	if !strings.HasPrefix(PromptPreamble, openParagraph) {
 		t.Fatalf("the open-browser paragraph must stay byte-identical (it is a strict prefix), got:\n%s", PromptPreamble)
 	}
-	const newLines = "\nTwo read-only siblings (same own-line rule, same URL policy, at most one of each per reply, " +
+	const readOnlyBlock = "\nTwo read-only siblings (same own-line rule, same URL policy, at most one of each per reply, " +
 		"3 browser directives total per reply):\n" +
 		MarkerShot + " URL" + MarkerClose + " — render the page in the member's browser tab as an image " +
 		"(kitty terminals) and save the PNG (the member sees the path).\n" +
 		MarkerSnap + " URL" + MarkerClose + " — fetch the page's text + links back to YOU as a follow-up " +
 		"message — use it to READ pages."
-	if !strings.HasSuffix(PromptPreamble, newLines) {
-		t.Fatalf("the screenshot/snapshot lines must append verbatim, got:\n%s", PromptPreamble)
+	if !strings.HasPrefix(PromptPreamble, openParagraph+readOnlyBlock) {
+		t.Fatalf("the open paragraph + read-only block must stay byte-identical (a strict prefix), got:\n%s", PromptPreamble)
 	}
-	if PromptPreamble != openParagraph+newLines {
-		t.Fatal("the preamble is EXACTLY the open paragraph + the new lines (nothing between, nothing after)")
+	const actionBlock = "\nOne MUTATING sibling (same own-line rule, same URL policy, counts toward the 3-directive cap) — " +
+		"it CHANGES the page, so the member's permission prompt ALWAYS asks first (approve-once only; " +
+		"there is no standing grant, not even for localhost):\n" +
+		MarkerAct + " URL | click: CSS-SELECTOR" + MarkerClose + " — click an element.\n" +
+		MarkerAct + " URL | fill: CSS-SELECTOR = VALUE" + MarkerClose + " — set an input's value " +
+		"(VALUE may contain spaces and '=').\n" +
+		MarkerAct + " URL | eval: JS-EXPRESSION" + MarkerClose + " — evaluate JavaScript on the page; " +
+		"the JSON result comes back to YOU.\n" +
+		"Each action drives a FRESH page load (no session reuse). The outcome — the action's result, " +
+		"the error, or the member's rejection — arrives as a follow-up message. " +
+		"open-browser/browser-screenshot/browser-snapshot are READ-ONLY; browser-action MUTATES — " +
+		"prefer the read-only directives whenever reading is enough."
+	if !strings.HasSuffix(PromptPreamble, actionBlock) {
+		t.Fatalf("the browser-action block must append verbatim, got:\n%s", PromptPreamble)
+	}
+	if PromptPreamble != openParagraph+readOnlyBlock+actionBlock {
+		t.Fatal("the preamble is EXACTLY the open paragraph + the read-only block + the action block (nothing between, nothing after)")
+	}
+}
+
+// TestExtractBrowserActionGrammar — the STRICT mutating-marker grammar:
+// well-formed click/fill/eval markers parse their payload (selectors
+// may carry spaces, fill values may carry spaces and '=', eval
+// expressions any non-⟧ text), and EVERY malformed shape stays VISIBLE
+// prose — never extracted, never acted on.
+func TestExtractBrowserActionGrammar(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string // the scrubbed text (== in when the marker is prose)
+		reqs []Request
+	}{
+		{
+			"click parses",
+			"⟦browser-action: https://theboring.name | click: #buy⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://theboring.name", Op: "click", Sel: "#buy"}},
+		},
+		{
+			"click selector with spaces (descendant combinator)",
+			"⟦browser-action: https://theboring.name | click: .form-row .submit-btn⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://theboring.name", Op: "click", Sel: ".form-row .submit-btn"}},
+		},
+		{
+			"click boundary whitespace trims",
+			"prose\n  ⟦browser-action:   https://x.example   |   click:   #buy  ⟧  \ntail",
+			"prose\ntail",
+			[]Request{{Kind: KindAction, URL: "https://x.example", Op: "click", Sel: "#buy"}},
+		},
+		{
+			"fill parses",
+			"⟦browser-action: https://theboring.name | fill: #q = hello⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://theboring.name", Op: "fill", Sel: "#q", Arg: "hello"}},
+		},
+		{
+			"fill value carries spaces and '='",
+			"⟦browser-action: http://localhost:3000 | fill: #q = a = b c⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "http://localhost:3000", Op: "fill", Sel: "#q", Arg: "a = b c"}},
+		},
+		{
+			"fill splits on the FIRST '='",
+			"⟦browser-action: https://x | fill: #q=a=b⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://x", Op: "fill", Sel: "#q", Arg: "a=b"}},
+		},
+		{
+			"eval parses any non-⟧ expression",
+			"⟦browser-action: https://x | eval: document.querySelectorAll('a').length⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://x", Op: "eval", Arg: "document.querySelectorAll('a').length"}},
+		},
+		{
+			"eval expression with spaces and pipes-in-strings",
+			"⟦browser-action: https://x | eval: ({a: 1, b: 'x|y'})⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://x", Op: "eval", Arg: "({a: 1, b: 'x|y'})"}},
+		},
+		{
+			"https deep path + query URL",
+			"⟦browser-action: https://theboring.name/docs/keys?x=1#y | click: #a⟧",
+			"",
+			[]Request{{Kind: KindAction, URL: "https://theboring.name/docs/keys?x=1#y", Op: "click", Sel: "#a"}},
+		},
+		// -------- malformed: the marker NEVER extracts, stays visible prose
+		{
+			"unknown op is prose",
+			"⟦browser-action: https://x | frobnicate: #a⟧",
+			"⟦browser-action: https://x | frobnicate: #a⟧",
+			nil,
+		},
+		{
+			"click with an empty selector is prose",
+			"⟦browser-action: https://x | click:⟧",
+			"⟦browser-action: https://x | click:⟧",
+			nil,
+		},
+		{
+			"click with a whitespace-only selector is prose",
+			"⟦browser-action: https://x | click:   ⟧",
+			"⟦browser-action: https://x | click:   ⟧",
+			nil,
+		},
+		{
+			"fill with an empty value is prose",
+			"⟦browser-action: https://x | fill: #q =⟧",
+			"⟦browser-action: https://x | fill: #q =⟧",
+			nil,
+		},
+		{
+			"fill with an empty selector is prose",
+			"⟦browser-action: https://x | fill: = val⟧",
+			"⟦browser-action: https://x | fill: = val⟧",
+			nil,
+		},
+		{
+			"fill without '=' is prose",
+			"⟦browser-action: https://x | fill: #q⟧",
+			"⟦browser-action: https://x | fill: #q⟧",
+			nil,
+		},
+		{
+			"eval with an empty expression is prose",
+			"⟦browser-action: https://x | eval:⟧",
+			"⟦browser-action: https://x | eval:⟧",
+			nil,
+		},
+		{
+			"missing the pipe is prose",
+			"⟦browser-action: https://x click: #a⟧",
+			"⟦browser-action: https://x click: #a⟧",
+			nil,
+		},
+		{
+			"missing the URL is prose",
+			"⟦browser-action: | click: #a⟧",
+			"⟦browser-action: | click: #a⟧",
+			nil,
+		},
+		{
+			"a mid-line action marker is prose (the own-line rule)",
+			"try ⟦browser-action: https://x | click: #a⟧ here",
+			"try ⟦browser-action: https://x | click: #a⟧ here",
+			nil,
+		},
+		{
+			"trailing text after the close is prose",
+			"⟦browser-action: https://x | click: #a⟧ extra",
+			"⟦browser-action: https://x | click: #a⟧ extra",
+			nil,
+		},
+		{
+			"an unterminated action marker is prose",
+			"⟦browser-action: https://x | click: #a\nnext",
+			"⟦browser-action: https://x | click: #a\nnext",
+			nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, reqs := Extract(c.in)
+			if got != c.want {
+				t.Fatalf("Extract text = %q, want %q", got, c.want)
+			}
+			if len(reqs) != len(c.reqs) {
+				t.Fatalf("Extract reqs = %+v, want %+v", reqs, c.reqs)
+			}
+			for i, r := range reqs {
+				if r != c.reqs[i] {
+					t.Fatalf("Extract reqs[%d] = %+v, want %+v", i, r, c.reqs[i])
+				}
+			}
+		})
+	}
+}
+
+// TestExtractCapsRequestsSpanningAction — the 3-directive cap SPANS the
+// action kind too: 4 mixed markers → the FIRST 3 in order of
+// appearance survive (the past-cap action line still strips).
+func TestExtractCapsRequestsSpanningAction(t *testing.T) {
+	in := "⟦browser-action: https://a.example | click: #one⟧\n" +
+		"⟦open-browser: https://b.example⟧\n" +
+		"⟦browser-snapshot: https://c.example⟧\n" +
+		"⟦browser-action: https://d.example | eval: 1+1⟧"
+	cleaned, reqs := Extract(in)
+	if cleaned != "" {
+		t.Fatalf("all marker lines strip, got %q", cleaned)
+	}
+	if len(reqs) != MaxRequestsPerReply {
+		t.Fatalf("reqs capped at %d, got %+v", MaxRequestsPerReply, reqs)
+	}
+	want := []Request{
+		{Kind: KindAction, URL: "https://a.example", Op: "click", Sel: "#one"},
+		{Kind: KindOpen, URL: "https://b.example"},
+		{Kind: KindSnap, URL: "https://c.example"},
+	}
+	for i, r := range reqs {
+		if r != want[i] {
+			t.Fatalf("the cap keeps the FIRST requests in order: reqs[%d] = %+v, want %+v (all %+v)", i, r, want[i], reqs)
+		}
+	}
+}
+
+// TestBridgeEmitsActionEvent — a browser-action request lands as ONE
+// EvBrowserAction carrying the policy verdict AND the parsed action
+// payload (op/sel/arg); a refused action carries the exact reason on
+// the same kind (the app posts the reason row, NO modal).
+func TestBridgeEmitsActionEvent(t *testing.T) {
+	sink := &fakeSink{}
+	br := &Bridge{Emit: sink.emit, Getenv: flagEnv(false)}
+	decisions := br.RequestAll([]Request{
+		{Kind: KindAction, URL: "http://localhost:3000", Op: "click", Sel: "#buy"},           // allowed (loopback) — the MODAL still gates it app-side
+		{Kind: KindAction, URL: "https://theboring.name", Op: "fill", Sel: "#q", Arg: "x=1"}, // allowed (https)
+		{Kind: KindAction, URL: "http://theboring.name", Op: "eval", Arg: "1+1"},             // refused (plain http, flag off)
+	})
+	if len(decisions) != 3 {
+		t.Fatalf("one decision per request, got %d", len(decisions))
+	}
+	var acts []state.Event
+	for _, e := range sink.evs {
+		if e.Kind == state.EvBrowserAction {
+			acts = append(acts, e)
+		}
+	}
+	if len(acts) != 3 {
+		t.Fatalf("one EvBrowserAction per request, got %+v", sink.evs)
+	}
+	// allowed click: the verdict true, no reason, the payload rides.
+	if acts[0].Text != "http://localhost:3000" || !acts[0].BrowserOpenAllowed || acts[0].BrowserOpenReason != "" ||
+		acts[0].BrowserActionOp != "click" || acts[0].BrowserActionSel != "#buy" || acts[0].BrowserActionArg != "" {
+		t.Fatalf("the allowed click event is mis-shaped: %+v", acts[0])
+	}
+	// allowed fill: the value rides Arg.
+	if acts[1].BrowserActionOp != "fill" || acts[1].BrowserActionSel != "#q" || acts[1].BrowserActionArg != "x=1" {
+		t.Fatalf("the allowed fill event must carry sel+arg: %+v", acts[1])
+	}
+	// refused eval: the exact policy reason, the payload STILL rides
+	// (the app's red row names what was refused).
+	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	if acts[2].BrowserOpenAllowed || acts[2].BrowserOpenReason != reason ||
+		acts[2].BrowserActionOp != "eval" || acts[2].BrowserActionArg != "1+1" {
+		t.Fatalf("the refused eval event must carry the exact reason + payload: %+v", acts[2])
+	}
+	for i, d := range decisions {
+		if d.Kind != KindAction {
+			t.Fatalf("decision %d keeps the action kind: %+v", i, d)
+		}
+	}
+}
+
+// TestScrubFallbackNamesAction — an action-ONLY reply degrades to the
+// kind-named office note (allowed) / the kind-named refusal note
+// (refused), exactly like its read-only siblings.
+func TestScrubFallbackNamesAction(t *testing.T) {
+	sink := &fakeSink{}
+	br := &Bridge{Emit: sink.emit, Getenv: flagEnv(false)}
+
+	if got := Scrub("⟦browser-action: https://theboring.name | click: #buy⟧", br); got !=
+		"[theboringoffice] browser-action: https://theboring.name" {
+		t.Fatalf("action-only fallback = %q", got)
+	}
+	if got := Scrub("⟦browser-action: http://theboring.name | click: #buy⟧", br); got !=
+		"[theboringoffice] browser-action refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		t.Fatalf("refused action-only fallback = %q", got)
+	}
+	// prose + action marker → the prose stays, no fallback note.
+	if got := Scrub("clicking it now.\n⟦browser-action: https://theboring.name | click: #buy⟧", br); got != "clicking it now." {
+		t.Fatalf("scrub with prose = %q", got)
+	}
+	// a MALFORMED action marker never extracts: it stays visible prose,
+	// untouched, and fires NO bridge traffic.
+	before := len(sink.evs)
+	in := "⟦browser-action: https://theboring.name | click:⟧"
+	if got := Scrub(in, br); got != in {
+		t.Fatalf("a malformed action marker stays visible verbatim, got %q", got)
+	}
+	if len(sink.evs) != before {
+		t.Fatal("a malformed action marker must never emit")
 	}
 }

@@ -100,25 +100,125 @@ func TestZenbuFrameWriterDrainedDeletes(t *testing.T) {
 	}
 }
 
-// TestZenbuFrameWriterIdempotentReemit — the SAME registry state across
-// two flushes re-emits the byte-identical splice (kitty dedupes by id;
-// the cached APC string is never re-encoded), and cursor save/restore
-// pairs 1:1.
-func TestZenbuFrameWriterIdempotentReemit(t *testing.T) {
+// TestZenbuFrameWriterBandwidthSkip — the SAME registry state across
+// two erase-free flushes re-emits NOTHING (the terminal already holds
+// the image — the wave-86 bandwidth ruling); a flush carrying an
+// erase-display/erase-line sequence re-emits EVERYTHING (ED/EL could
+// have clobbered terminal-side image state); deletes ALWAYS flush, even
+// under the skip. The emitted bytes stay the cached APC string, never a
+// re-encode, and cursor save/restore pairs 1:1.
+func TestZenbuFrameWriterBandwidthSkip(t *testing.T) {
 	var out strings.Builder
 	reg := &ZenbuFrameRegistry{}
 	w := NewZenbuFrameWriter(&out, reg)
 	apc := "\x1b_Ga=T,t=d,q=2,C=1,i=00000009,f=100;SURFTVA==\x1b\\"
 	reg.Publish(true, 0, 3, []ZenbuFrameImage{frameTestImage(9, 1, 1, apc)}, nil)
+	splice := "\x1b7\x1b[5;2H" + apc + "\x1b8"
+
+	// flush 1: the first emission splices; flush 2 (identical registry,
+	// no erase) splices NOTHING.
 	_, _ = w.Write([]byte("A"))
 	_, _ = w.Write([]byte("B"))
-	got := out.String()
-	splice := "\x1b7\x1b[5;2H" + apc + "\x1b8"
-	if got != "A"+splice+"B"+splice {
-		t.Fatalf("every flush re-emits the byte-identical splice:\n%q", got)
+	if got := out.String(); got != "A"+splice+"B" {
+		t.Fatalf("an unchanged image skips the re-emit on an erase-free flush:\n got %q\nwant %q", got, "A"+splice+"B")
 	}
-	if saves, restores := strings.Count(got, "\x1b7"), strings.Count(got, "\x1b8"); saves != restores || saves != 2 {
-		t.Fatalf("cursor save/restore pairs 1:1: %d vs %d", saves, restores)
+
+	// an ED flush (the resize shape) re-emits EVERYTHING live; the next
+	// erase-free flush skips again.
+	out.Reset()
+	_, _ = w.Write([]byte("\x1b[2J\x1b[1;1H"))
+	if got, want := out.String(), "\x1b[2J\x1b[1;1H"+splice; got != want {
+		t.Fatalf("an ED flush re-emits every live image:\n got %q\nwant %q", got, want)
+	}
+	out.Reset()
+	_, _ = w.Write([]byte("C"))
+	if got := out.String(); got != "C" {
+		t.Fatalf("the erase-free flush after the repair skips again: %q", got)
+	}
+
+	// an EL flush (erase-line) re-emits too (a cleared row tail could
+	// have clobbered the image's cells).
+	out.Reset()
+	_, _ = w.Write([]byte("\x1b[10;1H\x1b[K"))
+	if got, want := out.String(), "\x1b[10;1H\x1b[K"+splice; got != want {
+		t.Fatalf("an EL flush re-emits every live image:\n got %q\nwant %q", got, want)
+	}
+
+	// deletes ALWAYS flush, even when nothing else emits: the
+	// active→empty transition under an erase-free flush.
+	out.Reset()
+	reg.Clear()
+	_, _ = w.Write([]byte("D"))
+	if got, want := out.String(), "D"+kittyDeleteFrame(9); got != want {
+		t.Fatalf("deletes always flush (skip or not):\n got %q\nwant %q", got, want)
+	}
+
+	// cursor save/restore paired 1:1 across the whole drive.
+	if saves, restores := strings.Count(splice, "\x1b7"), strings.Count(splice, "\x1b8"); saves != 1 || restores != 1 {
+		t.Fatalf("the splice's cursor discipline pairs 1:1: %d vs %d", saves, restores)
+	}
+}
+
+// TestZenbuFrameWriterSkipTable — the skip's decision table, byte-asserted
+// per row: (registry change, flush erase) → emitted suffix.
+func TestZenbuFrameWriterSkipTable(t *testing.T) {
+	apcA := "\x1b_Ga=T,t=d,q=2,C=1,i=0000000a,f=100;QQ==\x1b\\"
+	apcA2 := "\x1b_Ga=T,t=d,q=2,C=1,i=0000000a,f=100;Qg==\x1b\\" // same id, NEW payload bytes
+	spliceAt := func(row, col int, apc string) string {
+		return "\x1b7\x1b[" + itoa(row) + ";" + itoa(col) + "H" + apc + "\x1b8"
+	}
+	cases := []struct {
+		name   string
+		flush  string // the renderer bytes riding the flush
+		mutate func(*ZenbuFrameRegistry)
+		want   string // the splice suffix after the flush
+	}{
+		{"identical + clean flush", "F", nil, ""},
+		{"identical + ED", "\x1b[2J", nil, spliceAt(4, 6, apcA)},
+		{"identical + EL", "\x1b[0K", nil, spliceAt(4, 6, apcA)},
+		{"identical + ED param", "\x1b[3J", nil, spliceAt(4, 6, apcA)},
+		{"moved origin + clean flush", "F", func(r *ZenbuFrameRegistry) {
+			r.Publish(true, 0, 4, []ZenbuFrameImage{frameTestImage(10, 5, 0, apcA)}, nil)
+		}, spliceAt(5, 6, apcA)},
+		{"changed APC bytes + clean flush", "F", func(r *ZenbuFrameRegistry) {
+			r.Publish(true, 0, 4, []ZenbuFrameImage{frameTestImage(10, 5, 0, apcA2)}, nil)
+		}, spliceAt(5, 6, apcA2)},
+		{"new image joins + clean flush", "F", func(r *ZenbuFrameRegistry) {
+			r.Publish(true, 0, 4, []ZenbuFrameImage{
+				frameTestImage(10, 5, 0, apcA2),
+				frameTestImage(11, 1, 1, apcA),
+			}, nil)
+		}, spliceAt(6, 2, apcA)}, // ONLY the newcomer emits (id 11 at row 4+1+1, col 0+1+1)
+		{"queued delete of a LIVE id re-places (converges)", "F", func(r *ZenbuFrameRegistry) {
+			r.Publish(true, 0, 4, []ZenbuFrameImage{
+				frameTestImage(10, 5, 0, apcA2),
+				frameTestImage(11, 1, 1, apcA),
+			}, []uint32{10})
+		}, kittyDeleteFrame(10) + spliceAt(5, 6, apcA2)}, // the delete never swallows the re-place
+		{"drop one image + clean flush", "F", func(r *ZenbuFrameRegistry) {
+			r.Publish(true, 0, 4, []ZenbuFrameImage{frameTestImage(11, 1, 1, apcA)}, nil)
+		}, kittyDeleteFrame(10)}, // the diff delete; the survivor skips
+	}
+	var out strings.Builder
+	reg := &ZenbuFrameRegistry{}
+	w := NewZenbuFrameWriter(&out, reg)
+	reg.Publish(true, 0, 3, []ZenbuFrameImage{frameTestImage(10, 5, 0, apcA)}, nil)
+	_, _ = w.Write([]byte("seed")) // the first emission (always splices)
+	seed := "seed" + spliceAt(4, 6, apcA)
+	if got := out.String(); got != seed {
+		t.Fatalf("the seed flush splices the first emission:\n got %q\nwant %q", got, seed)
+	}
+	for _, tc := range cases {
+		out.Reset()
+		if tc.mutate != nil {
+			tc.mutate(reg)
+		}
+		if _, err := w.Write([]byte(tc.flush)); err != nil {
+			t.Fatalf("%s: Write: %v", tc.name, err)
+		}
+		if got, want := out.String(), tc.flush+tc.want; got != want {
+			t.Fatalf("%s:\n got %q\nwant %q", tc.name, got, want)
+		}
 	}
 }
 
@@ -179,6 +279,90 @@ func TestZenbuFrameWriterDirectEmitAndFinish(t *testing.T) {
 	w.Finish()
 	if got := out.String(); got != "F2" {
 		t.Fatalf("post-Finish the wrapper is passthrough-only + idempotent: %q", got)
+	}
+}
+
+// TestZenbuFrameWriterChatMediaRegion — the TWO regions are independent:
+// the chat-media publish's ABSOLUTE cells splice after the browser
+// region's origin-resolved images (publish order), a chat-only clear
+// a=d's ONLY the chat ids (the lane keeps painting), and a browser-only
+// Clear leaves the chat images untouched.
+func TestZenbuFrameWriterChatMediaRegion(t *testing.T) {
+	var out strings.Builder
+	reg := &ZenbuFrameRegistry{}
+	w := NewZenbuFrameWriter(&out, reg)
+	laneAPC := "\x1b_Ga=T,t=d,q=2,C=1,i=00000001,f=32,o=z,s=8,v=8;TEFORQ==\x1b\\"
+	chatAPC := "\x1b_Ga=T,t=d,f=100,i=abcdef01,q=2;Q0hBVA==\x1b\\"
+	reg.Publish(true, 0, 3, []ZenbuFrameImage{frameTestImage(1, 2, 1, laneAPC)}, nil)
+	reg.PublishChatMedia([]ZenbuFrameImage{frameTestImage(0xabcdef01, 60, 5, chatAPC)}) // ABSOLUTE cell
+	_, _ = w.Write([]byte("F"))
+	want := "F" +
+		"\x1b7\x1b[5;3H" + laneAPC + "\x1b8" + // the lane: origin (0,3) + local (2,1) → CUP(5;3)
+		"\x1b7\x1b[6;61H" + chatAPC + "\x1b8" // the chat preview: the absolute cell → CUP(6;61)
+	if got := out.String(); got != want {
+		t.Fatalf("both regions splice at their own cells in publish order:\n got %q\nwant %q", got, want)
+	}
+
+	// the chat region clears (tab flip / scroll-off): the wrapper's diff
+	// a=d's ONLY the chat id — the lane's image skips (unchanged).
+	out.Reset()
+	reg.PublishChatMedia(nil)
+	_, _ = w.Write([]byte("G"))
+	if got, want := out.String(), "G"+kittyDeleteFrame(0xabcdef01); got != want {
+		t.Fatalf("the chat-region clear a=d's only the chat id:\n got %q\nwant %q", got, want)
+	}
+
+	// the lane's Clear leaves the chat region untouched: re-publish the
+	// chat preview, Clear (browser), flush — the chat image skips (the
+	// terminal holds it), nothing emits.
+	reg.PublishChatMedia([]ZenbuFrameImage{frameTestImage(0xabcdef01, 60, 5, chatAPC)})
+	_, _ = w.Write([]byte("H")) // the chat preview re-places (it was deleted above)
+	out.Reset()
+	reg.Clear() // the BROWSER region only
+	_, _ = w.Write([]byte("I"))
+	if got, want := out.String(), "I"+kittyDeleteFrame(1); got != want {
+		t.Fatalf("the browser Clear never touches the chat region:\n got %q\nwant %q", got, want)
+	}
+	out.Reset()
+	_, _ = w.Write([]byte("J")) // the chat image is unchanged — the skip holds
+	if got := out.String(); got != "J" {
+		t.Fatalf("the surviving chat image skips the re-emit: %q", got)
+	}
+}
+
+// TestZenbuFrameWriterChatScrollCUP — the scroll contract, byte-for-byte:
+// a chat preview re-published at a NEW absolute row (the transcript
+// scrolled by one) re-emits at the new CUP (kitty's same-id atomic
+// replace), and a preview that scrolls OUT of the visible window (absent
+// from the publish) is a=d'd by the emitted-set diff.
+func TestZenbuFrameWriterChatScrollCUP(t *testing.T) {
+	var out strings.Builder
+	reg := &ZenbuFrameRegistry{}
+	w := NewZenbuFrameWriter(&out, reg)
+	chatAPC := "\x1b_Ga=T,t=d,f=100,i=00c0ffee,q=2;U0NST0xM\x1b\\"
+	reg.PublishChatMedia([]ZenbuFrameImage{frameTestImage(0x00c0ffee, 60, 10, chatAPC)})
+	_, _ = w.Write([]byte("S0"))
+	if got, want := out.String(), "S0"+"\x1b7\x1b[11;61H"+chatAPC+"\x1b8"; got != want {
+		t.Fatalf("the initial publish splices at CUP(11;61):\n got %q\nwant %q", got, want)
+	}
+	// scroll by one row: the SAME image at absolute row 9 now.
+	out.Reset()
+	reg.PublishChatMedia([]ZenbuFrameImage{frameTestImage(0x00c0ffee, 60, 9, chatAPC)})
+	_, _ = w.Write([]byte("S1"))
+	if got, want := out.String(), "S1"+"\x1b7\x1b[10;61H"+chatAPC+"\x1b8"; got != want {
+		t.Fatalf("the scroll re-emits at the moved CUP byte-for-byte:\n got %q\nwant %q", got, want)
+	}
+	// scroll past: the publish drops the preview — the diff a=d's it.
+	out.Reset()
+	reg.PublishChatMedia(nil)
+	_, _ = w.Write([]byte("S2"))
+	if got, want := out.String(), "S2"+kittyDeleteFrame(0x00c0ffee); got != want {
+		t.Fatalf("the scrolled-off preview is a=d'd:\n got %q\nwant %q", got, want)
+	}
+	out.Reset()
+	_, _ = w.Write([]byte("S3")) // the delete fired ONCE
+	if got := out.String(); got != "S3" {
+		t.Fatalf("no stale a=d after the scroll-off: %q", got)
 	}
 }
 

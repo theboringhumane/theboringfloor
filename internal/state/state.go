@@ -507,6 +507,20 @@ const (
 	// contract as EvBrowserOpen, plus the result-leg fields below. The
 	// reducer passes it through untouched.
 	EvBrowserSnapshot EventKind = "browser-snapshot"
+	// EvBrowserAction — an AGENT-originated request to MUTATE a page
+	// (ADDITIVE; the ⟦browser-action: URL | op⟧ marker — click/fill/eval):
+	// ALWAYS gated by the member's permission modal (actions mutate, so
+	// even a policy-allowed localhost URL asks first — approve-once only).
+	// REQUEST leg: Text = the policy-decided URL, BrowserOpenAllowed/
+	// BrowserOpenReason = the verdict (a refusal posts the red reason row
+	// and NEVER opens a modal), BrowserActionOp/Sel/Arg = the parsed
+	// action. The app parks an allowed request as a modal hold and the
+	// member's answer drives execution/rejection (browser_open.go).
+	// RESULT leg (BrowserToolDone=true): success re-uses
+	// BrowserOpenAllowed=true with BrowserActionFinalURL +
+	// BrowserActionResult; failure carries the member/agent-facing error
+	// in BrowserOpenReason. The reducer passes it through untouched.
+	EvBrowserAction EventKind = "browser-action"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -587,6 +601,20 @@ type Event struct {
 	BrowserShotPath  string `json:"browserShotPath,omitempty"`
 	BrowserSnapTitle string `json:"browserSnapTitle,omitempty"`
 	BrowserSnapLinks int    `json:"browserSnapLinks,omitempty"`
+	// Browser action fields (EvBrowserAction) — the MUTATING sibling's
+	// payload + result. REQUEST leg: BrowserActionOp is "click" | "fill" |
+	// "eval", BrowserActionSel the CSS selector (click/fill),
+	// BrowserActionArg the fill value or the eval JS expression. RESULT
+	// leg: BrowserActionFinalURL is the post-action location,
+	// BrowserActionResult the op's result text ("clicked <sel>" /
+	// "filled <sel>" / the eval JSON, 4KB rune-safe capped by the
+	// engine). No existing field can carry these (the permission modal
+	// itself reuses the PermissionID/ToolName/ToolSummary fields).
+	BrowserActionOp       string `json:"browserActionOp,omitempty"`
+	BrowserActionSel      string `json:"browserActionSel,omitempty"`
+	BrowserActionArg      string `json:"browserActionArg,omitempty"`
+	BrowserActionFinalURL string `json:"browserActionFinalUrl,omitempty"`
+	BrowserActionResult   string `json:"browserActionResult,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

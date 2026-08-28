@@ -20,11 +20,17 @@
 // can straddle delta boundaries — the completion pin supersedes the
 // growing bubble, so the transcript at rest is always clean).
 //
-// The tool speaks THREE directives, each on its own line:
+// The tool speaks FOUR directives, each on its own line:
 //
 //	⟦open-browser: URL⟧        — open the page in the member's tab
 //	⟦browser-screenshot: URL⟧  — render it for the member (PNG saved)
 //	⟦browser-snapshot: URL⟧    — read text+links BACK to the agent
+//	⟦browser-action: URL | op⟧ — MUTATE the page (click/fill/eval) —
+//	                              ALWAYS gated by the member's permission
+//	                              modal (approve-once; even localhost asks)
+//
+// The first three are READ-ONLY; the fourth mutates, which is why its
+// gate is the member's modal and not just the URL policy.
 //
 // The policy (Decide): localhost/127.0.0.1/::1 always; https:// to any
 // host by default; plain http:// to any other host refused unless
@@ -45,14 +51,15 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
-// MarkerOpen/MarkerShot/MarkerSnap open the three one-line directives;
-// MarkerClose delimits them all. The brackets are U+27E6/U+27E7
-// (mathematical white square brackets) — distinctive enough that
-// ordinary prose or code never carries them by accident.
+// MarkerOpen/MarkerShot/MarkerSnap/MarkerAct open the four one-line
+// directives; MarkerClose delimits them all. The brackets are
+// U+27E6/U+27E7 (mathematical white square brackets) — distinctive
+// enough that ordinary prose or code never carries them by accident.
 const (
 	MarkerOpen  = "⟦open-browser:"
 	MarkerShot  = "⟦browser-screenshot:"
 	MarkerSnap  = "⟦browser-snapshot:"
+	MarkerAct   = "⟦browser-action:"
 	MarkerClose = "⟧"
 )
 
@@ -61,20 +68,39 @@ const (
 type Kind string
 
 const (
-	KindOpen Kind = "open-browser"
-	KindShot Kind = "browser-screenshot"
-	KindSnap Kind = "browser-snapshot"
+	KindOpen   Kind = "open-browser"
+	KindShot   Kind = "browser-screenshot"
+	KindSnap   Kind = "browser-snapshot"
+	KindAction Kind = "browser-action"
+)
+
+// Action ops (Request.Op when Kind == KindAction) — the STRICT grammar
+// the actionLineRe matchers encode:
+//
+//	⟦browser-action: URL | click: CSS-SELECTOR⟧
+//	⟦browser-action: URL | fill: CSS-SELECTOR = VALUE⟧
+//	⟦browser-action: URL | eval: JS-EXPRESSION⟧
+const (
+	ActionOpClick = "click"
+	ActionOpFill  = "fill"
+	ActionOpEval  = "eval"
 )
 
 // Request — ONE parsed marker: its directive kind and the (raw,
-// policy-pending) URL it carries.
+// policy-pending) URL it carries. Op/Sel/Arg are the KindAction payload
+// (zero on every other kind): Op is ActionOpClick/Fill/Eval, Sel the
+// CSS selector (click/fill), Arg the fill value or the eval JS
+// expression.
 type Request struct {
 	Kind Kind
 	URL  string
+	Op   string
+	Sel  string
+	Arg  string
 }
 
 // MaxRequestsPerReply caps the URLs ONE reply may request, SPANNING all
-// three marker kinds (the preamble contracts one of each; extras are
+// four marker kinds (the preamble contracts one of each; extras are
 // tolerated up to this cap and dropped past it — the marker lines are
 // still stripped).
 const MaxRequestsPerReply = 3
@@ -93,16 +119,51 @@ func markerLineRe(marker string) *regexp.Regexp {
 	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(marker) + `[ \t]*([^\s⟧]+)[ \t]*⟧[ \t]*\r?$\n?`)
 }
 
-// markerKinds — the three directive matchers, in kind order (extraction
-// itself re-sorts hits by position, so cross-kind order of appearance
-// is preserved).
+// actionLineRe builds ONE STRICT whole-line browser-action matcher for a
+// single op's spec grammar: the URL as the first non-space non-⟧ run, a
+// " | " separator (surrounding whitespace optional), then the op's own
+// capture shape (a non-empty selector for click; a non-empty
+// no-⟧-no-= selector, the first " = " split, and a non-empty value —
+// which MAY carry spaces and further '=' — for fill; any non-empty
+// non-⟧ expression for eval). A line that starts like a browser-action
+// marker but fits NO op's grammar matches NOTHING here: it stays in the
+// transcript as visible prose and NEVER acts (malformed = visible,
+// never silently executed).
+func actionLineRe(spec string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(MarkerAct) +
+		`[ \t]*([^\s⟧]+)[ \t]*\|[ \t]*` + spec + `[ \t]*⟧[ \t]*\r?$\n?`)
+}
+
+// The STRICT per-op spec grammars (selector starts non-space; lazy
+// bodies let the trailing [ \t]*⟧ own the boundary whitespace).
+const (
+	actionClickSpec = `click:[ \t]*(\S[^⟧]*?)`
+	actionFillSpec  = `fill:[ \t]*(\S[^⟧=]*?)[ \t]*=[ \t]*(\S[^⟧]*?)`
+	actionEvalSpec  = `eval:[ \t]*(\S[^⟧]*?)`
+)
+
+// markerKinds — the four directive matchers (three action grammars, one
+// per op), in kind order (extraction itself re-sorts hits by position,
+// so cross-kind order of appearance is preserved). build assembles the
+// Request from the match's submatch indexes; a nil build is the plain
+// URL-only shape (group 1).
 var markerKinds = []struct {
-	kind Kind
-	re   *regexp.Regexp
+	kind  Kind
+	re    *regexp.Regexp
+	build func(text string, m []int) Request
 }{
-	{KindOpen, markerLineRe(MarkerOpen)},
-	{KindShot, markerLineRe(MarkerShot)},
-	{KindSnap, markerLineRe(MarkerSnap)},
+	{KindOpen, markerLineRe(MarkerOpen), nil},
+	{KindShot, markerLineRe(MarkerShot), nil},
+	{KindSnap, markerLineRe(MarkerSnap), nil},
+	{KindAction, actionLineRe(actionClickSpec), func(text string, m []int) Request {
+		return Request{Kind: KindAction, URL: text[m[2]:m[3]], Op: ActionOpClick, Sel: text[m[4]:m[5]]}
+	}},
+	{KindAction, actionLineRe(actionFillSpec), func(text string, m []int) Request {
+		return Request{Kind: KindAction, URL: text[m[2]:m[3]], Op: ActionOpFill, Sel: text[m[4]:m[5]], Arg: text[m[6]:m[7]]}
+	}},
+	{KindAction, actionLineRe(actionEvalSpec), func(text string, m []int) Request {
+		return Request{Kind: KindAction, URL: text[m[2]:m[3]], Op: ActionOpEval, Arg: text[m[4]:m[5]]}
+	}},
 }
 
 // blankCollapseRe merges the paragraph breaks a stripped marker line
@@ -112,8 +173,9 @@ var blankCollapseRe = regexp.MustCompile(`\n{3,}`)
 // PromptPreamble — the harness instruction riding the FIRST prompt of
 // every boss session (both backends): teaches the markers, the
 // member-controlled URL policy, and the strip contract (the agent must
-// never quote a marker as prose). The open-browser paragraph is
-// byte-stable (backend tests pin it); new capabilities APPEND lines.
+// never quote a marker as prose). The open-browser paragraph +
+// read-only block are byte-stable (backend tests pin them); new
+// capabilities APPEND lines.
 const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
 	"You can ask the office to open a web page in the member's in-app browser tab. " +
 	"To open a page, emit this directive on ITS OWN line, at most once per reply:\n" +
@@ -128,7 +190,19 @@ const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
 	MarkerShot + " URL" + MarkerClose + " — render the page in the member's browser tab as an image " +
 	"(kitty terminals) and save the PNG (the member sees the path).\n" +
 	MarkerSnap + " URL" + MarkerClose + " — fetch the page's text + links back to YOU as a follow-up " +
-	"message — use it to READ pages."
+	"message — use it to READ pages." +
+	"\nOne MUTATING sibling (same own-line rule, same URL policy, counts toward the 3-directive cap) — " +
+	"it CHANGES the page, so the member's permission prompt ALWAYS asks first (approve-once only; " +
+	"there is no standing grant, not even for localhost):\n" +
+	MarkerAct + " URL | click: CSS-SELECTOR" + MarkerClose + " — click an element.\n" +
+	MarkerAct + " URL | fill: CSS-SELECTOR = VALUE" + MarkerClose + " — set an input's value " +
+	"(VALUE may contain spaces and '=').\n" +
+	MarkerAct + " URL | eval: JS-EXPRESSION" + MarkerClose + " — evaluate JavaScript on the page; " +
+	"the JSON result comes back to YOU.\n" +
+	"Each action drives a FRESH page load (no session reuse). The outcome — the action's result, " +
+	"the error, or the member's rejection — arrives as a follow-up message. " +
+	"open-browser/browser-screenshot/browser-snapshot are READ-ONLY; browser-action MUTATES — " +
+	"prefer the read-only directives whenever reading is enough."
 
 // Decision — the policy verdict for one requested URL. Kind is the
 // directive the request rode (RequestAll stamps it; Decide alone leaves
@@ -172,7 +246,7 @@ func Decide(rawurl string, getenv func(string) string) Decision {
 	return Decision{URL: u, Reason: "plain http to " + host + " refused — export " + AllowHTTPEnv + "=1 to allow outbound http pages"}
 }
 
-// Extract pulls every whole-line marker (all three kinds) out of a
+// Extract pulls every whole-line marker (all four kinds) out of a
 // COMPLETED assistant text: it returns the text with the marker lines
 // stripped (no ghost blank lines) plus the requests in order of
 // appearance ACROSS kinds, capped at MaxRequestsPerReply (past-cap
@@ -186,7 +260,11 @@ func Extract(text string) (string, []Request) {
 	var hits []hit
 	for _, mk := range markerKinds {
 		for _, m := range mk.re.FindAllStringSubmatchIndex(text, -1) {
-			hits = append(hits, hit{at: m[0], req: Request{Kind: mk.kind, URL: text[m[2]:m[3]]}})
+			req := Request{Kind: mk.kind, URL: text[m[2]:m[3]]}
+			if mk.build != nil {
+				req = mk.build(text, m)
+			}
+			hits = append(hits, hit{at: m[0], req: req})
 		}
 	}
 	if len(hits) == 0 {
@@ -230,6 +308,8 @@ func eventKind(k Kind) state.EventKind {
 		return state.EvBrowserScreenshot
 	case KindSnap:
 		return state.EvBrowserSnapshot
+	case KindAction:
+		return state.EvBrowserAction
 	default:
 		return state.EvBrowserOpen
 	}
@@ -237,12 +317,15 @@ func eventKind(k Kind) state.EventKind {
 
 // RequestAll decides every request (already Extract-capped) and emits
 // ONE event per request — EvBrowserOpen / EvBrowserScreenshot /
-// EvBrowserSnapshot by directive kind. The URL rides Text, the verdict
-// rides BrowserOpenAllowed, and a refusal carries BrowserOpenReason for
-// the app's red notice (ONE field contract across all three kinds — the
-// app never branches on kind to read the verdict). The decisions return
-// so the caller's scrub can phrase a marker-only reply's fallback
-// bubble.
+// EvBrowserSnapshot / EvBrowserAction by directive kind. The URL rides
+// Text, the verdict rides BrowserOpenAllowed, and a refusal carries
+// BrowserOpenReason for the app's red notice (ONE field contract across
+// all four kinds — the app never branches on kind to read the verdict);
+// a browser-action event ALSO carries the parsed action on
+// BrowserActionOp/Sel/Arg (the app parks it behind the member's
+// permission modal — the verdict here is the URL policy only, never the
+// member's grant). The decisions return so the caller's scrub can
+// phrase a marker-only reply's fallback bubble.
 func (br *Bridge) RequestAll(reqs []Request) []Decision {
 	out := make([]Decision, 0, len(reqs))
 	for _, r := range reqs {
@@ -255,6 +338,9 @@ func (br *Bridge) RequestAll(reqs []Request) []Decision {
 		ev := state.Event{Kind: eventKind(r.Kind), Text: d.URL, BrowserOpenAllowed: d.Allowed}
 		if !d.Allowed {
 			ev.BrowserOpenReason = d.Reason
+		}
+		if r.Kind == KindAction {
+			ev.BrowserActionOp, ev.BrowserActionSel, ev.BrowserActionArg = r.Op, r.Sel, r.Arg
 		}
 		br.Emit(ev)
 	}
@@ -269,7 +355,9 @@ func (br *Bridge) RequestAll(reqs []Request) []Decision {
 // The note names each directive kind ("[theboringoffice] open-browser:
 // u · browser-snapshot: u"); a refusal-only note names the kind when
 // every refusal rode one ("… browser-screenshot refused: r"), else the
-// generic "browser refused".
+// generic "browser refused". A MALFORMED browser-action marker matches
+// no strict grammar, so it never extracts — it stays as visible prose
+// and never acts.
 func Scrub(text string, br *Bridge) string {
 	cleaned, reqs := Extract(text)
 	if len(reqs) == 0 {
@@ -291,7 +379,7 @@ func Scrub(text string, br *Bridge) string {
 		}
 	}
 	var allowed []string
-	for _, k := range []Kind{KindOpen, KindShot, KindSnap} {
+	for _, k := range []Kind{KindOpen, KindShot, KindSnap, KindAction} {
 		if urls := byKind[k]; len(urls) > 0 {
 			allowed = append(allowed, string(k)+": "+strings.Join(urls, ", "))
 		}

@@ -172,7 +172,18 @@
 //	                                lands the 🖼 chip + 4 pinned half-block
 //	                                truecolor rows in the frame; the /images
 //	                                off leg paints chips only; two drives
-//	                                byte-identical)
+//	                                byte-identical. --lane kitty proves the
+//	                                wave-86 routing: the media rows are
+//	                                APC-free and the wrapper splices DECSC +
+//	                                CUP(the pinned absolute cell) + the
+//	                                f=100 APC + DECRC after a flush)
+//	                    [--images-pty] (the PRODUCTION-path twin of the
+//	                                kitty leg: the REAL cursed renderer over
+//	                                the ZenbuFrameWriter on os.Stdout
+//	                                (main.go's exact wiring), the checker
+//	                                pin through p.Send — the PTY harness
+//	                                (/tmp/drive_chatimage.py) counts the
+//	                                ESC_G f=100 frames on the wire)
 //	                    [--links]   (open-in-browser proof (synchronous): a
 //	                                boss bubble wears the · o (open) beacon; a
 //	                                press marks it, `o` floats the OPEN IN
@@ -4308,16 +4319,27 @@ func runImagesLaneLeg(fail func(string, ...any) error, lane string) error {
 	if !ok {
 		return fail("images --lane: unknown lane %q (kitty|iterm|ascii)", lane)
 	}
+	// the process-singleton registry: each drive's Frame publishes
+	// wholesale — clear up front so a PREVIOUS leg's entries never leak
+	// into this leg's snapshot (and never into the next leg's).
+	panels.ZenbuRegistry().Clear()
+	panels.ZenbuRegistry().PublishChatMedia(nil)
+	defer func() { panels.ZenbuRegistry().Clear(); panels.ZenbuRegistry().PublishChatMedia(nil) }()
 	frame, err := imagesDrive(false, env)
 	if err != nil {
 		return err
 	}
+	chat1 := panels.ZenbuRegistry().ChatSnapshotForTest()
 	frame2, err := imagesDrive(false, env)
 	if err != nil {
 		return err
 	}
+	chat2 := panels.ZenbuRegistry().ChatSnapshotForTest()
 	if frame != frame2 {
 		return fail("images --lane %s: two drives must produce byte-identical frames", lane)
+	}
+	if fmt.Sprintf("%+v", chat1) != fmt.Sprintf("%+v", chat2) {
+		return fail("images --lane %s: two drives must publish byte-identical chat-media splices", lane)
 	}
 	raw, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
 	if err != nil {
@@ -4327,15 +4349,22 @@ func runImagesLaneLeg(fail func(string, ...any) error, lane string) error {
 	stripped := ansi.Strip(frame)
 	switch lane {
 	case "kitty":
-		// the kitty placeholder strip: ESC_G a=T,t=d,f=100,i=<sha1
-		// of the full source bytes, 8 hex>,q=2; + base64 payload + ESC\
+		// the wave-86 splice routing: the media rows are PURE reservation
+		// rows — ZERO APC bytes in the View frame (the renderer would drop
+		// them anyway; the wave-81 forensics) — and the chat-media REGION
+		// of the frame registry carries the preview instead: {office id =
+		// sha1(source)[:8], the ABSOLUTE cell one row below the frame's
+		// own chip row at the sidebar's bubble indent, the cached verbatim
+		// strip}. The wrapper-level leg then proves the splice bytes: a
+		// renderer flush through ZenbuFrameWriter lands DECSC + CUP(the
+		// pinned absolute cell) + the f=100 APC + DECRC.
 		id8 := panels.KittyIDHash8(panels.KittyImageID(raw))
 		wantStart := "\x1b_Ga=T,t=d,f=100,i=" + id8 + ",q=2;"
-		if !strings.Contains(frame, wantStart) {
-			return fail("images --lane kitty: the frame must carry the exact strip start %q", wantStart)
+		if strings.Contains(frame, "\x1b_G") {
+			return fail("images --lane kitty: the media rows are APC-free (the splice owns the strip)")
 		}
-		if !strings.Contains(frame, b64+"\x1b\\") {
-			return fail("images --lane kitty: the base64 payload + the ESC\\ terminator must ride the frame")
+		if strings.Contains(frame, "\x1b]1337;") {
+			return fail("images --lane kitty: no OSC 1337 bytes ride the kitty drive")
 		}
 		if strings.Contains(stripped, "▀") {
 			return fail("images --lane kitty: the kitty lane paints ZERO half-blocks")
@@ -4343,7 +4372,48 @@ func runImagesLaneLeg(fail func(string, ...any) error, lane string) error {
 		if strings.Contains(frame, imagesPinnedRow()) {
 			return fail("images --lane kitty: no ASCII rows ride the kitty drive")
 		}
-		fmt.Printf("lane leg kitty: OK — ghostty env routed the kitty placeholder strip (i=%s, %d b64 octets, ESC\\-terminated), zero half-blocks\n", id8, len(b64))
+		chat := chat2
+		if len(chat) != 1 {
+			return fail("images --lane kitty: the chat-media region holds exactly the one preview, got %d", len(chat))
+		}
+		if chat[0].OfficeID != panels.KittyImageID(raw) || !strings.HasPrefix(chat[0].Frame, wantStart) {
+			return fail("images --lane kitty: the registry carries the exact strip start %q under i=%s", wantStart, id8)
+		}
+		if !strings.Contains(chat[0].Frame, b64+"\x1b\\") {
+			return fail("images --lane kitty: the base64 payload + the ESC\\ terminator ride the registry's strip")
+		}
+		if strings.Contains(chat[0].Frame, "c=") || strings.Contains(chat[0].Frame, ",r=") {
+			return fail("images --lane kitty: the chat APC carries NO c=/r= (the wave-81 emission ruling)")
+		}
+		// the pinned ABSOLUTE cell, cross-read against the frame's own
+		// chip row: the preview paints exactly one row below its chip.
+		chipRow := -1
+		for i, ln := range strings.Split(frame, "\n") {
+			if strings.Contains(ansi.Strip(ln), "🖼 paste-diagram.png") {
+				chipRow = i
+				break
+			}
+		}
+		if chipRow < 0 || chat[0].OY != chipRow+1 {
+			return fail("images --lane kitty: the preview paints one row below the chip (chip row %d, published OY %d)", chipRow, chat[0].OY)
+		}
+		// the wrapper-level leg: one renderer flush splices DECSC + CUP
+		// (the published absolute cell, 1-based) + the strip + DECRC; a
+		// second identical flush splices NOTHING (the bandwidth skip).
+		var buf strings.Builder
+		w := panels.NewZenbuFrameWriter(&buf, panels.ZenbuRegistry())
+		_, _ = w.Write([]byte("FLUSH"))
+		wantSplice := "FLUSH\x1b7\x1b[" + fmt.Sprintf("%d", chat[0].OY+1) + ";" + fmt.Sprintf("%d", chat[0].OX+1) + "H" + chat[0].Frame + "\x1b8"
+		if buf.String() != wantSplice {
+			return fail("images --lane kitty: the wrapper splices the strip at the pinned cell:\n got %q\nwant %q", buf.String()[:100], wantSplice[:100])
+		}
+		buf.Reset()
+		_, _ = w.Write([]byte("FLUSH2"))
+		if buf.String() != "FLUSH2" {
+			return fail("images --lane kitty: the identical second flush splices nothing (the bandwidth skip), got %q", buf.String()[:80])
+		}
+		fmt.Printf("lane leg kitty: OK — the media rows are APC-free; the registry holds the preview (i=%s, %d b64 octets, ESC\\-terminated, no c=/r=) at the absolute cell (%d,%d) one row below the frame's chip row %d; the wrapper splices DECSC + CUP(%d;%d) + f=100 APC + DECRC (the second flush skips)\n",
+			id8, len(b64), chat[0].OX, chat[0].OY, chipRow, chat[0].OY+1, chat[0].OX+1)
 	case "iterm":
 		// OSC 1337: ESC ] 1337 ;File=inline=1;width=8:height=4;base64,<b64> ^G
 		wantPin := "\x1b]1337;File=inline=1;width=8:height=4;base64,"
@@ -4431,6 +4501,59 @@ func runImagesProof(lanes []string) error {
 		}
 	}
 	return nil
+}
+
+// --- chat image splice: the PRODUCTION-path PTY leg (--images-pty) -----
+//
+// runImagesPTY drives the chat image preview through main.go's EXACT
+// wiring (never the snapshot harness): the REAL cursed renderer writes
+// every flush through the ZenbuFrameWriter on os.Stdout, the stub pins
+// the checker's completed boss turn through p.Send, and the probe's
+// landing repaints. The PTY harness (/tmp/drive_chatimage.py, ghostty
+// env, 130x32) counts the ESC_G f=100 frames on the wire: pre-fix the
+// renderer eats the View-string APC (ZERO — the wave-81 forensics);
+// post-fix the wrapper's chat-media splice lands CUP + the cached APC +
+// restore after the flush.
+func runImagesPTY() error {
+	raw, err := os.ReadFile("internal/panels/testdata/checker-8x8.png")
+	if err != nil {
+		return fmt.Errorf("images-pty: image fixture: %w", err)
+	}
+	backend := &stubBackend{done: make(chan struct{})}
+	m := app.New(backend, config.Default())
+	frameOut := panels.NewZenbuFrameWriter(os.Stdout, panels.ZenbuRegistry())
+	p := tea.NewProgram(m,
+		tea.WithWindowSize(shotCols, shotRows),
+		tea.WithInput(nil),
+		tea.WithOutput(frameOut),
+	)
+	send := func(ev state.Event) { p.Send(ev) }
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw)
+	it := state.MediaItem{Mime: "image/png", Filename: "paste-diagram.png", W: 8, H: 8,
+		Hash: state.DataURLHash(dataURL), URL: dataURL}
+	go func() {
+		// the event sequence mirrors imagesDrive's synchronous drive (the
+		// first event also readies the boot splash → the cascade lifts).
+		time.Sleep(300 * time.Millisecond)
+		send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — image-preview stub online"})
+		send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+			ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+		send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
+			"what does the diagram look like?", false)})
+		time.Sleep(1400 * time.Millisecond) // the boot cascade lifts (~1.6s once ready)
+		send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
+		send(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+			ID: "bossmsg-m1", From: "boss", Kind: "boss",
+			Text: "Red and blue squares, alternating — the classic checker.",
+			At:   1, Pending: false,
+			Meta: state.MediaMeta([]state.MediaItem{it}),
+		}, Media: []state.MediaItem{it}})
+		time.Sleep(1800 * time.Millisecond) // the probe lands + frames flush
+		p.Quit()
+	}()
+	_, err = p.Run()
+	frameOut.Finish()
+	return err
 }
 
 // --- open-in-browser (--links) ---------------------------------------------
@@ -7367,6 +7490,7 @@ func main() {
 	claudeMode := flag.Bool("claude", false, "claude-backend shot: the REAL live claude backend against the compiled cmd/claudestub binary (stream-json). With --planshot (or alone): the plan-mode + permission/dialog control round-trip proof — chatter never presents, plan-shaped reply presents into the pane, req-owl-1/req-q-1 round-trips byte-pinned, subagent Task run returns, two drives byte-identical")
 	images := flag.Bool("images", false, "inbound boss-turn image preview proof (synchronous): the stub pins a completed boss turn carrying the 8×8 checker PNG as a data-URL file part (Meta carrier + Event.Media payload — opencode.go's pin shape); the lazy rasterize must land with the 🖼 chip + the pinned half-block truecolor rows in the frame; /images off leg proves chips-only; two drives byte-identical. The base legs run under a hermetic neutral-terminal env stub so the host's real lane never leaks in")
 	laneList := flag.String("lane", "", "with --images: comma-separated native-lane legs (kitty,iterm,ascii) — each leg drives the same checker pin under a hermetic stub terminal env (TERM_PROGRAM/ITERM_SESSION_ID/KITTY_WINDOW_ID/TERM… injected, the host's ghostty/iterm markers never leak) and byte-pins the lane's output: kitty → the ESC_G a=T,t=d,f=100,i=<sha1[:8]>,q=2; placeholder strip + b64 payload + ESC\\; iterm → OSC 1337 File=inline=1;width=<cols>:height=<rows>;base64,<b64> BEL; ascii → the v1 pinned half-block rows; every leg byte-identical twice")
+	imagesPTY := flag.Bool("images-pty", false, "chat image splice PRODUCTION-path leg: the REAL program (cursed renderer over the ZenbuFrameWriter on os.Stdout, main.go's exact wiring) with the checker's completed boss turn pinned through p.Send — the PTY harness (/tmp/drive_chatimage.py, ghostty env) counts ESC_G f=100 frames on the wire (pre-fix 0: the renderer eats the View-string APC; post-fix the wrapper's chat-media splice lands CUP+APC+restore after the flush)")
 	links := flag.Bool("links", false, "open-in-browser proof (synchronous): a boss bubble carries a URL + a media filename pointing at the REAL checker fixture (the os.Stat gate's verified path); a press marks the bubble, `o` floats the OPEN IN BROWSER card over BOTH targets, enter fires the URL through the STUBBED panels runner; the activity tab logs \"→ opened: opencode.ai/docs\"; the no-mark leg types \"o\" into the draft; two drives byte-identical")
 	openurl := flag.Bool("openurl", false, "terminal-browser candidate-lane proof (synchronous, REAL fake binaries): a scratch fixture dir plants a logging `terminal-browser` (+ `open`/`xdg-open`) on a pinned \"<fixture>:<orig>\" PATH with a hermetic ghostty env; leg A resolves terminal-browser (\"resolve=terminal-browser prefer-over-system-open\") and a press+`o` on a single-URL bubble logs exactly ONE fake call (system log absent); leg B (FAKE_TB_EXIT=1) cascades the SAME URL to the system opener — ONE attempt per leg, \"→ opened:\" intact, no \"could not open\" row; every leg byte-identical twice")
 	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc FREEZES the session (keep-alive: alive behind the floor, PID unchanged) + returns to the floor, the ctrl+c quit path reaps it; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane keepalive: the freeze/thaw flip cycle — /open → ctrl+b (floor: the child FREEZES, PID stable + alive + ps T…, ONE a=d through the wrapper's diff) → ctrl+b (the SAME pid thaws; the RETAINED frame re-emits byte-identically — the parked fake emits zero new bytes — with ZERO a=d interleaved) → ctrl+b → ctrl+c (the quit path reaps the frozen child, the delete riding the direct seam); ONE spawn total. --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
@@ -7568,6 +7692,14 @@ func main() {
 
 	if *images {
 		if err := runImagesProof(strings.Split(*laneList, ",")); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *imagesPTY {
+		if err := runImagesPTY(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

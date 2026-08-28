@@ -22,6 +22,14 @@
 // its own 15s overall budget on top of the caller's context, and waits
 // on chromedp's built-in load/ready waits only — no fixed sleeps. A
 // hung page can never outlive the timeout; a refusal never spawns.
+//
+// Caching: the public Screenshot / Snapshot fronts ride the engine's
+// render cache (cache.go) — a 30s LRU memo per (url, box) with
+// singleflight fan-out, a 5s negative cache for timeouts/navigation
+// failures, and copy-on-return values — so the agent-tool path and the
+// pane display path never re-render the same page twice in a short
+// window. The cache holds values only; every render still rides the
+// lifecycle above.
 package headless
 
 import (
@@ -167,11 +175,22 @@ func fileExists(p string) bool {
 // (deviceScaleFactor 2) and returns the viewport PNG plus the final URL
 // and title. The page load event + body readiness are the only waits —
 // no fixed sleeps; full-page is deliberately false (the pane shows what
-// fits the viewport).
+// fits the viewport). Results ride the render cache (cache.go): a repeat
+// call for the same (url, box) within 30s — or a concurrent one — never
+// spawns a second Chrome run.
 func Screenshot(ctx context.Context, rawurl string, widthPx, heightPx int) (*Result, error) {
 	if widthPx <= 0 || heightPx <= 0 {
 		return nil, fmt.Errorf("headless: invalid viewport %dx%d (both dimensions must be > 0)", widthPx, heightPx)
 	}
+	return shotCache.do(shotKey(rawurl, widthPx, heightPx), func() (*Result, error) {
+		return execScreenshot(ctx, rawurl, widthPx, heightPx)
+	})
+}
+
+// renderScreenshot — the uncached engine body (the prod executor behind
+// the execScreenshot seam). The viewport check lives in the public front
+// so a caller bug never lands in the cache.
+func renderScreenshot(ctx context.Context, rawurl string, widthPx, heightPx int) (*Result, error) {
 	var res Result
 	err := run(ctx, rawurl, func(url string) chromedp.Tasks {
 		return chromedp.Tasks{
@@ -191,8 +210,18 @@ func Screenshot(ctx context.Context, rawurl string, widthPx, heightPx int) (*Res
 
 // Snapshot renders rawurl and returns its title, visible body text
 // (trimmed, capped at maxText runes), and absolute links (deduped,
-// capped at 50). maxText <= 0 caps the text to empty.
+// capped at 50). maxText <= 0 caps the text to empty. Results ride the
+// render cache (cache.go), keyed by (url, maxText) — same 30s / share /
+// negative-cache discipline as Screenshot.
 func Snapshot(ctx context.Context, rawurl string, maxText int) (*SnapResult, error) {
+	return snapCache.do(snapKey(rawurl, maxText), func() (*SnapResult, error) {
+		return execSnapshot(ctx, rawurl, maxText)
+	})
+}
+
+// renderSnapshot — the uncached engine body (the prod executor behind
+// the execSnapshot seam).
+func renderSnapshot(ctx context.Context, rawurl string, maxText int) (*SnapResult, error) {
 	var res SnapResult
 	var page snapshotPage
 	err := run(ctx, rawurl, func(url string) chromedp.Tasks {
@@ -257,6 +286,25 @@ func run(ctx context.Context, rawurl string, makeTasks func(url string) chromedp
 	return nil
 }
 
+// NavError — a navigation/render failure (DNS, dead port, renderer
+// crash…): the page never came up. Typed (Unwrap keeps the cause) so the
+// cache's negative-entry discipline — and any caller — can tell it apart
+// from policy refusals and timeouts without string matching. Error()
+// keeps the wave-85 "headless: <url>: navigation failed: <cause>"
+// wording byte-identical.
+type NavError struct {
+	URL string
+	Err error
+}
+
+// Error — "headless: <url>: navigation failed: <cause>".
+func (e *NavError) Error() string {
+	return fmt.Sprintf("headless: %s: navigation failed: %v", e.URL, e.Err)
+}
+
+// Unwrap — the underlying chromedp/ctx cause.
+func (e *NavError) Unwrap() error { return e.Err }
+
 // classify turns chromedp/ctx failures into actionable wrapped errors:
 // timeout vs canceled vs navigation/render failure stay distinguishable
 // (and errors.Is(err, context.DeadlineExceeded) holds for the first).
@@ -267,7 +315,7 @@ func classify(url string, err error) error {
 	case errors.Is(err, context.Canceled):
 		return fmt.Errorf("headless: %s: canceled: %w", url, err)
 	default:
-		return fmt.Errorf("headless: %s: navigation failed: %w", url, err)
+		return &NavError{URL: url, Err: err}
 	}
 }
 
