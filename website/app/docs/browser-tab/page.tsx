@@ -99,7 +99,7 @@ export default function BrowserTabPage() {
               The sidebar strip keeps its seven tabs — chat · terminal · agents ·
               board · mail · activity · git — with no browser entry and no digit key
               for it. Idle, the tab shows its starter card:{' '}
-              <Code>▸ enter a url · /open &lt;url&gt; · o for file</Code>.
+              <Code>▸ enter a url · /open &lt;url&gt; · e to edit · o for file</Code>.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Chip combo="↑ / ↓" action="move the link cursor" />

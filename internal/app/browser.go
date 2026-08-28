@@ -21,6 +21,14 @@
 // The pending-notice latch (browserSlashNote) belongs to the slash flow
 // ONLY: in-pane link follows and history hops stay silent.
 //
+// IN-PANE URL GESTURES (the pane owns the keys; this file routes nothing
+// new — the switcher's unclaimed-key hop already delivers them): `e`
+// opens the pane's inline URL editor in the location bar (enter commits
+// through the same Open path /open rides, esc cancels), and `O` (shift+o)
+// opens the CURRENT page in the OS browser through the links.go cascade
+// (the verdict rides the existing BrowserOpenedMsg hop straight to the
+// pane's note row).
+//
 // ASYNC ROUTING: BrowserPageMsg / BrowserOpenedMsg forward STRAIGHT to
 // the browser panel (never through the active-tab hop) — a mid-flight
 // switch can never misdeliver a page. BrowserLeaveMsg (the pane's q/esc)

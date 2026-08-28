@@ -60,6 +60,15 @@
 //	o                 — the focused link: a local file rides links.go's
 //	                    OpenInBrowser (the exec seam); http(s) navigates
 //	                    in place (re-fetch + history push).
+//	O (shift+o)       — open the CURRENT page in the OS browser via the
+//	                    same links.go cascade (the dim note row confirms;
+//	                    shot mode opens the shot's redirect-final URL).
+//	e                 — edit the URL IN PLACE: an inline editor opens in
+//	                    the location bar prefilled with the current URL
+//	                    (empty on the starter card); enter commits through
+//	                    the normal Open path, esc cancels. While it owns
+//	                    the keys the link cursor / history / reload / the
+//	                    q-esc leave all yield (the editor's esc wins).
 //	[ / ]             — back/forward inside a bounded history ring (100
 //	                    pages, scroll offsets restored, wraps at edges).
 //	r                 — reload the current page in place (no dup history).
@@ -67,7 +76,7 @@
 //	                    this tab; the leave rides BrowserLeaveMsg).
 //
 // Idle (no page loaded) shows the starter card:
-// "▸ enter a url · /open <url> · o for file".
+// "▸ enter a url · /open <url> · e to edit · o for file".
 //
 // THE TEXT LANE EXPLAINS ITSELF: when the lane resolve missed premium
 // (the memoized verdict's reason class — binary missing, terminal
@@ -93,11 +102,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
@@ -120,7 +131,7 @@ const browserHistMax = 100
 const browserAllowHTTPEnv = "THEBORINGOFFICE_BROWSER_ALLOW_HTTP"
 
 // browserStarterCard — the idle body (frozen copy, uishot-pinned).
-const browserStarterCard = "▸ enter a url · /open <url> · o for file"
+const browserStarterCard = "▸ enter a url · /open <url> · e to edit · o for file"
 
 // --- async messages (the app forwards ALL THREE straight to the panel) --
 
@@ -135,10 +146,13 @@ type BrowserPageMsg struct {
 }
 
 // BrowserOpenedMsg delivers the OS-open verdict for a focused LOCAL link
-// (the note row under the bar carries the human-readable outcome).
+// (the note row under the bar carries the human-readable outcome). System
+// marks the pane-level `O` gesture (the CURRENT page to the OS browser):
+// the confirmation copy names the target verbatim.
 type BrowserOpenedMsg struct {
 	Target LinkTarget
 	Err    error
+	System bool
 }
 
 // BrowserLeaveMsg asks the app to leave the browser tab (q/esc — the app
@@ -195,6 +209,14 @@ type Browser struct {
 	note    string // transient dim verdict row (OS-open outcome)
 	reload  bool   // the in-flight fetch is an r-reload (replace, don't push)
 
+	// the inline URL editor (`e`): while editing it OWNS the pane's keys
+	// (enter commits through Open, esc cancels — no link nav, no leave).
+	// The buffer rides the location bar (bar()/shotRegionView), never the
+	// viewport, so no rev-key invalidation is needed.
+	editing bool
+	editBuf []rune
+	editCur int // the caret, in runes (0..len(editBuf))
+
 	cursor    int   // focused link index into page.Links (-1 = none)
 	rowOfLink []int // rendered-row index of each link's first row (-1 = none)
 
@@ -229,6 +251,10 @@ type Browser struct {
 	lastOuts []rowOut // the renderRows output behind the current body rows
 	rev      string   // content cache key (width/url/cursor/note/err/theme)
 }
+
+// Editing reports whether the inline URL editor is open — the app's paste
+// router targets the pane only while it is (keys already route there).
+func (b *Browser) Editing() bool { return b.editing }
 
 // NewBrowser builds the browser panel (idle — the starter card shows).
 func NewBrowser() *Browser {
@@ -312,6 +338,8 @@ func (b *Browser) Close() {
 	b.rowOfLink = nil
 	b.note = ""
 	b.err = ""
+	b.editing = false
+	b.editBuf, b.editCur = nil, 0
 	b.rev = ""
 	b.vp.SetContent("")
 }
@@ -689,12 +717,20 @@ func (b *Browser) shotStateRow() string {
 // note row at the bottom (the member's `o`-to-open habit).
 func (b *Browser) shotRegionView() string {
 	var sb strings.Builder
-	sb.WriteString(chrome.TabActive.Render(" shot ") + " " + fitPlain("▸ headless chromium · "+b.shot.url, b.w-7))
+	if b.editing {
+		// the editor takes the strip row — the PNG keeps painting under it
+		// (kitty z-order paints text over images).
+		sb.WriteString(b.editBar())
+	} else {
+		sb.WriteString(chrome.TabActive.Render(" shot ") + " " + fitPlain("▸ headless chromium · "+b.shot.url, b.w-7))
+	}
 	for y := 0; y < b.shotBodyRows(); y++ {
 		sb.WriteString("\n" + fitPlain("", b.w))
 	}
-	note := ""
-	if b.shot.path != "" {
+	// the transient verdict note (the `O` confirmation / a lane word)
+	// outranks the saved path on the shot region's one note row.
+	note := b.note
+	if note == "" && b.shot.path != "" {
 		note = "screenshot: " + b.shot.path
 	}
 	sb.WriteString("\n" + chrome.DimText.Render(fitPlain(note, b.w)))
@@ -771,12 +807,23 @@ func (b *Browser) Update(msg tea.Msg) tea.Cmd {
 	case BrowserPageMsg:
 		cmd = b.applyPage(msg)
 	case BrowserOpenedMsg:
-		if msg.Err != nil {
+		switch {
+		case msg.Err != nil:
 			b.note = "could not open: " + msg.Err.Error()
-		} else {
+		case msg.System:
+			// the pane-level `O` gesture: name the target verbatim.
+			b.note = "opened in system browser: " + msg.Target.Value
+		default:
 			b.note = "→ opened: " + msg.Target.Name
 		}
 		b.refreshBody()
+	case tea.PasteMsg:
+		// the inline URL editor accepts a bracketed paste WHEN one reaches
+		// the pane (the app routes paste to the focused surface); newlines
+		// never enter a URL row.
+		if b.editing {
+			b.editInsert(msg.Content)
+		}
 	case tea.KeyPressMsg:
 		cmd = b.handleKey(msg)
 	case tea.MouseWheelMsg:
@@ -795,13 +842,19 @@ func (b *Browser) Update(msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-// handleKey — the pane's key surface (see the package header). While the
-// premium embed is live the pane's own keys yield: q/esc still leave (the
-// app suspends the lane with the slot flip — the child dies with the
-// pane, never a leak), EVERY other key forwards to the child through
-// term.go's keyToBytes matrix (the office's own claims — ctrl+b, ctrl+q,
-// tab, the digit jumps — are intercepted above and never reach here).
+// handleKey — the pane's key surface (see the package header). The inline
+// URL editor owns EVERY key while open (esc/enter resolve first — the
+// pane's own q/esc leave yields to the editor's esc). While the premium
+// embed is live the pane's own keys yield: q/esc still leave (the app
+// suspends the lane with the slot flip — the child dies with the pane,
+// never a leak), EVERY other key forwards to the child through term.go's
+// keyToBytes matrix (the office's own claims — ctrl+b, ctrl+q, tab, the
+// digit jumps — are intercepted above and never reach here; e/O live on
+// the text lane + shot mode, the zenbu child keeps its own key surface).
 func (b *Browser) handleKey(msg tea.KeyPressMsg) tea.Cmd {
+	if b.editing {
+		return b.handleEditKey(msg)
+	}
 	if b.lane != nil && b.lane.PremiumActive() {
 		switch msg.String() {
 		case "q", "esc":
@@ -823,6 +876,10 @@ func (b *Browser) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		var cmd tea.Cmd
 		b.vp, cmd = b.vp.Update(msg)
 		return cmd
+	case "e":
+		b.startEdit()
+	case "O":
+		return b.openCurrentInOS()
 	case "r":
 		return b.Reload()
 	case "[":
@@ -835,6 +892,160 @@ func (b *Browser) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return func() tea.Msg { return BrowserLeaveMsg{} }
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------------------
+// the inline URL editor (`e`)
+// ---------------------------------------------------------------------------
+
+// editCaret — the editor's caret cell (a reversed rune; the space when the
+// caret sits past the buffer's end).
+var editCaret = lipgloss.NewStyle().Reverse(true)
+
+// editBarHint — the editor row's dim suffix (ansi-truncated away at
+// narrow widths).
+const editBarHint = " · enter: open · esc: cancel"
+
+// startEdit opens the inline editor in the location bar: prefilled with
+// the URL the member SEES (the shot's redirect-final URL in shot mode,
+// else the current/attempted location) — EMPTY on the starter card —
+// caret at the end. Idempotent (a re-press re-pins the caret, never
+// doubles).
+func (b *Browser) startEdit() {
+	if !b.editing {
+		b.editBuf = []rune(b.currentPageURL())
+	}
+	b.editing = true
+	b.editCur = len(b.editBuf)
+}
+
+// handleEditKey — the editor OWNS every key until esc/enter resolves:
+// arrows/home/end move the caret, backspace/delete erase, ctrl+w kills
+// the word left, enter commits through the pane's normal Open path (the
+// text fetch + the headless shot flow, exactly like /open), esc cancels
+// back to the previous state, and every other key (pgup/pgdn, the pane's
+// own o/r/[ ]/q) is swallowed — typed runes insert at the caret.
+func (b *Browser) handleEditKey(msg tea.KeyPressMsg) tea.Cmd {
+	switch msg.String() {
+	case "enter":
+		rawurl := strings.TrimSpace(string(b.editBuf))
+		b.cancelEdit()
+		if rawurl == "" {
+			return nil
+		}
+		return b.Open(rawurl)
+	case "esc":
+		b.cancelEdit()
+	case "left":
+		if b.editCur > 0 {
+			b.editCur--
+		}
+	case "right":
+		if b.editCur < len(b.editBuf) {
+			b.editCur++
+		}
+	case "home", "ctrl+a":
+		b.editCur = 0
+	case "end", "ctrl+e":
+		b.editCur = len(b.editBuf)
+	case "backspace":
+		if b.editCur > 0 {
+			b.editBuf = slices.Delete(b.editBuf, b.editCur-1, b.editCur)
+			b.editCur--
+		}
+	case "delete":
+		if b.editCur < len(b.editBuf) {
+			b.editBuf = slices.Delete(b.editBuf, b.editCur, b.editCur+1)
+		}
+	case "ctrl+w": // kill the word left of the caret (readline's rubout)
+		i := b.editCur
+		for i > 0 && b.editBuf[i-1] == ' ' {
+			i--
+		}
+		for i > 0 && b.editBuf[i-1] != ' ' {
+			i--
+		}
+		b.editBuf = slices.Delete(b.editBuf, i, b.editCur)
+		b.editCur = i
+	default:
+		if msg.Text != "" {
+			b.editInsert(msg.Text)
+		}
+	}
+	return nil
+}
+
+// editInsert splices text at the caret (typed runes and the paste half
+// alike): newlines never enter a URL row.
+func (b *Browser) editInsert(text string) {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", ""), "\n", "")
+	text = strings.ReplaceAll(text, "\r", "")
+	rs := []rune(text)
+	if len(rs) == 0 {
+		return
+	}
+	b.editBuf = slices.Insert(b.editBuf, b.editCur, rs...)
+	b.editCur += len(rs)
+}
+
+// cancelEdit closes the editor WITHOUT touching the pane's navigation
+// state (the pre-edit page/url/scroll are exactly where they were).
+func (b *Browser) cancelEdit() {
+	b.editing = false
+	b.editBuf, b.editCur = nil, 0
+}
+
+// editBar — the location bar while the editor owns it: the accent ▸, the
+// buffer with the caret cell reversed, the dim commit/cancel hint,
+// ansi-truncated to the pane width.
+func (b *Browser) editBar() string {
+	before := string(b.editBuf[:b.editCur])
+	at, after := " ", ""
+	if b.editCur < len(b.editBuf) {
+		at = string(b.editBuf[b.editCur])
+		after = string(b.editBuf[b.editCur+1:])
+	}
+	s := chrome.AccentText.Render("▸ ") + before + editCaret.Render(at) + after
+	s += chrome.DimText.Render(editBarHint)
+	return ansi.Truncate(s, b.w, "")
+}
+
+// ---------------------------------------------------------------------------
+// `O` — open the CURRENT page in the OS browser
+// ---------------------------------------------------------------------------
+
+// currentPageURL — the URL `O` (and the editor's prefill story) names:
+// the shot's redirect-final URL while one is recorded, else the pane's
+// current (or attempted) location.
+func (b *Browser) currentPageURL() string {
+	if b.shot != nil && b.shot.url != "" {
+		return b.shot.url
+	}
+	return b.url
+}
+
+// openCurrentInOS — `O` on the loaded page: fire the CURRENT page at the
+// OS browser through the pane's exec seam (default links.go's
+// OpenInBrowser — the terminal-browser candidate cascade + the system
+// opener, failure wording included). The verdict lands back as
+// BrowserOpenedMsg{System:true}; with no page loaded the dim note says so
+// and nothing fires.
+func (b *Browser) openCurrentInOS() tea.Cmd {
+	rawurl := b.currentPageURL()
+	if rawurl == "" {
+		b.note = "nothing to open — load a page first"
+		b.refreshBody()
+		return nil
+	}
+	var t LinkTarget
+	if isLocalBrowserURL(rawurl) {
+		path := localBrowserPath(rawurl)
+		t = LinkTarget{Kind: LinkFile, Value: path, Name: filepath.Base(path)}
+	} else {
+		t = LinkTarget{Kind: LinkURL, Value: rawurl, Name: rawurl}
+	}
+	fn := b.openFn
+	return func() tea.Msg { return BrowserOpenedMsg{Target: t, Err: fn(t), System: true} }
 }
 
 // applyPage lands one fetch verdict: errors keep the bar on the attempted
@@ -1132,7 +1343,11 @@ func (b *Browser) LaneSessionSize() (cols, rows int, ok bool) {
 }
 
 // bar — "▸ <url> · <title>", ansi-aware truncated to the panel width.
+// While the inline editor owns the bar it paints the edit row instead.
 func (b *Browser) bar() string {
+	if b.editing {
+		return b.editBar()
+	}
 	loc := b.url
 	if loc == "" {
 		loc = "browser"

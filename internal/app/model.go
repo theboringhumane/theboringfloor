@@ -1835,18 +1835,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	case tea.PasteMsg:
-		// Terminal.app's cmd+v (bracketed paste): the FOCUSED plan pane
-		// owns it in plan mode (paste-over-selection lives inside the
-		// pane); everywhere else the chat keeps today's routing exactly.
+		// Terminal.app's cmd+v (bracketed paste): ONE deliberate path —
+		// routePaste lands it on exactly one surface (never two, never
+		// silently nowhere — the ignore case toasts a dim notice).
 		m.frameNonce++
-		if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
-			m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
-			if cmd := m.plan.Update(msg); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-			break
-		}
-		if cmd := m.tabs.Update(msg); cmd != nil {
+		if cmd := m.routePaste(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	case panels.PlanPasteMsg:
@@ -2064,6 +2057,70 @@ func (m Model) hintLine() string {
 // second press inside the window quits via the existing persist + reap +
 // tea.Quit path. A stale first press can't pair: it re-opens a fresh arm.
 const quitArmWindow = 1500 * time.Millisecond
+
+// pasteIgnoreNotice — the dim office row toasted when a paste has no
+// focused text surface (never a silent drop). Frozen copy.
+const pasteIgnoreNotice = "paste: nothing focused accepts text"
+
+// routePaste — the ONE deliberate tea.PasteMsg path (Terminal.app's
+// cmd+v, every terminal's bracketed paste): the paste lands on EXACTLY
+// ONE surface, mirroring the KEY path's ownership so paste never
+// disagrees with typing:
+//
+//  1. a FOCUSED plan editor (paste-over-selection lives inside the
+//     pane — the pre-router behavior, pinned by
+//     TestPlanPasteMsgRoutesToFocusedPane);
+//  2. a CAPTURED terminal tab: the shell owns the keyboard while
+//     captured (handleKey claims everything there, floats included),
+//     so the paste writes to the PTY too — bracket-wrapped for
+//     readline/zle/fish on the main screen, raw inside alt-screen apps
+//     (panels/terminal.go);
+//  3. the open question float's answer field (a parked turn owns the
+//     chat's input; the panel batches the insert, multi-line kept);
+//  4. the /model picker's search input — the picker wave's seam: any
+//     picker implementing Paste(string) tea.Cmd takes the text; one
+//     that hasn't trips the ignore notice instead of sinking the paste
+//     into the disabled textarea;
+//  5. the fullscreen thread-focus view owns its keys and has no text
+//     surface — ignore with the notice;
+//  6. the chat textarea — the chat tab, and ALSO the terminal tab
+//     RELEASED (the office owns the keyboard there, so the draft takes
+//     the text; the PTY never sees it);
+//  7. otherwise (agents/board/mail/activity/git — no text surface):
+//     ONE dim notice, never a silent drop.
+func (m *Model) routePaste(msg tea.PasteMsg) tea.Cmd {
+	if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
+		m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+		return m.plan.Update(msg)
+	}
+	if m.termCapturedNow() {
+		return m.tabs.Update(msg)
+	}
+	if m.question != nil {
+		return m.chat.Update(msg)
+	}
+	// the browser pane's inline URL editor owns paste while it is open —
+	// the same ownership it has over keys.
+	if m.browserActive() && m.browser != nil && m.browser.Editing() {
+		return m.browser.Update(msg)
+	}
+	if m.modelPick != nil {
+		if p, ok := any(m.modelPick).(interface{ Paste(string) tea.Cmd }); ok {
+			return p.Paste(msg.Content)
+		}
+		m.notice(pasteIgnoreNotice)
+		return nil
+	}
+	if m.threadFocus != nil {
+		m.notice(pasteIgnoreNotice)
+		return nil
+	}
+	if m.tabs.ActiveIndex() == 0 || m.terminalActive() {
+		return m.chat.Update(msg)
+	}
+	m.notice(pasteIgnoreNotice)
+	return nil
+}
 
 // handleKey implements the global keymap; unclaimed keys go to the tabs.
 //

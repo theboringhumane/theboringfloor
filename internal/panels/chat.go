@@ -317,6 +317,13 @@ type Chat struct {
 	qText            string
 	questionWaiting  bool // question hold outstanding (open or deferred)
 
+	// pasteChips — the chat textarea's collapsed large pastes, in
+	// insertion order (chat_paste.go): the draft holds each chip's
+	// one-line token ("[pasted N lines · M chars]"), send expands the
+	// tokens back to the full original text, backspace pops a chip as
+	// ONE unit. Cleared with the draft on every send.
+	pasteChips []pasteChip
+
 	// Session picker (/session) — session_picker.go: an ADDITIVE floating
 	// card listing the server's root sessions (type to narrow, ↑/↓, enter
 	// re-anchors the office LIVE, esc cancels). Same float mechanics as
@@ -551,7 +558,12 @@ func NewChat(onSend func(text string, atts []state.Attachment) tea.Cmd) *Chat {
 	ta.CharLimit = 0
 	ta.SetHeight(textareaH)
 	ta.SetWidth(30)
-	// Enter SENDs; Shift+Enter (kitty) or Ctrl+J (universal) inserts a newline.
+	// Enter SENDs; Shift+Enter or Ctrl+J inserts a newline. Delivery:
+	// shift+enter only REACHES us on kitty-keyboard-protocol terminals
+	// (ghostty, kitty — the office negotiates that protocol already);
+	// legacy terminals encode shift+enter as a bare enter, where ctrl+j
+	// (0x0a, universally distinct) is the fallback that always lands.
+	// Both paths are pinned in chat_paste_test.go.
 	ta.KeyMap.InsertNewline = key.NewBinding(
 		key.WithKeys("shift+enter", "ctrl+j"),
 		key.WithHelp("shift+enter", "newline"),
@@ -1735,6 +1747,12 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 			c.lastEscAt = now
 			return nil
 		case "backspace":
+			// a collapsed paste chip left of the cursor deletes as ONE
+			// unit (chat_paste.go) — never per-rune into the token's
+			// middle, which would strand an unexpandable stub.
+			if c.popPasteChipBeforeCursor() {
+				return nil
+			}
 			if c.atOpen {
 				// fragment editing: the picker lives/dies by the tail
 				// recheck after the textarea eats the key
@@ -1760,11 +1778,14 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 			c.ta, cmd = c.ta.Update(msg)
 			return cmd
 		case "enter":
-			text := strings.TrimSpace(c.ta.Value())
+			// expand-on-send: the member sees the one-line chips, the
+			// agent receives the FULL original paste (chat_paste.go).
+			text := strings.TrimSpace(c.expandPasteChips(c.ta.Value()))
 			if text == "" && len(c.atts) == 0 {
 				return nil
 			}
 			c.ta.Reset()
+			c.pasteChips = nil // the draft's chips die with the draft
 			c.follow = true
 			c.vp.GotoBottom()
 			if strings.HasPrefix(text, "/") {
@@ -1880,8 +1901,25 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 		return nil
 	case tea.PasteMsg:
 		// Bracketed paste — on macOS this IS cmd+v (Terminal.app/iTerm2
-		// swallow the CMD key and convert the paste themselves). Smart
-		// classification, in order:
+		// swallow the CMD key and convert the paste themselves). The OWNED
+		// surfaces claim it first, in the key path's exact precedence: the
+		// boss question popover's answer field (the main textarea is
+		// DISABLED while the turn is parked — before this arm a paste
+		// silently landed in that dead textarea), then the /session
+		// picker's filter; the open-target card swallows (its keys
+		// swallow too — no text surface).
+		if c.question != nil {
+			return c.questPaste(msg.Content)
+		}
+		if c.sessPick != nil && c.perm == nil {
+			c.sessPick.filter += flattenPasteLines(msg.Content)
+			c.sessRefilter()
+			return nil
+		}
+		if c.openPick != nil && c.perm == nil {
+			return nil
+		}
+		// Smart classification, in order:
 		if paths, ok := pasteFilePaths(msg.Content); ok {
 			// 1) Finder file copy: the terminal delivered the copied
 			//    file(s) as (escaped) path text — stage one chip per
@@ -1895,8 +1933,15 @@ func (c *Chat) Update(msg tea.Msg) tea.Cmd {
 			//    the textarea (see onClipPaste's reprobe arm).
 			return c.startImagePasteReprobe(msg.Content)
 		}
-		// 3) plain text — the textarea's own bracketed-paste handling
-		//    inserts it cursor-correctly.
+		// 3) plain text — LARGE pastes collapse to a one-line chip
+		//    (chat_paste.go: the full text rides along and expands back
+		//    on send); small pastes insert literally through the
+		//    textarea's own PasteMsg arm — ONE batched insert, never the
+		//    per-rune drain typing pays.
+		if pasteChipThreshold(msg.Content) {
+			c.insertPasteChip(msg.Content)
+			return nil
+		}
 		var cmd tea.Cmd
 		c.ta, cmd = c.ta.Update(msg)
 		return cmd

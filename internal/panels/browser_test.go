@@ -283,8 +283,8 @@ func TestBrowserFetchHTTP(t *testing.T) {
 
 func TestBrowserStarterCard(t *testing.T) {
 	b := NewBrowser()
-	b.SetSize(60, 10)
-	if got := ansi.Strip(b.View()); !strings.Contains(got, "▸ enter a url · /open <url> · o for file") {
+	b.SetSize(80, 10)
+	if got := ansi.Strip(b.View()); !strings.Contains(got, "▸ enter a url · /open <url> · e to edit · o for file") {
 		t.Fatalf("idle pane must show the starter card, got:\n%s", got)
 	}
 }

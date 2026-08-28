@@ -296,6 +296,130 @@ func TestBrowserSlotOwnsKeys(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// the in-pane URL gestures through the REAL app routing (`e` edits inline,
+// `O` opens the current page in the OS browser — both ride the switcher's
+// unclaimed-key hop into the pane)
+// ---------------------------------------------------------------------------
+
+// shiftO — the OS-open key, bubbletea-encoded (a typed capital O).
+func shiftO() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: 'O', Text: "O"}) }
+
+// browserShortURLServer — the fixture over localhost http at SHORT paths
+// (the 64-cell left pane must render the whole URL + the editor hint
+// untruncated for the byte assertions).
+func browserShortURLServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	for _, p := range []string{"/f", "/g"} {
+		mux.HandleFunc(p, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html")
+			http.ServeFile(w, r, "../panels/testdata/fixture.html")
+		})
+	}
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestBrowserEditURLThroughApp — `e` on the active browser slot opens the
+// pane's inline editor prefilled with the current URL, typed keys land in
+// the EDITOR (never the chat draft), and enter commits the EDITED url
+// through the pane's normal Open path (the bar wears the new location).
+func TestBrowserEditURLThroughApp(t *testing.T) {
+	pinBrowserTextLane(t)
+	srv := browserShortURLServer(t)
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/f"})
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("setup: browser slot active, got %d", got)
+	}
+
+	// `e` opens the editor: the row carries the prefilled URL + the hint…
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'e', Text: "e"}))
+	frame := ansi.Strip(m.Frame())
+	if !strings.Contains(frame, "▸ "+srv.URL+"/f") || !strings.Contains(frame, "enter: open · esc: cancel") {
+		t.Fatalf("the editor row rides the location bar:\n%s", frame)
+	}
+	// …typed keys land in the editor — never the chat draft.
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'z', Text: "z"}))
+	if f := ansi.Strip(m.Frame()); strings.Contains(f, "› z") {
+		t.Fatalf("the editor owns typed keys (no draft leak):\n%s", f)
+	}
+	if f := ansi.Strip(m.Frame()); !strings.Contains(f, srv.URL+"/fz") {
+		t.Fatalf("the typed rune spliced into the editor buffer:\n%s", f)
+	}
+	// edit the location: drop the stray z AND the tail f, type g…
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyBackspace}))
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyBackspace}))
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'g', Text: "g"}))
+	// …and enter commits the EDITED url through the pane's Open path.
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+	frame = ansi.Strip(m.Frame())
+	for _, want := range []string{"▸ " + srv.URL + "/g", "The Fixture Gazette", "· ctrl+b"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("the commit→open frame carries %q:\n%s", want, frame)
+		}
+	}
+	if strings.Contains(frame, "esc: cancel") {
+		t.Fatalf("enter closed the editor:\n%s", frame)
+	}
+}
+
+// TestBrowserEditCancelThroughApp — esc on the editor cancels back to the
+// previous frame (never the leave-to-floor esc, never a fetch).
+func TestBrowserEditCancelThroughApp(t *testing.T) {
+	pinBrowserTextLane(t)
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	raw := browserFixtureURL(t)
+	m = runMsg(t, m, slashMsg{text: "/open " + raw})
+	before := ansi.Strip(m.Frame())
+
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'e', Text: "e"}))
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: 'x', Text: "x"}))
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	if got := m.LeftTabIndex(); got != leftTabBrowser {
+		t.Fatalf("the editor's esc cancels — it NEVER leaves the slot, got %d", got)
+	}
+	if after := ansi.Strip(m.Frame()); after != before {
+		t.Fatalf("the cancel restores the frame byte-for-byte:\n--- before ---\n%s\n--- after ---\n%s", before, after)
+	}
+	// …and the NEXT esc is the pane's leave again.
+	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}))
+	if got := m.LeftTabIndex(); got != leftTabFloor {
+		t.Fatalf("esc post-edit leaves to the floor, got %d", got)
+	}
+}
+
+// TestBrowserOSOpenThroughApp — `O` on the loaded page fires the CURRENT
+// URL at the OS-open cascade (the runner seam faked — never a real
+// shell-out) and the dim confirmation row lands in the pane.
+func TestBrowserOSOpenThroughApp(t *testing.T) {
+	pinBrowserTextLane(t)
+	srv := browserShortURLServer(t)
+	var opened []panels.LinkTarget
+	restore := panels.SetOpenRunnerForShot(func(tgt panels.LinkTarget) error {
+		opened = append(opened, tgt)
+		return nil
+	})
+	defer restore()
+
+	m := New(&recBackend{}, nil)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/f"})
+	m = runMsg(t, m, shiftO())
+
+	if len(opened) != 1 || opened[0].Kind != panels.LinkURL || opened[0].Value != srv.URL+"/f" {
+		t.Fatalf("O opened the CURRENT page through the cascade: %+v", opened)
+	}
+	frame := ansi.Strip(m.Frame())
+	if !strings.Contains(frame, "opened in system browser: "+srv.URL+"/f") {
+		t.Fatalf("the dim confirmation row lands in the pane:\n%s", frame)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // the headless SHOT's app-level latch + flow (the frame-splice byte-pin
 // lives in browser_frame_test.go)
 // ---------------------------------------------------------------------------

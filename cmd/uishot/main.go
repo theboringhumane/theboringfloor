@@ -2984,6 +2984,305 @@ func runTerminalProof() error {
 	return nil
 }
 
+// --- paste proof (--paste) ---------------------------------------------------
+// The office-wide tea.PasteMsg surface, driven SYNCHRONOUSLY (focusDriver,
+// no wall clock) through the REAL app: every leg is one tea.PasteMsg — the
+// msg Terminal.app's cmd+v and every bracketed-paste terminal deliver.
+//
+//	leg A — CHAT small paste: inserts LITERALLY (one batched op, never
+//	        the ~530ms/key drain) and sends verbatim;
+//	leg B — CHAT large paste: >20 lines collapses to the one-line chip
+//	        "[pasted N lines · M chars]" — the paste body never paints;
+//	leg C — the chip eats ONE backspace as a unit (draft + record gone);
+//	leg D — expand-on-send: the member sees the chip, the agent's Send
+//	        receives the FULL original text;
+//	leg E — shift+enter AND ctrl+j insert newlines (enter still sends);
+//	leg F — RELEASED terminal tab: the paste falls back to the chat
+//	        draft (the shell never sees it), then CAPTURED: the paste
+//	        routes to the shell (the stub records the content);
+//	leg G — QUESTION float: the popover's answer field takes a multi-
+//	        line paste verbatim; ctrl+enter ships AnswerQuestion;
+//	leg H — IGNORED paste (agents tab): ONE dim office notice.
+//
+// Byte-for-byte determinism: the whole drive runs TWICE — frames, send
+// log, answer log and stub paste counts must be identical.
+
+// pasteDriveOut — everything the two drives compare + the report prints.
+type pasteDriveOut struct {
+	frameSmall   string // leg A: literal small paste in the textarea
+	frameChip    string // leg B: the collapsed chip row
+	framePopped  string // leg C: chip deleted, placeholder back
+	frameNewline string // leg E: the 3-row draft
+	frameTerm    string // leg F: captured terminal, stub shows pastes: 1
+	frameQuest   string // leg G: the echo box carries the pasted lines
+	frameNotice  string // leg H: the dim ignore notice on the chat tab
+	sendLog      []string
+	answerLog    []string
+	termPastes   []string
+}
+
+func runPasteDrive() (pasteDriveOut, error) {
+	var out pasteDriveOut
+	fail := func(format string, args ...any) (pasteDriveOut, error) {
+		return out, fmt.Errorf(format, args...)
+	}
+	var stub *terminalPanelStub
+	app.SpawnTerminal = func(cols, rows int) (app.TerminalTab, error) {
+		stub = newTerminalPanelStub(cols, rows)
+		return stub, nil
+	}
+	backend := &stubBackend{done: make(chan struct{})} // Mode() only — no script
+	d := &focusDriver{m: app.New(backend, config.Default())}
+	// exec — the exact breadth-first drain the --browsertab proof runs:
+	// the chat panel's onSend/onQuestionAnswer return the REAL work as
+	// tea.Cmds (backend.Send, the questionAnswerMsg hop) — dropping them
+	// (focusDriver.send) would fake the proof. Spinner ticks and cursor
+	// blinks are self-re-arming heartbeats: dropped, exactly as runMsg.
+	exec := func(msg tea.Msg) {
+		tm, cmd := d.m.Update(msg)
+		if fm, ok := tm.(app.Model); ok {
+			d.m = fm
+		}
+		queue := []tea.Cmd{cmd}
+		for len(queue) > 0 {
+			c := queue[0]
+			queue = queue[1:]
+			if c == nil {
+				continue
+			}
+			res := c()
+			if res == nil {
+				continue
+			}
+			switch res := res.(type) {
+			case tea.BatchMsg:
+				queue = append(queue, res...)
+			case spinner.TickMsg, cursor.BlinkMsg:
+				// heartbeats re-arm forever — dropped
+			default:
+				tm2, next := d.m.Update(res)
+				if fm2, ok := tm2.(app.Model); ok {
+					d.m = fm2
+				}
+				if next != nil {
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	exec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape})) // boot-splash dismiss (a lone esc is a no-op in the input)
+	paste := func(s string) { exec(tea.PasteMsg{Content: s}) }
+	press := func(c rune) { exec(tea.KeyPressMsg(tea.Key{Code: c, Text: string(c)})) }
+	enter := func() { exec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) }
+
+	// leg A — small paste: literal insert, verbatim send.
+	paste("hello paste world")
+	out.frameSmall = d.m.Frame()
+	enter()
+
+	// leg B — 31 lines: the chip collapses it.
+	lorem := make([]string, 31)
+	for i := range lorem {
+		lorem[i] = fmt.Sprintf("lorem line %02d", i+1)
+	}
+	big := strings.Join(lorem, "\n")
+	paste(big)
+	out.frameChip = d.m.Frame()
+
+	// leg C — one backspace pops the whole chip.
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeyBackspace}))
+	out.framePopped = d.m.Frame()
+
+	// leg D — re-paste, send: the agent receives the FULL text.
+	paste(big)
+	enter()
+
+	// leg E — shift+enter + ctrl+j newlines; enter sends the 3-row draft.
+	press('a')
+	press('b')
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter, Mod: tea.ModShift})) // ghostty/kitty deliver this
+	press('c')
+	press('d')
+	exec(tea.KeyPressMsg(tea.Key{Code: 'j', Mod: tea.ModCtrl})) // the universal fallback
+	press('e')
+	press('f')
+	out.frameNewline = d.m.Frame()
+	enter()
+
+	// leg F — RELEASED terminal: paste → the chat draft (never the shell);
+	// CAPTURED: paste → the shell.
+	if !d.m.SelectTab("terminal") {
+		return fail("terminal tab not selectable")
+	}
+	if stub == nil {
+		return fail("the terminal tab never spawned the stub")
+	}
+	paste("released-body") // released: the chat draft takes it
+	if len(stub.pastes) != 0 {
+		return fail("released terminal: the shell must NOT see the paste, got %q", stub.pastes)
+	}
+	if !d.m.SelectTab("chat") {
+		return fail("chat tab not selectable")
+	}
+	enter() // sends "released-body" — the released-terminal paste landed in the draft
+	if !d.m.SelectTab("terminal") {
+		return fail("terminal tab not re-selectable")
+	}
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl})) // dive in
+	paste("echo pasted-ok")
+	if len(stub.pastes) != 1 || stub.pastes[0] != "echo pasted-ok" {
+		return fail("captured terminal: the shell must own the paste, got %q", stub.pastes)
+	}
+	out.termPastes = append([]string(nil), stub.pastes...)
+	out.frameTerm = d.m.Frame()
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl})) // release back out
+
+	// leg G — the question float's answer field: multi-line paste verbatim.
+	exec(state.Event{Kind: state.EvQuestion, QuestionID: "que-paste",
+		EmployeeName: "boss", ToolState: "pending",
+		Questions: []state.QuestionItem{{Question: "paste the stack trace?"}},
+	})
+	if !d.m.SelectTab("chat") { // the popover splices into the CHAT panel
+		return fail("chat tab not selectable for the question leg")
+	}
+	paste("goroutine 1 [running]:\nmain.main()")
+	out.frameQuest = d.m.Frame()
+	exec(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter, Mod: tea.ModCtrl}))
+
+	// leg H — agents tab: nowhere accepts text → the dim notice (read
+	// back on the chat tab, where office notices paint).
+	if !d.m.SelectTab("agents") {
+		return fail("agents tab not selectable")
+	}
+	paste("nowhere-bound")
+	if !d.m.SelectTab("chat") {
+		return fail("chat tab not re-selectable")
+	}
+	out.frameNotice = d.m.Frame()
+
+	out.sendLog = append([]string(nil), backend.sendLog...)
+	out.answerLog = append([]string(nil), backend.answerLog...)
+	return out, nil
+}
+
+func runPasteProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	out1, err := runPasteDrive()
+	app.SpawnTerminal = nil
+	if err != nil {
+		return err
+	}
+	out2, err := runPasteDrive()
+	app.SpawnTerminal = nil
+	if err != nil {
+		return err
+	}
+
+	// --- leg frames + asserts -------------------------------------------------
+	type legFrame struct{ label, frame string }
+	frames := []legFrame{
+		{"A — chat: a small paste inserts LITERALLY (one batched op)", out1.frameSmall},
+		{"B — chat: a 31-line paste COLLAPSES to the one-line chip", out1.frameChip},
+		{"C — chat: ONE backspace pops the whole chip", out1.framePopped},
+		{"E — chat: shift+enter + ctrl+j insert newlines (enter still sends)", out1.frameNewline},
+		{"F — terminal CAPTURED: the paste routes to the shell (stub records)", out1.frameTerm},
+		{"G — question float: the answer field takes the paste verbatim", out1.frameQuest},
+		{"H — agents tab: the ignored paste toasts ONE dim notice", out1.frameNotice},
+	}
+	for _, lf := range frames {
+		fmt.Printf("===== UI SHOT · paste — %s =====\n", lf.label)
+		fmt.Println(lf.frame)
+		fmt.Println("===== UI SHOT =====")
+	}
+	// asserts compare CONTENT, not styling: the textarea's virtual cursor
+	// reverse-wraps the single cell it sits on (the empty draft's first
+	// placeholder rune), so raw frames can split a word mid-way — strip.
+	assertIn := func(frame, tag string, wants ...string) error {
+		plain := ansi.Strip(frame)
+		for _, w := range wants {
+			if !strings.Contains(plain, w) {
+				return fail("%s: frame missing %q", tag, w)
+			}
+		}
+		return nil
+	}
+	assertNotIn := func(frame, tag string, rejects ...string) error {
+		plain := ansi.Strip(frame)
+		for _, w := range rejects {
+			if strings.Contains(plain, w) {
+				return fail("%s: frame must NOT contain %q", tag, w)
+			}
+		}
+		return nil
+	}
+
+	if err := assertIn(out1.frameSmall, "leg A", "hello paste world"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.frameChip, "leg B", "[pasted 31 lines ·"); err != nil {
+		return err
+	}
+	if err := assertNotIn(out1.frameChip, "leg B", "lorem line 15", "lorem line 30"); err != nil {
+		return err
+	}
+	if err := assertNotIn(out1.framePopped, "leg C", "[pasted 31 lines"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.framePopped, "leg C", "talk to the boss…"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.frameNewline, "leg E", "ab", "cd", "ef"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.frameTerm, "leg F", "pastes: 1"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.frameQuest, "leg G", "QUESTION", "paste the stack trace?", "goroutine 1 [running]:", "main.main()"); err != nil {
+		return err
+	}
+	if err := assertIn(out1.frameNotice, "leg H", "paste: nothing focused accepts text"); err != nil {
+		return err
+	}
+
+	// --- the send/answer captures ----------------------------------------------
+	loremFull := make([]string, 31)
+	for i := range loremFull {
+		loremFull[i] = fmt.Sprintf("lorem line %02d", i+1)
+	}
+	big := strings.Join(loremFull, "\n")
+	wantSends := []string{"hello paste world", big, "ab\ncd\nef", "released-body"}
+	if len(out1.sendLog) != len(wantSends) {
+		return fail("send capture: want %d sends, got %d (%q)", len(wantSends), len(out1.sendLog), out1.sendLog)
+	}
+	for i, w := range wantSends {
+		if out1.sendLog[i] != w {
+			return fail("send %d: got %q, want %q", i, out1.sendLog[i], w)
+		}
+	}
+	fmt.Printf("send capture: OK — small paste verbatim; the chip EXPANDED on send (the agent receives all 31 lines); newlines joined; the released-terminal paste rode the draft\n")
+	if len(out1.answerLog) != 1 || !strings.Contains(out1.answerLog[0], "AnswerQuestion(que-paste, [goroutine 1 [running]:\nmain.main()])") {
+		return fail("question capture: want the pasted 2-line answer verbatim, got %q", out1.answerLog)
+	}
+	fmt.Printf("question capture: OK — %s\n", strings.ReplaceAll(out1.answerLog[0], "\n", "⏎"))
+
+	// --- determinism: the two drives byte-match ---------------------------------
+	if out1.frameSmall != out2.frameSmall || out1.frameChip != out2.frameChip ||
+		out1.framePopped != out2.framePopped || out1.frameNewline != out2.frameNewline ||
+		out1.frameTerm != out2.frameTerm || out1.frameQuest != out2.frameQuest ||
+		out1.frameNotice != out2.frameNotice {
+		return fail("the two synchronous drives produced different frames")
+	}
+	if strings.Join(out1.sendLog, "␟") != strings.Join(out2.sendLog, "␟") ||
+		strings.Join(out1.answerLog, "␟") != strings.Join(out2.answerLog, "␟") ||
+		strings.Join(out1.termPastes, "␟") != strings.Join(out2.termPastes, "␟") {
+		return fail("the two drives produced different captures")
+	}
+	fmt.Printf("deterministic: OK — two synchronous drives produced byte-identical frames + captures\n")
+	fmt.Println("asserts: OK — small paste literal + verbatim send; 31-line paste → one-line chip (body hidden); chip = ONE backspace unit; expand-on-send (full text to the agent); shift+enter + ctrl+j newlines; released terminal → chat draft / captured → shell (content-pinned); question field multi-line paste → AnswerQuestion; agents-tab paste → dim notice; two drives byte-identical")
+	return nil
+}
+
 // --- fix-wave proof (--focus) ----------------------------------------------
 // Three frames over ONE synchronous driver (no tea.Program, no wall clock):
 // every EvTick is pumped by hand, so the panel state is exact. Frame A
@@ -6637,7 +6936,7 @@ func runBrowserHintProof() error {
 	// pinned in panels' browser_hint_test.go).
 	const hintPrefix = "text lane — terminal-browser not on PATH"
 	idle := ansi.Strip(e1.frameIdle)
-	for _, want := range []string{hintPrefix, "▸ enter a url · /open <url> · o for file"} {
+	for _, want := range []string{hintPrefix, "▸ enter a url · /open <url> · e to edit · o for file"} {
 		if !strings.Contains(idle, want) {
 			return fail("browser-hint E idle frame missing %q:\n%s", want, idle)
 		}
@@ -7470,6 +7769,7 @@ func main() {
 	layout := flag.Bool("layout", false, "layout-modes proof: three frames over the same window — NORMAL (sidebar 80, the bcb1635 default), compact (sidebar 30, short tab labels, 2-row chat input, compressed topbar), wide 90 (explicit ui.sidebarWidth, clamped 26..100) — with computed width asserts per frame")
 	planshot := flag.Bool("planshot", false, "plan-mode screenshot (conversation-first + shape gate): ctrl+p flips ONLY the mode — TWO frames: t=2.0s plan mode active after TWO boss chatter replies (status narration) — the pane stays empty+hidden (office floor kept, [plan] badge + idle hint, escape-valve note EXACTLY once); the plan-SHAPED reply (# Goal / # Steps with bullets) then mirrors passively — t=3.6s the markdown pane owns the floor slot with the boss's plan text (unique azimuth marker), floor swapped out, starter template never armed, chat input still owns focus (click-to-edit pane footer)")
 	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, OPT-IN capture toggle flow (released default with a real tab event leaving the tab, ctrl+space toggles BOTH ways, ctrl+o releases as the alias, auto-release on leave, re-entry released), hints + frames + asserts, byte-identical twice")
+	paste := flag.Bool("paste", false, "office-wide paste proof (synchronous, tea.PasteMsg driven): chat small-paste literal + batched insert, >20-line/>2000-char paste collapses to the one-line chip (ONE backspace unit, expand-on-send — the agent gets the FULL text), shift+enter + ctrl+j newlines, RELEASED terminal → chat fallback / CAPTURED terminal → shell (stub records the content), question float's answer field takes a multi-line paste verbatim → AnswerQuestion, agents-tab paste → the dim 'paste: nothing focused accepts text' notice; two drives byte-identical")
 	focus := flag.Bool("focus", false, "fix-wave proof, THREE synchronous-tick frames: (a) empty pending bubble — typing row below the divider (above the input), NO caret anywhere; (b) streaming partial bubble — text grows in the viewport while the typing row STAYS below the divider for the whole pending period (still no caret); (c) two concurrent agents — per-agent work threads grouped (headers + merged rows), boss tool line still inline, boss idle at the placeholder in delegating state (dim row in the same below-divider slot, [delegat] nameplate). Every frame: no \"▌\", every chat row inside the divider's width budget")
 	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEBORINGOFFICE_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
 	slashpop := flag.Bool("slashpop", false, "slash-popover proof: type \"/th\" → filtered menu (/theme /themes /thinking), Enter pre-fills \"/theme \" → theme picker, arrows preview LIVE (two states printed), esc cancels back, Enter commits + persists via the plain slash path")
@@ -7774,6 +8074,14 @@ func main() {
 
 	if *terminal {
 		if err := runTerminalProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *paste {
+		if err := runPasteProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

@@ -10,14 +10,17 @@
 // Rows: "provider/id" left (the CURRENT pick accented + marked
 // "· current"), the serve's display name dim at the meta column. Keys
 // while open (the app routes EVERY key here while no permission/question
-// float outranks it): ↑/↓ walk the cursor CLAMPED (a model list reads
+// float outranks it): typing NARROWS the list (case-insensitive
+// substring over the provider/id ref + display name — the /session
+// picker's exact filter contract: backspace edits, ctrl+u clears), ↑/↓
+// walk the cursor CLAMPED over the narrowed rows (a model list reads
 // top-down once — no wrap-around), enter accepts the highlighted row's
-// full "provider/id" ref through onPick, esc cancels through onCancel
-// (zero side effects of its own — the app closes the card). Every other
-// key is swallowed: the list is the connected providers' full set and
-// searching was deliberately left out (a follow-up can grow a filter row
-// the /session picker's way without touching the key contract). The card
-// is keys-only: the app swallows clicks while it is up.
+// full "provider/id" ref through onPick, esc clears a live filter first
+// and only cancels through onCancel on an empty one (zero side effects
+// of its own — the app closes the card). A bracketed paste lands in the
+// filter too (Paste — the app paste router's duck-typed seam, newlines
+// flattened to single spaces). Every other key is swallowed. The card is
+// keys-only: the app swallows clicks while it is up.
 //
 // The picker opens in a LOADING state ("fetching models…") — the app's
 // ListModels hop rides a tea.Cmd, never blocking the input loop — and
@@ -44,13 +47,16 @@ type ModelPickRow struct {
 	Current  bool   // the configured boss model RIGHT NOW
 }
 
-// ModelPicker — the open picker: the row set (app-sorted), the clamped
-// cursor, and its live/final loading marker. loading marks the ListModels
-// hop still in flight (rows empty).
+// ModelPicker — the open picker: the row set (app-sorted), the narrowed
+// view over it, the clamped cursor, the live filter buffer, and its
+// live/final loading marker. loading marks the ListModels hop still in
+// flight (rows empty).
 type ModelPicker struct {
-	rows    []ModelPickRow
-	sel     int
-	loading bool
+	rows     []ModelPickRow
+	filtered []ModelPickRow
+	sel      int
+	filter   string
+	loading  bool
 	// onPick/onCancel ferry over tea.Msgs (the model value copy in Update
 	// stays the single writer — the same contract the /session picker's
 	// handlers keep).
@@ -63,7 +69,7 @@ type ModelPicker struct {
 const modelVisibleRows = 8
 
 // modelPickHint — the picker's dim footer.
-const modelPickHint = "↑/↓: move · enter: switch · esc: cancel"
+const modelPickHint = "type: narrow · ↑/↓: move · enter: switch · esc: cancel"
 
 // modelPickHigh — the cursor row's reversed-accent run (sessHigh's twin,
 // in the app pickers' accent color).
@@ -78,7 +84,8 @@ func NewModelPicker(pick func(ref string) tea.Cmd, cancel func() tea.Cmd) *Model
 
 // SetRows fills the card with the app's built rows (sorted, current
 // marked) and leaves the loading state; the cursor starts on the top row
-// and clamps to the list bounds.
+// and clamps to the (narrowed) list bounds. Refiltering preserves the
+// app's order.
 func (p *ModelPicker) SetRows(rows []ModelPickRow) {
 	if p == nil {
 		return
@@ -86,7 +93,22 @@ func (p *ModelPicker) SetRows(rows []ModelPickRow) {
 	p.rows = rows
 	p.loading = false
 	p.sel = 0
-	if n := len(rows); p.sel >= n {
+	p.modelRefilter()
+}
+
+// modelRefilter recomputes the narrowed slice (case-insensitive
+// substring over the "provider/id" ref + display name — the /session
+// picker's forgiving match) and clamps the cursor.
+func (p *ModelPicker) modelRefilter() {
+	frag := strings.ToLower(strings.TrimSpace(p.filter))
+	p.filtered = p.filtered[:0]
+	for _, row := range p.rows {
+		hay := strings.ToLower(row.Provider + "/" + row.ID + " " + row.Name)
+		if frag == "" || strings.Contains(hay, frag) {
+			p.filtered = append(p.filtered, row)
+		}
+	}
+	if n := len(p.filtered); p.sel >= n {
 		p.sel = n - 1
 	}
 	if p.sel < 0 {
@@ -115,42 +137,50 @@ func (p *ModelPicker) RowCount() int {
 	return len(p.rows)
 }
 
-// modelMove walks the cursor by d rows CLAMPED to [0, len-1] — no
-// wrap-around (the requirement: ↑ on the top row / ↓ on the bottom row
-// simply stays put).
+// modelMove walks the cursor by d rows CLAMPED to the NARROWED list's
+// [0, len-1] — no wrap-around (the requirement: ↑ on the top row / ↓ on
+// the bottom row simply stays put).
 func (p *ModelPicker) modelMove(d int) {
-	if p == nil || len(p.rows) == 0 {
+	if p == nil || len(p.filtered) == 0 {
 		return
 	}
 	p.sel += d
 	if p.sel < 0 {
 		p.sel = 0
 	}
-	if p.sel >= len(p.rows) {
-		p.sel = len(p.rows) - 1
+	if p.sel >= len(p.filtered) {
+		p.sel = len(p.filtered) - 1
 	}
 }
 
-// modelCurrentRef is the highlighted row's full "provider/id" ref,
-// ok=false while loading / on an empty listing — enter is a no-op then.
+// modelCurrentRef is the highlighted NARROWED row's full "provider/id"
+// ref, ok=false while loading / on an empty listing / a dead filter —
+// enter is a no-op then.
 func (p *ModelPicker) modelCurrentRef() (string, bool) {
-	if p == nil || p.loading || len(p.rows) == 0 || p.sel < 0 || p.sel >= len(p.rows) {
+	if p == nil || p.loading || len(p.filtered) == 0 || p.sel < 0 || p.sel >= len(p.filtered) {
 		return "", false
 	}
-	r := p.rows[p.sel]
+	r := p.filtered[p.sel]
 	return r.Provider + "/" + r.ID, true
 }
 
 // Key handles ONE key routed by the app while the picker is open (the app
-// claims every key for it — the textarea below is DISABLED): ↑/↓ move
-// the clamped cursor, enter accepts through onPick, esc cancels through
-// onCancel, everything else is swallowed.
+// claims every key for it — the textarea below is DISABLED): typing
+// narrows the list (backspace edits, ctrl+u clears), ↑/↓ move the
+// clamped cursor over the narrowed rows, enter accepts through onPick,
+// esc clears a live filter FIRST and cancels through onCancel only on an
+// empty one, everything else is swallowed.
 func (p *ModelPicker) Key(msg tea.KeyPressMsg) tea.Cmd {
 	if p == nil {
 		return nil
 	}
 	switch msg.String() {
 	case "esc":
+		if p.filter != "" {
+			p.filter = ""
+			p.modelRefilter()
+			return nil
+		}
 		if p.onCancel != nil {
 			return p.onCancel()
 		}
@@ -167,11 +197,39 @@ func (p *ModelPicker) Key(msg tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 		return p.onPick(ref)
+	case "backspace":
+		if r := []rune(p.filter); len(r) > 0 {
+			p.filter = string(r[:len(r)-1])
+			p.modelRefilter()
+		}
+		return nil
+	case "ctrl+u":
+		p.filter = ""
+		p.modelRefilter()
+		return nil
 	default:
-		// keys-only navigation: every other key belongs to the card and
-		// dies here (typing / pgup / tab never reach the office below).
+		// typed runes narrow; the rest (pgup / tab / home / end) belongs
+		// to the card and dies here — nothing reaches the office below.
+		if msg.Text != "" {
+			p.filter += msg.Text
+			p.modelRefilter()
+		}
 		return nil
 	}
+}
+
+// Paste — the app paste router's duck-typed seam (model.go routePaste):
+// a bracketed paste (cmd+v) lands in the FILTER, newline/CR runs
+// flattened to single spaces (flattenPasteLines — the /session picker
+// filter's exact paste rule), and never sinks into the disabled textarea
+// underneath. Returns nil: the paste is fully consumed here.
+func (p *ModelPicker) Paste(content string) tea.Cmd {
+	if p == nil {
+		return nil
+	}
+	p.filter += flattenPasteLines(content)
+	p.modelRefilter()
+	return nil
 }
 
 // modelCard renders the picker's rows, each EXACTLY cardW display cells
@@ -188,12 +246,16 @@ func (p *ModelPicker) modelCard(frameW int) (rows []string, cardW int) {
 	rows = append(rows, chrome.AccentText.Render("╭"+strings.Repeat("─", inner)+"╮"))
 	rows = append(rows, rail(blank))
 
-	// Title row: ACCENT-bold header left, dim row-count badge right —
-	// the badge only shows once rows have landed.
+	// Title row: ACCENT-bold header left, dim row-count badge right — the
+	// badge only shows once rows have landed; with a query active it runs
+	// "N/M" (narrowed/total), the /session picker's exact badge.
 	title := "BOSS MODEL"
 	badge := ""
 	if !p.loading && len(p.rows) > 0 {
 		badge = itoa(len(p.rows))
+		if strings.TrimSpace(p.filter) != "" {
+			badge = itoa(len(p.filtered)) + "/" + badge
+		}
 	}
 	gap := inner - 2 - lipgloss.Width(title) - lipgloss.Width(badge)
 	if gap < 1 {
@@ -201,26 +263,39 @@ func (p *ModelPicker) modelCard(frameW int) (rows []string, cardW int) {
 	}
 	rows = append(rows, rail(" "+chrome.AccentText.Bold(true).Render(title)+strings.Repeat(" ", gap)+
 		chrome.DimText.Render(badge)+" "))
+
+	// The live filter row: the typed narrowing echo (the textarea under
+	// the card is disabled, so the card itself carries the buffer). Empty
+	// filter renders as the dim invite; a non-empty one shows its caret.
+	switch {
+	case p.filter != "":
+		rows = append(rows, rail(fitLabel(" filter: "+p.filter+questCaret, inner)))
+	default:
+		rows = append(rows, rail(fitLabel(chrome.DimText.Italic(true).Render(" type to narrow"), inner)))
+	}
 	rows = append(rows, rail(blank))
 
-	// List window: the fetching placeholder, the empty-listing row, or
-	// the models themselves (windowed at modelVisibleRows).
+	// List window: the fetching placeholder, the empty-listing row, the
+	// dead-filter row, or the narrowed models themselves (windowed at
+	// modelVisibleRows).
 	switch {
 	case p.loading:
 		rows = append(rows, rail(fitLabel("  "+chrome.DimText.Render("fetching models…"), inner)))
 	case len(p.rows) == 0:
 		rows = append(rows, rail(fitLabel("  "+chrome.DimText.Render("(no models reported — /model provider/model still works)"), inner)))
+	case len(p.filtered) == 0:
+		rows = append(rows, rail(fitLabel("  "+chrome.DimText.Render("(no matches)"), inner)))
 	default:
 		start := 0
 		if p.sel >= modelVisibleRows {
 			start = p.sel - modelVisibleRows + 1
 		}
 		end := start + modelVisibleRows
-		if end > len(p.rows) {
-			end = len(p.rows)
+		if end > len(p.filtered) {
+			end = len(p.filtered)
 		}
 		for i := start; i < end; i++ {
-			rows = append(rows, rail(modelMenuRow(p.rows[i], i == p.sel, inner)))
+			rows = append(rows, rail(modelMenuRow(p.filtered[i], i == p.sel, inner)))
 		}
 	}
 	rows = append(rows, rail(blank))

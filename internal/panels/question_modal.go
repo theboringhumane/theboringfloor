@@ -218,6 +218,30 @@ func (c *Chat) questSubmitText() tea.Cmd {
 	return c.questSubmit(QuestionAnswer{Text: text})
 }
 
+// questPaste inserts a bracketed paste (tea.PasteMsg) into the open
+// page's text surface as ONE batched append — never per-rune (the drain
+// crawl), and it follows the same ownership as typing: the TEXT page's
+// echo box takes the paste VERBATIM (newlines preserved — ctrl+enter
+// still submits, esc still defers); on option pages the paste lands only
+// while the cursor sits on the 1-line custom-answer row, with newlines
+// flattened to spaces (flattenPasteLines); confirm pages have no text
+// surface and ignore the paste.
+func (c *Chat) questPaste(content string) tea.Cmd {
+	if c.question == nil {
+		return nil
+	}
+	if c.question.Kind == QuestionKindText {
+		c.qText += content
+		return nil
+	}
+	if c.question.Kind == QuestionKindRadio || c.question.Kind == QuestionKindCheckbox {
+		if c.qSel == c.questCustomIdx() {
+			c.qText += flattenPasteLines(content)
+		}
+	}
+	return nil
+}
+
 // questKey handles EVERY key while a question popover is open (the chat
 // Update routes to it before ANY other arm): up/down/tab walk the
 // cursor on option pages, esc defers through onQuestionLater, pgup/

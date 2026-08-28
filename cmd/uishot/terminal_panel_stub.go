@@ -21,7 +21,8 @@ import (
 // terminalPanelStub — fake TermPanel for the --terminal frame.
 type terminalPanelStub struct {
 	w, h     int
-	received int // keys routed into the "shell" (routing proof)
+	received int      // keys routed into the "shell" (routing proof)
+	pastes   []string // paste CONTENTS routed into the "shell" (--paste proof)
 	closed   bool
 }
 
@@ -46,8 +47,11 @@ func (t *terminalPanelStub) SetSize(w, h int) { t.w, t.h = w, h }
 func (t *terminalPanelStub) SetState(st state.OfficeState) {}
 
 func (t *terminalPanelStub) Update(msg tea.Msg) tea.Cmd {
-	if _, ok := msg.(tea.KeyPressMsg); ok {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
 		t.received++
+	case tea.PasteMsg:
+		t.pastes = append(t.pastes, msg.Content)
 	}
 	return nil
 }
@@ -84,7 +88,7 @@ func (t *terminalPanelStub) View() string {
 		"$ echo theboringoffice",
 		"theboringoffice",
 		"(uisshot STUB shell — the real panels.TermPanel is wired by cmd/theboringoffice)",
-		fmt.Sprintf("$ keys received: %d █", t.received),
+		fmt.Sprintf("$ keys received: %d · pastes: %d █", t.received, len(t.pastes)),
 	}
 	for i := range lines {
 		lines[i] = pad(lines[i])

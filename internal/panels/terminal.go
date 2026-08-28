@@ -336,6 +336,23 @@ func (p *TermPanel) Update(msg tea.Msg) tea.Cmd {
 			p.selClear()
 		}
 		return nil
+	case tea.PasteMsg:
+		// Bracketed paste into the shell (the app's router sends it here
+		// only while CAPTURED — released, the chat textarea takes it).
+		// On the MAIN screen the bytes go to the PTY re-wrapped in
+		// bracketed-paste markers (ESC[200~ … ESC[201~): readline/zle/
+		// fish negotiated ?2004 at the prompt and treat the whole blob as
+		// ONE paste unit — a multi-line clipboard never auto-EXECs
+		// line-by-line. Inside an ALT-SCREEN app (vim, htop — ?1049, the
+		// one private mode the grid tracks) the application owns the
+		// keyboard itself: write the bytes raw, exactly like the key
+		// path's forwarding discipline (keyToBytes).
+		if p.focused && p.Alive() {
+			p.selClear() // new input to the PTY retires the selection (frozen rule)
+			_, _ = p.sess.Write(pasteToPTY(msg.Content, p.sess.Grid().AltActive()))
+			p.cached = ""
+		}
+		return nil
 	case tea.MouseWheelMsg:
 		// wheel keeps SCROLLING even mid-selection: scrollView shifts the
 		// armed endpoints by the delta so the span stays pinned to the
@@ -475,6 +492,22 @@ func (p *TermPanel) scrollView(d int) {
 		p.sel.h.row = termClampInt(p.sel.h.row+delta, 0, p.bodyH()-1)
 	}
 	p.cached = ""
+}
+
+// pasteToPTY renders one paste's PTY bytes: alt-screen apps (vim & co —
+// they own the keyboard) get the content raw; the main-screen shell gets
+// it wrapped in bracketed-paste markers so bracketed-aware line editors
+// (readline, zle, fish) treat it as ONE paste unit. The wrap is one pair
+// of markers around the WHOLE content, newlines included.
+func pasteToPTY(content string, altActive bool) []byte {
+	if altActive {
+		return []byte(content)
+	}
+	b := make([]byte, 0, len(content)+6)
+	b = append(b, "\x1b[200~"...)
+	b = append(b, content...)
+	b = append(b, "\x1b[201~"...)
+	return b
 }
 
 // keyToBytes maps a bubbletea keypress to the byte sequence the shell

@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev R3: model picker search (@developer subag... — tekton-7 (developer) · `issues`
+- summary: All verification complete. Final tree state: only my two scoped files changed. Composing the return.
+- files: `internal/panels/model_picker.go`, `internal/panels/model_picker_search_test.go` *(new)*, `/tmp/overlay_browser_fix/browser.go` + `/tmp/overlay_browser_fix/overlay.json` *(scratch only, NOT 
+- verify: ```
+- proof: *1) The card mid-filter** (typed `claude` — `3/5` badge, `filter:` row, narrowed list, cursor on the top match; ANSI-stripped real render):
+- ledgerId: led-1787923903697-3804747a
+
+### 2026-08-28 · Dev R2: paste everywhere + chat UX (@develope... — tekton-4 (developer) · `issues`
+- summary: All gates green on the final tree. Composing the return.
+- files: `internal/app/model.go`, `internal/app/model_paste_test.go` *(new)*, `internal/panels/chat.go`, `internal/panels/chat_paste.go` *(new)*, `internal/panels/chat_paste_test.go` *(new)*, `internal/panels/question_modal.go`, `internal/panels/terminal.go`, `internal/panels/terminal_paste_test.go` *(new)*, `cmd/uishot/main.go`, `cmd/uishot/terminal_panel_stub.go`, `/tmp/drive_paste.py`, `/tmp/tb-office`, NOT touched
+- verify: ```
+- proof: *The chip row in the frame** (uisot `--paste` leg B, ANSI-stripped — the 31-line paste is ONE row; the body never paints):
+- ledgerId: led-1787923232019-6d6dc6fa
+
+### 2026-08-28 · Dev R4: browser URL edit + OS-open (@develope... — tekton-6 (developer) · `issues`
+- summary: All gates green on the final tree. Composing the return.
+- files: `internal/panels/browser.go`, `internal/panels/browser_edit_test.go`, `internal/panels/browser_test.go`, `internal/app/browser.go`, `internal/app/browser_test.go`
+- verify: (Full sweep ran clean THREE consecutive times, 21 packages `ok`, on the settled final tree. One earlier mid-session run showed 3 foreign FAI
+- proof: *The editor row, mid-edit** (raw ANSI — caret = reversed `/` between `a.dev` and `x` after two lefts):
+- ledgerId: led-1787922335644-716eb920
+
+### 2026-08-28 · Dev R3: picker search (@developer subagent) — tekton-5 (developer) · `issues`
+- summary: Baseline green and the evidence is conclusive. This is a stop-early return: the brief's premise is wrong about two of the three pickers, and the third's impleme
+- files: (none
+- verify: (Full-suite run intentionally skipped: zero changes to verify — a `grep -cE '^FAIL'` → 0 would attest the baseline, not my work.)
+- proof: What the member already has today (rendered from the code I read — no new artifact exists to show):
+- ledgerId: led-1787921304934-534334d1
+
 ### 2026-08-28 · Dev Q4: chat previews + bandwidth (@developer... — theboringcto-1 (cto) · `issues`
 - summary: Everything is verified. Composing the final return:
 - files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/kitty_lanes.go`, `internal/panels/kitty_lanes_test.go`, `internal/app/images.go`, `internal/app/model.go`, `internal/app/images_lane_test.go`, `internal/app/model_image_splice_test.go`, `cmd/uishot/main.go`, NOT touched: `internal/panels/chat_raster.go` (in scope; needed no change
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (zero matches — brief-required grep returns NOTHING; case-insensitive sweep `grep -rni` also exit 1, zero matches)
 - proof: New const lines (`internal/gitx/attribution.go` L12–20, pasted verbatim from `sed -n '12,20p'`):
 - ledgerId: led-1787806022904-e40224a2
-
-### 2026-08-27 · Scout: env/spawn seams map (@explore subagent) — skopos-2 (scout) · `issues`
-- summary: All recon complete. Tree state confirmed: the dirty/untracked files belong to parallel agents (browser lane, attribution wave) — my tools were read/grep/glob pl
-- files: | path | why read |, |---|---|, | `internal/term/term.go` | THE shell spawn seam (`Spawn` L92–134), | `internal/gitx/attribution.go` | existing Majdoor consts + trailer helper, | `internal/gitx/gitx.go` | `execGit` L73–89 + frozen read-only contract L1–15, | `internal/backend/opencode.go` | `spawnServe` L876–949, | `internal/backend/claude.go` | `claudeChildEnv` allowlist L190–217, `spawnClaude` L223–254, CLAUDE, | `internal/backend/charter.go` | `envOrLegacy` helper L215–223, NO_AUTOCHARTER read L74 |, | `internal/panels/terminal.go` | `spawnTermSession` seam L117 + `spawn()` L185–192, | `internal/panels/browser_lane.go` | zenbu PTY spawn L217–232, BrowserLaneOffEnv L90–131 |, | `internal/panels/links.go` | TerminalBrowserOffEnv L255–291, terminalBrowserOpen env passthrough L, | `internal/app/terminal.go` | `SpawnTerminal` factory seam L65–136
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787805127958-5a6f8c5b
-
-### 2026-08-27 · Dev B: env snippet + docs (@developer subagent) — tekton-6 (developer) · `done`
-- summary: All gates green, including the zsh-sourcing edge case (silent both ways, exports only when the flag is `true`).
-- files: `scripts/majdoor-env.sh`, `README.md`
-- verify: ```
-- proof: *Rendered README section (README.md L394–447):**
-- ledgerId: led-1787805088486-f29a8929
-
-### 2026-08-27 · Dev B: hook installer + docs (@developer suba... — tekton-4 (developer) · `issues`
-- summary: **NEW `scripts/majdoor-commit-msg-hook.sh`** (755) — POSIX sh `commit-msg` hook, `set -eu`, grep/sed only: appends `Co-authored-by: TheBoringMajdoor <majdoor@of
-- files: `scripts/majdoor-commit-msg-hook.sh`, `scripts/install-majdoor-hook.sh`, `README.md`, `install.sh`
-- verify: Repo with `git config core.hooksPath .githooks`: installer resolved hooks dir to `.../.githooks`, hook landed there, `.git/hooks` kept only
-- proof: *Rendered README section (as it appears in README.md, lines 394–425):**
-- ledgerId: led-1787804936780-819340bb
-
-### 2026-08-27 · Dev A: Majdoor trailer in Go commits (@develo... — tekton-3 (developer) · `issues`
-- summary: My only additions are the two new `internal/gitx/attribution*` files; all other dirty paths belong to parallel agents (browser lane work, ledger appends) — unto
-- files: `internal/gitx/attribution.go`, `internal/gitx/attribution_test.go`
-- verify: ```
-- proof: Real test case (passing subtest `existing other trailer → appended inside the block, no blank line`), BEFORE → AFTER:
-- ledgerId: led-1787804671681-a5a7aa6a
 
