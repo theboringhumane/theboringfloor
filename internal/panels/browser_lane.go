@@ -54,23 +54,31 @@
 //
 // LIFECYCLE (the member's keep-alive ruling — the page is "always
 // shown"): leaving the browser tab (ctrl+b to the floor, the pane's
-// q/esc) FREEZES the premium child instead of killing it — the process
-// group is SIGSTOPped (CPU off; the PTY's kernel buffer backpressures
-// the child naturally), the splitter parks (its in-flight tail +
-// pending chain drop per the wave-82 churn discipline; zero store
-// mutations while suspended), the terminal-side image deletes ride the
-// registry clear → the wrapper's a=d (the floor never shows the page),
-// and the image store RETAINS the latest joined frame. Returning THAWS
-// the SAME child (SIGCONT — the PID never changes across a flip, one
-// backgrounded Electron's RAM is the accepted cost) and the retained
-// frame re-emits through the frame-splice wrapper on the very next
-// flush: the member sees the last painted page INSTANTLY, before the
-// child emits a byte. The KILL paths are unchanged: office quit /
-// lane Close, a fresh OpenURL (kill + spawn fresh), and the early-exit
-// fallback still group-SIGKILL + bounded-reap (zenbuKillGrace,
-// opencode.go's stopKillGrace discipline) + delete the images exactly
-// as before; a child that died while frozen is observed by Poll and
-// rides the existing fallback. Close is idempotent.
+// q/esc) FREEZES the premium child instead of killing it — the splitter
+// parks FIRST (a CONSUMPTION PAUSE, never a reset: the in-flight APC
+// tail + open chunk chain are PRESERVED in the splitter's buffers —
+// zero store/grid/scrollback mutations while suspended — and any byte
+// the still-running child writes before the stop takes effect lands in
+// the pending buffer, never the grid), the frame-splice registry clears
+// (the wrapper's a=d — the floor never shows the page), and ONLY THEN
+// the process group is SIGSTOPped (CPU off; the PTY's kernel buffer
+// backpressures the child naturally). The image store RETAINS the
+// latest joined frame. Returning THAWS the SAME child (SIGCONT — the
+// PID never changes across a flip, one backgrounded Electron's RAM is
+// the accepted cost): the preserved pending chain's tail COMPLETES it
+// into a valid frame (a mid-chain SIGSTOP is the common case at ~2fps —
+// resetting at the freeze dropped the chain's HEAD and the resumed tail
+// painted the grid with raw base64: the production freeze-leak), and
+// the retained frame re-emits through the frame-splice wrapper on the
+// very next flush: the member sees the last painted page INSTANTLY,
+// before the child emits a byte. The KILL paths are unchanged: office
+// quit / lane Close, a fresh OpenURL (kill + spawn fresh), and the
+// early-exit fallback still group-SIGKILL + bounded-reap
+// (zenbuKillGrace, opencode.go's stopKillGrace discipline) + delete the
+// images + RESET the splitter exactly as before (a dead child's chain
+// never completes); a child found DEAD at the thaw (murdered while
+// frozen) resets the splitter first, then is observed by Poll and rides
+// the existing fallback. Close is idempotent.
 package panels
 
 import (
@@ -122,6 +130,13 @@ const BrowserLaneOffEnv = "THEBORINGOFFICE_TERMINAL_BROWSER_OFF"
 // exec.LookPath by default, swapped by tests to prove the
 // PATH-resolution-failure leg without depending on the host PATH.
 var zenbuLookPath = exec.LookPath
+
+// zenbuGroupSignal — the process-group signal seam (the same swap-var
+// idiom): syscall.Kill by default, swapped by the ordering test to
+// PROVE Freeze's park engages BEFORE the SIGSTOP (and Unfreeze's unpark
+// BEFORE the SIGCONT) — the leak window's shut-ness is observable at
+// the signal's own instant.
+var zenbuGroupSignal = syscall.Kill
 
 // ResolveBrowserLane — the browser tab's lane, live-read (fresh env +
 // PATH probe; callers wanting the per-boot memo use a
@@ -287,13 +302,19 @@ type zenbuSess interface {
 	Lifetime() time.Duration
 	// URL — the page this process was opened with.
 	URL() string
-	// Freeze — the keep-alive suspend: SIGSTOP the process group, park
-	// the splitter, clear the frame registry; the store RETAINS the
-	// latest joined frame. Idempotent; an already-dead child is a
-	// silent no-op (Poll's fallback owns it).
+	// Freeze — the keep-alive suspend: park the splitter (a consumption
+	// pause — the pending APC tail + open chunk chain are PRESERVED),
+	// clear the frame registry, and SIGSTOP the process group (the park
+	// engages BEFORE the signal, so a racing write lands in the pending
+	// buffer, never the grid); the store RETAINS the latest joined
+	// frame. Idempotent; an already-dead child is a silent no-op
+	// (Poll's fallback owns it).
 	Freeze() error
-	// Unfreeze — the keep-alive resume: unpark the splitter and SIGCONT
-	// the SAME process group (never a respawn). Idempotent.
+	// Unfreeze — the keep-alive resume: unpark the splitter (the
+	// preserved chain's tail completes it into a valid frame) and
+	// SIGCONT the SAME process group (never a respawn); a child found
+	// DEAD resets the splitter first (its chain never completes).
+	// Idempotent.
 	Unfreeze() error
 	// Frozen — the keep-alive posture (parked + SIGSTOPped, store
 	// retained, PID unchanged).
@@ -324,7 +345,7 @@ type ZenbuSession struct {
 	sb      *term.Scrollback
 	grid    *term.Grid
 	images  *zenbuImageStore // the kitty passthrough's live state (browser_lane_kitty.go)
-	split   *kittyStream     // the stream splitter (Close resets its pending tail/chain)
+	split   *kittyStream     // the stream splitter (the kill paths reset it; the freeze PRESERVES its pending tail/chain)
 	started time.Time
 
 	mu        sync.Mutex
@@ -513,18 +534,22 @@ func (s *ZenbuSession) Grid() *term.Grid { return s.grid }
 func (s *ZenbuSession) Scrollback() *term.Scrollback { return s.sb }
 
 // Freeze — the keep-alive suspend (the pane flipped to the floor, the
-// q/esc leave): the child process group is SIGSTOPped (the CPU freezes;
-// the PTY's kernel buffer backpressures a mid-write child naturally)
-// and the lane's render state becomes a SNAPSHOT — the splitter parks
-// (the frozen child's in-flight tail, still draining the kernel buffer,
-// is consumed and DISCARDED: zero store/grid/scrollback mutations while
-// suspended) with its pending APC tail + open chunk chain dropped at
-// the boundary (the wave-82 churn discipline), and the frame-splice
-// registry CLEARS so the wrapper's next flush deletes the terminal-side
-// image (the floor never shows the page). The image store RETAINS the
-// latest joined frame — it IS Resume's instant repaint. The PID never
-// changes. Idempotent; an already-exited child skips the signal (Poll
-// owns the fallback); a closed session no-ops.
+// q/esc leave): the splitter PARKS FIRST (a consumption pause — the
+// pending APC tail + the open chunk chain are PRESERVED in the
+// splitter's buffers; any byte the still-running child writes before
+// the stop takes effect lands in the pending buffer, NEVER the grid),
+// the frame-splice registry CLEARS so the wrapper's next flush deletes
+// the terminal-side image (the floor never shows the page), and ONLY
+// THEN the child process group is SIGSTOPped (the CPU freezes; the
+// PTY's kernel buffer backpressures a mid-write child naturally). The
+// park-before-signal order closes the leak window: a mid-chain freeze
+// keeps the chain's HEAD, the kernel PTY buffer + the parked pending
+// hold the in-flight bytes, and Unfreeze's thawed tail COMPLETES the
+// chain into a valid frame — zero base64 can reach the grid (resetting
+// at this boundary was the production freeze-leak). The image store
+// RETAINS the latest joined frame — it IS Resume's instant repaint. The
+// PID never changes. Idempotent; an already-exited child skips the
+// signal (Poll owns the fallback); a closed session no-ops.
 func (s *ZenbuSession) Freeze() error {
 	s.mu.Lock()
 	if s.closed || s.suspended {
@@ -539,27 +564,37 @@ func (s *ZenbuSession) Freeze() error {
 	exited := s.exited
 	s.mu.Unlock()
 
-	// park FIRST: the discard gate must be up before the signal so no
-	// in-flight byte can mutate the store after Freeze returns.
+	// park BEFORE the signal: the consumption pause must be up first so
+	// a byte written while the SIGSTOP is still taking effect lands in
+	// the pending buffer (an unparked splitter would scan it, and a
+	// post-signal park would reopen exactly the window the ordering
+	// test pins shut).
 	if s.split != nil {
 		s.split.park()
 	}
 	ZenbuRegistry().Clear()
 	if !exited && pid > 0 {
-		return syscall.Kill(-pid, syscall.SIGSTOP)
+		return zenbuGroupSignal(-pid, syscall.SIGSTOP)
 	}
 	return nil
 }
 
 // Unfreeze — the keep-alive resume (the pane flipped back): the
-// splitter unparks and the SAME process group is SIGCONTed — NO
-// respawn, NO reload, the PID is the one Freeze pinned. The store's
-// retained frame never rides this call: the app's next Frame()
-// republishes it to the frame-splice registry and the wrapper re-emits
-// it on the very next flush (the member sees the last painted page
-// BEFORE the thawed child emits anything new). Idempotent; a dead
-// child skips the signal (Poll's fallback owns it); a closed session
-// no-ops.
+// splitter unparks (its PRESERVED pending drains on the spot — a
+// fully-arrived in-flight chain commits before the child emits a byte;
+// a partial APC holds) and the SAME process group is SIGCONTed — the
+// thawed child's tail COMPLETES the pending chain into a valid frame
+// (NO respawn, NO reload, the PID is the one Freeze pinned). A child
+// found DEAD (murdered while frozen) can never complete its chain: the
+// splitter is RESET first (the pending tail + open chain drop log-once
+// — the kill-path discipline, ahead of Poll's fallback latch), the gate
+// STAYS PARKED (the reader's last kernel-buffer bytes racing the reap
+// buffer unscanned until Close's reset drops them — a dead child's
+// chainless tail can NEVER flush), and no signal rides. The store's retained frame never rides this call: the
+// app's next Frame() republishes it to the frame-splice registry and
+// the wrapper re-emits it on the very next flush (the member sees the
+// last painted page BEFORE the thawed child emits anything new).
+// Idempotent; a closed session no-ops.
 func (s *ZenbuSession) Unfreeze() error {
 	s.mu.Lock()
 	if s.closed || !s.suspended {
@@ -575,10 +610,21 @@ func (s *ZenbuSession) Unfreeze() error {
 	s.mu.Unlock()
 
 	if s.split != nil {
+		if !alive {
+			// the frozen child was MURDERED: the in-flight chain's tail
+			// never comes — reset the splitter (the kill-path discipline)
+			// and KEEP THE GATE PARKED: the reader's final drained bytes
+			// (the kernel buffer racing the reap) buffer UNSCANNED until
+			// Close's reset drops them — a dead child's chainless tail
+			// can never scan its way to the grid. (Poll drops the session
+			// behind this; nothing ever thaws a dead lane.)
+			s.split.reset()
+			return nil
+		}
 		s.split.unpark()
 	}
 	if alive && pid > 0 {
-		return syscall.Kill(-pid, syscall.SIGCONT)
+		return zenbuGroupSignal(-pid, syscall.SIGCONT)
 	}
 	return nil
 }
@@ -622,14 +668,16 @@ func (s *ZenbuSession) Close() error {
 	s.mu.Unlock()
 
 	// FIX C: the splitter's pending APC tail + open chunk chain are
-	// DISCARDED on the spot — a child dying mid-frame (suspend /
-	// killSess / respawn churn) leaves both behind, and they must never
-	// flush to the grid or the scrollback.
+	// DISCARDED on the spot — a child dying mid-frame (killSess /
+	// respawn / frozen-quit churn) leaves both behind, and they must
+	// never flush to the grid or the scrollback. (The FREEZE path is
+	// the opposite posture — park PRESERVES them; only the kill paths
+	// reset.)
 	if s.split != nil {
 		s.split.reset()
 	}
 	if wasFrozen && pid > 0 {
-		_ = syscall.Kill(-pid, syscall.SIGCONT) // thaw into the KILL (see the doc)
+		_ = zenbuGroupSignal(-pid, syscall.SIGCONT) // thaw into the KILL (see the doc)
 	}
 	if s.images != nil {
 		if frames := s.images.dropAll(); frames != "" {
@@ -638,7 +686,7 @@ func (s *ZenbuSession) Close() error {
 	}
 	ZenbuRegistry().Clear()
 	if pid > 0 {
-		_ = syscall.Kill(-pid, syscall.SIGKILL)
+		_ = zenbuGroupSignal(-pid, syscall.SIGKILL)
 	}
 	if s.mf != nil {
 		_ = s.mf.Close()
@@ -800,10 +848,12 @@ func (c *BrowserLaneController) Poll() (changed bool) {
 // Suspend — the pane switched away (ctrl+b to the floor, the pane's
 // q/esc): the premium child FREEZES in place (SIGSTOP, keep-alive — the
 // member's "always shown" ruling): the terminal-side image deletes ride
-// the registry clear → the wrapper's a=d, the splitter parks (zero
-// store mutations while suspended), the image store RETAINS the latest
-// joined frame for Resume's instant repaint, the PID never changes, and
-// the URL state keeps. Silent (not a failure — no note). Idempotent.
+// the registry clear → the wrapper's a=d, the splitter parks (a
+// consumption pause — the pending APC tail + open chunk chain are
+// PRESERVED for the thaw; zero store mutations while suspended), the
+// image store RETAINS the latest joined frame for Resume's instant
+// repaint, the PID never changes, and the URL state keeps. Silent (not
+// a failure — no note). Idempotent.
 func (c *BrowserLaneController) Suspend() {
 	if c.sess == nil {
 		return

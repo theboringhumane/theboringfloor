@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-28 · Dev N: fix freeze chain-tail leak (@developer... — tekton-2 (developer) · `issues`
+- summary: All gates green, 5× stability run clean, final tree state confirmed. The `.opencode/office-ledger.md` modification is the office app's own recorder, not mine.
+- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`
+- verify: Stability: `go test ./internal/panels -count=5 -run 'TestBrowserLaneFreezeMidChainReal|TestBrowserLaneFrozenDeathMidChainReset'` → `ok … 12.
+- proof: *The mid-chain freeze → thaw cycle (real streaming fake, ~2fps, 684-char chains):**
+- ledgerId: led-1787909844914-65cad1e4
+
+### 2026-08-28 · Scout: ghostty kitty paint rules (@explore su... — skopos-2 (scout) · `issues`
+- summary: I have complete primary-source coverage of both the latest stable (v1.3.1) and main. Assembling the return.
+- files: No files touched
+- verify: Read-only task; no repo commands run. Evidence is quoted source + links below. Version provenance: `https://api.github.com/repos/ghostty-org
+- proof: ### 1. Support matrix: f=32 (RGBA raw) and o=z (zlib) — supported on both versions
+- ledgerId: led-1787909757974-d43f07e5
+
 ### 2026-08-28 · Dev N: lane keep-alive suspend (@developer su... — tekton-2 (developer) · `issues`
 - summary: All green, no foreign leakage, no commits. The work is complete — assembling the return.
 - files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/app/browser.go`, `internal/app/browser_lane_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, `/tmp/drive_office_pty_keepalive.py` + rebuilt `/tmp/tb-office`, NOT touched
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: From `TestPlanSelFrameDump` (focused pane, ANSI-stripped; `▸…◂` annotates the inserted `\x1b[7m`/`\x1b[27m`):
 - ledgerId: led-1787765636120-98d0a504
-
-### 2026-08-26 · Scout: image rendering in terminal (redo) (@e... — skopos-5 (scout) · `issues`
-- summary: Enforced read-only: `git status --porcelain` shows only `.opencode/office-ledger.md` (office-app's own recorder, no repo edits by me).
-- files: Touched: none. Read, `internal/state/state.go`, `internal/backend/events.go`, `internal/backend/opencode.go` (messageText/latestAssistantText/sessionMessageRow, `internal/backend/parts.go`, `internal/panels/chat_attach.go`, `internal/panels/chat.go`, `internal/config/config.go`
-- verify: Doc URLs fetched live today (2026-08-26): `iterm2.com/documentation-images.html`, `sw.kovidgoyal.net/kitty/graphics-protocol/`, `ghostty.org
-- proof: ## protocol choice table
-- ledgerId: led-1787763895676-2e34c5a1
-
-### 2026-08-26 · Scout: plan editor cut/copy/paste/select (@ex... — skopos-4 (scout) · `done`
-- summary: Recon complete. Zero repo writes by me (`git status` shows only the office app's own ledger appends from prior dispatches — my tool calls were reads, greps, and
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787763357467-c6682144
 

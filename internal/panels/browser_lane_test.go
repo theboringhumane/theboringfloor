@@ -9,6 +9,7 @@
 package panels
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -819,6 +820,567 @@ func TestBrowserLaneFrozenDeathFallback(t *testing.T) {
 	c.Resume()
 	if *made != 1 || c.PremiumActive() {
 		t.Fatalf("a frozen death latches the text lane: spawns=%d active=%v", *made, c.PremiumActive())
+	}
+	c.Close()
+}
+
+// -------------------------------------------------------------------
+// the freeze-preserve discipline (the production freeze-leak fix):
+// park PRESERVES the pending tail + open chain — the thawed child's
+// tail COMPLETES the in-flight chain into a valid frame; resetting at
+// the freeze dropped the chain's HEAD and the resumed tail painted the
+// grid with raw base64 (the member's ~7 dense rows on re-open)
+// -------------------------------------------------------------------
+
+// kittyStreamPayload — the streaming fake's frame content (512B → 684
+// base64 chars): BIG enough that a leaked mid-body tail trips the ≥40
+// b64Runs signature several times over (kittyTestB64's 76-char fragments
+// could hide under the threshold; the real child's ~4KB chunks never
+// could). Content is irrelevant — the store never image-decodes.
+var kittyStreamPayload = func() []byte {
+	p := make([]byte, 0, 512)
+	p = append(p, "\x89PNG\r\n\x1a\n"...)
+	for len(p) < 512 {
+		p = append(p, byte('A'+len(p)%26))
+	}
+	return p
+}()
+
+func kittyStreamB64() string { return base64.StdEncoding.EncodeToString(kittyStreamPayload) }
+
+// browserLaneStreamFake — requirement 4's REAL streaming child (the
+// production Electron's fixture-scale twin): ~2fps of THREE-chunk kitty
+// frames (a=T m=1 / m=1 / m=0) under the child's every-repaint id i=1,
+// EVERY chunk's APC body split across a 60ms sleep (the mid-body freeze
+// windows — a freeze landing there catches the splitter holding a
+// PARTIAL APC body, the exact leak shape), 300ms between generations.
+func browserLaneStreamFake(root, b64 string) error {
+	fake := "#!/bin/sh\n" +
+		"printf '\\033[2J\\033[H'\n" +
+		"printf 'TB-STREAM\\r\\n'\n" +
+		"while true; do\n" +
+		"printf '\\033_Ga=T,t=d,f=100,i=1,q=2,m=1;" + b64[:114] + "'\n" +
+		"sleep 0.06\n" +
+		"printf '" + b64[114:228] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=1;" + b64[228:342] + "'\n" +
+		"sleep 0.06\n" +
+		"printf '" + b64[342:456] + "\\033\\\\'\n" +
+		"printf '\\033_Gm=0;" + b64[456:570] + "'\n" +
+		"sleep 0.06\n" +
+		"printf '" + b64[570:] + "\\033\\\\'\n" +
+		"sleep 0.3\n" +
+		"done\n"
+	return os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755)
+}
+
+// zenbuSplitState — the splitter's freeze-point posture (read under the
+// split mutex): the pending byte count, the scanner mode flags, whether
+// a chunk chain is open, whether the buffer holds a DANGLING opener
+// (unscanned ESC_G + partial body — the park scans nothing), and the
+// pending head bytes (the freeze-point dump's evidence).
+type zenbuSplitState struct {
+	pending  int
+	inAPC    bool
+	discard  bool
+	chain    bool
+	parked   bool
+	dangling bool
+	pendHead string
+}
+
+func laneSplitState(s *ZenbuSession) zenbuSplitState {
+	s.split.mu.Lock()
+	defer s.split.mu.Unlock()
+	head := s.split.pending
+	if len(head) > 48 {
+		head = head[:48]
+	}
+	return zenbuSplitState{
+		pending:  len(s.split.pending),
+		inAPC:    s.split.inAPC,
+		discard:  s.split.discard,
+		chain:    s.split.chain != nil,
+		parked:   s.split.parked,
+		dangling: danglingKittyOpener(s.split.pending),
+		pendHead: string(head),
+	}
+}
+
+// lanePlacementSeq — the live placement's store seq (the streaming
+// fake's i=1 latest-wins placement is the commit clock: +1 per landed
+// generation).
+func lanePlacementSeq(t *testing.T, sess *ZenbuSession) uint64 {
+	t.Helper()
+	ps := sess.images.placements()
+	if len(ps) != 1 {
+		t.Fatalf("the streaming lane holds exactly one placement, got %d", len(ps))
+	}
+	return ps[0].seq
+}
+
+// laneWaitPlacementSeq — bounded wait for the store seq to reach want
+// (the reader loop is async; the assert itself carries no timing).
+func laneWaitPlacementSeq(t *testing.T, sess *ZenbuSession, want uint64, what string) {
+	t.Helper()
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		if lanePlacementSeq(t, sess) >= want {
+			return
+		}
+		time.Sleep(15 * time.Millisecond)
+	}
+	t.Fatalf("%s never landed (placement seq stuck at %d, want >= %d)", what, lanePlacementSeq(t, sess), want)
+}
+
+// laneFreezeMidStream — freeze the streaming child at a random point,
+// looping until the park catches bytes IN FLIGHT (a non-empty pending
+// and/or an open chain — the production shape: the Electron child
+// repaints ~1.4MB chains at ~2fps, so it is virtually ALWAYS mid-chain
+// when frozen). A between-frames freeze (nothing in flight) is the
+// no-op leg: thaw and drift the phase.
+func laneFreezeMidStream(t *testing.T, c *BrowserLaneController, sess *ZenbuSession) zenbuSplitState {
+	t.Helper()
+	for attempt := 0; attempt < 40; attempt++ {
+		c.Suspend()
+		time.Sleep(60 * time.Millisecond) // the kernel PTY buffer drains into the parked splitter
+		st := laneSplitState(sess)
+		if st.pending > 0 || st.chain {
+			return st
+		}
+		c.Resume()
+		time.Sleep(time.Duration(53+17*(attempt%6)) * time.Millisecond) // the phase drift
+	}
+	t.Fatal("40 flips never froze the stream mid-chain (the production case)")
+	return zenbuSplitState{}
+}
+
+// TestBrowserLaneParkEmptyPendingNoop — edge discipline 3(a): a freeze
+// with NOTHING in flight is a pure no-op — no drop note, no reset, and
+// the lane parses cleanly across the boundary.
+func TestBrowserLaneParkEmptyPendingNoop(t *testing.T) {
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.park()
+	ks.unpark()
+	if drops, note := store.dropStats(); drops != 0 || note != "" {
+		t.Fatalf("an empty-pending park/unpark logs NOTHING: drops=%d note=%q", drops, note)
+	}
+	stream, b64 := kittyScriptedStream()
+	if _, err := ks.Write([]byte(stream)); err != nil {
+		t.Fatalf("splitter write: %v", err)
+	}
+	store.mu.Lock()
+	im := store.images[1]
+	store.mu.Unlock()
+	if im == nil || !im.placed || im.b64 != b64 {
+		t.Fatalf("the frame parses cleanly across the no-op boundary: %+v", im)
+	}
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("zero base64 downstream (%d runs)", n)
+	}
+}
+
+// TestBrowserLaneParkPreservesChain — the fix's DETERMINISTIC core (no
+// process): one frame commits, the next generation's chain opens, the
+// PARK lands, and the in-flight tail arrives WHILE PARKED (the SIGSTOP's
+// effect lag) — the pending tail + open chain are PRESERVED (zero
+// store/grid/scrollback mutations), the unpark drains the buffered tail
+// (a partial APC holds), and the thawed child's remaining bytes COMPLETE
+// the chain into a valid frame — ZERO base64 downstream. (The old
+// reset-at-park dropped the chain's HEAD here; the tail leaked.)
+func TestBrowserLaneParkPreservesChain(t *testing.T) {
+	b64 := kittyTestB64()
+	ks, store, g, sb := newKittyRig(40, 8)
+	// generation 1 commits (the retained frame), generation 2's chain opens.
+	ks.Write([]byte("\x1b[2J\x1b[H" + "TB-TOOLBAR\r\n" + kittyAPC("a=T,t=d,f=100,i=1,q=2", b64)))
+	ks.Write([]byte(kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20])))
+	seq0 := store.placements()[0].seq
+
+	ks.park()
+	gridAtPark := g.ScreenText()
+	sbLenAtPark := len(sb.Raw())
+	// the in-flight tail lands WHILE PARKED: an unterminated APC body.
+	if _, err := ks.Write([]byte("\x1b_Gm=1;" + b64[20:40])); err != nil {
+		t.Fatalf("parked write: %v", err)
+	}
+	// ZERO mutations while parked: the store, the grid, the scrollback
+	// are a frozen snapshot; the bytes sit in the pending buffer.
+	if got := store.placements()[0].seq; got != seq0 {
+		t.Fatalf("ZERO store mutations while parked: seq moved %d → %d", seq0, got)
+	}
+	if got := g.ScreenText(); got != gridAtPark {
+		t.Fatalf("ZERO grid mutations while parked:\n--- at park ---\n%s\n--- now ---\n%s", gridAtPark, got)
+	}
+	if got := len(sb.Raw()); got != sbLenAtPark {
+		t.Fatalf("ZERO scrollback mutations while parked: %d → %d bytes", sbLenAtPark, got)
+	}
+	ks.mu.Lock()
+	held := len(ks.pending) > 0 && ks.chain != nil
+	ks.mu.Unlock()
+	if !held {
+		t.Fatal("the park PRESERVES the pending tail + the open chain")
+	}
+
+	ks.unpark() // the buffered tail drains: no terminator yet → it holds
+	if got := store.placements()[0].seq; got != seq0 {
+		t.Fatalf("the unpark's drain commits nothing without the terminator: seq %d → %d", seq0, got)
+	}
+	// the thawed child's tail completes chunk 2, then chunk 3 lands.
+	ks.Write([]byte("\x1b\\"))
+	if got := store.placements()[0].seq; got != seq0 {
+		t.Fatalf("chunk 2 (m=1) continues the chain without committing: seq %d → %d", seq0, got)
+	}
+	ks.Write([]byte(kittyAPC("m=0", b64[40:])))
+	// THE chain completed into a valid frame: full payload, placed, +1 seq.
+	store.mu.Lock()
+	im := store.images[1]
+	store.mu.Unlock()
+	if im == nil || !im.placed || im.b64 != b64 {
+		t.Fatalf("the preserved chain completed into the valid frame: %+v", im)
+	}
+	if got := store.placements()[0].seq; got != seq0+1 {
+		t.Fatalf("exactly ONE new apply across the thaw: seq %d → %d, want %d", seq0, got, seq0+1)
+	}
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("ZERO base64 across the freeze/thaw (%d runs):\n%s", n, g.ScreenText())
+	}
+	if got := g.LineText(0); got != "TB-TOOLBAR" {
+		t.Fatalf("the chrome survives: %q", got)
+	}
+}
+
+// TestBrowserLaneParkedChainCap — edge discipline 3(b): the 8MiB chain
+// cap (shrunk here) still bounds a pathological pending chain — the
+// WHOLE over-cap chain arrives while PARKED (buffered unscanned), the
+// unpark's drain hits the cap mid-join and drops the chain log-once —
+// NEVER a flush to the grid or the scrollback — and the lane keeps
+// working.
+func TestBrowserLaneParkedChainCap(t *testing.T) {
+	old := maxKittyChainB64
+	maxKittyChainB64 = 32 // shrunk for the test
+	t.Cleanup(func() { maxKittyChainB64 = old })
+	b64 := kittyTestB64() // 76 chars > the 32-char cap once joined
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.park()
+	ks.Write([]byte(kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20]) +
+		kittyAPC("m=1", b64[20:60]) + // 20+40 = 60 joined > 32 → the cap fires in the drain
+		kittyAPC("m=0", b64[60:])))
+	if drops, _ := store.dropStats(); drops != 0 {
+		t.Fatalf("ZERO store mutations while parked: drops=%d", drops)
+	}
+	ks.unpark() // the drain scans the buffered chain: the cap drops it
+	drops, note := store.dropStats()
+	if drops < 2 || !strings.Contains(note, "cap") {
+		t.Fatalf("the cap drop + the chain-less remainder log-once: drops=%d note=%q", drops, note)
+	}
+	store.mu.Lock()
+	if len(store.images) != 0 {
+		t.Fatalf("the over-cap chain never stores: %d", len(store.images))
+	}
+	store.mu.Unlock()
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("the over-cap chain never leaks downstream (%d runs)", n)
+	}
+	ks.Write([]byte("alive"))
+	if got := g.LineText(0); got != "alive" {
+		t.Fatalf("the lane survives the parked cap drop: %q", got)
+	}
+}
+
+// TestBrowserLaneParkedBufferCap — the parked path's OWN overflow (the
+// APC body cap, shrunk here): an UNSCANNED ESC_G opener + a runaway
+// unterminated body arrive while parked and bust the cap — the buffer +
+// the open chain drop log-once AND the DISCARD mode engages (the
+// dangling opener means the thawed child's next bytes are that APC's
+// tail — they must discard to their terminator, NEVER flush to grid).
+func TestBrowserLaneParkedBufferCap(t *testing.T) {
+	old := maxKittyAPCBody
+	maxKittyAPCBody = 64 // shrunk for the test
+	t.Cleanup(func() { maxKittyAPCBody = old })
+	b64 := kittyTestB64()
+	ks, store, g, sb := newKittyRig(40, 8)
+	ks.Write([]byte(kittyAPC("a=T,t=d,f=100,i=1,q=2,m=1", b64[:20]))) // the chain opens
+	ks.park()
+	// the runaway: an UNSCANNED opener + unterminated body over the cap.
+	ks.Write([]byte("\x1b_Gm=1;" + strings.Repeat("A", 100))) // 109 bytes > 64
+	ks.mu.Lock()
+	parked, inAPC, discard, pend, chain := ks.parked, ks.inAPC, ks.discard, len(ks.pending), ks.chain != nil
+	ks.mu.Unlock()
+	if !parked || inAPC || !discard || pend != 0 || chain {
+		t.Fatalf("the parked overflow drops the buffer + chain and engages the discard: parked=%v inAPC=%v discard=%v pending=%d chain=%v",
+			parked, inAPC, discard, pend, chain)
+	}
+	drops, note := store.dropStats()
+	if drops < 2 || !strings.Contains(note, "parked buffer over the cap") {
+		t.Fatalf("the chain drop + the cap drop log-once: drops=%d note=%q", drops, note)
+	}
+	// the thaw: the runaway body's REST + its terminator discard; the
+	// stream resyncs AFTER it.
+	ks.unpark()
+	ks.Write([]byte(strings.Repeat("B", 50) + "\x1b\\" + "alive"))
+	if got := g.LineText(0); got != "alive" {
+		t.Fatalf("the discard eats the runaway tail; the resync paints: %q", got)
+	}
+	if n := gridB64Runs(g) + b64Runs(string(sb.Raw())); n != 0 {
+		t.Fatalf("the runaway tail NEVER flushes downstream (%d runs):\n%s", n, g.ScreenText())
+	}
+}
+
+// TestBrowserLaneFreezeSignalOrdering — edge discipline 3(d), PROVEN at
+// the signal's own instant (the zenbuGroupSignal seam): Freeze's SIGSTOP
+// must fire with the park ALREADY engaged (and a byte written AT that
+// instant — the racing child write the kernel accepted before the stop
+// took effect — lands in the pending buffer, NEVER the grid); Unfreeze's
+// SIGCONT must fire with the unpark ALREADY lifted (the preserved
+// pending drains before the child emits).
+func TestBrowserLaneFreezeSignalOrdering(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PTY seam is darwin/linux (creack/pty)")
+	}
+	pinKittyEnv(t)
+	root := t.TempDir()
+	fake := "#!/bin/sh\n" +
+		"printf 'zenbu-fake open %s\\n' \"$2\"\n" +
+		"exec sleep 1000000\n"
+	if err := os.WriteFile(filepath.Join(root, "terminal-browser"), []byte(fake), 0o755); err != nil {
+		t.Fatalf("plant the fake binary: %v", err)
+	}
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ZenbuRegistry().Clear()
+	defer ZenbuRegistry().Clear()
+
+	c := NewBrowserLaneController(64, 8)
+	if err := c.OpenURL("https://x.dev/order"); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	sess := c.Session().(*ZenbuSession)
+	laneWaitGrid(t, sess.Grid(), "zenbu-fake open https://x.dev/order")
+	pid := sess.Pid()
+
+	type sigObs struct {
+		target    int
+		sig       syscall.Signal
+		parked    bool // the splitter's park state AT the signal instant
+		pendAfter int  // the probe byte's landing spot (SIGSTOP leg)
+	}
+	var obs []sigObs
+	old := zenbuGroupSignal
+	zenbuGroupSignal = func(p int, sig syscall.Signal) error {
+		o := sigObs{target: p, sig: sig}
+		sess.split.mu.Lock()
+		o.parked = sess.split.parked
+		sess.split.mu.Unlock()
+		if sig == syscall.SIGSTOP {
+			// the leak window's probe: the racing child byte written AT
+			// the signal instant (the park is already up) must buffer.
+			_, _ = sess.split.Write([]byte("\x1b_Ga=T,t=d,f=100,i=1,q=2,m=1;" + kittyTestB64()[:20]))
+			sess.split.mu.Lock()
+			o.pendAfter = len(sess.split.pending)
+			sess.split.mu.Unlock()
+		}
+		obs = append(obs, o)
+		return nil // the REAL signal never fires (the fake keeps running)
+	}
+	t.Cleanup(func() { zenbuGroupSignal = old })
+
+	if err := sess.Freeze(); err != nil {
+		t.Fatalf("Freeze: %v", err)
+	}
+	if len(obs) != 1 || obs[0].target != -pid || obs[0].sig != syscall.SIGSTOP {
+		t.Fatalf("Freeze signals exactly one SIGSTOP to the process group: %+v", obs)
+	}
+	if !obs[0].parked {
+		t.Fatal("the SIGSTOP fired with the park NOT engaged — the leak window is OPEN")
+	}
+	if obs[0].pendAfter == 0 {
+		t.Fatal("a byte written AT the SIGSTOP instant lands in the pending buffer")
+	}
+	if n := gridB64Runs(sess.Grid()); n != 0 {
+		t.Fatalf("the signal-instant byte NEVER touches the grid (%d runs)", n)
+	}
+	t.Logf("ORDER: park engaged BEFORE SIGSTOP(-%d) — the signal-instant probe byte buffered (%d pending), grid untouched", pid, obs[0].pendAfter)
+
+	if err := sess.Unfreeze(); err != nil {
+		t.Fatalf("Unfreeze: %v", err)
+	}
+	if len(obs) != 2 || obs[1].target != -pid || obs[1].sig != syscall.SIGCONT {
+		t.Fatalf("Unfreeze signals exactly one SIGCONT to the process group: %+v", obs)
+	}
+	if obs[1].parked {
+		t.Fatal("the SIGCONT fired with the park STILL engaged — the thawed child's bytes would stall")
+	}
+	if n := gridB64Runs(sess.Grid()); n != 0 {
+		t.Fatalf("the probe byte stays out of the grid across the thaw (%d runs)", n)
+	}
+	t.Logf("ORDER: unpark lifted BEFORE SIGCONT(-%d) — the preserved pending drained ahead of the child", pid)
+
+	zenbuGroupSignal = old // the teardown's SIGKILL must REALLY fire
+	c.Close()
+	laneAssertReaped(t, sess, pid)
+}
+
+// TestBrowserLaneFreezeMidChainReal — requirement 4's headline
+// regression: a REAL streaming fake (chunked kitty frames CONTINUOUSLY
+// at ~2fps, every chunk's body split across a sleep — the production
+// Electron's shape), frozen at a random point until the park catches
+// bytes IN FLIGHT (asserted), then thawed: the preserved chain's tail
+// COMPLETES it into a valid store frame, a SUBSEQUENT complete frame
+// parses behind it, and the grid + scrollback carry ZERO base64. (The
+// old reset-at-freeze dropped the chain's HEAD — the thawed tail painted
+// ~7 dense base64 rows on the member's re-open.)
+func TestBrowserLaneFreezeMidChainReal(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PTY seam is darwin/linux (creack/pty)")
+	}
+	pinKittyEnv(t)
+	root := t.TempDir()
+	b64 := kittyStreamB64()
+	if err := browserLaneStreamFake(root, b64); err != nil {
+		t.Fatalf("plant the streaming fake: %v", err)
+	}
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ZenbuRegistry().Clear()
+	defer ZenbuRegistry().Clear()
+	restore := SetZenbuEmitForShot(func(string) {}) // Close's direct deletes are noise here
+	t.Cleanup(restore)
+
+	c := NewBrowserLaneController(64, 16)
+	if err := c.OpenURL("https://x.dev/stream"); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	sess := c.Session().(*ZenbuSession)
+	// the stream is healthy: the first generation committed.
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		if len(sess.images.placements()) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(sess.images.placements()) == 0 {
+		t.Fatal("setup: the streaming fake never committed a frame")
+	}
+	pid := sess.Pid()
+
+	held := laneFreezeMidStream(t, c, sess)
+	seqAtFreeze := lanePlacementSeq(t, sess)
+	t.Logf("FREEZE POINT: pending=%d bytes inAPC=%v chainOpen=%v danglingOpener=%v parked=%v seq=%d",
+		held.pending, held.inAPC, held.chain, held.dangling, held.parked, seqAtFreeze)
+	t.Logf("FREEZE POINT pending head: %q", held.pendHead)
+
+	// the frozen window: the parked splitter mutates NOTHING.
+	time.Sleep(150 * time.Millisecond)
+	if got := lanePlacementSeq(t, sess); got != seqAtFreeze {
+		t.Fatalf("ZERO store mutations while frozen: seq moved %d → %d", seqAtFreeze, got)
+	}
+
+	// THAW: the preserved chain's tail COMPLETES it into a valid frame…
+	c.Resume()
+	laneWaitPlacementSeq(t, sess, seqAtFreeze+1, "the in-flight chain's completion")
+	sess.images.mu.Lock()
+	im := sess.images.images[1]
+	sess.images.mu.Unlock()
+	if im == nil || !im.placed || im.b64 != b64 {
+		t.Fatalf("the completed chain is the valid frame (placed, the full %d-char payload): %+v", len(b64), im)
+	}
+	if _, err := base64.StdEncoding.DecodeString(im.b64); err != nil {
+		t.Fatalf("the completed chain's payload decodes: %v", err)
+	}
+	t.Logf("THAWED: the in-flight chain COMPLETED — i=1 seq %d → %d, the full %d-char payload, decodable", seqAtFreeze, seqAtFreeze+1, len(im.b64))
+
+	// …and a SUBSEQUENT complete frame parses behind it.
+	laneWaitPlacementSeq(t, sess, seqAtFreeze+2, "the next generation's frame")
+	t.Logf("SUBSEQUENT frame parsed: seq → %d", lanePlacementSeq(t, sess))
+
+	// THE regression pin: ZERO base64 in the grid AND the scrollback.
+	if n := gridB64Runs(sess.Grid()); n != 0 {
+		t.Fatalf("base64 leaked into the grid across the freeze/thaw (%d runs):\n%s", n, sess.Grid().ScreenText())
+	}
+	if n := b64Runs(string(sess.Scrollback().Raw())); n != 0 {
+		t.Fatalf("base64 leaked into the scrollback across the freeze/thaw (%d runs)", n)
+	}
+	t.Logf("ZERO base64: grid runs=0 scrollback runs=0 — the freeze preserved the chain's HEAD; the thawed tail completed it")
+
+	c.Close()
+	laneAssertReaped(t, sess, pid)
+}
+
+// TestBrowserLaneFrozenDeathMidChainReset — edge discipline 3(c): the
+// streaming child is frozen with bytes IN FLIGHT, then MURDERED (an
+// external SIGKILL reaches the stopped process) — the chain can never
+// complete, so Unfreeze RESETS the splitter (the held tail + open chain
+// drop log-once) and KEEPS THE GATE PARKED (the reader's final drained
+// bytes never scan their way to the grid), ahead of Poll's existing
+// fallback latch.
+func TestBrowserLaneFrozenDeathMidChainReset(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the PTY seam is darwin/linux (creack/pty)")
+	}
+	pinKittyEnv(t)
+	root := t.TempDir()
+	b64 := kittyStreamB64()
+	if err := browserLaneStreamFake(root, b64); err != nil {
+		t.Fatalf("plant the streaming fake: %v", err)
+	}
+	t.Setenv("PATH", root+string(os.PathListSeparator)+os.Getenv("PATH"))
+	ZenbuRegistry().Clear()
+	defer ZenbuRegistry().Clear()
+	restore := SetZenbuEmitForShot(func(string) {}) // Close's direct deletes are noise here
+	t.Cleanup(restore)
+
+	c := NewBrowserLaneController(64, 16)
+	const u = "https://x.dev/doomed-stream"
+	if err := c.OpenURL(u); err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	sess := c.Session().(*ZenbuSession)
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		if len(sess.images.placements()) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(sess.images.placements()) == 0 {
+		t.Fatal("setup: the streaming fake never committed a frame")
+	}
+	pid := sess.Pid()
+
+	held := laneFreezeMidStream(t, c, sess)
+	t.Logf("FREEZE POINT (doomed): pending=%d bytes inAPC=%v chainOpen=%v danglingOpener=%v head=%q",
+		held.pending, held.inAPC, held.chain, held.dangling, held.pendHead)
+
+	// MURDER the frozen child (SIGKILL reaches stopped processes); the
+	// waiter reaps it.
+	if err := syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatalf("kill the frozen child: %v", err)
+	}
+	for deadline := time.Now().Add(3 * time.Second); !sess.Exited() && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !sess.Exited() {
+		t.Fatal("the murdered frozen child never reaped")
+	}
+
+	// THE 3(c) PATH: the thaw finds the child DEAD — reset first, the
+	// gate STAYS parked, no signal rides.
+	c.Resume()
+	st := laneSplitState(sess)
+	if st.pending != 0 || st.chain || st.inAPC || !st.parked {
+		t.Fatalf("the dead child's thaw reset the splitter and kept the gate parked: pending=%d chain=%v inAPC=%v parked=%v",
+			st.pending, st.chain, st.inAPC, st.parked)
+	}
+	drops, note := sess.images.dropStats()
+	if drops == 0 || !strings.Contains(note, "session reset dropped") {
+		t.Fatalf("the reset dropped the held tail + chain log-once: drops=%d note=%q", drops, note)
+	}
+	t.Logf("DEAD-AT-THAW: the held %d pending bytes + chain dropped log-once (%q) — the chainless tail can never flush", held.pending, note)
+	if n := gridB64Runs(sess.Grid()) + b64Runs(string(sess.Scrollback().Raw())); n != 0 {
+		t.Fatalf("ZERO base64 across the frozen murder (%d runs)", n)
+	}
+
+	// …and the EXISTING fallback latches behind it.
+	if !c.Poll() {
+		t.Fatal("Poll observes the frozen death")
+	}
+	if got, want := c.Note(), "zenbu exited (-1) — falling back to text mode"; got != want {
+		t.Fatalf("the signal-death note wears -1: got %q want %q", got, want)
 	}
 	c.Close()
 }
