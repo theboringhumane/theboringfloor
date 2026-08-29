@@ -1,3 +1,5 @@
 export const SITE_URL = 'https://theboringoffice.pages.dev'
 export const SITE_NAME = 'theboringoffice'
 export const SITE_TAGLINE = 'a virtual office where your agents clock in'
+export const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
+export const DISCORD_INVITE = 'https://discord.gg/YPDsHVHTVf'

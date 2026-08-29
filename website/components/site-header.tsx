@@ -4,9 +4,8 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { ChevronDown, FolderGit2 as Github, Menu, X } from 'lucide-react'
 
-const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
-const DISCORD_INVITE = 'https://discord.gg/YPDsHVHTVf'
 import { cn } from '@/lib/utils'
+import { DISCORD_INVITE, GITHUB_REPO } from '@/lib/site'
 
 const products = [
   { name: 'The Office', description: 'Give any opencode or Claude Code agent a desk and a name' },
