@@ -8,14 +8,14 @@ import { SITE_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'Backends | theboringoffice',
   description:
-    'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight.',
+    'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
   alternates: {
     canonical: '/docs/backends',
   },
   openGraph: {
     title: 'Backends · theboringoffice',
     description:
-      'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight.',
+      'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
     url: `${SITE_URL}/docs/backends`,
     type: 'website',
   },
@@ -174,6 +174,58 @@ export default function BackendsPage() {
                 ]}
               />
             </div>
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-5xl px-6 py-20">
+            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+              How the office primes your agent
+            </h2>
+            <h3 className="mt-4 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight">
+              One charter, both brains — primed before the first turn.
+            </h3>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              On boot the office writes the bundled oikonomos manager protocol to{' '}
+              <code className="font-mono text-xs text-foreground">.opencode/oikonomos.md</code> in
+              your working directory and hands it to whichever transport is on duty. That one file
+              is what turns a raw model into the boss: decomposition discipline (wide parallel
+              dispatches, one owner per file), permission etiquette (asks are for commands,
+              questions are for product forks), and the proof-of-work return contract every
+              developer answers with — DONE, FILES, VERIFY, PROOF, ISSUES.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              The delivery depends on the brain. On opencode the office merges{' '}
+              <code className="font-mono text-xs text-foreground">./.opencode/oikonomos.md</code>{' '}
+              into the{' '}
+              <code className="font-mono text-xs text-foreground">instructions</code> array of{' '}
+              <code className="font-mono text-xs text-foreground">.opencode/opencode.json</code> —
+              a surgical, field-preserving merge; every other key survives verbatim. On claudecode
+              it writes <code className="font-mono text-xs text-foreground">CLAUDE.md</code>{' '}
+              instead — created with{' '}
+              <code className="font-mono text-xs text-foreground">@.opencode/oikonomos.md</code>{' '}
+              when absent, and when you already keep one, an idempotent marked block appended below
+              your content. Either way the same system prompt reaches the boss.
+            </p>
+            <div className="mt-8 max-w-2xl">
+              <CmdBlock
+                lines={[
+                  { t: '# your CLAUDE.md, after one office boot', dim: true },
+                  { t: '...everything you wrote, untouched...', dim: true },
+                  { t: '', dim: true },
+                  { t: '<!-- theboringoffice charter -->' },
+                  { t: '@.opencode/oikonomos.md' },
+                  { t: '<!-- /theboringoffice charter -->' },
+                ]}
+              />
+            </div>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Your own files take precedence — the office appends, never overwrites: an existing{' '}
+              <code className="font-mono text-xs text-foreground">CLAUDE.md</code> keeps every byte
+              above the block, and every other{' '}
+              <code className="font-mono text-xs text-foreground">opencode.json</code> field rides
+              through untouched.
+            </p>
           </div>
         </section>
 

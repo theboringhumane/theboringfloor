@@ -404,6 +404,19 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	bypass := b.bypassPermissions
 	b.mu.Unlock()
 
+	// Manager charter (oikonomos) for Claude Code runs FIRST, before the
+	// spawn: `claude -p` reads <dir>/CLAUDE.md (cwd + ancestors) at launch,
+	// so the office's import block must be on disk before the child boots —
+	// the same ordering as opencode.go's charter pass running before server
+	// resolution. Best-effort like the opencode charter: a failure surfaces
+	// on the status line and never blocks the boot. There is NO spoilage
+	// restart condition here (an opencode serve spoils its config at boot;
+	// this child is spawned below and reads the fresh bytes at this very
+	// launch), so the changed flag rides nothing. The NOTES are buffered
+	// and emitted behind the fixed boot prefix below (hires + hint lines) —
+	// TestClaudeStartSeatsFloorBeforeInit pins that prefix's order.
+	_, claudeCharterNotes := EnsureClaudeCharter(b.directory)
+
 	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "", bypass)
 	if err != nil {
 		return err
@@ -445,6 +458,13 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 		// lines: a mode that silences every permission prompt is named
 		// on the record, once, at boot.
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] bypass permissions: on (--dangerously-skip-permissions) — claude never asks"})
+	}
+	// The charter pass's notes ride right behind the fixed boot prefix,
+	// still synchronously BEFORE the reader starts — deterministic boot
+	// event order: hires, hints, charter notes, then whatever the wire
+	// delivers.
+	for _, n := range claudeCharterNotes {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: n})
 	}
 
 	// The reader owns stdout from here; system/init pins the boss session

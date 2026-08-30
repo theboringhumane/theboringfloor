@@ -76,7 +76,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 - [Getting started](https://theboringoffice.pages.dev/docs/getting-started) — curl, demo, live office, `--session`
 
 **Core**
-- [Backends](https://theboringoffice.pages.dev/docs/backends) — opencode or claudecode
+- [Backends](https://theboringoffice.pages.dev/docs/backends) — opencode or claudecode, both primed with the same manager charter
 - [Chat & work threads](https://theboringoffice.pages.dev/docs/chat-and-threads)
 - [Plan mode](https://theboringoffice.pages.dev/docs/plan-mode)
 
@@ -91,6 +91,8 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 - [Keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash)
 
 Config file: `~/.theboringoffice/configs/brain.json` (`theboringoffice --print-default-config`). Details: [backends](https://theboringoffice.pages.dev/docs/backends) + [layout](https://theboringoffice.pages.dev/docs/layout-themes-power).
+
+Whichever backend you pick, the office primes it with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringoffice charter -->` block appended below your content. Nothing member-owned is ever overwritten.
 
 ## Peek
 

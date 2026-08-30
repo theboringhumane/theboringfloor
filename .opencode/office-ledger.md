@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-30 · Dev V: claude charter bridge (@developer suba... — tekton-1 (developer) · `issues`
+- summary: All gates green. Composing the return.
+- files: `internal/backend/charter_claude.go`, `internal/backend/claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/claude_live_test.go`
+- verify: ```
+- proof: *Generated CLAUDE.md, create case (exact bytes):**
+- ledgerId: led-1788107692913-a438188d
+
+### 2026-08-30 · Dev V2: backend priming docs (@developer suba... — tekton-2 (developer) · `issues`
+- summary: Scope clean — exactly my two files. All gates green. Composing the return.
+- files: `README.md`, `website/app/docs/backends/page.tsx`
+- verify: $ `git status --porcelain` → ` M README.md` / ` M website/app/docs/backends/page.tsx` (scope-exact, no commits)
+- proof: *README — the new paragraph as a GitHub reader sees it (rendered):**
+- ledgerId: led-1788107061420-80830a89
+
 ### 2026-08-30 · Dev U: match sections + invert shots (@develo... — tekton-11 (developer) · `issues`
 - summary: All gates green. Composing the return.
 - files: `website/app/globals.css`, `website/components/home/hero.tsx`, `website/components/home/product-platform.tsx`, `website/components/home/agents-need-action.tsx`, `website/components/home/plan-then-build.tsx`, `website/components/home/feature-grid.tsx`, `website/app/docs/{page,backends,chat-and-threads,getting-started,keys-and-slash,layout-themes-power, `website/components/site-footer.tsx`, scratch only
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (claude.go then restored from backup; suites above re-ran AFTER restore; gofmt clean.)
 - proof: ### (a) Binary evidence (CLI 2.1.247, `strings -a` + python windowed slices, verbatim)
 - ledgerId: led-1787838096617-fe510ca9
-
-### 2026-08-27 · Fix claude dialog request parsing (@developer... — tekton-11 (developer) · `issues`
-- summary: **Re-keyed `claudeControlRequest` request-side dialog parsing to the real CLI 2.1.247 wire shape**: removed the nonexistent flat `Question string json:"question
-- files: `internal/backend/claude_events.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_dialog_test.go`, NOT touched: `internal/backend/claude.go` (response side preserved byte-for-byte), app/panels/state/
-- verify: 2. Payload decode skipped (`if false && len(req.Payload) > 0`) → `--- FAIL: TestClaudeDialogRequestMapping … want 1 event, got 0: []` AND `-
-- proof: ### (a) Binary evidence (CLI 2.1.247, extracted via `strings -a` + python slicing)
-- ledgerId: led-1787837527276-896494e8
-
-### 2026-08-27 · Harden boss bubble pin (@developer subagent) — tekton-9 (developer) · `issues`
-- summary: All gates green. The fix is complete and verified. Final return:
-- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`
-- verify: (`Text:Honey nev Pending:false` under the mutation IS the original freeze bug, caught red-handed.) After restore: `--- PASS` on all three, `
-- proof: The new pin logic (verbatim from `internal/backend/claude_events.go`):
-- ledgerId: led-1787836933824-b73526fd
 
