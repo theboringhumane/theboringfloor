@@ -6,6 +6,7 @@ import { FolderGit2 as Github, Menu, X } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 import { DISCORD_INVITE, GITHUB_REPO } from '@/lib/site'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 const solutions = [
   { name: 'Engineering Teams', description: 'Sub-agents that fix, review, and ship' },
@@ -46,7 +47,7 @@ export function SiteHeader({
       className={cn(
         'z-50 w-full transition-[background-color,border-color,backdrop-filter] duration-300',
         framed
-          ? 'sticky top-0 border-b border-border bg-[#0a0a0a]/90 backdrop-blur supports-[backdrop-filter]:bg-[#0a0a0a]/80'
+          ? 'sticky top-0 border-b border-border bg-canvas/90 backdrop-blur supports-[backdrop-filter]:bg-canvas/80'
           : 'fixed top-0',
         !framed &&
           (solid
@@ -118,6 +119,7 @@ export function SiteHeader({
         </nav>
 
         <div className="hidden items-center gap-4 lg:flex">
+          <ThemeToggle />
           <a
             href={GITHUB_REPO}
             target="_blank"
@@ -197,6 +199,12 @@ export function SiteHeader({
             </svg>
             Join Discord
           </a>
+          <div className="mt-2 flex items-center justify-between border-t border-border pt-4">
+            <span className="font-mono text-sm uppercase tracking-wider text-muted-foreground">
+              Theme
+            </span>
+            <ThemeToggle />
+          </div>
         </nav>
       </div>
     </header>

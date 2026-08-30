@@ -23,7 +23,7 @@ export function Hero() {
   return (
     <section
       id="hero"
-      className="relative overflow-hidden border-b border-border text-white"
+      className="relative overflow-hidden border-b border-border bg-[#0a0a0a] text-white"
     >
       <ShaderBackground className="pointer-events-none absolute inset-y-0 right-0 w-[55%] opacity-40 max-md:opacity-25" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/85 to-transparent" />

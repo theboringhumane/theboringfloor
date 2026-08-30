@@ -2,6 +2,7 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import Script from 'next/script'
+import { ThemeProvider } from '@/components/theme-provider'
 import { SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
 import './globals.css'
 
@@ -96,9 +97,17 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
-  themeColor: '#0a0a0a',
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#fcfcfc' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
+  ],
 }
+
+// Anti-FOUC: runs synchronously in <head> before first paint. Reads the saved
+// theme (default "light"), resolves "system" against the OS, and stamps the
+// resolved class + colorScheme on <html>. Keep in sync with theme-provider.tsx.
+const themeInitScript = `(function(){try{var t=localStorage.getItem("theboringoffice-theme");if(t!=="light"&&t!=="dark"&&t!=="system"){t="light"}var m=t;if(t==="system"){m=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}var d=document.documentElement;d.classList.remove("light","dark");d.classList.add(m);d.style.colorScheme=m}catch(e){}})()`
 
 export default function RootLayout({
   children,
@@ -106,9 +115,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className={`dark ${geistSans.variable} ${geistMono.variable} bg-background`}>
+    <html
+      lang="en"
+      suppressHydrationWarning
+      className={`${geistSans.variable} ${geistMono.variable} bg-background`}
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className="antialiased font-sans">
-        {children}
+        <ThemeProvider>{children}</ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
         {process.env.NODE_ENV === 'production' && (
           <>

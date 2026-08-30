@@ -38,6 +38,7 @@
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-canvas: var(--canvas);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -47,7 +48,50 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Light is the DEFAULT theme (:root). The dark block below carries the exact
+   values this site shipped with when it was dark-only — dark is a variant,
+   not a redesign. */
 :root {
+  color-scheme: light;
+  --background: oklch(0.99 0 0);
+  --foreground: oklch(0.12 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.12 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.12 0 0);
+  --primary: oklch(0.12 0 0);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.92 0 0);
+  --secondary-foreground: oklch(0.12 0 0);
+  --muted: oklch(0.95 0 0);
+  --muted-foreground: oklch(0.4 0 0);
+  --accent: oklch(0.5 0.17 260);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.6 0.2 25);
+  --border: oklch(0.12 0 0 / 10%);
+  --input: oklch(0.12 0 0 / 12%);
+  --ring: oklch(0.5 0.17 260);
+  --chart-1: oklch(0.5 0.17 260);
+  --chart-2: oklch(0.58 0.16 165);
+  --chart-3: oklch(0.62 0.17 330);
+  --chart-4: oklch(0.6 0.17 60);
+  --chart-5: oklch(0.62 0.14 200);
+  --radius: 0.25rem;
+  --sidebar: oklch(0.97 0 0);
+  --sidebar-foreground: oklch(0.12 0 0);
+  --sidebar-primary: oklch(0.5 0.17 260);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.92 0 0);
+  --sidebar-accent-foreground: oklch(0.12 0 0);
+  --sidebar-border: oklch(0.12 0 0 / 10%);
+  --sidebar-ring: oklch(0.5 0.17 260);
+  /* Page chrome: page-grid canvas + gutter grid lines + frame rule. */
+  --canvas: oklch(0.97 0 0);
+  --grid-line: oklch(0.12 0 0 / 5%);
+  --frame-border: oklch(0.12 0 0 / 12%);
+}
+
+.dark {
   color-scheme: dark;
   --background: oklch(0.09 0 0);
   --foreground: oklch(0.98 0 0);
@@ -81,6 +125,10 @@
   --sidebar-accent-foreground: oklch(0.98 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.63 0.19 260);
+  /* Page chrome: page-grid canvas + gutter grid lines + frame rule. */
+  --canvas: #0a0a0a;
+  --grid-line: oklch(1 0 0 / 4%);
+  --frame-border: oklch(1 0 0 / 12%);
 }
 
 @layer base {
@@ -202,10 +250,10 @@
 .page-grid {
   min-height: 100svh;
   overflow-x: clip;
-  background-color: #0a0a0a;
+  background-color: var(--canvas);
   background-image:
-    linear-gradient(to right, oklch(1 0 0 / 4%) 1px, transparent 1px),
-    linear-gradient(to bottom, oklch(1 0 0 / 4%) 1px, transparent 1px);
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
   background-size: 4rem 4rem;
   background-position: center top;
 }
@@ -213,6 +261,6 @@
 .page-frame {
   margin-inline: auto;
   max-width: 80rem;
-  border-inline: 1px solid oklch(1 0 0 / 12%);
-  background-color: color-mix(in oklch, #0a0a0a 88%, transparent);
+  border-inline: 1px solid var(--frame-border);
+  background-color: color-mix(in oklch, var(--canvas) 88%, transparent);
 }

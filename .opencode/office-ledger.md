@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-30 · Dev U: site light theme + toggle (@developer... — tekton-10 (developer) · `issues`
+- summary: All gates green. Scope is exactly my files (the ledger modification is the office app's own recorder; the untracked blog post untouched). Composing the return.
+- files: `website/app/globals.css`, `website/app/layout.tsx`, `website/components/theme-provider.tsx`, `website/components/theme-toggle.tsx`, `website/components/site-header.tsx`, `website/components/home/hero.tsx`, `website/components/home/context-model.tsx`
+- verify: $ Contrast spot-check (computed oklch→sRGB): accent `rgb(31,93,194)` on light bg = **5.98:1** (AA); foreground **19.72:1**; muted-foreground
+- proof: *Screenshot 1 — LIGHT default (fresh profile, no localStorage → script resolves light):** white/off-white page with faint gutter grid; light
+- ledgerId: led-1788099926687-04ed2fd8
+
+### 2026-08-30 · Blog: AGENTS.md best practices (@developer su... — tekton-9 (developer) · `done`
+- summary: All gates green. Composing the return.
+- files: `website/content/blog/agents-md-best-practices.md`
+- verify: Bonus checks: `grep -o 'agents-md-best-practices' out/sitemap.xml` → `agents-md-best-practices`; `grep -c 'agents-md-best-practices' out/rss
+- proof: *Frontmatter (verbatim):**
+- ledgerId: led-1788099390242-ea217786
+
 ### 2026-08-30 · Dev T1: finish bypass core + UI (@developer s... — tekton-8 (developer) · `issues`
 - summary: All 11 bypass tests pass, and the diff confirms the in-tree work spans exactly the scoped files. The earlier 5-FAIL full-suite run was parallel-load flake (this
 - files: `internal/app/model.go`, `internal/app/browser_open.go`, `internal/app/digest.go`, `internal/app/bypass_test.go`, `cmd/uishot/main.go`
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *(a) Binary evidence — the dialog response schema (CLI 2.1.247, verbatim zod literal from the strings extraction):**
 - ledgerId: led-1787836807067-29bb7139
-
-### 2026-08-27 · Fix claude permission protocol (@developer su... — tekton-8 (developer) · `issues`
-- summary: **RC1 (primary, modal never appears):** `spawnClaude` argv now appends `--permission-prompt-tool stdio` (claude.go). Headless `claude -p` only wires `canUseTool
-- files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_spawn_test.go`, NOT touched
-- verify: $ `claude --version` → `2.1.247 (Claude Code)`
-- proof: *The new argv (claude.go, verbatim):**
-- ledgerId: led-1787836154304-1e40d050
-
-### 2026-08-27 · Scout claude permission flow (@explore subagent) — skopos-2 (scout) · `issues`
-- summary: All evidence is in hand. Tree state is byte-identical to the start (the dirty paths belong to parallel agents' browser-lane work; my only writes were scratch fi
-- files: | path | why read |, |---|---|, | `internal/backend/claude.go` | spawn argv, | `internal/backend/claude_events.go` | `claudeControlRequest` struct, | `internal/backend/claude_perm_test.go` | the assumed wire shapes in existing tests, | `internal/backend/opencode.go` | comparison `AnswerPermission`, | `internal/state/state.go` | `EvPermission` kind, | `internal/app/model.go` | event routing, | `internal/panels/chat.go` | `renderTool` ✗-on-error glyph, | `internal/panels/perm_modal.go` | modal rows "Allow once/Allow always/Reject", | `/Users/theboringhumane/.local/share/claude/versions/2.1.247`, Temp scratch
-- verify: `claude --help`, `claude --version` (read-only invocations; `--permission-prompt-tool` is hidden from help — matches `.hideHelp()` in the bi
-- proof: ### Flow as-built today (frame → parse → event → modal → answer)
-- ledgerId: led-1787835847817-078bc776
 

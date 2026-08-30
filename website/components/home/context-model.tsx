@@ -55,8 +55,8 @@ export function ContextModel() {
 
           <div className="relative h-56 overflow-hidden border border-border bg-card" aria-label="Supported model and coding agent logos">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--accent),transparent_62%)] opacity-10" />
-            <div className="absolute left-1/2 top-1/2 size-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/30 bg-background/80 shadow-[0_0_45px_var(--white)] shadow-white/20" />
-            <div className="absolute left-1/2 top-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-white/50 bg-white/10 font-mono text-lg font-semibold text-accent">
+            <div className="absolute left-1/2 top-1/2 size-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/30 bg-background/80 shadow-[0_0_45px_var(--foreground)] shadow-foreground/20" />
+            <div className="absolute left-1/2 top-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-foreground/50 bg-foreground/10 font-mono text-lg font-semibold text-accent">
               <img src="/imgs/logo.jpg" alt="Theboringoffice" className="size-full bg-blend-color " />
             </div>
 
