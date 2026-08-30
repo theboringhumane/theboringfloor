@@ -29,6 +29,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/theboringhumane/theboringoffice/internal/backend"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
@@ -144,6 +145,45 @@ type teamBackend interface {
 type attachmentBackend interface {
 	SendWith(text string, atts []state.Attachment) error
 }
+
+// bypassBackend — the bypass-permissions seam both live transports
+// (opencode + claudecode) expose beyond state.Backend (the backend dev's
+// contract; the app type-asserts it, same additive-seam pattern as
+// teamBackend/attachmentBackend). Pre-Start it latches the flag (nil
+// return); once Start froze the instance's spawn argv/boot config the
+// call errors "respawn required" — so the office's toggle ALWAYS builds
+// a fresh backend and lands this on it BEFORE Start (respawnForBypass).
+// Harness stubs without the seam simply skip the transport hop.
+type bypassBackend interface {
+	SetBypassPermissions(on bool) error
+}
+
+// Bypass-permissions copies (frozen — pinned by bypass_test.go and the
+// uishot --bypass leg):
+//
+//   - bypassConfirmPrompt: the enable path's explicit confirm, paged
+//     through the office's EXISTING question popover (a mode that
+//     silences every guardrail never arms on one keypress). The answers
+//     are exactly "enable"/"cancel"; cancel (and esc, and any custom
+//     text) is a no-op.
+//   - bypassOnNotice/bypassOffNotice: the toggle's transcript rows.
+//   - bypassAutoNotice: one dim row per stray ask auto-answered while
+//     the respawn lands (fmt %s = the tool name).
+//   - bypassBadgeText: the topbar's loud segment while armed.
+const (
+	bypassConfirmPrompt = "Enable bypass permissions? Agents will run tools and browser actions WITHOUT asking — this office session only"
+	bypassOnNotice      = "bypass permissions: ON — nothing will ask"
+	bypassOffNotice     = "bypass permissions: OFF"
+	bypassAutoNotice    = "bypass: auto-approved %s"
+	bypassBadgeText     = " ⚠ BYPASS "
+)
+
+// bypassConfirmID — the office-local question hold's sentinel id: the
+// /bypass enable confirm rides the EXISTING question popover but is NOT
+// a backend question — questionAnswerMsg/questionLaterMsg intercept it
+// locally (no AnswerQuestion wire, no /question parking, no fold-in of
+// real boss questions).
+const bypassConfirmID = "office-bypass-confirm"
 
 // sendChat pushes one prompt through the attachment seam when the backend
 // implements it, else falls back to the plain-text Send. The fallback can
@@ -466,6 +506,23 @@ type Model struct {
 	// the backend's AnswerPermission wire.
 	browserActionHolds map[string]browserActionHold
 	browserActionSeq   int
+
+	// Bypass-permissions mode (/bypass): SESSION-SCOPED ONLY — model
+	// state, never written to brain.json or session.json (every boot
+	// starts OFF). While on: the topbar carries the loud ⚠ BYPASS segment
+	// (Frame's spliceBypassBadge), stray EvPermission asks are answered
+	// allow-once immediately with NO modal (handlePermissionEvent's
+	// bypass arm), and the office's OWN browser-action gate executes
+	// without the synthetic modal (browser_open.go). Every toggle
+	// respawns the transport: the backend freezes the flag into its spawn
+	// argv/boot config at Start, so SetBypassPermissions rides the FRESH
+	// instance pre-Start (respawnForBypass). bypassRestarting is the
+	// one-respawn-in-flight latch: a toggle landing mid-respawn queues
+	// ONE follow-up (bypassQueued) behind the fresh transport's boot
+	// line (applyEvent's bypassLatchKick).
+	bypassPerms      bool
+	bypassRestarting bool
+	bypassQueued     bool
 
 	// Question holds (boss/primary session only): question is the OPEN
 	// hold whose WIZARD popover replaces the textarea (radio/checkbox/
@@ -1699,6 +1756,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case questionAnswerMsg:
 		if m.question != nil {
 			hold := m.question
+			if hold.IDs[0] == bypassConfirmID {
+				// the /bypass enable confirm is OFFICE-LOCAL: the answer
+				// never rides AnswerQuestion, the hold never parks into
+				// /question. Exactly "enable" arms the mode (respawn
+				// included); cancel/esc/custom text is a no-op.
+				m.question = nil
+				m.chat.SetQuestion(nil)
+				m.chat.SetPermission(m.permQ.view())
+				if len(msg.ans.Picks) == 1 && msg.ans.Picks[0] == "enable" {
+					m.bypassPerms = true
+					m.notice(bypassOnNotice)
+					cmds = append(cmds, m.respawnForBypass())
+				}
+				break
+			}
 			// record THIS page's answer: the popover's picked labels win
 			// (radio = one, checkbox = several), free-text pages record
 			// the trimmed text as the one entry. A fully empty submission
@@ -1755,6 +1827,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case questionLaterMsg:
 		if m.question != nil {
+			if m.question.IDs[0] == bypassConfirmID {
+				// esc CANCELS the /bypass arming confirm — the mode stays
+				// OFF and nothing parks into /question (it is not a boss
+				// question).
+				m.question = nil
+				m.chat.SetQuestion(nil)
+				m.chat.SetPermission(m.permQ.view())
+				break
+			}
 			m.questionEscd = m.question
 			m.question = nil
 			m.chat.SetQuestion(nil)
@@ -1914,6 +1995,12 @@ func (m Model) Frame() string {
 	if m.compact() {
 		top = chrome.TopBarCompact(m.st, m.width, info)
 	}
+	if m.bypassPerms {
+		// the loud ⚠ BYPASS segment — always visible, every tab (the
+		// topbar is shared): the office owns the badge, chrome owns the
+		// bar's segment grammar, so the composed bar donates the cells.
+		top = spliceBypassBadge(top, m.width)
+	}
 	var mid, bot string
 	if m.zen {
 		// zen (/zen · /focus floor) — transient fullscreen floor: sidebar
@@ -1997,6 +2084,28 @@ func (m Model) Frame() string {
 	m.publishChatMediaFrame()
 	m.gov.frameKey, m.gov.frameCached = digest, frame
 	return frame
+}
+
+// spliceBypassBadge — the /bypass topbar badge's app-side injection: the
+// office owns the badge (chrome.TopBar's segment grammar is the chrome
+// package's), so the COMPOSED bar donates the cells here. The standard
+// bar's left↔right gap is the bar's only wide run of plain spaces —
+// its first badgeWidth cells swap for the segment, width-exact, so the
+// row never reflows. A bar with no such run (the compact layout, an
+// extreme narrow terminal) drops trailing cells instead (ansi-aware
+// truncate, then the badge re-fills to width) — the segment is ALWAYS
+// visible: a mode that silences every permission prompt never gets to
+// be subtle.
+func spliceBypassBadge(top string, width int) string {
+	seg := chrome.OnBarBold(chrome.Warn, bypassBadgeText)
+	w := lipgloss.Width(seg)
+	if w <= 0 || width <= w+2 {
+		return top // no room at all — the bar's own truncate keeps the row
+	}
+	if i := strings.Index(top, strings.Repeat(" ", w)); i >= 0 {
+		return top[:i] + seg + top[i+w:]
+	}
+	return ansi.Truncate(top, width-w, "") + seg
 }
 
 // hintLine — the statusbar's hint segment for THIS frame: the ctrl+q
@@ -2831,7 +2940,29 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // inbound boss-turn image payloads and fires the lazy rasterize cmd —
 // model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.bypassLatchKick(ev))
+}
+
+// bypassLatchKick — the /bypass respawn latch's clear hook, batched into
+// applyEvent AFTER the core (the Go argument order is the ordering: the
+// boot line's own reduction/panel feed lands first): the fresh
+// transport's boot marker line (backendStatusMarker — both backends
+// emit it FIRST) or its Start-failure line (backendFailedMarker) drops
+// the one-respawn-in-flight latch, and a toggle that queued behind it
+// fires its follow-up respawn NOW with the CURRENT desired value.
+func (m *Model) bypassLatchKick(ev state.Event) tea.Cmd {
+	if ev.Kind != state.EvStatus || !m.bypassRestarting {
+		return nil
+	}
+	if !strings.HasPrefix(ev.Text, backendStatusMarker) && !strings.HasPrefix(ev.Text, backendFailedMarker) {
+		return nil
+	}
+	m.bypassRestarting = false
+	if !m.bypassQueued {
+		return nil
+	}
+	m.bypassQueued = false
+	return m.respawnForBypass()
 }
 
 func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
@@ -2844,8 +2975,14 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	// permission prompts + question holds are model-owned UI state (not
 	// chat history) — handle before the reducer (the reducer also uses
 	// the parked state: a question popover drops the typing placeholder).
+	// permCmd carries the /bypass arm's auto-answer (the only cmd the
+	// permission path ever mints); EvPermission events reduce to NOTHING
+	// chat-owned (the asks are model-owned UI state), so the only return
+	// such an event can reach is the final one below — the merge lives
+	// there.
+	var permCmd tea.Cmd
 	if ev.Kind == state.EvPermission {
-		m.handlePermissionEvent(ev)
+		permCmd = m.handlePermissionEvent(ev)
 	}
 	if ev.Kind == state.EvQuestion {
 		m.handleQuestionEvent(ev)
@@ -3075,7 +3212,7 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 			return m.flushQueued()
 		}
 	}
-	return nil
+	return permCmd // nil unless this event was a /bypass-armed EvPermission (see above)
 }
 
 // ---------------------------------------------------------------- older-history pagination (app wiring)
@@ -3832,14 +3969,32 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 // The child's floor blocked sprite + activity line still come from the
 // backend's EvBlocked/describeEvent paths — the popover is additional UI,
 // not a floor-state replacement.
-func (m *Model) handlePermissionEvent(ev state.Event) {
+//
+// BYPASS ARM: while m.bypassPerms is armed, a stray pending ask (emitted
+// before the toggle's respawn landed) is answered allow-once IMMEDIATELY
+// on the backend's AnswerPermission wire — no modal parks, no notify
+// ping, no sound — and ONE dim transcript row logs the auto-approval.
+// The returned cmd carries the wire reply (nil on every other path).
+func (m *Model) handlePermissionEvent(ev state.Event) tea.Cmd {
 	if ev.ToolState == "resolved" {
 		m.permQ.resolve(ev.PermissionID)
 		// the notification cohort shrinks with the ask; emptying it re-arms
 		// the next cohort's ONE ping. Resolved events themselves are silent.
 		delete(m.permNotifyIDs, ev.PermissionID)
 		m.chat.SetPermission(m.permQ.view())
-		return
+		return nil
+	}
+	if m.bypassPerms {
+		m.notice(fmt.Sprintf(bypassAutoNotice, ev.ToolName))
+		pid := ev.PermissionID
+		return func() tea.Msg {
+			if m.backend != nil {
+				if err := m.backend.AnswerPermission(pid, "once"); err != nil {
+					return sendErrMsg{err: err}
+				}
+			}
+			return nil
+		}
 	}
 	agent := ev.EmployeeName
 	if agent == "" {
@@ -3857,6 +4012,7 @@ func (m *Model) handlePermissionEvent(ev state.Event) {
 	m.permNotifyIDs[ev.PermissionID] = true
 	m.playSound("alert") // every NEW ask opening the popover (boss or child)
 	m.chat.SetPermission(m.permQ.view())
+	return nil
 }
 
 // notifyTitle — every desktop ping's banner title: the product badge. The
@@ -3933,6 +4089,13 @@ func (m *Model) handleQuestionEvent(ev state.Event) {
 	}
 	if ev.QuestionID == "" {
 		return
+	}
+	// the /bypass arming confirm is office-local: a REAL boss question
+	// outranks it — close the confirm (cancel semantics, no-op) so the
+	// fold-in below never appends boss pages onto the sentinel hold.
+	if m.question != nil && m.question.IDs[0] == bypassConfirmID {
+		m.question = nil
+		m.chat.SetQuestion(nil)
 	}
 	items := ev.Questions
 	if len(items) == 0 {
@@ -4903,6 +5066,9 @@ const slashHelp = `commands:
   @<file>            attach file (popover picker) · cmd+v pastes images (ctrl+v too)
    /perm              re-open an esc'd permission prompt
    /question          re-open a deferred boss question
+   /bypass            toggle bypass permissions: agents run tools + browser
+                      actions WITHOUT asking (this session only · confirm
+                      to arm · respawns the backend)
    /images [mode]     boss-turn image previews: auto|ascii|off (persists)
   /open <url>        open a page in the browser tab (file:// or localhost)
   /new               fresh office (previous transcript archived on disk)
@@ -5179,6 +5345,10 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// The abort RPC rides the returned cmd (never the UI goroutine);
 		// the unwind + statusline inside are already done.
 		return m.stopWork()
+	case "/bypass":
+		// session-scoped bypass-permissions mode: enable asks the confirm
+		// popover, disable is instant; both respawn the transport.
+		return m.applyBypassSlash()
 	case "/perm":
 		// re-open the most recent esc'd ask: it jumps the queue to the
 		// front (the popover displays it next). Nothing esc'd means either
@@ -5623,6 +5793,12 @@ func (m *Model) persistCfg() string {
 // contract, same pattern as agentFieldStatusMarker.
 const backendStatusMarker = "[theboringoffice] backend: "
 
+// backendFailedMarker — the EvStatus prefix a transport's Start failure
+// mints from the swap/respawn goroutine. The /bypass respawn latch
+// (bypassLatchKick) clears on it too: a failed boot must never wedge the
+// one-respawn-in-flight gate.
+const backendFailedMarker = "[theboringoffice] backend failed: "
+
 // backendNameFromStatus parses the marker grammar: "… backend: <name>" at
 // boot, "… backend: <old> → <new> (…)" on swap — the arrow's RIGHT side is
 // always the latched name. Only the two real transport names latch
@@ -5796,7 +5972,7 @@ func (m *Model) swapBackend(name string) tea.Cmd {
 		emit, nb := m.emitFn, m.backend
 		go func() {
 			if err := nb.Start(emit); err != nil {
-				emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend failed: " + err.Error()})
+				emit(state.Event{Kind: state.EvStatus, Text: backendFailedMarker + err.Error()})
 			}
 		}()
 	}
@@ -5814,6 +5990,106 @@ func (m *Model) swapBackend(name string) tea.Cmd {
 		}
 	}
 	return cmd
+}
+
+// --- /bypass — the session-scoped bypass-permissions mode --------------------
+
+// applyBypassSlash — /bypass toggles the mode. ENABLE goes through the
+// office's existing question popover as an explicit confirm (a mode that
+// silences every permission guardrail never arms on ONE keypress);
+// cancel/esc/custom text is a no-op. DISABLE is instant — no confirm.
+// Both paths land the transcript notice and respawn the transport (the
+// flag freezes into the backend's spawn argv/boot config at Start, so
+// only a fresh instance can carry it — respawnForBypass).
+func (m *Model) applyBypassSlash() tea.Cmd {
+	if m.bypassPerms {
+		m.bypassPerms = false
+		m.notice(bypassOffNotice)
+		return m.respawnForBypass()
+	}
+	if m.question != nil {
+		// A float already owns the popover region (the confirm itself, or
+		// a boss question that outranks the toggle) — never stack.
+		return nil
+	}
+	m.question = &questionHold{
+		IDs: []string{bypassConfirmID},
+		Items: []state.QuestionItem{{
+			Question: bypassConfirmPrompt,
+			Options: []state.QuestionOption{
+				{Label: "enable"},
+				{Label: "cancel"},
+			},
+		}},
+		Answers: make([][]string, 1),
+	}
+	m.chat.SetQuestion(m.questionView(m.question))
+	return nil
+}
+
+// respawnForBypass — the toggle's transport hop: swapBackend's drain-first
+// ordering, same-name. The member's context survives: the fresh transport
+// re-pins the CURRENT primary id (claude's spawn then rides --resume <id>;
+// opencode's resolvePrimary re-resolves the pinned session — the existing
+// precedents), SetBypassPermissions(m.bypassPerms) lands BEFORE Start (the
+// backend contract: a running instance rejects the flip), and Start rides
+// the boot sink — the floor's seats/boot lines re-emit from the fresh
+// transport exactly like a boot.
+//
+// ONE respawn runs at a time: with the latch armed (a fresh transport's
+// boot line not yet seen) a toggle queues ONE follow-up behind it
+// (bypassLatchKick fires it) — no double-spawn. Demo/harness offices skip
+// the hop entirely: the office-side gates (indicator, stray-ask
+// auto-answer, the browser-action gate) hold regardless.
+func (m *Model) respawnForBypass() tea.Cmd {
+	if m.st.Mode != state.ModeLive {
+		return nil
+	}
+	if m.bypassRestarting {
+		m.bypassQueued = true
+		return nil
+	}
+	resumeID := ""
+	if ps, ok := m.backend.(primarySeamBackend); ok {
+		resumeID = ps.PrimaryID()
+	}
+	if old := m.backend; old != nil {
+		_ = old.Stop() // bounded internally (swapBackend precedent)
+	}
+	m.PersistSession() // the archive is preserved (swapBackend ordering)
+
+	m.backend = BackendFactory(m.backendName(), m.serverURL, m.sessDir, m.cfg)
+
+	if ps, ok := m.backend.(primarySeamBackend); ok && resumeID != "" {
+		ps.PrimaryOverride(resumeID) // pre-Start: the resumed session wins
+	}
+	if bb, ok := m.backend.(bypassBackend); ok {
+		// the whole point of the respawn: the flag rides the FRESH
+		// instance ahead of its Start.
+		if err := bb.SetBypassPermissions(m.bypassPerms); err != nil {
+			m.noticeErr("bypass: " + err.Error())
+		}
+	}
+	m.resetPager() // the older-history walk belonged to the spent transport
+	started := false
+	if m.emitFn != nil && m.backend != nil {
+		emit, nb := m.emitFn, m.backend
+		go func() {
+			if err := nb.Start(emit); err != nil {
+				emit(state.Event{Kind: state.EvStatus, Text: backendFailedMarker + err.Error()})
+			}
+		}()
+		started = true
+	}
+	// the latch only arms when a boot line can actually land (harnesses
+	// without the sink never see one — the gate must not wedge).
+	m.bypassRestarting = started
+	stateWord := "off"
+	if m.bypassPerms {
+		stateWord = "on"
+	}
+	return m.applyEvent(state.Event{Kind: state.EvStatus,
+		Text: "[theboringoffice] backend restarting — bypass permissions " + stateWord})
 }
 
 // notice appends a dim local notice (From "office") to the chat.

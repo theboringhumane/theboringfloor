@@ -329,3 +329,117 @@ func ensureLedgerAttachment(dir string) (changed bool, notes []string) {
 	}
 	return false, append(notes, "[theboringoffice] office ledger: already wired (.opencode/office-ledger.md)")
 }
+
+// ---------------------------------------------------------------- bypass permissions (opencode)
+
+// bypassPermissionBlock is the opencode.json "permission" value the
+// office's bypass-permissions toggle writes. VERIFIED against the
+// installed opencode 1.18.21's own published config schema
+// (https://opencode.ai/config.json — Config.properties.permission ->
+// PermissionConfig: an object whose named keys (read/edit/bash/task/...)
+// AND additionalProperties take PermissionRuleConfig -> "allow"/"ask"/
+// "deny") and against the official docs (opencode.ai/docs/permissions:
+// `{ "permission": { "*": "ask", "bash": "allow" } }` — the "*" key is
+// the global wildcard every tool falls back to). "*" -> "allow" lets
+// every permission-requiring tool run without approval, so the serve
+// never raises a permission ask and zero EvPermission events arrive —
+// nothing is filtered office-side.
+var bypassPermissionBlock = map[string]any{"*": "allow"}
+
+// mergePermissionWildcardAllow is the pure half of the bypass config
+// merge, sibling to mergeInstruction: cfg is an existing opencode.json.
+// It returns cfg unchanged (changed=false) when the bypass is already
+// in force — an object permission already carrying "*": "allow", or the
+// all-at-once string form "permission": "allow". An object form gains
+// the "*" wildcard key while EVERY sibling rule survives (opencode's
+// documented precedence lets a member's explicit per-tool "deny" still
+// beat the wildcard — the same semantics as opencode's own auto-approve
+// mode). The contradictory string forms ("ask"/"deny") are REPLACED by
+// the wildcard block: the member's bypass toggle is the later, explicit
+// instruction, and the replacement rides the returned note so the boot
+// log says it out loud. A non-object/non-string permission (null, a
+// number, an array) fails closed — a hand-shaped config is never
+// clobbered silently. Every other top-level field survives the
+// map[string]any round-trip (2-space indent, trailing newline — the
+// mergeInstruction byte format).
+func mergePermissionWildcardAllow(cfg []byte) (merged []byte, changed bool, note string, err error) {
+	var doc map[string]any
+	if err := json.Unmarshal(cfg, &doc); err != nil {
+		return nil, false, "", fmt.Errorf("unparseable json: %w", err)
+	}
+
+	rawPerm, has := doc["permission"]
+	if has {
+		switch perm := rawPerm.(type) {
+		case map[string]any:
+			if action, ok := perm["*"].(string); ok && action == "allow" {
+				return cfg, false, "", nil // already bypassed — idempotent
+			}
+			perm["*"] = "allow" // sibling rules survive; an explicit "deny" still wins over "*"
+		case string:
+			if perm == "allow" {
+				return cfg, false, "", nil // the all-at-once shape already bypasses everything
+			}
+			doc["permission"] = bypassPermissionBlock
+			note = "replaced the hand-shaped \"permission\": \"" + perm + "\" string with {\"*\": \"allow\"} (the bypass toggle is the later, explicit instruction)"
+		default:
+			return nil, false, "", fmt.Errorf("permission is %T, not an object or action string — refusing to rewrite a hand-shaped config", rawPerm)
+		}
+	} else {
+		doc["permission"] = bypassPermissionBlock
+	}
+
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, false, "", err
+	}
+	return append(out, '\n'), true, note, nil
+}
+
+// ensureBypassPermissions is the bypass-permissions config pass for dir,
+// riding the same seam and discipline as the charter/ledger passes: it
+// merges {"permission": {"*": "allow"}} into <dir>/.opencode/opencode.json
+// (creating the config when absent), preserving every other field, and
+// reports changed=true only when bytes were written — Start folds that
+// into the same serve-restart condition the charter uses (opencode
+// spoils its config at boot). Idempotent: a second run writes nothing
+// and reports "already wired". A failure never blocks the boot — the
+// note surfaces on the status line and the serve keeps its existing
+// permissions (degrade open, charter parity).
+func ensureBypassPermissions(dir string) (changed bool, notes []string) {
+	ocDir := filepath.Join(dir, ".opencode")
+	cfgPath := filepath.Join(ocDir, "opencode.json")
+
+	cfgRaw, err := os.ReadFile(cfgPath)
+	if err == nil {
+		merged, mergeChanged, note, mergeErr := mergePermissionWildcardAllow(cfgRaw)
+		if mergeErr != nil {
+			return false, append(notes, "[theboringoffice] bypass permissions: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
+		}
+		if mergeChanged {
+			if note != "" {
+				notes = append(notes, "[theboringoffice] bypass permissions: "+note)
+			}
+			if err := os.WriteFile(cfgPath, merged, 0o644); err != nil {
+				return false, append(notes, "[theboringoffice] bypass permissions: failed (write "+cfgPath+": "+err.Error()+")")
+			}
+			changed = true
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(ocDir, 0o755); err != nil {
+			return false, append(notes, "[theboringoffice] bypass permissions: failed (mkdir "+ocDir+": "+err.Error()+")")
+		}
+		fresh := []byte("{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"permission\": {\n    \"*\": \"allow\"\n  }\n}\n")
+		if err := os.WriteFile(cfgPath, fresh, 0o644); err != nil {
+			return false, append(notes, "[theboringoffice] bypass permissions: failed (write "+cfgPath+": "+err.Error()+")")
+		}
+		changed = true
+	} else {
+		return false, append(notes, "[theboringoffice] bypass permissions: failed (read "+cfgPath+": "+err.Error()+")")
+	}
+
+	if changed {
+		return true, append(notes, "[theboringoffice] bypass permissions: wired (.opencode/opencode.json permission \"*\": allow)")
+	}
+	return false, append(notes, "[theboringoffice] bypass permissions: already wired (.opencode/opencode.json)")
+}

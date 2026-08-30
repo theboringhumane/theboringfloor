@@ -198,6 +198,17 @@ type liveBackend struct {
 	ledgerDone  map[string]bool
 	queueLedger map[string]queueLedgerSeed
 	ledgerWG    sync.WaitGroup
+	// bypassPermissions — the office's bypass-permissions toggle
+	// (SetBypassPermissions, pre-Start only). When on, Start merges
+	// {"permission": {"*": "allow"}} into <dir>/.opencode/opencode.json
+	// BEFORE the serve spawn (the charter.go config seam), so the
+	// booted serve auto-approves every permission-requiring tool and
+	// zero EvPermission events arrive — nothing is stripped office-side.
+	// started latches at the top of Start: the flag is frozen from then
+	// on (the app's toggle respawns a FRESH instance; a death-respawn
+	// reads the same on-disk config, so it keeps the mode for free).
+	bypassPermissions bool
+	started           bool
 }
 
 func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend {
@@ -231,10 +242,34 @@ func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend 
 
 func (b *liveBackend) Mode() state.Mode { return state.ModeLive }
 
+// SetBypassPermissions — the office's bypass-permissions toggle (an
+// ADDITIVE seam the app type-asserts, same convention as
+// ConciergeCapable/SessionAborter in internal/state: never folded into
+// state.Backend, harness stubs stay untouched). Pre-Start it latches the
+// flag (nil): Start then merges {"permission": {"*": "allow"}} into the
+// project's .opencode/opencode.json ahead of the serve spawn (verified
+// against opencode 1.18.21's published schema — see charter.go). Once
+// Start was called the boot's config is fixed, so the call fails with
+// "respawn required" — the app's toggle always builds a FRESH backend
+// instead of mutating a running (or spent) one.
+func (b *liveBackend) SetBypassPermissions(on bool) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		return errors.New("bypass permissions: respawn required — SetBypassPermissions must be called before Start (the toggle respawns a fresh backend)")
+	}
+	b.bypassPermissions = on
+	return nil
+}
+
 // ---------------------------------------------------------------- start
 
 func (b *liveBackend) Start(emit func(state.Event)) error {
 	b.fl.setEmit(emit)
+	b.mu.Lock()
+	b.started = true // the boot config freezes here — SetBypassPermissions errors from now on
+	bypass := b.bypassPermissions
+	b.mu.Unlock()
 
 	// Manager charter (oikonomos) runs FIRST, before server resolution:
 	// any directory theboringoffice serves gets .opencode/oikonomos.md + the
@@ -242,6 +277,20 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// reading its project config. A degradation never blocks the boot —
 	// failures surface on the status line only.
 	charterNotes := emitCharterNotes(emit, b.directory)
+
+	// Bypass permissions ride the SAME config seam, right behind the
+	// charter: the {"permission": {"*": "allow"}} merge must be on disk
+	// before a spawned serve reads its project config, and its changed
+	// flag folds into the charter's restart condition below (opencode
+	// spoils its config at boot). Without the toggle this pass never
+	// runs and the config stays byte-identical to an unmanaged boot.
+	if bypass {
+		bypassChanged, bypassNotes := ensureBypassPermissions(b.directory)
+		for _, n := range bypassNotes {
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: n})
+		}
+		charterNotes.changed = charterNotes.changed || bypassChanged
+	}
 
 	u := b.optURL
 	if u == "" {

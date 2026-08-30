@@ -41,6 +41,27 @@ const conciergeKeys = [
   { combo: '/stop', action: 'abort boss + workers' },
 ]
 
+const bypassKeys = [{ combo: '/bypass', action: 'toggle bypass-permissions mode' }]
+
+const bypassProtections = [
+  {
+    label: 'session only',
+    body: 'Every boot starts with bypass OFF. The toggle lives in memory and the badge dies with the office session — brain.json never gains a key.',
+  },
+  {
+    label: 'confirm on enable',
+    body: 'Turning it on is a two-step: the office’s question modal makes you confirm that agents will run tools and browser actions without asking. Turning it off is instant.',
+  },
+  {
+    label: 'loud indicator',
+    body: 'While it’s on, every tab’s topbar carries a ⚠ BYPASS segment. The mode never hides, and neither does the dim log row each auto-approved ask leaves in the transcript.',
+  },
+  {
+    label: 'what lands on disk',
+    body: 'claude writes nothing at all. On opencode the allow-all is a real edit — "permission": {"*": "allow"} in the project’s .opencode/opencode.json — and disabling /bypass strips it again automatically (a hand-written "*": "allow" of your own would go with it). Quit with bypass still on and it stays on disk, allowing, until the next off or a manual remove. An explicit per-tool deny still beats the * wildcard.',
+  },
+]
+
 const questionKinds = [
   {
     kind: 'text',
@@ -201,6 +222,48 @@ export default function PermissionsAndQuestionsPage() {
               alt="theboringoffice permission queue: the front ask with a 1 of N counter and the allow once / always / reject menu open"
               caption="permission queue — 1 of N; y once · a always · n reject · esc park"
             />
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-5xl px-6 py-20">
+            <SectionTag>Bypass mode</SectionTag>
+            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+              /bypass is the deliberate escape hatch.
+            </h2>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Some rooms don&apos;t need a bouncer: a throwaway repo, a sandboxed
+              environment, a demo you&apos;ll reset in an hour.{' '}
+              <span className="font-mono text-foreground">/bypass</span> toggles a
+              session-scoped bypass-permissions mode for exactly those rooms. Enabling
+              asks for an explicit confirm first — agents will run tools and browser
+              actions without asking, this office session only — so the loud path is
+              never the accidental one. Disabling is instant.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              While it&apos;s on, two ask surfaces go quiet. Backend tool asks stop
+              entirely — claude spawns with{' '}
+              <span className="font-mono text-foreground">
+                --dangerously-skip-permissions
+              </span>
+              , and opencode&apos;s config gets a permission allow-all — and the
+              office&apos;s own browser-action prompt (click, fill, eval) is skipped
+              too. Anything that still slips an ask through is auto-approved, with a
+              dim log row in the transcript so the record stays honest. Toggling
+              respawns the backend so the mode actually reaches the agent; on claude,
+              your session context resumes across the respawn.
+            </p>
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+              {bypassProtections.map((p) => (
+                <div key={p.label} className="bg-background p-6">
+                  <p className="font-mono text-xs uppercase tracking-wider text-accent">
+                    {p.label}
+                  </p>
+                  <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{p.body}</p>
+                </div>
+              ))}
+            </div>
+            <KeyChips keys={bypassKeys} />
           </div>
         </section>
 

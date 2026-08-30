@@ -644,6 +644,119 @@ func TestClaudeLiveThinkingEvThought(t *testing.T) {
 	t.Logf("thinking contract held on the real wire: %d open/accumulate rows -> close (full text %d chars)", len(rows)-1, len(last.Text))
 }
 
+// ---------------------------------------------------------------- test 4
+
+// TestClaudeLiveBypass — the bypass-permissions toggle against the REAL
+// CLI: SetBypassPermissions(true) pre-Start spawns the child with
+// `--dangerously-skip-permissions` (and WITHOUT `--permission-prompt-tool
+// stdio`), so the SAME Write-tool prompt that drives
+// TestClaudeLivePermissionRoundTrip's ask (the pre-flag control run —
+// this account's default mode ALWAYS prompts for Write) now runs with
+// ZERO permission events: the turn must COMPLETE (result frame), the
+// scratch file must exist with the exact content, and the mapped event
+// log must carry ZERO EvPermission — with the raw wire proving zero
+// can_use_tool control_requests arrived (the CLI stopped asking; the
+// office strips NOTHING mid-pipe).
+func TestClaudeLiveBypass(t *testing.T) {
+	bin := liveClaudeGate(t)
+	scratch := t.TempDir() // auto-removed — no residue
+	target := filepath.Join(scratch, "theboringoffice-live-bypass.txt")
+
+	log := &claudeEventLog{}
+	rec := &liveFrameRec{}
+	b := newClaudeBackend(bin, scratch, nil)
+	b.rawFrameHook = rec.add
+	if err := b.SetBypassPermissions(true); err != nil {
+		t.Fatalf("pre-Start SetBypassPermissions(true): %v", err)
+	}
+	if err := b.Start(log.emit); err != nil {
+		t.Fatalf("Start (real claude at %s): %v", bin, err)
+	}
+	t.Cleanup(func() { _ = b.Stop() }) // stdin-close -> drain -> SIGTERM -> SIGKILL
+
+	// The post-Start contract rides the live run too: the argv is frozen.
+	if err := b.SetBypassPermissions(false); err == nil || !strings.Contains(err.Error(), "respawn required") {
+		t.Fatalf("post-Start SetBypassPermissions must fail naming \"respawn required\", got %v", err)
+	} else {
+		t.Logf("post-Start SetBypassPermissions correctly refused: %v", err)
+	}
+
+	// Byte-identical prompt to the control run (test 2): Write ALWAYS
+	// prompts in this account's default permission mode.
+	prompt := fmt.Sprintf("Use the Write tool to create the file %s with the exact content \"hello\" and nothing else. Do not do anything else.", target)
+	t.Logf("prompt: %s", prompt)
+	if err := b.Send(prompt); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	liveWait(t, "the turn's result frame (real API latency, bypassed tool)", 150*time.Second, rec, log, func() bool { return liveResultSeen(rec) })
+	liveDumpWire(t, rec)
+	liveDumpEvents(t, log)
+
+	// The event inventory: ZERO EvPermission and ZERO can_use_tool
+	// control_requests — vs the control run, where the same prompt raises
+	// the ask. (EvPermission is what the office renders; the raw
+	// control_request count proves the CLI itself stopped asking.)
+	var permEvents, questionEvents int
+	for _, e := range log.snapshot() {
+		switch e.Kind {
+		case state.EvPermission:
+			permEvents++
+		case state.EvQuestion:
+			questionEvents++
+		}
+	}
+	var canUseToolFrames int
+	for _, f := range rec.snapshot() {
+		if f.Type == "control_request" && f.Request.Subtype == "can_use_tool" {
+			canUseToolFrames++
+		}
+	}
+	t.Logf("BYPASS EVENT INVENTORY: EvPermission=%d EvQuestion=%d raw can_use_tool control_requests=%d (control run TestClaudeLivePermissionRoundTrip: EvPermission>=1 on the same prompt)",
+		permEvents, questionEvents, canUseToolFrames)
+	if permEvents != 0 || canUseToolFrames != 0 {
+		t.Fatalf("a bypassed backend must never raise a permission ask: EvPermission=%d can_use_tool frames=%d", permEvents, canUseToolFrames)
+	}
+
+	// The tool ACTUALLY RAN without any office answer: a user frame
+	// carrying a clean tool_result, an EvTool done, and the file on disk.
+	if !rec.found(func(f claudeEvent) bool {
+		if f.Type != "user" {
+			return false
+		}
+		for _, bl := range f.Message.Content {
+			if bl.Type == "tool_result" && !bl.IsError {
+				return true
+			}
+		}
+		return false
+	}) {
+		t.Fatalf("the bypassed Write never landed a clean tool_result frame")
+	}
+	var toolDone bool
+	for _, e := range log.snapshot() {
+		if e.Kind == state.EvTool && e.ToolState == "done" {
+			toolDone = true
+			t.Logf("EvTool done: callID=%s tool=%s summary=%q", e.CallID, e.ToolName, e.ToolSummary)
+		}
+		if e.Kind == state.EvTool && e.ToolState == "error" {
+			t.Fatalf("the bypassed tool must not land an error row: %+v", e)
+		}
+	}
+	if !toolDone {
+		t.Fatalf("the bypassed Write never reported done; events dumped above")
+	}
+	bits, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("the Write tool ran but the scratch file is missing: %v", err)
+	}
+	if strings.TrimSpace(string(bits)) != "hello" {
+		t.Fatalf("scratch file content drifted: %q (want hello)", string(bits))
+	}
+	t.Logf("scratch file on disk: %s content=%q (auto-removed with t.TempDir)", target, string(bits))
+	t.Log("bypass contract held on the real CLI: turn completed, tool ran unanswered, ZERO permission events")
+}
+
 // sortedKeys renders a string-keyed map as a sorted stable list for logs.
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))

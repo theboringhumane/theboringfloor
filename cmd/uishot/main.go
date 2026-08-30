@@ -120,6 +120,11 @@
 //	                                "stopped by user" placeholder, " (stopped)"
 //	                                stream appendix, tools ✗ aborted, thread
 //	                                (· N tool calls ✗ stopped), queue intact)
+//	                    [--bypass]  (/bypass proof (synchronous): arming
+//	                                confirm → ⚠ BYPASS topbar segment + ON
+//	                                notice → stray EvPermission auto-answered
+//	                                allow-once (no modal) → instant OFF;
+//	                                two drives byte-identical)
 //	                    [--stuck]   (boss-stuck-busy proof (synchronous):
 //	                                the boss goes busy at 200ms and NEVER
 //	                                completes; the W1 watchdog (harness-seamed
@@ -1545,6 +1550,141 @@ func runStopProof() error {
 	fmt.Println("--- /queue leg (after /stop): the roadblock item survived verbatim, NOT sent ---")
 	fmt.Println(frameQ)
 	fmt.Println("asserts: OK — AbortSessions captured once; boss-2 placeholder → \"stopped by user\"; streamed text kept + \" (stopped)\"; boss + worker tools ✗ aborted; thread (· 2 tool calls ✗ stopped); BossThinking/BossDelegating cleared; queue intact (1 item enqueued behind the esc-deferred question hold, badge q1, NOT sent — flushes next turn)")
+	return nil
+}
+
+// --- bypass-permissions mode proof (--bypass) ---------------------------------
+// Synchronous driver, TWO byte-identical drives. The legs: "/bypass" typed
+// opens the office's question popover as the explicit arming confirm
+// (enable/cancel — never one keypress); enter on "enable" arms the mode:
+// the ⚠ BYPASS segment rides the topbar and the pinned ON notice lands;
+// a stray EvPermission (emitted before the toggle's respawn would land)
+// is answered allow-once on the stub's wire with NO modal parking + the
+// dim "bypass: auto-approved bash" row; "/bypass" again disables INSTANTLY
+// (no confirm): OFF notice, segment gone. The demo stub skips the
+// transport respawn by design (live-only) — the respawn contract is
+// pinned by internal/app's bypass_test.go.
+
+func runBypassProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	type shot struct {
+		label string
+		frame string
+	}
+	drive := func() ([]shot, string, error) {
+		stub := &stubBackend{done: make(chan struct{})}
+		m := app.New(stub, config.Default())
+		d := &focusDriver{m: m}
+		d.send(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
+		key := func(code rune) tea.Cmd {
+			tm, c := d.m.Update(tea.KeyPressMsg(tea.Key{Code: code}))
+			if fm, ok := tm.(app.Model); ok {
+				d.m = fm
+			}
+			return c
+		}
+		typeIn := func(s string) {
+			for _, r := range s {
+				tm, _ := d.m.Update(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+				if fm, ok := tm.(app.Model); ok {
+					d.m = fm
+				}
+			}
+		}
+		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — bypass stub online"})
+		d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
+			ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
+
+		var shots []shot
+
+		// leg 1 — /bypass typed: the arming confirm opens (enable/cancel).
+		typeIn("/bypass")
+		drainCmd(d, key(tea.KeyEnter), 0)
+		f1 := d.m.Frame()
+		for _, want := range []string{"Enable bypass permissions?", "WITHOUT asking", "enable", "cancel"} {
+			if !strings.Contains(ansi.Strip(f1), want) {
+				return nil, "", fail("bypass A (confirm open): frame missing %q", want)
+			}
+		}
+		if strings.Contains(ansi.Strip(f1), "⚠ BYPASS") {
+			return nil, "", fail("bypass A: the segment must NOT show before the confirm answers")
+		}
+		shots = append(shots, shot{"A — /bypass typed: the arming confirm (enable/cancel), mode still OFF", f1})
+
+		// leg 2 — enter on "enable": the mode arms: ⚠ BYPASS rides the
+		// topbar, the pinned ON notice lands in the transcript.
+		drainCmd(d, key(tea.KeyEnter), 0)
+		f2 := d.m.Frame()
+		for _, want := range []string{"⚠ BYPASS", "bypass permissions: ON", "nothing will ask"} {
+			if !strings.Contains(ansi.Strip(f2), want) {
+				return nil, "", fail("bypass B (armed): frame missing %q", want)
+			}
+		}
+		shots = append(shots, shot{"B — confirm answered \"enable\": ⚠ BYPASS rides the topbar + the ON notice", f2})
+
+		// leg 3 — a stray EvPermission lands while armed: answered
+		// allow-once on the wire, NO modal parks, the dim row logs it.
+		tm, c := d.m.Update(state.Event{Kind: state.EvPermission, EmployeeName: "boss",
+			PermissionID: "perm-b1", ToolName: "bash", ToolSummary: "rm -rf /tmp/x", ToolState: "pending"})
+		if fm, ok := tm.(app.Model); ok {
+			d.m = fm
+		}
+		drainCmd(d, c, 0)
+		f3 := d.m.Frame()
+		if stub.permAnswer != "perm-b1:once" {
+			return nil, "", fail("bypass C: the stray ask must auto-answer allow-once, stub captured %q", stub.permAnswer)
+		}
+		if strings.Contains(ansi.Strip(f3), "PERMISSION REQUIRED") {
+			return nil, "", fail("bypass C: NO modal may park while armed")
+		}
+		if !strings.Contains(ansi.Strip(f3), "bypass: auto-approved bash") {
+			return nil, "", fail("bypass C: the dim auto-approval row is missing")
+		}
+		if !strings.Contains(ansi.Strip(f3), "⚠ BYPASS") {
+			return nil, "", fail("bypass C: the segment must still ride the topbar")
+		}
+		shots = append(shots, shot{"C — stray EvPermission auto-answered (perm-b1:once on the wire, no modal, dim row)", f3})
+
+		// leg 4 — /bypass again: INSTANT disable (no confirm), OFF notice,
+		// the segment leaves the topbar.
+		typeIn("/bypass")
+		drainCmd(d, key(tea.KeyEnter), 0)
+		f4 := d.m.Frame()
+		if strings.Contains(ansi.Strip(f4), "Enable bypass permissions?") {
+			return nil, "", fail("bypass D: disable must NOT ask for a confirm")
+		}
+		if strings.Contains(ansi.Strip(f4), "⚠ BYPASS") {
+			return nil, "", fail("bypass D: the segment must leave the topbar on disable")
+		}
+		if !strings.Contains(ansi.Strip(f4), "bypass permissions: OFF") {
+			return nil, "", fail("bypass D: the OFF notice is missing")
+		}
+		shots = append(shots, shot{"D — /bypass again: instant OFF (no confirm), segment gone", f4})
+		return shots, stub.permAnswer, nil
+	}
+
+	shotsA, answerA, err := drive()
+	if err != nil {
+		return err
+	}
+	shotsB, answerB, err := drive()
+	if err != nil {
+		return err
+	}
+	if answerA != answerB {
+		return fail("the two drives captured different wire answers: %q vs %q", answerA, answerB)
+	}
+	for i := range shotsA {
+		fmt.Printf("===== UI SHOT · --bypass %s =====\n", shotsA[i].label)
+		fmt.Println(shotsA[i].frame)
+		fmt.Println("===== UI SHOT =====")
+		if shotsA[i].frame != shotsB[i].frame {
+			return fail("bypass: leg %d differs between the two synchronous drives", i+1)
+		}
+	}
+	fmt.Printf("--- stub capture (AnswerPermission): %s ---\n", answerA)
+	fmt.Println("deterministic: OK — two synchronous drives produced byte-identical frames")
+	fmt.Println("asserts: OK — /bypass opens the arming confirm (enable/cancel, never one keypress); enable arms: ⚠ BYPASS rides the topbar + the pinned ON notice; a stray EvPermission auto-answers allow-once on the wire (perm-b1:once) with NO modal parked + the dim \"bypass: auto-approved bash\" row; disable is INSTANT (no confirm) with the OFF notice + the segment gone; two drives byte-identical")
 	return nil
 }
 
@@ -7780,6 +7920,7 @@ func main() {
 	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
+	bypass := flag.Bool("bypass", false, "/bypass session-scoped bypass-permissions proof (synchronous): /bypass opens the arming confirm (enable/cancel); enable arms the mode — the ⚠ BYPASS segment rides the topbar + the pinned ON notice; a stray EvPermission auto-answers allow-once on the stub's wire with NO modal parked + the dim auto-approved row; /bypass again disables INSTANTLY (no confirm) — OFF notice + segment gone; two drives byte-identical")
 	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) notes ONE \"boss turn wedged\" line in the ACTIVITY tab (zero transcript rows) + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
 	freesend := flag.Bool("freesend", false, "free-queuing proof: boss busy 200–3000ms; two prompts sent DURING the window must hit backend.Send IMMEDIATELY (both ([stub] Send lines precede the turn-completed marker in the ordering trace) — frame 1 (t=2.2s) shows \"busy · 2 queued (server)\" + the \"turn 2 · your message rides next\" placeholder; frame 2 (t=3.6s) shows the drained FIFO pins + restored status line")
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
@@ -7831,6 +7972,14 @@ func main() {
 
 	if *stop {
 		if err := runStopProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *bypass {
+		if err := runBypassProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}

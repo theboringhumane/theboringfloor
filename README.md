@@ -116,7 +116,10 @@ One line per key — the full table lives at [keys & slash commands](https://the
 | big paste | chat pastes >20 lines or >2000 chars collapse to a `[pasted N lines · M chars]` chip — one backspace unit, full text sent on submit |
 | `/model` · `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
 | `y` `a` `n` `esc` | answer a permission prompt — allow once / always / reject / defer |
+| `/bypass` | toggle bypass-permissions mode — session-only, confirm-on-enable, ` ⚠ BYPASS ` rides the topbar while on |
 | `ctrl+q` | arm quit — works everywhere |
+
+`/bypass` is the deliberate escape hatch. Enabling asks for an explicit confirm — agents will run tools and browser actions WITHOUT asking, this office session only — disabling is instant. While on, every tab's topbar carries a loud ` ⚠ BYPASS ` segment, backend permission asks stop (claude spawns with `--dangerously-skip-permissions`; opencode's config gets permission allow-all), any stray ask is auto-approved with a dim log row, and the office's own browser-action prompt is skipped the same way. Toggling respawns the backend so the mode actually reaches the agent (claude resumes your session context). Every boot starts with bypass OFF and brain.json stays untouched. On opencode the allow-all is a real edit to the project's `.opencode/opencode.json` — disabling `/bypass` strips it automatically, and it only lingers when the office quits with bypass still on, until the next `/bypass` off or a manual remove (an explicit per-tool `deny` still beats the `*` wildcard). One honest edge: a hand-written `"*": "allow"` of your own gets stripped with it on disable. claude writes nothing at all.
 
 Browser tab (the left pane, behind `ctrl+b`):
 

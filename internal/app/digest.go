@@ -60,7 +60,9 @@ func (m *Model) frameDigest() uint64 {
 	if p := m.permQ.front(); p != nil {
 		frontID = p.ID
 	}
-	fmt.Fprintf(h, "|%d|%s|%s|%t|%t|%s|%d|%d", m.activityAdds, m.bossName, PowerMode(m.cfg), m.zen, m.compact(),
+	// the /bypass toggle swaps the topbar's ⚠ BYPASS segment (Frame's
+	// splice) without any state-owned term above moving — hash it.
+	fmt.Fprintf(h, "|%d|%s|%s|%t|%t|%t|%s|%d|%d", m.activityAdds, m.bossName, PowerMode(m.cfg), m.zen, m.compact(), m.bypassPerms,
 		frontID, len(m.permQ.pending), len(m.permQ.escd))
 	// the thread-focus view owns Frame's whole middle region while open
 	// (and re-opens on a DIFFERENT thread after an esc) — both belong in

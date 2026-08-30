@@ -404,6 +404,17 @@ func (m *Model) applyBrowserAction(ev state.Event) tea.Cmd {
 	if url == "" || ev.BrowserActionOp == "" {
 		return nil // shapeless: never an action (degrade silent)
 	}
+	// /bypass ARMED: the office's own gate honors the mode too — the
+	// action executes IMMEDIATELY (no hold parks, no synthetic modal),
+	// one dim transcript row logs the auto-approval. The policy refusal
+	// above still speaks first; the mode-off flow below is byte-identical.
+	if m.bypassPerms {
+		hold := browserActionHold{
+			url: url, op: ev.BrowserActionOp, sel: ev.BrowserActionSel, arg: ev.BrowserActionArg,
+		}
+		m.notice("bypass: browser action auto-approved — " + browserActionSummary(hold.op, hold.sel, hold.arg))
+		return browserActionCmd(m.backend, hold)
+	}
 	// park the hold + open the member's permission modal (the SAME
 	// enqueue path a backend EvPermission takes — one queue, one
 	// popover, one notify cohort).
@@ -415,7 +426,10 @@ func (m *Model) applyBrowserAction(ev state.Event) tea.Cmd {
 	m.browserActionHolds[pid] = browserActionHold{
 		url: url, op: ev.BrowserActionOp, sel: ev.BrowserActionSel, arg: ev.BrowserActionArg,
 	}
-	m.handlePermissionEvent(state.Event{
+	// the enqueue path below is bypass-OFF only (the armed mode executed
+	// above), so the returned cmd is always nil here — the /bypass
+	// auto-answer arm lives for BACKEND asks, never office-minted ids.
+	_ = m.handlePermissionEvent(state.Event{
 		Kind:         state.EvPermission,
 		PermissionID: pid,
 		EmployeeName: "boss",

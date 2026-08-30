@@ -75,11 +75,21 @@ type liveClaudeBackend struct {
 	// PrimaryOverride seam). Set pre-Start, it WINS over the wire's own
 	// init session_id; "" means no pin (init's id pins on arrival).
 	primaryOverride string
-	busyTurns       int // outstanding turns (user writes without a result)
-	chatSeq         int
-	pendingBoss     []string
-	interruptSeq    int
-	interruptArm    bool // an interrupt is already in flight for the live turn(s)
+	// bypassPermissions — the office's bypass-permissions toggle
+	// (SetBypassPermissions, pre-Start only). When on, every spawn (boot
+	// AND death-respawn) rides `--dangerously-skip-permissions` and OMITS
+	// `--permission-prompt-tool stdio`: the CLI then never raises
+	// can_use_tool, so zero EvPermission events arrive (nothing is
+	// stripped office-side). started latches at the top of Start — the
+	// flag is frozen from then on (the app's toggle respawns a FRESH
+	// instance rather than mutating a running one).
+	bypassPermissions bool
+	started           bool
+	busyTurns         int // outstanding turns (user writes without a result)
+	chatSeq           int
+	pendingBoss       []string
+	interruptSeq      int
+	interruptArm      bool // an interrupt is already in flight for the live turn(s)
 
 	writeMu sync.Mutex // single-writer stdin guard
 
@@ -181,6 +191,25 @@ func (b *liveClaudeBackend) PrimaryOverride(id string) {
 	}
 }
 
+// SetBypassPermissions — the office's bypass-permissions toggle (an
+// ADDITIVE seam the app type-asserts, same convention as
+// ConciergeCapable/SessionAborter in internal/state: never folded into
+// state.Backend, harness stubs stay untouched). Pre-Start it latches the
+// flag (nil): every later spawn rides `--dangerously-skip-permissions`
+// and omits `--permission-prompt-tool stdio`. Once Start was called the
+// instance's argv is fixed, so the call fails with "respawn required" —
+// the app's toggle always builds a FRESH backend instead of mutating a
+// running (or spent) one.
+func (b *liveClaudeBackend) SetBypassPermissions(on bool) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		return errors.New("bypass permissions: respawn required — SetBypassPermissions must be called before Start (the toggle respawns a fresh backend)")
+	}
+	b.bypassPermissions = on
+	return nil
+}
+
 // ---------------------------------------------------------------- start
 
 // claudeAbortSigIntAfter / claudeAbortSigTermAfter — the kill ladder
@@ -263,10 +292,11 @@ func claudeChildEnv(directory string) []string {
 }
 
 // spawnClaude starts the claude process for one session. resumeID != ""
-// rides `--resume <uuid>` (the next-Send respawn path). The returned
+// rides `--resume <uuid>` (the next-Send respawn path). bypass selects
+// the permission wiring (see below). The returned
 // exitCh carries the process's eventual Wait result (the scan-era reaper
 // owns cmd.Wait — callers never re-Wait).
-func spawnClaude(bin, directory, resumeID string) (*exec.Cmd, io.WriteCloser, io.Reader, <-chan error, *cappedErrBuf, error) {
+func spawnClaude(bin, directory, resumeID string, bypass bool) (*exec.Cmd, io.WriteCloser, io.Reader, <-chan error, *cappedErrBuf, error) {
 	// --permission-prompt-tool stdio is the permission-modal lifeline:
 	// headless `claude -p` only wires canUseTool to the stdio control
 	// channel when the flag rides the spawn (the CLI's own SDK spawn
@@ -274,9 +304,23 @@ func spawnClaude(bin, directory, resumeID string) (*exec.Cmd, io.WriteCloser, io
 	// tool is auto-denied and the denial lands as a tool_result error —
 	// the office modal never appears. (--permission-mode acceptEdits /
 	// bypassPermissions would SILENCE prompts instead — never used here.)
+	//
+	// bypass=true is the office's bypass-permissions toggle: the spawn
+	// rides `--dangerously-skip-permissions` (verified present on the
+	// installed CLI 2.1.247 — `claude --help`: "Bypass all permission
+	// checks") and OMITS --permission-prompt-tool stdio: with every
+	// permission check bypassed, canUseTool never fires, so the stdio
+	// prompt tool would be dead weight (the real CLI tolerates both
+	// flags together — verified 2.1.247 exits 0 with the pair — but the
+	// contradictory pair is never spawned). Zero EvPermission events
+	// arrive from a bypassed child; nothing is filtered office-side.
 	argv := []string{"-p", "--input-format", "stream-json",
-		"--output-format", "stream-json", "--verbose", "--include-partial-messages",
-		"--permission-prompt-tool", "stdio"}
+		"--output-format", "stream-json", "--verbose", "--include-partial-messages"}
+	if bypass {
+		argv = append(argv, "--dangerously-skip-permissions")
+	} else {
+		argv = append(argv, "--permission-prompt-tool", "stdio")
+	}
 	if resumeID != "" {
 		argv = append(argv, "--resume", resumeID)
 	}
@@ -356,9 +400,11 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	}
 	b.mu.Lock()
 	b.bin = bin
+	b.started = true // the argv freezes here — SetBypassPermissions errors from now on
+	bypass := b.bypassPermissions
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "")
+	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "", bypass)
 	if err != nil {
 		return err
 	}
@@ -394,6 +440,12 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	// deterministic (hires, hints, then whatever the wire delivers).
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: claudecode"})
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live (claude) — " + bin2 + " | board: in-memory"})
+	if bypass {
+		// Same transparency convention as the majdoor/concierge-off boot
+		// lines: a mode that silences every permission prompt is named
+		// on the record, once, at boot.
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] bypass permissions: on (--dangerously-skip-permissions) — claude never asks"})
+	}
 
 	// The reader owns stdout from here; system/init pins the boss session
 	// WHENEVER it arrives (typically after the first Send) — Start never
@@ -681,8 +733,9 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	b.mu.Lock()
 	resume := b.resumeID
 	bin := b.bin
+	bypass := b.bypassPermissions // a death-respawn keeps the boot's mode
 	b.mu.Unlock()
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, resume)
+	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, resume, bypass)
 	if err != nil {
 		return err
 	}

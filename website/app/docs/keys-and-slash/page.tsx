@@ -340,6 +340,37 @@ export default function KeysAndSlashPage() {
               ]}
             />
             <SlashGroup
+              title="Permissions"
+              commands={[
+                { cmd: '/bypass', does: 'toggle session-scoped bypass-permissions — confirm to enable, instant off' },
+              ]}
+            />
+            <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
+              <strong className="text-foreground">Bypass permissions.</strong>{' '}
+              <Code>/bypass</Code> is the deliberate escape hatch: agents run tools
+              and browser actions without asking, for this office session only.
+              Enabling asks for an explicit confirm first; disabling is instant.
+              While on, every tab&apos;s topbar carries a loud{' '}
+              <Code> ⚠ BYPASS </Code> segment, and any ask that still slips through
+              — including the office&apos;s own browser-action prompt — is
+              auto-approved with a dim log row in the transcript. Toggling respawns
+              the backend so the mode actually reaches the agent (claude resumes
+              your session context), and every boot starts with bypass OFF —
+              brain.json stays untouched. On opencode the allow-all is a real edit
+              to the project&apos;s <Code>.opencode/opencode.json</Code> — disabling
+              strips it automatically, and it only lingers when the office quits
+              with bypass still on (a per-tool <Code>deny</Code> still beats the{' '}
+              <Code>*</Code> wildcard); claude writes nothing at all. The full story
+              lives with the{' '}
+              <Link
+                href="/docs/permissions-and-questions"
+                className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent"
+              >
+                permissions docs
+              </Link>
+              .
+            </p>
+            <SlashGroup
               title="Display"
               commands={[
                 { cmd: '/theme <name>', does: 'switch theme (persists)' },

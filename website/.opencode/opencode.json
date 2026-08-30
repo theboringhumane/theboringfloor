@@ -1,6 +1,8 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "instructions": [
-    "./.opencode/oikonomos.md"
+    "./.opencode/oikonomos.md",
+    "./.opencode/mcp-servers.md",
+    "./.opencode/office-ledger.md"
   ]
 }

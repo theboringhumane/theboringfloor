@@ -7,6 +7,62 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-30 · Dev T1: finish bypass core + UI (@developer s... — tekton-8 (developer) · `issues`
+- summary: All 11 bypass tests pass, and the diff confirms the in-tree work spans exactly the scoped files. The earlier 5-FAIL full-suite run was parallel-load flake (this
+- files: `internal/app/model.go`, `internal/app/browser_open.go`, `internal/app/digest.go`, `internal/app/bypass_test.go`, `cmd/uishot/main.go`
+- verify: ```
+- proof: *1. The confirm modal's exact copy** (leg A — `/bypass` typed, mode still OFF, amber QUESTION card centered over chat):
+- ledgerId: led-1788085240989-7f3798ae
+
+### 2026-08-30 · Dev T1: bypass core + UI (@developer subagent) — tekton-1 (developer) · `done`
+- summary: Final verification runs, captured clean:
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788081642205-4ca0f989
+
+### 2026-08-30 · Docs: disable strips bypass block (@developer... — tekton-7 (developer) · `done`
+- summary: **README.md** — rewrote the tail of the `/bypass` paragraph: the stale "it stays on disk until you remove it" claim is now "disabling `/bypass` strips it automa
+- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
+- verify: ```
+- proof: *README.md — the `/bypass` paragraph a reader sees (verbatim, line 122):**
+- ledgerId: led-1788074746754-c53f5f94
+
+### 2026-08-30 · Recon in-flight bypass diff (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Scout recon complete. The tree is fully green on the final snapshot. Return per contract:
+- files: | Path | Role |, |---|---|, | `internal/app/model.go`, | `internal/app/browser_open.go`, | `internal/app/digest.go`, | `internal/app/bypass_test.go` (new, 499 lines) | 11 app-layer tests, | `internal/backend/claude.go`, | `internal/backend/opencode.go`, | `internal/backend/charter.go`, | `internal/backend/bypass_permissions_test.go`, | `internal/backend/claude_live_test.go`, | `cmd/uishot/main.go` | `--bypass` demo-proof leg (appeared as modified DURING this scout
+- verify: `go test ./internal/backend/ -count=1` (full) → one FAIL `TestClaudeSendMidTurnQueuedNoBlocking` under parallel-suite load; **isolated re-ru
+- proof: | Layer | Status | Evidence |
+- ledgerId: led-1788074510988-72aa04ea
+
+### 2026-08-30 · Verify bypass docs+website (@developer subagent) — tekton-5 (developer) · `issues`
+- summary: Everything verified. Composing the return.
+- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
+- verify: (36/36 static pages generated — both edited docs pages compiled and prerendered, so the JSX/TSX in my edits is syntactically valid. README i
+- proof: *README.md — the corrected `/bypass` paragraph a reader sees:**
+- ledgerId: led-1788074473205-f40e45e1
+
+### 2026-08-30 · Verify+fix backend/app bypass (@developer sub... — tekton-4 (developer) · `issues`
+- summary: All gates green. Composing the return.
+- files: `internal/app/bypass_test.go`, Read-only for verification: `internal/app/backend_switch_test.go`
+- verify: (none of these are in my scope — gofmt is clean on every file I touched: `gofmt -l` on all 9 scoped files returns nothing)
+- proof: The compile error before → after (vet, verbatim):
+- ledgerId: led-1788074472169-89e3ef6b
+
+### 2026-08-30 · Dev T2: backend bypass surfaces (@developer s... — tekton-2 (developer) · `issues`
+- summary: Everything is green on the settled tree. Composing the return.
+- files: `internal/backend/claude.go`, `internal/backend/opencode.go`, `internal/backend/charter.go`, `internal/backend/bypass_permissions_test.go`, `internal/backend/claude_live_test.go`, NOT touched: `internal/state/state.go` (interface lives here
+- verify: ```
+- proof: *The two claude argv shapes** (stub-recorded, byte-exact pinned in `TestClaudeSpawnArgvBypassPermissions` / `TestClaudeSpawnArgvWithoutBypas
+- ledgerId: led-1788070903262-1fe015ae
+
+### 2026-08-30 · Dev T3: bypass docs (@developer subagent) — tekton-3 (developer) · `done`
+- summary: My three files are exactly the in-scope ones; the other dirty paths are pre-existing foreign work (I never touched them, no commits made).
+- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
+- verify: ```
+- proof: *README — the new row and paragraph, as rendered:**
+- ledgerId: led-1788069094327-95b6629e
+
 ### 2026-08-28 · Dev S2: picker harmonization (@developer suba... — tekton-9 (developer) · `issues`
 - summary: All gates green on the settled tree. Composing the return.
 - files: `internal/panels/session_picker.go`, `internal/panels/chat_attach.go`, `internal/panels/chat_attach_test.go`, `internal/panels/session_picker_search_test.go`, `internal/panels/chat.go`, NOT touched: `chat_attach_ignore.go`
@@ -300,60 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: `claude --help`, `claude --version` (read-only invocations; `--permission-prompt-tool` is hidden from help — matches `.hideHelp()` in the bi
 - proof: ### Flow as-built today (frame → parse → event → modal → answer)
 - ledgerId: led-1787835847817-078bc776
-
-### 2026-08-27 · Fix claude thinking rendering (@developer sub... — tekton-7 (developer) · `issues`
-- summary: All gates green on the settled tree. Final return:
-- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`, NOT touched: `internal/panels/*` (bug was purely normalization
-- verify: (panels suite not run — panels untouched, per brief.)
-- proof: *The fixed blocks (verbatim from `git diff internal/backend/claude_events.go`):**
-- ledgerId: led-1787835813091-80b4e238
-
-### 2026-08-27 · Fix mapClaudeAssistant ID priority (@develope... — tekton-6 (developer) · `done`
-- summary: Flipped the ID priority in `mapClaudeAssistant`: now `uuid := raw.Message.ID` with fallback to `raw.UUID` (was UUID-first), so assistant snapshots join the bubb
-- files: `internal/backend/claude_events.go`, `internal/backend/claude_events_test.go`
-- verify: ```
-- proof: *The flipped block** (`internal/backend/claude_events.go:784–787`, verbatim):
-- ledgerId: led-1787835389395-057f2460
-
-### 2026-08-27 · Dev C: correct browser docs copy (@developer... — tekton-5 (developer) · `done`
-- summary: **CORRECTION 1 (layout):** hero body now says the left pane is a two-tab slot (floor default, browser behind `ctrl+b`) instead of "The sidebar's last tab"; meta
-- files: `website/app/docs/browser-tab/page.tsx`, `website/components/home/under-the-hood.tsx`
-- verify: Sanity sweeps: `grep -o "sidebar's last tab|No digit key in v1|unlocks outbound…"` → only the new `unlocks outbound http` matches; `grep -c
-- proof: ### Hero (framing line kept, body corrected)
-- ledgerId: led-1787834994310-6f96bdbd
-
-### 2026-08-27 · Dev A: browser to left pane (@developer subag... — tekton-1 (developer) · `issues`
-- summary: All gates green. Assembling the return.
-- files: `internal/app/browser.go`, `internal/app/model.go`, `internal/app/digest.go`, `internal/app/keys.go`, `internal/panels/tabs.go`, `internal/app/browser_test.go`, `internal/app/mobile_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched: `internal/backend/*`, `internal/state/*`, `internal/browsertools/`, `internal/app/brows
-- verify: ```
-- proof: *The new layout (ANSI-stripped `--browsertab` frame)** — switcher strip on the LEFT with ` browser ` active (accent bg in raw ANSI), fixture
-- ledgerId: led-1787834270085-4aa2ae31
-
-### 2026-08-27 · Dev B: agent browser-open tool (@developer su... — tekton-2 (developer) · `issues`
-- summary: All verification complete. The full-suite gate is green on a settled tree, with two provably foreign load-flakes documented below. Assembling the return.
-- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/state/state.go`, `internal/state/state_test.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/browser_open_test.go`, `internal/backend/claude_send_test.go`, `internal/backend/claude_spawn_test.go`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`
-- verify: (Full suite re-run 25+ times during this session — green on a settled tree; the intermittent bursts are two foreign load-flakes, evidence in
-- proof: *The agent-visible tool definition** — the exact `browsertools.PromptPreamble` text that rides the first prompt of every boss session on bot
-- ledgerId: led-1787833798237-5057c76d
-
-### 2026-08-27 · Dev C: website browser feature (@developer su... — tekton-3 (developer) · `issues`
-- summary: All gates pass. Assembling the return.
-- files: `website/app/docs/browser-tab/page.tsx`, `website/app/docs/page.tsx`, `website/app/sitemap.ts`, `website/components/home/under-the-hood.tsx`
-- verify: ```
-- proof: ### The new docs page (`/docs/browser-tab`) — the copy a visitor reads
-- ledgerId: led-1787811364148-dcb78f2e
-
-### 2026-08-27 · Scout: left-pane + tool seams (@explore subag... — skopos-1 (scout) · `done`
-- summary: # Recon Map — theboringoffice (read-only, tree untouched)
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787811295889-6d3b00cc
-
-### 2026-08-27 · Dev: fix claude spawn init gating (@general s... — tekton-9 (developer) · `issues`
-- summary: # Developer Return — claude backend: no-init-wait Start + real `~/.claude` default
-- files: | path | why |, |---|---|, | `internal/backend/claude.go` | Start rewrite, | `internal/backend/claude_spawn_test.go` | rewritten: hook-first fixture + 6 new contract tests, | `internal/backend/claude_send_test.go` | stub bodies → `claudeStubPreambleSh()`, | `internal/backend/claude_abort_test.go` | same fixture swap, | `internal/backend/claude_perm_test.go` | same fixture swap, | `internal/backend/claude_resume_test.go` | hook prefix + post-Start `PrimaryID` assert wrapped in , NOT touched: `cmd/uishot/*`
-- verify: ```
-- proof: *opencode → `/backend claudecode` → Start returns nil immediately → send a prompt → system/init maps on arrival → primaryID pinned + turn pr
-- ledgerId: led-1787807516525-e1344b4d
 
