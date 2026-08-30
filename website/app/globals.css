@@ -53,17 +53,17 @@
    not a redesign. */
 :root {
   color-scheme: light;
-  --background: oklch(0.99 0 0);
+  --background: oklch(0.975 0.006 95);
   --foreground: oklch(0.12 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.12 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.12 0 0);
   --primary: oklch(0.12 0 0);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.92 0 0);
+  --primary-foreground: oklch(0.975 0.006 95);
+  --secondary: oklch(0.93 0.006 95);
   --secondary-foreground: oklch(0.12 0 0);
-  --muted: oklch(0.95 0 0);
+  --muted: oklch(0.94 0.005 95);
   --muted-foreground: oklch(0.4 0 0);
   --accent: oklch(0.5 0.17 260);
   --accent-foreground: oklch(0.98 0 0);
@@ -86,16 +86,16 @@
   --sidebar-border: oklch(0.12 0 0 / 10%);
   --sidebar-ring: oklch(0.5 0.17 260);
   /* Page chrome: page-grid canvas + gutter grid lines + frame rule. */
-  --canvas: oklch(0.97 0 0);
+  --canvas: oklch(0.96 0.005 95);
   --grid-line: oklch(0.12 0 0 / 5%);
   --frame-border: oklch(0.12 0 0 / 12%);
   /* Hero + workflow bands follow the theme — light mode has no dark islands.
      The .dark block below carries the exact values these bands shipped with
      when the site was dark-only, so dark stays byte-identical. */
-  --band-bg: oklch(0.99 0 0);
+  --band-bg: oklch(0.975 0.006 95);
   --band-fg: oklch(0.12 0 0);
   --band-accent: var(--accent);
-  --band-on-fg: oklch(0.99 0 0);
+  --band-on-fg: oklch(0.975 0.006 95);
   --band-well: oklch(1 0 0 / 60%);
   /* Terminal-shot chrome (the frame behind the img while it loads). */
   --shot-frame: oklch(1 0 0);
