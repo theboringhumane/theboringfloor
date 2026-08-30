@@ -27,12 +27,13 @@
 //
 // The pass has two halves:
 //
-//  1. The payload: seed <dir>/.opencode/oikonomos.md with the embedded
-//     charter (internal/charter.Text) when ABSENT — and ONLY then. The
-//     opencode charter pass owns byte-exact freshness of that file when
-//     the opencode backend runs; this pass must never clobber a payload
-//     (a hand-shaped file, or the live test's trivial marker charter,
-//     rides through Start's call untouched). Without this half the
+//  1. The payload: <dir>/.opencode/oikonomos.md is OFFICE-OWNED (the
+//     same discipline as the opencode charter pass) — refreshed to the
+//     embedded charter (internal/charter.Text) whenever it drifts:
+//     absent, stale after an office upgrade, or hand-edited. Members
+//     edit CLAUDE.md, never the payload; byte-exact freshness keeps
+//     claude-only offices current on upgrades, and a drift-free file
+//     costs zero writes and zero boot notes. Without this half the
 //     import dangles on claude-backed offices, where EnsureCharter
 //     never runs (it is wired from opencode.go's Start only).
 //  2. The memory file: create <dir>/CLAUDE.md when absent (office-
@@ -129,13 +130,22 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		return false, []string{"[theboringoffice] claude charter: failed (not a directory: " + dir + ")"}
 	}
 
-	// 1. The import target: seed <dir>/.opencode/oikonomos.md with the
-	//    embedded charter when ABSENT, never rewrite (see the header —
-	//    the opencode pass owns byte-exact freshness; a hand-shaped or
-	//    test-pinned payload is sacred).
+	// 1. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
+	//    (same discipline as the opencode charter pass) — refresh it to
+	//    the embedded charter bytes whenever it drifts: absent, stale
+	//    (office upgrade), or hand-edited. Members edit CLAUDE.md, never
+	//    the payload; byte-exact freshness keeps claude-only offices
+	//    current on upgrades. A clean file costs zero writes and zero
+	//    notes (no boot noise).
 	ocDir := filepath.Join(dir, ".opencode")
 	payloadPath := filepath.Join(ocDir, "oikonomos.md")
-	if _, err := os.Stat(payloadPath); os.IsNotExist(err) {
+	existing, statErr := os.ReadFile(payloadPath)
+	switch {
+	case statErr == nil && string(existing) == charter.Text:
+		// fresh — nothing to do
+	case statErr != nil && !os.IsNotExist(statErr):
+		return changed, append(notes, "[theboringoffice] claude charter: failed (read "+payloadPath+": "+statErr.Error()+")")
+	default:
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
 			return changed, append(notes, "[theboringoffice] claude charter: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
@@ -143,9 +153,11 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 			return changed, append(notes, "[theboringoffice] claude charter: failed (write "+payloadPath+": "+err.Error()+")")
 		}
 		changed = true
-		notes = append(notes, "[theboringoffice] claude charter: seeded .opencode/oikonomos.md (the import target)")
-	} else if err != nil {
-		return changed, append(notes, "[theboringoffice] claude charter: failed (stat "+payloadPath+": "+err.Error()+")")
+		if os.IsNotExist(statErr) {
+			notes = append(notes, "[theboringoffice] claude charter: seeded .opencode/oikonomos.md (the import target)")
+		} else {
+			notes = append(notes, "[theboringoffice] claude charter: refreshed .opencode/oikonomos.md (drifted from the embedded charter)")
+		}
 	}
 
 	// 2. The memory file: create / no-op / append-marked-block.

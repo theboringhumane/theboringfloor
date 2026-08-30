@@ -68,12 +68,13 @@ func TestEnsureClaudeCharterNoopWhenReferenced(t *testing.T) {
 	} {
 		t.Run(strings.TrimSpace(strings.SplitN(body, "\n", 3)[2]), func(t *testing.T) {
 			dir := t.TempDir()
-			// Pre-seed the payload so the ONLY variable under test is
-			// the CLAUDE.md no-op.
+			// Pre-seed the payload FRESH (the embedded bytes) so the ONLY
+			// variable under test is the CLAUDE.md no-op — a drifted
+			// payload legitimately refreshes under office-ownership.
 			if err := os.MkdirAll(filepath.Join(dir, ".opencode"), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, ".opencode", "oikonomos.md"), []byte("x"), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, ".opencode", "oikonomos.md"), []byte(charter.Text), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			mdPath := filepath.Join(dir, "CLAUDE.md")
@@ -220,27 +221,55 @@ func TestEnsureClaudeCharterEnvOptOut(t *testing.T) {
 	}
 }
 
-func TestEnsureClaudeCharterPayloadNeverRewritten(t *testing.T) {
-	// A hand-shaped (or test-pinned, or member-edited) payload rides
-	// through untouched — the opencode charter pass owns byte-exact
-	// freshness of this file, this pass only seeds the absent case.
+func TestEnsureClaudeCharterPayloadRefreshed(t *testing.T) {
+	// The payload is office-owned: a stale or hand-edited file refreshes
+	// to the embedded charter bytes (byte-exact freshness for claude-only
+	// offices), while a fresh file costs zero writes and zero notes.
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".opencode"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	hand := "# my own charter notes\n"
 	payloadPath := filepath.Join(dir, ".opencode", "oikonomos.md")
-	if err := os.WriteFile(payloadPath, []byte(hand), 0o644); err != nil {
+	stale := "# my own charter notes\n"
+	if err := os.WriteFile(payloadPath, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, notes := EnsureClaudeCharter(dir); containsNote(notes, "seeded .opencode/oikonomos.md") {
-		t.Fatalf("present payload must not be (re)seeded: %v", notes)
+	changed, notes := EnsureClaudeCharter(dir)
+	if !changed {
+		t.Fatal("a drifted payload must refresh")
+	}
+	if !containsNote(notes, "refreshed .opencode/oikonomos.md") {
+		t.Fatalf("the refresh note must name the drift: %v", notes)
 	}
 	got, err := os.ReadFile(payloadPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(got) != hand {
-		t.Fatalf("present payload clobbered: got %q, want %q", got, hand)
+	if string(got) != charter.Text {
+		t.Fatalf("the payload must refresh to the embedded charter (%d bytes), got %d", len(charter.Text), len(got))
+	}
+
+	// Second pass on the fresh file: no write, no note.
+	changed2, notes2 := EnsureClaudeCharter(dir)
+	for _, n := range notes2 {
+		if strings.Contains(n, "refreshed .opencode/oikonomos.md") || strings.Contains(n, "seeded .opencode/oikonomos.md") {
+			t.Fatalf("a fresh payload must not re-report: %v", notes2)
+		}
+	}
+	_ = changed2
+}
+
+func TestEnsureClaudeCharterPayloadFreshIsSilent(t *testing.T) {
+	// A fresh payload: no write, no seed/refresh note.
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".opencode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	payloadPath := filepath.Join(dir, ".opencode", "oikonomos.md")
+	if err := os.WriteFile(payloadPath, []byte(charter.Text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, notes := EnsureClaudeCharter(dir); containsNote(notes, "seeded .opencode/oikonomos.md") || containsNote(notes, "refreshed .opencode/oikonomos.md") {
+		t.Fatalf("a fresh payload must not be (re)seeded or refreshed: %v", notes)
 	}
 }

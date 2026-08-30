@@ -53,6 +53,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/charter"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
@@ -774,27 +775,25 @@ func TestClaudeLiveCharterReaches(t *testing.T) {
 	bin := liveClaudeGate(t)
 	scratch := t.TempDir() // auto-removed — no residue
 
-	// The import target: a trivial marker charter, written BEFORE the
-	// pass so the seed-when-absent discipline leaves it in place (the
-	// pass's own Start-time re-run must not clobber it either).
-	ocDir := filepath.Join(scratch, ".opencode")
-	if err := os.MkdirAll(ocDir, 0o755); err != nil {
-		t.Fatalf("mkdir .opencode: %v", err)
-	}
-	marker := "PLUMBERSCRATE"
-	payload := "# trivial test charter\n\nthe charter word is " + marker + "\n"
-	payloadPath := filepath.Join(ocDir, "oikonomos.md")
-	if err := os.WriteFile(payloadPath, []byte(payload), 0o644); err != nil {
-		t.Fatalf("write trivial payload: %v", err)
-	}
-
-	// Generate CLAUDE.md via the function under test — the exact bytes a
-	// live boot wires.
+	// The import target is the REAL embedded charter (the pass seeds it
+	// byte-exact on claude-only offices — the office-ownership discipline).
+	// The marker therefore comes from the real charter itself: the five
+	// developer return-contract sections (DONE/FILES/VERIFY/PROOF/ISSUES).
+	// Generate the payload + CLAUDE.md via the function under test — the
+	// exact bytes a live boot wires.
 	changed, notes := EnsureClaudeCharter(scratch)
 	if !changed {
 		t.Fatalf("fresh scratch dir: EnsureClaudeCharter changed=false, want true (notes %v)", notes)
 	}
 	t.Logf("EnsureClaudeCharter notes: %v", notes)
+	payloadPath := filepath.Join(scratch, ".opencode", "oikonomos.md")
+	payload, err := os.ReadFile(payloadPath)
+	if err != nil {
+		t.Fatalf("the pass must seed the payload: %v", err)
+	}
+	if string(payload) != charter.Text {
+		t.Fatalf("the seeded payload must be the embedded charter (%d bytes), got %d", len(charter.Text), len(payload))
+	}
 	claudeMD, err := os.ReadFile(filepath.Join(scratch, "CLAUDE.md"))
 	if err != nil {
 		t.Fatalf("generated CLAUDE.md: %v", err)
@@ -806,15 +805,14 @@ func TestClaudeLiveCharterReaches(t *testing.T) {
 
 	// Boot the REAL backend on the scratch dir — the same
 	// newClaudeBackend -> Start path the app drives (cmd.Dir = scratch).
-	// Start's own EnsureClaudeCharter call must leave both files alone:
-	// the CLAUDE.md references oikonomos.md (no-op) and the trivial
-	// payload exists (seed skipped).
+	// Start's own EnsureClaudeCharter call must leave the files alone:
+	// CLAUDE.md references oikonomos.md (no-op) and the payload is fresh.
 	b, log, rec := liveBoot(t, bin, scratch)
-	if got, err := os.ReadFile(payloadPath); err != nil || string(got) != payload {
-		t.Fatalf("Start clobbered the trivial payload: err=%v got=%q want=%q", err, got, payload)
+	if got, err := os.ReadFile(payloadPath); err != nil || string(got) != charter.Text {
+		t.Fatalf("Start drifted the payload: err=%v (want the embedded charter)", err)
 	}
 
-	prompt := "what is the charter word? answer with just the word"
+	prompt := "the charter names five sections of the developer return contract — answer with just the five names"
 	t.Logf("prompt: %s", prompt)
 	if err := b.Send(prompt); err != nil {
 		t.Fatalf("Send: %v", err)
@@ -844,10 +842,12 @@ func TestClaudeLiveCharterReaches(t *testing.T) {
 		reply.WriteString("\n")
 	}
 	t.Logf("boss reply (verbatim): %q", reply.String())
-	if !strings.Contains(reply.String(), marker) {
-		t.Fatalf("the charter word never reached the model through the office spawn: reply %q lacks %q", reply.String(), marker)
+	for _, section := range []string{"DONE", "FILES", "VERIFY", "PROOF", "ISSUES"} {
+		if !strings.Contains(reply.String(), section) {
+			t.Fatalf("the real charter never reached the model through the office spawn: reply %q lacks the return-contract section %q", reply.String(), section)
+		}
 	}
-	t.Logf("CHARTER-REACHES: the boss answered with the marker %q — CLAUDE.md -> @.opencode/oikonomos.md rode the office's own claude spawn", marker)
+	t.Logf("CHARTER-REACHES: the boss recited all five return-contract sections (DONE/FILES/VERIFY/PROOF/ISSUES) — the REAL oikonomos charter rode CLAUDE.md -> @.opencode/oikonomos.md through the office's own claude spawn")
 }
 
 // sortedKeys renders a string-keyed map as a sorted stable list for logs.
