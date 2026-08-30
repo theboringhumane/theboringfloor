@@ -74,7 +74,7 @@ export function ProductPlatform() {
         </div>
       </div>
 
-      <div className="border-t border-border bg-[#0a0a0a] text-white">
+      <div className="border-t border-border bg-(--band-bg) text-(--band-fg)">
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-6 py-16 lg:grid-cols-[1fr_1.3fr]">
           <ScrollReveal direction="left" className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
@@ -83,11 +83,11 @@ export function ProductPlatform() {
                 Your workflow
               </span>
             </div>
-            <p className="max-w-md text-pretty text-sm leading-relaxed text-white/60">
+            <p className="max-w-md text-pretty text-sm leading-relaxed text-(--band-fg)/60">
               Keep the hours and habits that already work. Tour the office in demo mode, walk in
               live, or attach the floor to an opencode server you already run.
             </p>
-            <div className="mt-2 border border-white/10 bg-white/5 px-4 py-4 font-mono text-xs leading-relaxed">
+            <div className="mt-2 border border-(--band-fg)/10 bg-(--band-fg)/5 px-4 py-4 font-mono text-xs leading-relaxed">
               <p>theboringoffice --demo</p>
               <p className="mt-2">theboringoffice</p>
               <p className="mt-2">theboringoffice --backend claudecode</p>
@@ -96,7 +96,7 @@ export function ProductPlatform() {
             </div>
             <Link
               href="/get-started"
-              className="mt-2 inline-flex w-fit items-center bg-white px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-[#0a0a0a] transition-opacity hover:opacity-90"
+              className="mt-2 inline-flex w-fit items-center bg-(--band-fg) px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-(--band-bg) transition-opacity hover:opacity-90"
             >
               See setup
             </Link>
@@ -108,12 +108,12 @@ export function ProductPlatform() {
             className="grid grid-cols-2 gap-4 sm:grid-cols-3"
           >
             {agents.map((a) => (
-              <div key={a.name} className="flex flex-col justify-between border border-white/10 bg-white/3 p-4">
+              <div key={a.name} className="flex flex-col justify-between border border-(--band-fg)/10 bg-(--band-fg)/3 p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-medium">{a.name}</span>
                   <span className="size-1.5 rounded-full bg-chart-2" />
                 </div>
-                <p className="mt-8 font-mono text-[10px] text-white/40">{a.status}</p>
+                <p className="mt-8 font-mono text-[10px] text-(--band-fg)/40">{a.status}</p>
               </div>
             ))}
           </ScrollReveal>

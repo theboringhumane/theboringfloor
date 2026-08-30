@@ -7,6 +7,13 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-30 · Dev U: match sections + invert shots (@develo... — tekton-11 (developer) · `issues`
+- summary: All gates green. Composing the return.
+- files: `website/app/globals.css`, `website/components/home/hero.tsx`, `website/components/home/product-platform.tsx`, `website/components/home/agents-need-action.tsx`, `website/components/home/plan-then-build.tsx`, `website/components/home/feature-grid.tsx`, `website/app/docs/{page,backends,chat-and-threads,getting-started,keys-and-slash,layout-themes-power, `website/components/site-footer.tsx`, scratch only
+- verify: $ CDP-driven real Chrome (`Google Chrome.app --headless=new`, served `out/`): html class confirmed `light`/`dark` per scenario; home 13411px
+- proof: *(a) Light home, full page (segments 0–3):** every section light. Hero: off-white band, near-black headline, `coworkers.` in the light-theme
+- ledgerId: led-1788101277659-a2b5ec62
+
 ### 2026-08-30 · Dev U: site light theme + toggle (@developer... — tekton-10 (developer) · `issues`
 - summary: All gates green. Scope is exactly my files (the ledger modification is the office app's own recorder; the untracked blog post untouched). Composing the return.
 - files: `website/app/globals.css`, `website/app/layout.tsx`, `website/components/theme-provider.tsx`, `website/components/theme-toggle.tsx`, `website/components/site-header.tsx`, `website/components/home/hero.tsx`, `website/components/home/context-model.tsx`
@@ -349,11 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (`Text:Honey nev Pending:false` under the mutation IS the original freeze bug, caught red-handed.) After restore: `--- PASS` on all three, `
 - proof: The new pin logic (verbatim from `internal/backend/claude_events.go`):
 - ledgerId: led-1787836933824-b73526fd
-
-### 2026-08-27 · Verify+fix claude dialog shape (@developer su... — tekton-10 (developer) · `issues`
-- summary: All gates green. Assembling the return.
-- files: `internal/backend/claude.go`, `internal/backend/claude_perm_test.go`, `internal/backend/claude_dialog_test.go`
-- verify: ```
-- proof: *(a) Binary evidence — the dialog response schema (CLI 2.1.247, verbatim zod literal from the strings extraction):**
-- ledgerId: led-1787836807067-29bb7139
 

@@ -89,6 +89,16 @@
   --canvas: oklch(0.97 0 0);
   --grid-line: oklch(0.12 0 0 / 5%);
   --frame-border: oklch(0.12 0 0 / 12%);
+  /* Hero + workflow bands follow the theme — light mode has no dark islands.
+     The .dark block below carries the exact values these bands shipped with
+     when the site was dark-only, so dark stays byte-identical. */
+  --band-bg: oklch(0.99 0 0);
+  --band-fg: oklch(0.12 0 0);
+  --band-accent: var(--accent);
+  --band-on-fg: oklch(0.99 0 0);
+  --band-well: oklch(1 0 0 / 60%);
+  /* Terminal-shot chrome (the frame behind the img while it loads). */
+  --shot-frame: oklch(1 0 0);
 }
 
 .dark {
@@ -129,6 +139,13 @@
   --canvas: #0a0a0a;
   --grid-line: oklch(1 0 0 / 4%);
   --frame-border: oklch(1 0 0 / 12%);
+  /* Band + shot chrome: the exact hardcoded values from the dark-only site. */
+  --band-bg: #0a0a0a;
+  --band-fg: #ffffff;
+  --band-accent: oklch(0.72 0.14 250);
+  --band-on-fg: #000000;
+  --band-well: rgb(0 0 0 / 50%);
+  --shot-frame: #000000;
 }
 
 @layer base {
@@ -263,4 +280,23 @@
   max-width: 80rem;
   border-inline: 1px solid var(--frame-border);
   background-color: color-mix(in oklch, var(--canvas) 88%, transparent);
+}
+
+/* Terminal screenshots are captured from the dark TUI — on a light page they
+   read as dark islands, so in light mode we flip them (member's call: "the
+   terminal images we can try invert filter"). CSS clamps invert() to 100%, so
+   the member's invert(2) == invert(1). Plain invert(1) also flips hue — the
+   office's blue accent turns orange-ish — so we pair it with
+   hue-rotate(180deg): invert == hue-flip + luminance-flip, and the extra 180°
+   rotation restores the original accent hues while keeping the luminance
+   flip. Picked over plain invert(1) on real side-by-side screenshots.
+   Scoped off .dark so dark mode renders the captures byte-identical; the rule
+   rides the <html> theme class the anti-FOUC script in app/layout.tsx stamps
+   before first paint, so there is no flash. Applied to the terminal shots
+   (home + docs), the hero plasma canvas, and the demo video frame. The hero
+   plasma deliberately takes the CSS-filter route (a) rather than theme-swapped
+   shader uniforms (b): one rule covers every dark-captured surface uniformly
+   and the WebGL shader keeps a single code path. */
+html:not(.dark) .shot-img {
+  filter: invert(1) hue-rotate(180deg);
 }

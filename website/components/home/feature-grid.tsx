@@ -44,7 +44,7 @@ export function FeatureGrid() {
               </Link>
             </div>
             <div className="shrink-0 md:w-68">
-              <img src={f.visual} alt={f.title} className="h-full w-full object-cover" />
+              <img src={f.visual} alt={f.title} className="shot-img h-full w-full object-cover" />
             </div>
           </ScrollReveal>
         ))}

@@ -40,9 +40,9 @@ export function AgentsNeedAction() {
           <span>The office, from a client that isn&apos;t there</span>
           <span className="hidden sm:inline">Watch the floor</span>
         </div>
-        <div className="aspect-video w-full border-t border-border bg-black">
+        <div className="aspect-video w-full border-t border-border bg-(--shot-frame)">
           <iframe
-            className="h-full w-full"
+            className="shot-img h-full w-full"
             src="https://www.youtube.com/embed/6SmqEydHsFQ?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1"
             title="Agents need action demo"
             loading="lazy"

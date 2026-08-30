@@ -61,13 +61,13 @@ export function SiteFooter() {
           <div className="flex flex-shrink-0 gap-3">
             <Link
               href="/get-started"
-              className="rounded-sm border border-border text-black px-5 py-2.5 bg-primary hover:text-black font-mono text-xs uppercase tracking-wider transition-colors hover:bg-secondary"
+              className="rounded-sm border border-border text-(--band-on-fg) px-5 py-2.5 bg-primary hover:text-black font-mono text-xs uppercase tracking-wider transition-colors hover:bg-secondary"
             >
               Take a Tour
             </Link>
             <Link
               href="/get-started"
-              className="rounded-sm border border-border text-black bg-foreground px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
+              className="rounded-sm border border-border bg-foreground px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-(--band-on-fg) transition-opacity hover:opacity-90"
             >
               Open the Office
             </Link>

@@ -40,7 +40,7 @@ export function PlanThenBuild() {
 
         <ScrollReveal
           delay={0.1}
-          className="mx-auto mt-10 max-w-5xl overflow-hidden border border-border bg-black"
+          className="mx-auto mt-10 max-w-5xl overflow-hidden border border-border bg-(--shot-frame)"
         >
           <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
             <span className="size-2.5 rounded-full bg-destructive/70" />
@@ -56,7 +56,7 @@ export function PlanThenBuild() {
             width={5086}
             height={2896}
             loading="lazy"
-            className="block h-auto w-full"
+            className="shot-img block h-auto w-full"
           />
         </ScrollReveal>
       </div>

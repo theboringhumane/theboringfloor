@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <figure className="overflow-hidden border border-border bg-black">
+    <figure className="overflow-hidden border border-border bg-(--shot-frame)">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
         <span className="size-2.5 rounded-full bg-destructive/70" />
         <span className="size-2.5 rounded-full bg-chart-4/70" />
@@ -36,7 +36,7 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
         width={5086}
         height={2896}
         loading="lazy"
-        className="block h-auto w-full"
+        className="shot-img block h-auto w-full"
       />
     </figure>
   )
