@@ -72,8 +72,8 @@ func TestThreadFocusRendersGroupEndToEnd(t *testing.T) {
 	}
 	// body: the merged rows, FULL expansion
 	for _, want := range []string{
-		"  [tool] Read internal/room/manager.go ✓",
-		"  [tool] Edit internal/room/handler.go ✓ · +3 -1",
+		"  [tool] ▸ Read internal/room/manager.go ✓",
+		"  [tool] ▸ Edit internal/room/handler.go ✓ · +3 -1",
 		"    handler first, stream second", // the FULL think body, not the "· N lines" rollup
 		"  ↳ diff · internal/room/handler.go +3 -1",
 	} {
@@ -130,7 +130,7 @@ func TestThreadFocusDiffClickTogglesBody(t *testing.T) {
 	}
 	toolY := -1
 	for i, ln := range strings.Split(ansi.Strip(tf.View()), "\n") {
-		if strings.Contains(ln, "[tool] Read internal/room/manager.go") {
+		if strings.Contains(ln, "[tool] ▸ Read internal/room/manager.go") {
 			toolY = i
 			break
 		}

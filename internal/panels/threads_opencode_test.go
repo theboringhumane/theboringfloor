@@ -240,8 +240,8 @@ func TestThreadExpandedListsToolRows(t *testing.T) {
 	fmt.Println("---- END THREAD ----")
 	for _, want := range []string{
 		"⠾ Explore Task — Scout question kinds recon",
-		"  [tool] List internal/panels ✓",
-		"  [tool] Read internal/panels/chat.go … running",
+		"  [tool] ▸ List internal/panels ✓",
+		"  [tool] ▸ Read internal/panels/chat.go … running",
 		"  ↳ Read internal/panels/chat.go",
 		"  · 2 tool calls ✓ done",
 	} {
@@ -258,7 +258,7 @@ func TestThreadExpandedListsToolRows(t *testing.T) {
 	// ORDER: header < tool rows < ↳ sneak (the current-task line) <
 	// closing summary
 	iHead := strings.Index(convo, "⠾ Explore Task")
-	iTool := strings.Index(convo, "  [tool] List internal/panels ✓")
+	iTool := strings.Index(convo, "  [tool] ▸ List internal/panels ✓")
 	iSneak := strings.Index(convo, "  ↳ Read internal/panels/chat.go")
 	iClose := strings.Index(convo, "  · 2 tool calls ✓ done")
 	if !(iHead < iTool && iTool < iSneak && iSneak < iClose) {
@@ -347,11 +347,21 @@ func TestThreadClickToggleSemantics(t *testing.T) {
 	if closingRow < 0 || scout[1] != closingRow {
 		t.Fatalf("the expanded thread's second registered row must BE the closing summary's visual row %d, got %v", closingRow, scout)
 	}
-	// the internal tool rows must NOT toggle
-	if c.ClickRow(3, scout[0]+1) {
-		t.Fatalf("click on an expanded internal tool row (line %d) must not be claimed", scout[0]+1)
+	// the internal tool rows never toggle THE THREAD — since
+	// chat_toolrow.go their click is claimed by the toolRows map
+	// instead: it toggles THAT call's own output body (here the
+	// no-capture empty state), and the thread's expansion is untouched
+	if !c.ClickRow(3, scout[0]+1) {
+		t.Fatalf("click on an expanded tool row (line %d) must be claimed by the tool-output toggle", scout[0]+1)
 	}
-	tbAssertExpanded(t, c, "skopos-1", true, "after internal-row click (no-op)")
+	tbAssertExpanded(t, c, "skopos-1", true, "after tool-row click (thread untouched)")
+	if !strings.Contains(ansi.Strip(c.renderConversation()), "no output as such") {
+		t.Fatal("the clicked tool row must open its (empty) output body")
+	}
+	if !c.ClickRow(3, scout[0]+1) { // same visual row: the body lands UNDER the one-liner
+		t.Fatalf("the second click on the tool row (line %d) must fold its body back", scout[0]+1)
+	}
+	tbAssertExpanded(t, c, "skopos-1", true, "after tool-row re-click (thread still untouched)")
 	// the mid-list ↳ sneak (the "current task" line) is content while
 	// expanded: its click must pass through — the CLOSING rows own the
 	// bottom of the bubble now
@@ -634,7 +644,7 @@ func TestThreadStoppedCheckAndRollup(t *testing.T) {
 	// the ctrl+g baseline does NOT re-open a stopped thread
 	c.ToggleThreads()
 	tbAssertExpanded(t, c, "skopos-1", false, "stopped under the ctrl+g baseline")
-	if convo := ansi.Strip(c.renderConversation()); strings.Contains(convo, "[tool] List internal/panels") {
+	if convo := ansi.Strip(c.renderConversation()); strings.Contains(convo, "[tool] ▸ List internal/panels") {
 		t.Fatalf("a stopped thread must stay folded under ctrl+g:\n%s", convo)
 	}
 	// an explicit per-agent expand re-opens it — closing line carries
@@ -644,7 +654,7 @@ func TestThreadStoppedCheckAndRollup(t *testing.T) {
 	convo = ansi.Strip(c.renderConversation())
 	for _, want := range []string{
 		"✗ Explore Task — Scout question kinds recon",
-		"  [tool] List internal/panels ✓",
+		"  [tool] ▸ List internal/panels ✓",
 		"  · 2 tool calls ✗ stopped",
 	} {
 		if !strings.Contains(convo, want) {
@@ -820,11 +830,11 @@ func TestThreadWdiffExpandedSubRow(t *testing.T) {
 	}
 	fmt.Println("---- END THREAD ----")
 	for _, want := range []string{
-		"  [tool] Read internal/panels/chat.go ✓", // the OTHER tool stays suffix-free
-		"  [tool] Edit lex.go ✓ · +2 -1",          // the edited tool's count suffix
-		"  ↳ diff · internal/panels/lex.go +2 -1", // the diff sub-row
-		"  ↳ Edit lex.go · +2 -1",                 // sneak: the current-task line, suffixed too
-		"  · 2 tool calls ✓ done",                 // diff counted as NEITHER tool nor think
+		"  [tool] ▸ Read internal/panels/chat.go ✓", // the OTHER tool stays suffix-free
+		"  [tool] ▸ Edit lex.go ✓ · +2 -1",          // the edited tool's count suffix
+		"  ↳ diff · internal/panels/lex.go +2 -1",   // the diff sub-row
+		"  ↳ Edit lex.go · +2 -1",                   // sneak: the current-task line, suffixed too
+		"  · 2 tool calls ✓ done",                   // diff counted as NEITHER tool nor think
 	} {
 		if !strings.Contains(convo, want) {
 			t.Fatalf("expanded wdiff thread missing row %q:\n%s", want, convo)
@@ -834,7 +844,7 @@ func TestThreadWdiffExpandedSubRow(t *testing.T) {
 		t.Fatalf("the diff body stays closed until the ↳ row is clicked:\n%s", convo)
 	}
 	// ORDER: edit tool row < its ↳ diff sub-row < sneak < closing
-	iTool := strings.Index(convo, "[tool] Edit lex.go")
+	iTool := strings.Index(convo, "[tool] ▸ Edit lex.go")
 	iDiff := strings.Index(convo, "↳ diff · internal/panels/lex.go")
 	iSneak := strings.LastIndex(convo, "↳ Edit lex.go")
 	iClose := strings.Index(convo, "  · 2 tool calls ✓ done")

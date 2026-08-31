@@ -489,6 +489,23 @@ type Chat struct {
 	userExpanded map[string]bool
 	userFoldRows map[int]string
 
+	// toolExpanded / toolRows / toolOutputs — the per-call tool-output
+	// triple, twins of userExpanded/userFoldRows (chat_toolrow.go):
+	// toolExpanded holds the explicit per-entry expansion (default
+	// collapsed — every tool row expands/collapses INDEPENDENTLY), keyed
+	// by the entry's message ID ("tool-<callID>" /
+	// "wtool-<agent>-<callID>"), so a running→done merge that REPLACES
+	// the entry keeps its expansion and the done event updates the
+	// expanded body in place; toolRows is the mouse hit-map (rendered
+	// row → entry ID, rebuilt every render — the one-liner's own rows
+	// ONLY, body rows never register); toolOutputs carries each entry's
+	// captured result text (the app's SetToolOutput feed of
+	// state.Event.ToolOutput) — absent/empty renders the pinned
+	// "no output as such" empty state.
+	toolExpanded map[string]bool
+	toolRows     map[int]string
+	toolOutputs  map[string]string
+
 	diffCache map[string]diffCacheEntry // parsed+hilighted diff rows by msg ID
 
 	// Inbound boss-turn image previews (chat_raster.go owns the paint;
@@ -883,6 +900,14 @@ func (c *Chat) ClickRow(x, y int) bool {
 	// frame rows; the body rows themselves fall through unclaimed.
 	if id, ok := c.toolDiffRows[line]; ok {
 		c.ToggleThreadDiff(id)
+		return true
+	}
+	// a tool one-liner's own rows toggle ITS output body (the boss's
+	// inline rows and an expanded thread's wtool rows alike — a thread's
+	// frame rows won above, its content rows never registered there);
+	// the expanded body rows never register, so they fall through.
+	if id, ok := c.toolRows[line]; ok {
+		c.ToggleToolOutput(id)
 		return true
 	}
 	// the user-bubble fold rows: a collapsed bubble's "… +N more lines"
@@ -1521,6 +1546,7 @@ func (c *Chat) SetState(st state.OfficeState) {
 	}
 	c.renderRev = rev
 	c.chat = cloneChat(st.Chat)
+	c.pruneToolOutputs() // output captures die with their transcript rows (chat_toolrow.go)
 
 	wasPending := c.pending
 	wasSpin := c.pendingSpin
@@ -2201,6 +2227,7 @@ func (c *Chat) mergeBlockHits() {
 	c.threadRows = map[int]string{}   // mouse hit-map, rebuilt every render
 	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
 	c.toolDiffRows = map[int]string{} // ↳ diff sub-row hit-map, same rebuild
+	c.toolRows = map[int]string{}     // tool-output one-liner hit-map, same rebuild
 	row := 0                          // absolute start row of the CURRENT block
 	for i, blk := range c.blocks {
 		if i > 0 {
@@ -2209,6 +2236,7 @@ func (c *Chat) mergeBlockHits() {
 		mergeSpanInto(c.threadRows, blk.hits.thread, row)
 		mergeSpanInto(c.toolDiffRows, blk.hits.toolDiff, row)
 		mergeSpanInto(c.userFoldRows, blk.hits.userFold, row)
+		mergeSpanInto(c.toolRows, blk.hits.toolOut, row)
 		row += blk.rows
 	}
 }
@@ -2270,12 +2298,22 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		if c.diffExpanded {
 			fl |= bfExpandA
 		}
+	case m.Kind == toolKind:
+		if c.toolExpanded[m.ID] {
+			fl |= bfExpandA
+		}
 	case m.From == "user":
 		if c.userExpanded[userFoldKey(m)] {
 			fl |= bfExpandB
 		}
 	}
 	k := newKeyMixer().num(gen).num(uint64(fl))
+	// an expanded tool row's body IS the captured output — fold the text
+	// in so a SetToolOutput landing while expanded (no message change)
+	// still misses the borrow and re-renders the one block.
+	if m.Kind == toolKind && c.toolExpanded[m.ID] {
+		k.str(c.toolOutputs[m.ID])
+	}
 	if streaming {
 		// the streaming header's spinner frame rides the office tick —
 		// fold it in so each tick's frame re-renders (the old per-tick
@@ -2302,13 +2340,28 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// boss inline tool one-liner — WRAPPED, never clipped and
 		// never burst mid-glyph: the first row flows tight against the
 		// bubble above (no leading indent), continuations hang under
-		// the tool text start.
+		// the tool text start. The ▸/▾ chevron rides the prefix (the
+		// whole one-liner's rows register in the toolRows click
+		// hit-map); expanded, the captured output body renders dim
+		// under the row (chat_toolrow.go) at the SAME hanging indent —
+		// body rows never register.
 		toolW := c.contentW() - 1
-		indent := strings.Repeat(" ", cellWidth(toolWrapPrefix))
-		lines := foldStyledRows(renderTool(m), toolW, toolW-cellWidth(toolWrapPrefix))
+		open := c.toolExpanded[m.ID]
+		prefix := toolWrapPrefix + toolChevron(open)
+		indent := strings.Repeat(" ", cellWidth(prefix))
+		lines := foldStyledRows(renderTool(m, open), toolW, toolW-cellWidth(prefix))
 		b.WriteString(lines[0])
 		for _, ln := range lines[1:] {
 			b.WriteString("\n" + indent + ln)
+		}
+		hits.toolOut = map[int]string{}
+		for i := range lines {
+			hits.toolOut[i] = m.ID
+		}
+		if open {
+			for _, ln := range c.toolOutputRows(m.ID, cellWidth(prefix), toolW-cellWidth(prefix)) {
+				b.WriteString("\n" + ln)
+			}
 		}
 	case m.Kind == questionKind:
 		c.renderQuestion(&b, m)
@@ -2403,11 +2456,11 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 // renderGroupBlock renders ONE worker-thread segment as a cached block.
 // renderWorkerGroup (threads_opencode.go) registers its frame rows by
 // reading the buffer's CURRENT row count + writing directly into
-// c.threadRows/c.toolDiffRows — so the block capture swaps in PRIVATE maps
-// and a PRIVATE (empty) builder: the registrations come out in block-local
-// space (its b.Len()==0 top-edge path IS the block-local convention), then
-// mergeBlockHits offsets them like every other block's. The trailing
-// live-hint row stays glued to the last live group.
+// c.threadRows/c.toolDiffRows/c.toolRows — so the block capture swaps in
+// PRIVATE maps and a PRIVATE (empty) builder: the registrations come out
+// in block-local space (its b.Len()==0 top-edge path IS the block-local
+// convention), then mergeBlockHits offsets them like every other block's.
+// The trailing live-hint row stays glued to the last live group.
 func (c *Chat) renderGroupBlock(g workerGroup, hint bool, gen uint64) *chatBlock {
 	// resolve the toggle state EXACTLY as renderWorkerGroup does (the key
 	// must miss on every input that re-paints the thread)…
@@ -2438,6 +2491,12 @@ func (c *Chat) renderGroupBlock(g workerGroup, hint bool, gen uint64) *chatBlock
 		if m.Kind == wdiffKind && c.threadDiffOpen[m.ID] {
 			k.str("diff-open:" + m.ID)
 		}
+		// an expanded wtool row's output body re-paints the thread (the
+		// same fold as the ↳ diff opens, output text included so a
+		// SetToolOutput landing mid-expand still misses the borrow)
+		if m.Kind == wtoolKind && c.toolExpanded[m.ID] {
+			k.str("tool-open:" + m.ID).str(c.toolOutputs[m.ID])
+		}
 	}
 	var fl blockFlags
 	if expanded {
@@ -2463,12 +2522,12 @@ func (c *Chat) renderGroupBlock(g workerGroup, hint bool, gen uint64) *chatBlock
 	if old := c.borrowGroupBlock(id, g.lines, key); old != nil {
 		return old
 	}
-	savedThread, savedDiff := c.threadRows, c.toolDiffRows
-	c.threadRows, c.toolDiffRows = map[int]string{}, map[int]string{}
+	savedThread, savedDiff, savedTool := c.threadRows, c.toolDiffRows, c.toolRows
+	c.threadRows, c.toolDiffRows, c.toolRows = map[int]string{}, map[int]string{}, map[int]string{}
 	var b strings.Builder
 	c.renderWorkerGroup(&b, g)
-	hits := blockHits{thread: c.threadRows, toolDiff: c.toolDiffRows}
-	c.threadRows, c.toolDiffRows = savedThread, savedDiff
+	hits := blockHits{thread: c.threadRows, toolDiff: c.toolDiffRows, toolOut: c.toolRows}
+	c.threadRows, c.toolDiffRows, c.toolRows = savedThread, savedDiff, savedTool
 	text := strings.TrimPrefix(b.String(), "\n\n") // the block's own lead becomes the assembly's separator
 	if hint {
 		text += "\n\n" + chrome.DimText.Italic(true).Render(threadHintText)
@@ -2629,16 +2688,20 @@ func itoa(n int) string {
 }
 
 // toolWrapPrefix starts every boss inline tool one-liner — continuation
-// rows of a wrapped line hang exactly this many cells in (under the text).
+// rows of a wrapped line hang under the text start: this many cells PLUS
+// the ▸/▾ chevron field (toolChevron, chat_toolrow.go) the render path
+// appends to it.
 const toolWrapPrefix = "[tool] "
 
 // renderTool renders one Kind="tool" one-liner, merged by CallID upstream:
-// "[tool] read · src/main.go ✓" (done) / "… running" / red "✗" (error) /
-// dim-red "✗ aborted" (/stop). The whole line comes out as ONE styled
-// blob; the call site folds it with foldStyledRows — escape sequences are
-// consumed atomically there, so a fold boundary never shreds one.
-func renderTool(m state.ChatMsg) string {
-	line := toolWrapPrefix + m.Text
+// "[tool] ▸ read · src/main.go ✓" (done) / "… running" / red "✗" (error) /
+// dim-red "✗ aborted" (/stop). The ▸/▾ chevron (toolChevron — the
+// click-to-expand signal, chat_toolrow.go) rides the prefix. The whole
+// line comes out as ONE styled blob; the call site folds it with
+// foldStyledRows — escape sequences are consumed atomically there, so a
+// fold boundary never shreds one.
+func renderTool(m state.ChatMsg, open bool) string {
+	line := toolWrapPrefix + toolChevron(open) + m.Text
 	switch m.Meta {
 	case "done":
 		return chrome.ToolStyle.Render(line + " ✓")

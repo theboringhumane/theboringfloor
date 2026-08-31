@@ -226,19 +226,20 @@ func TestChatConvoWrapsAtWidth(t *testing.T) {
 	}
 
 	// (4) the boss tool one-liner keeps its first-line shape and its
-	// continuation hangs under "[tool] " (7 spaces + the 2-cell inset)
-	if !strings.Contains(view, "[tool] read ·") {
+	// continuation hangs under "[tool] ▸ " (the 9-cell prefix: "[tool] "
+	// + the chevron field — plus the 2-cell inset)
+	if !strings.Contains(view, "[tool] ▸ read ·") {
 		t.Fatalf("the tool one-liner lost its first-line prefix/symbol shape:\n%s", view)
 	}
-	if !strings.Contains(view, "\n         internal/panels/") {
-		t.Fatalf("the tool continuation must hang 2+7 cells in:\n%s", view)
+	if !strings.Contains(view, "\n           internal/panel") {
+		t.Fatalf("the tool continuation must hang 2+9 cells in:\n%s", view)
 	}
 
 	// (5) the workers thread WRAPS with a hanging indent instead of
 	// truncating the path — opencode-style: 2-cell indented under the
 	// header, continuations 4 cells in, no card rails anywhere; the
 	// reducer's "read · <path>" text is display-SHAPED to "Read <path>"
-	if !strings.Contains(view, "  [tool] Read") {
+	if !strings.Contains(view, "  [tool] ▸ Read") {
 		t.Fatalf("the workers-thread row lost its shaped first-line shape:\n%s", view)
 	}
 	if !strings.Contains(view, "\n      internal/components/") {
@@ -375,8 +376,8 @@ func TestThreadsCollapsedByDefaultSpinnerAndSneak(t *testing.T) {
 	}
 	for _, want := range []string{
 		"⠾ Developer Task — Fix the lexer",
-		"  [tool] Read lex.go ✓",
-		"  [tool] Edit lex.go ✓",
+		"  [tool] ▸ Read lex.go ✓",
+		"  [tool] ▸ Edit lex.go ✓",
 		"  thinking",
 		"    tiny thought",
 		"  ↳ Edit lex.go",
@@ -389,9 +390,11 @@ func TestThreadsCollapsedByDefaultSpinnerAndSneak(t *testing.T) {
 		}
 	}
 
-	// expanded internal TOOL rows NEVER toggle: the first tool row
-	// (header line + 1) has no threadRows entry, so its click falls
-	// through
+	// expanded internal TOOL rows never toggle THE THREAD: the first
+	// tool row (header line + 1) has no threadRows entry — its click is
+	// claimed by the toolRows map instead (chat_toolrow.go: it toggles
+	// THAT call's output body — here the no-capture empty state), and
+	// the thread's own expansion is untouched
 	headerLine := -1
 	for line, name := range c.threadRows {
 		if name == "tekton-1" && (headerLine < 0 || line < headerLine) {
@@ -401,10 +404,17 @@ func TestThreadsCollapsedByDefaultSpinnerAndSneak(t *testing.T) {
 	if headerLine < 0 {
 		t.Fatal("expanded tekton-1 must still register its header row")
 	}
-	if c.ClickRow(2, headerLine+1) {
-		t.Fatalf("click on an expanded internal row (line %d) must not be claimed", headerLine+1)
+	if !c.ClickRow(2, headerLine+1) {
+		t.Fatalf("click on an expanded tool row (line %d) must be claimed by the tool-output toggle", headerLine+1)
 	}
-	tbAssertExpanded(t, c, "tekton-1", true, "after internal-row click (no-op)")
+	tbAssertExpanded(t, c, "tekton-1", true, "after tool-row click (thread untouched)")
+	if !strings.Contains(ansi.Strip(c.View()), "no output as such") {
+		t.Fatalf("the clicked tool row must open its (empty) output body:\n%s", ansi.Strip(c.View()))
+	}
+	if !c.ClickRow(2, headerLine+1) { // the body inserted rows — the one-liner sits at the same row
+		t.Fatalf("the second click on the tool row (line %d) must fold its body back", headerLine+1)
+	}
+	tbAssertExpanded(t, c, "tekton-1", true, "after tool-row re-click (thread still untouched)")
 
 	// the map REBUILDS each render: a fresh click on the header folds the
 	// thread back to its collapsed header+sneak pair

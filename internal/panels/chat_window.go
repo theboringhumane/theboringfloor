@@ -110,6 +110,7 @@ type blockHits struct {
 	thread   map[int]string
 	toolDiff map[int]string
 	userFold map[int]string
+	toolOut  map[int]string // tool-output one-liner rows → tool entry ID (chat_toolrow.go)
 }
 
 // chatBlock — one timeline ITEM's cached render: the exact text the old

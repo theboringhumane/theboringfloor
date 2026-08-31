@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -96,6 +97,12 @@ type ocPart struct {
 		Title  string         `json:"title"`
 		Input  map[string]any `json:"input"`
 		Error  string         `json:"error"`
+		// Output — the completed tool's RESULT text (ToolStateCompleted
+		// .output — REQUIRED on the wire, opencode serve 1.18.21 GET /doc:
+		// required [status,input,output,title,metadata,time]). Only the
+		// completed state carries it; the error state carries Error
+		// instead. Feeds Event.ToolOutput on the done event.
+		Output string `json:"output"`
 		// Metadata carries the server's tool-side artifacts — a completed
 		// Edit part rides metadata.filediff{file,path?,patch,additions,
 		// deletions} (and sometimes a bare metadata.diff string); Write
@@ -709,6 +716,30 @@ func capBossText(text string) string {
 	return sliceMax(text, bossTextCapRunes)
 }
 
+// ---------------- tool output capture (Event.ToolOutput) ----------------
+
+// toolOutputCapBytes bounds a captured tool result (Event.ToolOutput) for
+// BOTH backends: 8000 BYTES total, tail-kept — errors and exits live at
+// the tail, so the cap drops the head. The leading "…" marker of a
+// trimmed output is part of the budget: a trimmed result never exceeds
+// the cap either, and multi-megabyte outputs never grow memory.
+const toolOutputCapBytes = 8000
+
+// capToolOutput tail-trims a tool result to toolOutputCapBytes, keeping
+// the END and marking a trimmed result with a leading "…" (the seam never
+// splits a multi-byte rune). "" stays "": an absent/empty output rides no
+// marker (the UI renders its own empty state).
+func capToolOutput(s string) string {
+	if len(s) <= toolOutputCapBytes {
+		return s
+	}
+	keep := s[len(s)-(toolOutputCapBytes-len("…")):]
+	for len(keep) > 0 && !utf8.RuneStart(keep[0]) {
+		keep = keep[1:]
+	}
+	return "…" + keep
+}
+
 // ---------------- boss-turn image previews (file/image parts) ----------------
 
 // mediaTurnCap — a single boss turn renders at most this many inline
@@ -921,7 +952,7 @@ func mapToolPart(part ocPart, ctx *normCtx, primaryID string) (state.Event, bool
 	if callID == "" {
 		callID = part.ID
 	}
-	return state.Event{
+	ev := state.Event{
 		Kind:         state.EvTool,
 		EmployeeID:   empID,
 		EmployeeName: empName,
@@ -929,7 +960,18 @@ func mapToolPart(part ocPart, ctx *normCtx, primaryID string) (state.Event, bool
 		ToolSummary:  toolSummary(part),
 		ToolState:    toolState,
 		CallID:       callID,
-	}, true
+	}
+	// The RESULT leg (Event.ToolOutput): a completed part carries the
+	// tool's output text; an errored part carries its error text (the UI
+	// shows both the same way — the error styling stays ToolState's
+	// business). Running/pending parts carry nothing.
+	switch part.State.Status {
+	case "completed":
+		ev.ToolOutput = capToolOutput(part.State.Output)
+	case "error":
+		ev.ToolOutput = capToolOutput(part.State.Error)
+	}
+	return ev, true
 }
 
 // toolCallDiff lifts the per-CALL patch a completed edit/write ToolPart

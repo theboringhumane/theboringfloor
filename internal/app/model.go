@@ -3091,6 +3091,15 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	prevPending := hasPendingBoss(m.st)
 	m.st = reducer(m.st, ev)
 	m.applyDelegation(ev) // P3 — before panels see the state
+	// tool-output capture (EvTool.ToolOutput → the transcript's
+	// click-to-expand body): the reducer's ChatMsg has no output field,
+	// so the panel's expansion map rides this side feed, keyed by the
+	// SAME entry id the merge uses (toolEntryID). Empty outputs never
+	// reach the panel (a running call / an output-less tool renders the
+	// pinned "no output as such" empty state there).
+	if ev.Kind == state.EvTool && ev.ToolOutput != "" && m.chat != nil {
+		m.chat.SetToolOutput(toolEntryID(ev.EmployeeName, ev.CallID), ev.ToolOutput)
+	}
 	if m.chat != nil {
 		m.chat.SetStreamingThink(m.activeThink)
 	}
@@ -4403,6 +4412,18 @@ func setEmployee(st state.OfficeState, id string, fn func(e *state.Employee)) st
 	return st
 }
 
+// toolEntryID — the chat-entry ID one EvTool merges under (the reducer's
+// EvTool case): boss/primary calls are "tool-<callID>", employee calls
+// "wtool-<agent>-<callID>". The ToolOutput capture feed (applyEventCore)
+// keys the chat panel's click-to-expand map by the SAME id, so the
+// running→done merge that REPLACES the entry keeps its expansion state.
+func toolEntryID(employeeName, callID string) string {
+	if employeeName == "" || employeeName == "boss" {
+		return "tool-" + callID
+	}
+	return "wtool-" + employeeName + "-" + callID
+}
+
 func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 	switch ev.Kind {
 	case state.EvTick:
@@ -4769,11 +4790,10 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				name = "boss"
 			}
 			kind := "tool"
-			id := "tool-" + ev.CallID
+			id := toolEntryID(name, ev.CallID)
 			meta := ev.ToolState
 			if name != "boss" {
 				kind = "wtool"
-				id = "wtool-" + name + "-" + ev.CallID
 				meta = ev.ToolState + "\x1f" + strconv.Itoa(st.Tick)
 			}
 			text := ev.ToolName
@@ -5404,7 +5424,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.chat.SetQuestion(m.questionView(m.question))
 	case "/new":
 		m.btwSaved = nil // /new abandons any btw session
-		m.newOffice() // sessions.go — clear surfaces + fresh "theboringoffice office"
+		m.newOffice()    // sessions.go — clear surfaces + fresh "theboringoffice office"
 	case "/backend":
 		// install-seeded brain.json backend.name's in-app twin: show the
 		// active transport or swap it mid-flight (idle-office gate inside).

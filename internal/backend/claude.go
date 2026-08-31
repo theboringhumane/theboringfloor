@@ -191,6 +191,110 @@ func (b *liveClaudeBackend) PrimaryOverride(id string) {
 	}
 }
 
+// ---------------------------------------------------------------- office session seams (/btw, /done, /new)
+
+// NewOffice — the /new + /btw seam (the additive officeSpawnBackend twin
+// of liveBackend.NewOffice, opencode.go): mint a BRAND-NEW claude session
+// NOW, not lazily on the next send. Spawn-first ordering: the replacement
+// process spawns BEFORE the old one is torn down, so a spawn failure
+// leaves the old session seated (the app restores the pre-btw surfaces on
+// error). The old process rides the teardown ladder (teardownProc —
+// Stop's kill minus the flow-stop): the parked watch wakes to
+// current=false, so NO died latch and NO death status — this is a swap,
+// not a crash. Every session-scoped latch clears with the office
+// (resumeID/primaryID/primaryOverride/initDone/busyTurns/pendingBoss/
+// interruptArm), and briefed RESETS: the fresh claude session has no
+// retained context, so the browser-tool preamble must re-ride the first
+// Send (respawnForSend KEEPS the latch because --resume retains the
+// context — a fresh session must not).
+//
+// Returns "" + nil: claude's session id only exists once the first stdin
+// user line's system/init lands (readLoop pins primaryID on arrival) —
+// both app call sites (/btw, /new) discard the id. Events mirror
+// opencode.go's NewOffice: fire the old manager row, re-hire the manager
+// (id "" pre-init — the Start boot convention: roster lookups key on the
+// manager ROLE), one status.
+func (b *liveClaudeBackend) NewOffice() (string, error) {
+	if b.fl.isStopped() {
+		return "", errors.New("backend stopped")
+	}
+	b.mu.Lock()
+	bin := b.bin
+	bypass := b.bypassPermissions // a respawn keeps the boot's mode
+	old := b.primaryID
+	b.mu.Unlock()
+
+	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "", bypass)
+	if err != nil {
+		return "", err // the old session is still seated — the app restores the pre-btw surfaces
+	}
+	b.teardownProc()
+	b.mu.Lock()
+	b.resumeID = ""
+	b.primaryID = ""
+	b.primaryOverride = ""
+	b.initDone = false
+	b.busyTurns = 0
+	b.pendingBoss = nil
+	b.interruptArm = false
+	b.briefed = false // fresh session: the preamble re-rides the first Send
+	b.mu.Unlock()
+	b.swapProc(proc, stdin, stdout, exitCh)
+	if old != "" {
+		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
+	}
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "", Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
+	}})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] new office session fresh — claude session id pins when the next system/init lands"})
+	return "", nil
+}
+
+// SwapPrimary — the /done seam (the additive btwSwapBackend twin of
+// liveBackend.SwapPrimary, opencode.go): re-pin the boss session to a
+// previously saved claude session id mid-flight (the session must exist —
+// there is no create path here). The id rides `--resume <id>` on the
+// replacement spawn, and the pin lands on ALL THREE latches (primaryID =
+// resumeID = primaryOverride) so the resumed process's own system/init
+// can never re-pin the wire's session id over the restored one. briefed
+// KEEPS its latch: the resumed session's context retains the browser-tool
+// preamble contract (NewOffice is the reset case). Same spawn-first +
+// teardown ladder as NewOffice; events mirror opencode.go's SwapPrimary
+// (fire the old row, hire the pinned manager, one status).
+func (b *liveClaudeBackend) SwapPrimary(id string) error {
+	if b.fl.isStopped() {
+		return errors.New("backend stopped")
+	}
+	b.mu.Lock()
+	bin := b.bin
+	bypass := b.bypassPermissions // a respawn keeps the boot's mode
+	old := b.primaryID
+	b.mu.Unlock()
+
+	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, id, bypass)
+	if err != nil {
+		return err // the old session is still seated
+	}
+	b.teardownProc()
+	b.mu.Lock()
+	b.resumeID = id
+	b.primaryID = id
+	b.primaryOverride = id // the pin wins over the resume's own init wire id
+	b.busyTurns = 0        // the old process's turns died with it
+	b.pendingBoss = nil
+	b.interruptArm = false
+	b.mu.Unlock()
+	b.swapProc(proc, stdin, stdout, exitCh)
+	if old != "" && old != id {
+		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
+	}
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: id, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
+	}})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary session swapped to " + id})
+	return nil
+}
+
 // SetBypassPermissions — the office's bypass-permissions toggle (an
 // ADDITIVE seam the app type-asserts, same convention as
 // ConciergeCapable/SessionAborter in internal/state: never folded into
@@ -776,6 +880,74 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[claude] respawned with --resume %s", shortTitle(resume, 24))})
 	return nil
+}
+
+// teardownProc — Stop's kill ladder MINUS the flow-stop and the stream
+// flush: the proc plumbing is nil'd under lock FIRST (the parked watch
+// then wakes with current=false — no died latch, no death status: this is
+// a controlled swap, not a crash), stdin closes (claude exits), the watch
+// drain is honored up to claudeStopDrain, then SIGTERM, then SIGKILL. The
+// /btw + /new seams call it between the replacement spawn and the latch
+// reset; the backend (and its flow) keep running throughout.
+func (b *liveClaudeBackend) teardownProc() {
+	b.mu.Lock()
+	proc := b.proc
+	stdin := b.procStdin
+	wait := b.procWait
+	b.proc = nil
+	b.procStdin = nil
+	b.mu.Unlock()
+
+	if stdin != nil {
+		_ = stdin.Close()
+	}
+	if proc == nil || proc.Process == nil {
+		return
+	}
+	if wait != nil {
+		select {
+		case <-wait:
+			return
+		case <-time.After(claudeStopDrain):
+		}
+	}
+	_ = proc.Process.Signal(syscall.SIGTERM)
+	if wait != nil {
+		select {
+		case <-wait:
+			return
+		case <-time.After(stopKillGrace):
+		}
+	}
+	_ = proc.Process.Kill()
+	reaped := make(chan struct{})
+	go func() { _ = proc.Wait(); close(reaped) }()
+	select {
+	case <-reaped:
+	case <-time.After(stopKillGrace):
+	}
+}
+
+// swapProc wires a freshly spawned replacement process (NewOffice /
+// SwapPrimary): the plumbing swap + died/stopping reset (respawnForSend's
+// wire-up, minus the spawn — the caller spawned FIRST so a spawn failure
+// leaves the old session seated), the initialize re-declaration every
+// process attach rides, and the watch + reader goroutines. Id-latch
+// policy (cleared vs pinned) is the caller's, taken under lock before
+// this runs.
+func (b *liveClaudeBackend) swapProc(proc *exec.Cmd, stdin io.WriteCloser, stdout io.Reader, exitCh <-chan error) {
+	b.mu.Lock()
+	b.proc, b.procStdin, b.procExit = proc, stdin, exitCh
+	b.died = false
+	b.stopping = false
+	wait := make(chan struct{})
+	b.procWait = wait
+	b.mu.Unlock()
+	// The swapped-in process is a NEW client attach: re-declare the
+	// rendered dialog kinds (same contract as respawnForSend).
+	b.writeInitialize()
+	go b.watchProc(proc, exitCh, wait)
+	go b.readLoop(stdout)
 }
 
 // ---------------------------------------------------------------- send

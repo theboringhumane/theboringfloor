@@ -131,10 +131,10 @@ func TestThreadBackEscCollapsesMostRecentFirst(t *testing.T) {
 	fmt.Println("---- CHAT PANEL (64 cols, after esc #1: X expanded, Y collapsed) ----")
 	fmt.Print(view)
 	fmt.Println("---- END PANEL ----")
-	if !strings.Contains(view, "  [tool] Read proof.go ✓") {
+	if !strings.Contains(view, "  [tool] ▸ Read proof.go ✓") {
 		t.Fatalf("esc #1: X's expanded tool rows must survive:\n%s", view)
 	}
-	if strings.Contains(view, "  [tool] Bash go test") {
+	if strings.Contains(view, "  [tool] ▸ Bash go test") {
 		t.Fatalf("esc #1: Y must be collapsed, still shows an expanded row:\n%s", view)
 	}
 	if !strings.Contains(view, "✓ Developer Task — Wire the tests") ||
@@ -164,10 +164,10 @@ func TestThreadBackUpCollapsesMostRecentFirst(t *testing.T) {
 	tbAssertExpanded(t, c, "tekton-2", false, "[X,Y] --up--> [X]")
 	tbAssertExpanded(t, c, "tekton-1", true, "[X,Y] --up--> [X]")
 	view := ansi.Strip(c.View())
-	if !strings.Contains(view, "  [tool] Read proof.go ✓") {
+	if !strings.Contains(view, "  [tool] ▸ Read proof.go ✓") {
 		t.Fatalf("up #1: X's expanded tool rows must survive:\n%s", view)
 	}
-	if strings.Contains(view, "  [tool] Bash go test") {
+	if strings.Contains(view, "  [tool] ▸ Bash go test") {
 		t.Fatalf("up #1: Y must be collapsed, still shows an expanded row:\n%s", view)
 	}
 

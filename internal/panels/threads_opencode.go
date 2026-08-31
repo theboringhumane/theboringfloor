@@ -246,10 +246,12 @@ func wtoolStateSuffix(meta string) string {
 
 // workerToolLine renders one merged employee tool entry — the boss's
 // inline one-liner shape built from the reducer's "<verb> · <rest>"
-// text SHAPED to opencode's "<Verb> <rest>" form ("[tool] Read x ✓",
-// "[tool] Read y … running", "[tool] Edit z ✗ aborted").
-func workerToolLine(m state.ChatMsg) string {
-	return "[tool] " + shapeToolText(m.Text) + wtoolStateSuffix(m.Meta)
+// text SHAPED to opencode's "<Verb> <rest>" form ("[tool] ▸ Read x ✓",
+// "[tool] ▸ Read y … running", "[tool] ▾ Edit z ✗ aborted"). The ▸/▾
+// chevron (toolChevron — chat_toolrow.go) signals the row's
+// click-to-expand output-body state, exactly like the boss inline rows.
+func workerToolLine(m state.ChatMsg, open bool) string {
+	return "[tool] " + toolChevron(open) + shapeToolText(m.Text) + wtoolStateSuffix(m.Meta)
 }
 
 // threadHeaderRows — the ONE title row (single-row contract: the header
@@ -342,21 +344,27 @@ func (c *Chat) threadSneakRows(g workerGroup) []string {
 
 // threadExpandedRows — the thread's merged tool/think rows, 2-cell
 // indented under the header (continuations hang 4 cells in, under the
-// text): "[tool] <Verb> <rest> <state mark>" in ToolStyle (workerToolLine
-// shapes the reducer's "<verb> · <rest>" text), thoughts via wthinkRows
-// (bodies only on a FULL expand). A tool call whose completed edit/write
-// rode a per-call patch (Kind wdiff, "wdiff-<agent>-<callid>" — the SAME
-// agent+call tail as its "wtool-" id) gains a dim "· +A -D" count suffix,
-// and its wdiff line renders DIRECTLY beneath as a clickable
-// "↳ diff · path +A -D" sub-row (c.threadDiffOpen[id] opens the parsed
-// body there — the flat-diff diffRows machinery verbatim). The second
-// return maps each ↳ row's index WITHIN the returned slice to its wdiff
-// msg ID for the toolDiffRows click hit-map. These rows still WRAP,
-// never truncate — the single-row contract binds ONLY the header, the
-// sneak and the ↳ diff sub-row.
-func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]string) {
+// text): "[tool] ▸ <Verb> <rest> <state mark>" in ToolStyle
+// (workerToolLine shapes the reducer's "<verb> · <rest>" text), thoughts
+// via wthinkRows (bodies only on a FULL expand). A tool call whose
+// completed edit/write rode a per-call patch (Kind wdiff,
+// "wdiff-<agent>-<callid>" — the SAME agent+call tail as its "wtool-"
+// id) gains a dim "· +A -D" count suffix, and its wdiff line renders
+// DIRECTLY beneath as a clickable "↳ diff · path +A -D" sub-row
+// (c.threadDiffOpen[id] opens the parsed body there — the flat-diff
+// diffRows machinery verbatim). A tool row's own expansion
+// (c.toolExpanded[id] — chat_toolrow.go) opens its captured output body
+// dim under the row at the 4-cell indent. The second return maps each
+// ↳ row's index WITHIN the returned slice to its wdiff msg ID for the
+// toolDiffRows click hit-map; the third maps each tool one-liner's rows
+// (head + continuations, NEVER the output body rows) to its wtool msg
+// ID for the toolRows hit-map. These rows still WRAP, never truncate —
+// the single-row contract binds ONLY the header, the sneak and the
+// ↳ diff sub-row.
+func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]string, map[int]string) {
 	var rows []string
 	diffAt := map[int]string{}
+	toolAt := map[int]string{}
 	for _, m := range g.lines {
 		switch {
 		case m.Kind == wthinkKind:
@@ -379,7 +387,8 @@ func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]s
 		if contB < 1 {
 			contB = 1
 		}
-		lines := foldStyledRows(workerToolLine(m), headB, contB)
+		open := c.toolExpanded[m.ID]
+		lines := foldStyledRows(workerToolLine(m, open), headB, contB)
 		for j, ln := range lines {
 			prefix := "  "
 			if j > 0 {
@@ -389,10 +398,14 @@ func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]s
 			if j == len(lines)-1 && suf != "" {
 				row += chrome.DimText.Render(suf)
 			}
+			toolAt[len(rows)] = m.ID
 			rows = append(rows, row)
 		}
+		if open {
+			rows = append(rows, c.toolOutputRows(m.ID, 4, c.contentW()-4)...)
+		}
 	}
-	return rows, diffAt
+	return rows, diffAt, toolAt
 }
 
 // threadDiffFor pairs a merged tool entry ("wtool-<agent>-<callid>") with
@@ -556,10 +569,11 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 	closingAt := -1
 	var closing []string
 	var diffHits map[int]string // ↳ diff sub-rows, indexed WITHIN expanded rows
+	var toolHits map[int]string // tool one-liner rows, indexed WITHIN expanded rows
 	expandedAt := len(rows)
 	if expanded {
 		var expandedRows []string
-		expandedRows, diffHits = c.threadExpandedRows(g, full)
+		expandedRows, diffHits, toolHits = c.threadExpandedRows(g, full)
 		rows = append(rows, expandedRows...)
 		sneakAt = len(rows)
 		rows = append(rows, sneak...)
@@ -598,6 +612,15 @@ func (c *Chat) renderWorkerGroup(b *strings.Builder, g workerGroup) {
 			for i, id := range diffHits {
 				if c.toolDiffRows != nil {
 					c.toolDiffRows[base+lead+expandedAt+i] = id
+				}
+			}
+			// …and each tool one-liner's OWN rows register into the
+			// toolRows map (checked after toolDiffRows): a click there
+			// toggles THAT call's output body (chat_toolrow.go), never
+			// the thread — the body rows themselves never register
+			for i, id := range toolHits {
+				if c.toolRows != nil {
+					c.toolRows[base+lead+expandedAt+i] = id
 				}
 			}
 		} else {

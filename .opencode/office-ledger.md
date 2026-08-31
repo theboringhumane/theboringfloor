@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-08-31 · Dev W2: tool output expand UI (@developer sub... — tekton-4 (developer) · `issues`
+- summary: All green. Assembling the return contract:
+- files: `cmd/uishot/main.go`, `internal/panels/threads_opencode_test.go`, `internal/app/model.go`
+- verify: ```
+- proof: *1. Expanded row WITH output** (unit test log, verbatim — `TestToolRowExpandShowsOutput`, 44 cols, ANSI-stripped):
+- ledgerId: led-1788153137253-e58a3047
+
+### 2026-08-31 · Dev W1: tool output capture (@developer subag... — tekton-1 (developer) · `issues`
+- summary: All verification complete. Composing the return.
+- files: `internal/state/state.go`, `internal/backend/events.go`, `internal/backend/claude_events.go`, `internal/backend/tool_output_test.go` *(new)*, `internal/backend/claude_live_test.go`, NOT touched
+- verify: ```
+- proof: *claude done-event JSON** (unit test log, verbatim — text result `"total 42"`):
+- ledgerId: led-1788152725848-9c68eb87
+
+### 2026-08-31 · Dev: claude backend NewOffice+SwapPrimary (@d... — tekton-3 (developer) · `issues`
+- summary: All gates green — 92 TestClaude tests pass (including the 3 new ones), zero FAILs. Composing the return.
+- files: `internal/backend/claude.go`, `internal/backend/claude_office_swap_test.go`, Foreign dirty paths in `git status` (`internal/app/*`, `internal/panels/*`, `internal/backend/claude
+- verify: (`git diff … | grep -c '^-[^-]'` → `0`: purely additive)
+- proof: Stub-recorded claude argv (verbatim from `-v` run) — **NewOffice respawns FRESH, SwapPrimary respawns with `--resume <saved>`**:
+- ledgerId: led-1788152562733-a7c99f48
+
+### 2026-08-31 · Scout: opencode→claude backend parity gap (@e... — skopos-1 (scout) · `issues`
+- summary: Recon complete. All evidence gathered; the tree was never touched.
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788151932135-a37dc962
+
 ### 2026-08-30 · Dev V: claude charter bridge (@developer suba... — tekton-1 (developer) · `issues`
 - summary: All gates green. Composing the return.
 - files: `internal/backend/charter_claude.go`, `internal/backend/claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/claude_live_test.go`
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: $ `git log --oneline -6`
 - ledgerId: led-1787840610933-b0e063ec
-
-### 2026-08-27 · Render all dialog kinds (@developer subagent) — tekton-13 (developer) · `issues`
-- summary: **`supportedDialogKinds` declaration wired, evidence-backed**: the office now writes an `initialize` control_request as the FIRST stdin line of every claude pro
-- files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_dialog_test.go`, `internal/backend/claude_dialog_kinds_test.go`, `internal/backend/claude_send_test.go`, `README.md`
-- verify: Post-restore: `diff` backup vs live for both files → `RESTORE-IDENTICAL`, full `-run Claude` suite `ok 12.572s`.
-- proof: ### (a) The initialize/declaration evidence + exact bytes
-- ledgerId: led-1787840395521-eb7c1e8a
-
-### 2026-08-27 · Scout all dialog-kind schemas (@explore subag... — skopos-3 (scout) · `issues`
-- summary: Cleanup done. Assembling the final return.
-- files: Scratch only (repo untouched, | path | why |, |---|---|, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/claude-strings-allkinds.txt` | fresh `s, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/claude-strings-offsets.txt` | `strings , | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/extract_kinds2.py` | balanced-brace reg, | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/kind_registrations2.json` | all 35 raw , | `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/print_kinds.py`, `resolve4.py`, `map_ti, `git -C … status --porcelain` shows only pre-existing parallel-agent modifications
-- verify: ```
-- proof: ### 0. De-minification legend (resolved via chunk export chains, verbatim evidence)
-- ledgerId: led-1787838913882-ea93da52
-
-### 2026-08-27 · Round-trip preview+metadata fidelity (@develo... — theboringcto-1 (cto) · `done`
-- summary: Restore byte-identical, and the state.go diff shows exactly my additive block (the `EvBrowserOpen` hunk below it is the parallel browser-lane agent's pre-existi
-- files: `internal/state/state.go`, `internal/backend/claude_events.go`, `internal/backend/claude.go`, `internal/backend/claude_dialog_test.go`
-- verify: Post-restore: `diff` backup vs `internal/backend/claude.go` → `RESTORE_IDENTICAL`; both full suites above were run AFTER the restore.
-- proof: *Decode side** (`internal/backend/claude_events.go`, verbatim):
-- ledgerId: led-1787838662008-5c1659b1
-
-### 2026-08-27 · Fix dialog result object shape (@developer su... — tekton-12 (developer) · `issues`
-- summary: All gates green. Assembling the return.
-- files: `internal/backend/claude.go`, `internal/backend/claude_dialog_test.go`, `internal/backend/claude_perm_test.go`, (scratch, sanctioned tmp dir, not repo: `claude-strings-result.txt`, `claude.go.bak`)
-- verify: (claude.go then restored from backup; suites above re-ran AFTER restore; gofmt clean.)
-- proof: ### (a) Binary evidence (CLI 2.1.247, `strings -a` + python windowed slices, verbatim)
-- ledgerId: led-1787838096617-fe510ca9
 

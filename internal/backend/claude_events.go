@@ -400,6 +400,38 @@ func claudeToolResultText(content any) string {
 	return ""
 }
 
+// claudeToolOutputText flattens a tool_result content into the tool's FULL
+// result text for Event.ToolOutput (the done event's show-me-what-it-
+// returned field): a string body verbatim, or the list body's text blocks
+// joined with NEWLINES. Structured/non-text blocks (image, document, …)
+// render compactly as "[<type> data]" — never the raw payload. Unlike
+// claudeToolResultText nothing is whitespace-collapsed or bounded here:
+// the 8000-byte tail-kept cap lives in capToolOutput at the emit seam.
+func claudeToolOutputText(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, cell := range c {
+			m, ok := cell.(map[string]any)
+			if !ok {
+				continue
+			}
+			typ, _ := m["type"].(string)
+			if typ == "" || typ == "text" {
+				if t, _ := m["text"].(string); t != "" {
+					parts = append(parts, t)
+				}
+				continue
+			}
+			parts = append(parts, "["+typ+" data]")
+		}
+		return strings.Join(parts, "\n")
+	}
+	return ""
+}
+
 // ---------------- subagent runs ----------------
 
 // claudeRoleForAgent maps a Task's subagent_type/description onto an office
@@ -511,8 +543,12 @@ func (ctx *claudeNormCtx) claudeToolFold(callID, partial string) []state.Event {
 }
 
 // claudeToolFinish closes a hold on tool_result: done (or error) on the
-// same CallID. Unknown call ids close nothing (tolerant parse).
-func (ctx *claudeNormCtx) claudeToolFinish(callID string, isErr bool, resultText string) []state.Event {
+// same CallID. Unknown call ids close nothing (tolerant parse). output is
+// the tool's result text for Event.ToolOutput (already capToolOutput'd by
+// the caller) — carried verbatim on BOTH the done and the error row (the
+// UI shows them the same way; the error styling stays ToolState's
+// business).
+func (ctx *claudeNormCtx) claudeToolFinish(callID string, isErr bool, resultText, output string) []state.Event {
 	h := ctx.tools[callID]
 	if h == nil {
 		return nil
@@ -529,6 +565,7 @@ func (ctx *claudeNormCtx) claudeToolFinish(callID string, isErr bool, resultText
 	return []state.Event{{
 		Kind: state.EvTool, EmployeeID: h.ownerID, EmployeeName: h.ownerName,
 		ToolName: h.name, ToolSummary: summary, ToolState: toolState, CallID: callID,
+		ToolOutput: output,
 	}}
 }
 
@@ -1000,6 +1037,9 @@ func (ctx *claudeNormCtx) mapClaudeUser(raw claudeEvent, now int64) []state.Even
 			continue
 		}
 		resultText := claudeToolResultText(block.Content)
+		// The result's FULL text for the done event's ToolOutput (8000B
+		// tail-kept cap) — EVERY tool, Task tools included.
+		output := capToolOutput(claudeToolOutputText(block.Content))
 		if t, ok := ctx.tasks[callID]; ok && !t.returned {
 			t.returned = true
 			emp := t.employee
@@ -1019,13 +1059,13 @@ func (ctx *claudeNormCtx) mapClaudeUser(raw claudeEvent, now int64) []state.Even
 			evs = append(evs,
 				state.Event{Kind: state.EvTask, Task: done},
 				state.Event{Kind: state.EvReturned, EmployeeID: t.employeeID, TaskID: done.ID, Mail: mail},
-				state.Event{Kind: state.EvTool, CallID: callID, ToolState: "done", EmployeeID: t.employeeID, EmployeeName: t.employee.Name},
+				state.Event{Kind: state.EvTool, CallID: callID, ToolState: "done", EmployeeID: t.employeeID, EmployeeName: t.employee.Name, ToolOutput: output},
 				state.Event{Kind: state.EvFire, EmployeeID: t.employeeID},
 			)
 			delete(ctx.tools, callID)
 			continue
 		}
-		evs = append(evs, ctx.claudeToolFinish(callID, block.IsError, resultText)...)
+		evs = append(evs, ctx.claudeToolFinish(callID, block.IsError, resultText, output)...)
 	}
 	return evs
 }

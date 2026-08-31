@@ -118,6 +118,7 @@ One line per key — the full table lives at [keys & slash commands](https://the
 | big paste | chat pastes >20 lines or >2000 chars collapse to a `[pasted N lines · M chars]` chip — one backspace unit, full text sent on submit |
 | `/model` · `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
 | `y` `a` `n` `esc` | answer a permission prompt — allow once / always / reject / defer |
+| click a tool row | expand what the tool returned (all kinds — capped, tail-kept; `no output as such` when there's none) |
 | `/bypass` | toggle bypass-permissions mode — session-only, confirm-on-enable, ` ⚠ BYPASS ` rides the topbar while on |
 | `ctrl+q` | arm quit — works everywhere |
 

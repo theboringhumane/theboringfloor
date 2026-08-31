@@ -544,7 +544,19 @@ type Event struct {
 	ToolSummary string `json:"toolSummary,omitempty"` // e.g. "src/main.go" or "THEBORINGOFFICE_*, 12 hits"
 	ToolState   string `json:"toolState,omitempty"`   // "running" | "done" | "error"
 	CallID      string `json:"callId,omitempty"`      // part/call id for dedupe
-	Done        bool   `json:"done,omitempty"`        // thought completion
+	// ToolOutput — the tool's RESULT text on the done/error event,
+	// human-readable and plain (ADDITIVE). claude: the tool_result
+	// block's text content, multi-block text joined with newlines,
+	// structured/non-text content rendered compactly ("[image data]").
+	// opencode: the completed tool state's output string verbatim (an
+	// errored state carries its error text — the UI shows both the same
+	// way; the error styling stays ToolState's business). Both backends
+	// cap it at 8000 bytes, tail-kept with a leading "…" when trimmed
+	// (errors and exits live at the tail), so multi-megabyte outputs
+	// never grow memory. "" on running events and when the tool
+	// returned nothing — the UI renders its own empty state.
+	ToolOutput string `json:"toolOutput,omitempty"`
+	Done       bool   `json:"done,omitempty"` // thought completion
 	// Permission/question/diff fields (EvPermission/EvQuestion/EvFileDiff).
 	// SessionID is the opencode session the event belongs to ("boss"-side
 	// events carry the primary id); PermissionID/QuestionID are the wire

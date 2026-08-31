@@ -850,6 +850,96 @@ func TestClaudeLiveCharterReaches(t *testing.T) {
 	t.Logf("CHARTER-REACHES: the boss recited all five return-contract sections (DONE/FILES/VERIFY/PROOF/ISSUES) — the REAL oikonomos charter rode CLAUDE.md -> @.opencode/oikonomos.md through the office's own claude spawn")
 }
 
+// ---------------------------------------------------------------- test 6
+
+// TestClaudeLiveToolOutput — the Event.ToolOutput contract against the
+// REAL CLI: one prompt that runs exactly one Bash tool call with a known
+// echo marker. The tool's done event must carry the echo's text on
+// ToolOutput (the member clicks the tool row and sees what it returned).
+// The prompt's Bash(echo …) is read-only-safe on this account (the CLI's
+// default mode auto-approves it — see TestClaudeLivePermissionRoundTrip's
+// trigger analysis), but the wait loop still answers any pending ask the
+// way the office modal would, so a permission-policy drift can never hang
+// the test.
+func TestClaudeLiveToolOutput(t *testing.T) {
+	bin := liveClaudeGate(t)
+	b, log, rec := liveBoot(t, bin, t.TempDir())
+
+	const marker = "the-office-tool-output-marker"
+	prompt := "Run exactly one Bash tool call with this exact command: echo " + marker +
+		" — then reply with the single word done. Do not run any other tool."
+	t.Logf("prompt: %s", prompt)
+	if err := b.Send(prompt); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+
+	// Wait for the turn's result frame, answering any pending ask the way
+	// the office modal would (allow-once; each request answered at most
+	// once).
+	answered := map[string]bool{}
+	deadline := time.Now().Add(150 * time.Second)
+	for !liveResultSeen(rec) {
+		if time.Now().After(deadline) {
+			liveDumpWire(t, rec)
+			liveDumpEvents(t, log)
+			t.Fatalf("timed out after %s waiting for the turn's result frame", 150*time.Second)
+		}
+		for _, e := range log.snapshot() {
+			switch {
+			case e.Kind == state.EvPermission && e.ToolState == "pending" && !answered[e.PermissionID]:
+				answered[e.PermissionID] = true
+				t.Logf("answering allow-once via AnswerPermission(%q)", e.PermissionID)
+				_ = b.AnswerPermission(e.PermissionID, "once")
+			case e.Kind == state.EvQuestion && e.ToolState == "pending" && !answered[e.QuestionID]:
+				for _, q := range e.Questions {
+					for _, opt := range q.Options {
+						if opt.Label == claudeDialogAllowOnce && !answered[e.QuestionID] {
+							answered[e.QuestionID] = true
+							t.Logf("answering [%q] via AnswerQuestion(%q)", opt.Label, e.QuestionID)
+							_ = b.AnswerQuestion(e.QuestionID, [][]string{{opt.Label}})
+						}
+					}
+				}
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	liveDumpWire(t, rec)
+	liveDumpEvents(t, log)
+
+	// Fold the tool events by CallID (the chat's merge shape): the bash
+	// call's done row must carry the echo's output on ToolOutput.
+	type toolRow struct {
+		name, state, output string
+	}
+	byCallID := map[string]toolRow{}
+	for _, e := range log.snapshot() {
+		if e.Kind != state.EvTool {
+			continue
+		}
+		byCallID[e.CallID] = toolRow{e.ToolName, e.ToolState, e.ToolOutput}
+	}
+	var doneRow *toolRow
+	for id, r := range byCallID {
+		t.Logf("tool row: callID=%s tool=%s state=%s output=%q", id, r.name, r.state, trimTo(r.output, 120))
+		if r.name == "bash" && r.state == "done" {
+			r := r
+			doneRow = &r
+		}
+	}
+	if doneRow == nil {
+		t.Fatalf("the echo's Bash call never landed a done row; tool rows dumped above")
+	}
+	if !strings.Contains(doneRow.output, marker) {
+		t.Fatalf("the done event's ToolOutput must contain the echo marker %q, got %q", marker, doneRow.output)
+	}
+	if len(doneRow.output) > toolOutputCapBytes {
+		t.Fatalf("ToolOutput must never exceed the %d-byte cap, got %d", toolOutputCapBytes, len(doneRow.output))
+	}
+	t.Logf("LIVE CAPTURE: the bash done event's ToolOutput (verbatim): %q", doneRow.output)
+	t.Logf("tool-output contract held on the real CLI: marker %q present in the done event's ToolOutput", marker)
+}
+
 // sortedKeys renders a string-keyed map as a sorted stable list for logs.
 func sortedKeys[V any](m map[string]V) []string {
 	out := make([]string, 0, len(m))

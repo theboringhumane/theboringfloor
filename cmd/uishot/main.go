@@ -7889,6 +7889,141 @@ func runClickProof() error {
 	return nil
 }
 
+// --- tool-output expansion (--tooloutput) ------------------------------------
+// Scripted bubbletea v2 mouse clicks through the REAL model: a boss tool
+// call's row toggles its captured ToolOutput body (chat_toolrow.go):
+// (A) a RUNNING call expands to the pinned "no output as such" empty
+// state; (B) the done event's ToolOutput updates the SAME expanded body
+// in place (applyEventCore's SetToolOutput feed — no collapse flicker);
+// (C) a second, output-LESS call expands independently to its own empty
+// state; (D) the first call folds back while the second stays open.
+// Two synchronous drives must produce byte-identical frames.
+
+func runToolOutputProof() error {
+	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
+	type shot struct {
+		label string
+		frame string
+	}
+	drive := func() ([]shot, error) {
+		d := newFocusDriver()
+		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — tooloutput stub online"})
+		d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "build it, then read x.go", false)})
+		d.send(focusTool("", "", "c-1", "bash", "go build ./...", "running"))
+		d.send(focusTool("", "", "c-2", "read", "x.go", "done"))
+		d.pump(2)
+		var shots []shot
+
+		// every click lands on the row's CURRENT screen position (the
+		// chat sidebar is the right-hand panel — floorW+5 is inside it)
+		_, _, _, floorW := d.m.LayoutInfo()
+		clickRow := func(frame, marker string) error {
+			y := -1
+			for i, ln := range strings.Split(frame, "\n") {
+				if strings.Contains(ansi.Strip(ln), marker) {
+					y = i
+					break
+				}
+			}
+			if y < 0 {
+				return fail("tooloutput: row %q not found in the frame", marker)
+			}
+			clickAt(d, floorW+5, y)
+			return nil
+		}
+
+		f0 := d.m.Frame()
+		for _, want := range []string{"[tool] ▸ bash · go build ./... … running", "[tool] ▸ read · x.go ✓"} {
+			if !strings.Contains(ansi.Strip(f0), want) {
+				return nil, fail("tooloutput 0 (collapsed): frame missing %q", want)
+			}
+		}
+		shots = append(shots, shot{"0 — two collapsed tool rows (▸ chevrons, running + done)", f0})
+
+		// (A) click the RUNNING row: the pinned empty state opens under it
+		if err := clickRow(f0, "[tool] ▸ bash · go build ./..."); err != nil {
+			return nil, err
+		}
+		fA := d.m.Frame()
+		for _, want := range []string{"[tool] ▾ bash · go build ./... … running", "no output as such"} {
+			if !strings.Contains(ansi.Strip(fA), want) {
+				return nil, fail("tooloutput A (running expand): frame missing %q", want)
+			}
+		}
+		shots = append(shots, shot{"A — clicked the running call: ▾ + the pinned \"no output as such\" empty state", fA})
+
+		// (B) the done event lands WITH output: the SAME expanded body
+		// updates in place (the row never re-collapses)
+		done := focusTool("", "", "c-1", "bash", "go build ./...", "done")
+		done.ToolOutput = "compiling internal/app/model.go\nlinking theboringoffice\nbuild ok in 412ms"
+		d.send(done)
+		fB := d.m.Frame()
+		stripB := ansi.Strip(fB)
+		for _, want := range []string{"[tool] ▾ bash · go build ./... ✓", "compiling internal/app/model.go", "linking theboringoffice", "build ok in 412ms"} {
+			if !strings.Contains(stripB, want) {
+				return nil, fail("tooloutput B (done in place): frame missing %q", want)
+			}
+		}
+		if strings.Contains(stripB, "no output as such") {
+			return nil, fail("tooloutput B: the empty state must be gone once the output landed")
+		}
+		shots = append(shots, shot{"B — done event WITH output: the expanded body updates in place (▾ kept, empty state gone)", fB})
+
+		// (C) the output-LESS second call expands independently
+		if err := clickRow(fB, "[tool] ▸ read · x.go"); err != nil {
+			return nil, err
+		}
+		fC := d.m.Frame()
+		stripC := ansi.Strip(fC)
+		for _, want := range []string{"[tool] ▾ read · x.go ✓", "no output as such", "build ok in 412ms"} {
+			if !strings.Contains(stripC, want) {
+				return nil, fail("tooloutput C (independent expand): frame missing %q", want)
+			}
+		}
+		shots = append(shots, shot{"C — the output-less read expands too: ITS empty state beside bash's captured body", fC})
+
+		// (D) the first row folds back; the second stays expanded
+		if err := clickRow(fC, "[tool] ▾ bash · go build ./..."); err != nil {
+			return nil, err
+		}
+		fD := d.m.Frame()
+		stripD := ansi.Strip(fD)
+		if !strings.Contains(stripD, "[tool] ▸ bash · go build ./... ✓") {
+			return nil, fail("tooloutput D: the second click must fold bash back to ▸")
+		}
+		if strings.Contains(stripD, "build ok in 412ms") {
+			return nil, fail("tooloutput D: bash's body must hide after the fold")
+		}
+		for _, want := range []string{"[tool] ▾ read · x.go ✓", "no output as such"} {
+			if !strings.Contains(stripD, want) {
+				return nil, fail("tooloutput D (sibling survives): frame missing %q", want)
+			}
+		}
+		shots = append(shots, shot{"D — bash folds (▸, body gone); read stays expanded (rows independent)", fD})
+		return shots, nil
+	}
+
+	shotsA, err := drive()
+	if err != nil {
+		return err
+	}
+	shotsB, err := drive()
+	if err != nil {
+		return err
+	}
+	for i := range shotsA {
+		fmt.Printf("===== UI SHOT · --tooloutput %s =====\n", shotsA[i].label)
+		fmt.Println(shotsA[i].frame)
+		fmt.Println("===== UI SHOT =====")
+		if shotsA[i].frame != shotsB[i].frame {
+			return fail("tooloutput: leg %d differs between the two synchronous drives", i)
+		}
+	}
+	fmt.Println("deterministic: OK — two synchronous drives produced byte-identical frames")
+	fmt.Println("asserts: OK — tool rows wear ▸/▾ chevrons; a click toggles the captured ToolOutput body (wrapped, dim, under the row); a RUNNING call expands to the pinned \"no output as such\" empty state; the done event's ToolOutput updates the SAME expanded body in place (applyEventCore's SetToolOutput feed); an output-less call expands independently; rows fold independently; two drives byte-identical")
+	return nil
+}
+
 func main() {
 	tab := flag.String("tab", defaultTab, "active tab: chat|terminal|agents|board|mail|activity")
 	theme := flag.String("theme", "", "force a ui theme: "+strings.Join(chrome.ThemeNames(), "|"))
@@ -7919,6 +8054,7 @@ func main() {
 	boardsync := flag.Bool("boardsync", false, "completion board-sync proof (synchronous): 3 DOING rows staged (tekton-1 ×2, skopos-1 title twin); return 1 flips tekton-1's OLDEST stranded row + ONE \"[office] board sync\" note, return 2 (tekton-2, distinct owner) flips NONE of skopos-1's — frames before/after + counts, two drives byte-identical")
 	wdiff := flag.Bool("wdiff", false, "per-call thread-diff proof: a completed worker Edit's CallID-keyed EvFileDiff pins INSIDE the thread — collapsed sneak gains the dim \"· +A -D\" suffix, ctrl+g shows the tool-row suffix + the clickable \"↳ diff · path +A -D\" sub-row, a click opens/closes the parsed line-numbered body")
 	click := flag.Bool("click", false, "mouse proof: scripted clicks — floor sprite click selects the agent (activity tab + ▸ marker + office notice), double-click toggles its thread + jumps to chat, chat thread-header/summary clicks toggle round-trip, chrome rows ignore clicks")
+	tooloutput := flag.Bool("tooloutput", false, "tool-output expansion proof (synchronous, REAL mouse clicks): a boss tool row's ▸/▾ chevron toggles its captured ToolOutput body — a RUNNING call expands to the pinned \"no output as such\" empty state, the done event's ToolOutput updates the SAME expanded body in place, an output-less call expands independently, rows fold independently; two drives byte-identical")
 	stop := flag.Bool("stop", false, "/stop proof (synchronous): boss mid-stream with tools running + a staged second placeholder + a roadblock-queued item + delegating state; typing /stop must hit stub.AbortSessions and unwind in ONE frame — \"stopped by user\" placeholders, \" (stopped)\" stream appendix, tools ✗ aborted, thread ✗ stopped, BossThinking/Delegating cleared, queue intact; a /queue leg proves the item survived unsent")
 	bypass := flag.Bool("bypass", false, "/bypass session-scoped bypass-permissions proof (synchronous): /bypass opens the arming confirm (enable/cancel); enable arms the mode — the ⚠ BYPASS segment rides the topbar + the pinned ON notice; a stray EvPermission auto-answers allow-once on the stub's wire with NO modal parked + the dim auto-approved row; /bypass again disables INSTANTLY (no confirm) — OFF notice + segment gone; two drives byte-identical")
 	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) notes ONE \"boss turn wedged\" line in the ACTIVITY tab (zero transcript rows) + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
@@ -8117,6 +8253,14 @@ func main() {
 
 	if *click {
 		if err := runClickProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if *tooloutput {
+		if err := runToolOutputProof(); err != nil {
 			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
 			os.Exit(1)
 		}
