@@ -572,12 +572,61 @@ func TestClaudeSubagentLifecycle(t *testing.T) {
 	// task done + returned + mail
 	evs = claudeFeed(t, ctx, `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_task1","content":"repo scanned: 42 files","is_error":false}]},"session_id":"sess-1","parent_tool_use_id":null}`, 300)
 	kinds = claudeKinds(evs)
-	if len(evs) != 2 || kinds[0] != state.EvTask || kinds[1] != state.EvReturned {
-		t.Fatalf("a Task result must flip the board + return, got %v", kinds)
+	if len(evs) != 4 || kinds[0] != state.EvTask || kinds[1] != state.EvReturned || kinds[2] != state.EvTool || kinds[3] != state.EvFire {
+		t.Fatalf("a Task result must flip board + return + tool(done) + fire, got %v", kinds)
 	}
 	if evs[0].Task.Status != state.TaskDone || evs[1].Mail.Subject != "return: scan the repo" ||
 		evs[1].Mail.From != emp.Name || !strings.Contains(evs[1].Mail.Body, "repo scanned") {
 		t.Fatalf("return rows drifted: %+v %+v", evs[0].Task, evs[1].Mail)
+	}
+	if evs[2].ToolState != "done" || evs[3].EmployeeID != emp.ID {
+		t.Fatalf("tool-done or fire drifted: %+v %+v", evs[2], evs[3])
+	}
+}
+
+func TestClaudeAgentToolSubagentLifecycle(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	// newer Claude Code CLI emits "Agent" instead of "Task" for subagents
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-30","role":"assistant","content":[{"type":"tool_use","id":"toolu_agent1","name":"Agent","input":{"description":"research auth flow","subagent_type":"general-purpose"}}]},"session_id":"sess-1","uuid":"msg-30","parent_tool_use_id":null}`, 100)
+	kinds := claudeKinds(evs)
+	if len(evs) != 2 || kinds[0] != state.EvHire || kinds[1] != state.EvDispatch {
+		t.Fatalf("an Agent call must hire + dispatch, got %v", kinds)
+	}
+	emp := evs[0].Employee
+	if emp.ID != "task-toolu_agent1" || evs[1].Task.Title != "research auth flow" {
+		t.Fatalf("Agent tool wiring drifted: %+v %+v", emp, evs[1].Task)
+	}
+	// the Agent's tool_result returns the subagent
+	evs = claudeFeed(t, ctx, `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_agent1","content":"auth flow documented","is_error":false}]},"session_id":"sess-1","parent_tool_use_id":null}`, 200)
+	kinds = claudeKinds(evs)
+	if len(evs) != 4 || kinds[0] != state.EvTask || kinds[1] != state.EvReturned || kinds[2] != state.EvTool || kinds[3] != state.EvFire {
+		t.Fatalf("Agent result must flip board + return + tool(done) + fire, got %v", kinds)
+	}
+}
+
+func TestClaudeCancelRequestClearsPerm(t *testing.T) {
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	// simulate a permission prompt arriving via control_request can_use_tool
+	evs := claudeFeed(t, ctx, `{"type":"control_request","request_id":"req-42","request":{"subtype":"can_use_tool","tool_name":"Bash","description":"run ls","input":{"command":"ls"}},"session_id":"sess-1"}`, 100)
+	kinds := claudeKinds(evs)
+	if len(evs) < 1 || kinds[0] != state.EvPermission {
+		t.Fatalf("control_request must emit EvPermission, got %v", kinds)
+	}
+	// now cancel it
+	evs = claudeFeed(t, ctx, `{"type":"control_cancel_request","request_id":"req-42","session_id":"sess-1"}`, 200)
+	kinds = claudeKinds(evs)
+	if len(evs) != 1 || kinds[0] != state.EvPermission {
+		t.Fatalf("cancel must resolve the permission, got %v", kinds)
+	}
+	if evs[0].ToolState != "resolved" || evs[0].PermissionID != "req-42" {
+		t.Fatalf("cancel resolution drifted: %+v", evs[0])
+	}
+	// a second cancel is a no-op
+	evs = claudeFeed(t, ctx, `{"type":"control_cancel_request","request_id":"req-42","session_id":"sess-1"}`, 300)
+	if len(evs) != 0 {
+		t.Fatalf("double cancel must be no-op, got %v", claudeKinds(evs))
 	}
 }
 

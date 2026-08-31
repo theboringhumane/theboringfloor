@@ -357,6 +357,13 @@ type officeSpawnBackend interface {
 	NewOffice() (string, error)
 }
 
+// btwSwapBackend — the /btw seam: re-pin the primary to a previously
+// saved session id mid-flight (no server-side create — the session must
+// already exist). Used by /done to restore the pre-btw primary.
+type btwSwapBackend interface {
+	SwapPrimary(id string) error
+}
+
 // --- model wiring ------------------------------------------------------------
 
 // hydrateSession — the restore leg of app.New (live mode only): transcript

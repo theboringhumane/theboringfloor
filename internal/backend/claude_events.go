@@ -794,8 +794,11 @@ func mapClaudeEvent(raw claudeEvent, ctx *claudeNormCtx, now int64) []state.Even
 	case "control_request":
 		return ctx.mapClaudeControlRequest(raw, now)
 
-	case "control_response", "keep_alive", "control_cancel_request":
+	case "control_response", "keep_alive":
 		return nil // our own responses / protocol keep-alives
+
+	case "control_cancel_request":
+		return ctx.mapClaudeCancelRequest(raw, now)
 
 	case "result":
 		return ctx.mapClaudeUsage(raw)
@@ -951,7 +954,7 @@ func (ctx *claudeNormCtx) mapClaudeAssistant(raw claudeEvent, now int64) []state
 			}
 		case "tool_use":
 			name := block.Name
-			if strings.EqualFold(name, "Task") {
+			if strings.EqualFold(name, "Task") || strings.EqualFold(name, "Agent") {
 				subagentType, _ := block.Input["subagent_type"].(string)
 				description, _ := block.Input["description"].(string)
 				// a Task call's hire is one-shot per tool_use id
@@ -965,10 +968,10 @@ func (ctx *claudeNormCtx) mapClaudeAssistant(raw claudeEvent, now int64) []state
 					continue
 				}
 			}
+			evs = append(evs, ctx.claudeToolStart(block.ID, name, ownerID, ownerName, block.Input)...)
 			if h := ctx.tools[block.ID]; h != nil {
 				h.snapshotIn = true
 			}
-			evs = append(evs, ctx.claudeToolStart(block.ID, name, ownerID, ownerName, block.Input)...)
 		}
 	}
 	if parent == "" {
@@ -1016,6 +1019,8 @@ func (ctx *claudeNormCtx) mapClaudeUser(raw claudeEvent, now int64) []state.Even
 			evs = append(evs,
 				state.Event{Kind: state.EvTask, Task: done},
 				state.Event{Kind: state.EvReturned, EmployeeID: t.employeeID, TaskID: done.ID, Mail: mail},
+				state.Event{Kind: state.EvTool, CallID: callID, ToolState: "done", EmployeeID: t.employeeID, EmployeeName: t.employee.Name},
+				state.Event{Kind: state.EvFire, EmployeeID: t.employeeID},
 			)
 			delete(ctx.tools, callID)
 			continue
@@ -1023,6 +1028,34 @@ func (ctx *claudeNormCtx) mapClaudeUser(raw claudeEvent, now int64) []state.Even
 		evs = append(evs, ctx.claudeToolFinish(callID, block.IsError, resultText)...)
 	}
 	return evs
+}
+
+// mapClaudeCancelRequest handles the CLI cancelling a pending permission or
+// question prompt (timeout, user action in another client, etc.).
+func (ctx *claudeNormCtx) mapClaudeCancelRequest(raw claudeEvent, now int64) []state.Event {
+	id := raw.RequestID
+	if id == "" {
+		return nil
+	}
+	if hold, ok := ctx.pendingPerms[id]; ok {
+		delete(ctx.pendingPerms, id)
+		delete(ctx.permMeta, id)
+		return []state.Event{{
+			Kind: state.EvPermission, PermissionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolSummary: "cancelled by CLI", ToolState: "resolved",
+		}}
+	}
+	if hold, ok := ctx.pendingQuestions[id]; ok {
+		delete(ctx.pendingQuestions, id)
+		delete(ctx.dialogMeta, id)
+		return []state.Event{{
+			Kind: state.EvQuestion, QuestionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolSummary: "cancelled by CLI", ToolState: "resolved",
+		}}
+	}
+	return nil
 }
 
 // claudeAskUserDialogKind is the CLI's AskUserQuestion tool dialog kind.

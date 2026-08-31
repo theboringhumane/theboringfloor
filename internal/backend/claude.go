@@ -850,9 +850,15 @@ func (b *liveClaudeBackend) Send(text string) error {
 
 	b.mu.Lock()
 	respawn := b.died && b.initDone
+	if respawn {
+		b.died = false // claim the respawn under lock — second racer sees died=false
+	}
 	b.mu.Unlock()
 	if respawn {
 		if err := b.respawnForSend(); err != nil {
+			b.mu.Lock()
+			b.died = true // restore on failure so next Send retries
+			b.mu.Unlock()
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[claude] respawn failed: " + shortTitle(err.Error(), 100)})
 		}
 	}
@@ -1491,7 +1497,7 @@ func (b *liveClaudeBackend) ReconnectMCP(name string) error {
 			"[claude] MCP %s reconnect is respawn-only — the process is already down; the next send respawns it", name)})
 		return nil
 	}
-	_ = syscall.Kill(proc.Process.Pid, syscall.SIGTERM)
+	_ = proc.Process.Signal(syscall.SIGTERM)
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[claude] reconnecting MCP %s: process respawn requested — the next send respawns with --resume", name)})
 	return nil

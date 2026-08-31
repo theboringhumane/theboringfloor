@@ -1434,6 +1434,30 @@ func (b *liveBackend) ResetPrimary(forceNew bool) error {
 	return nil
 }
 
+// SwapPrimary re-pins the primary to a previously saved session id
+// mid-flight (no server-side create — the session must already exist).
+// Used by the /btw subchat feature: /done restores the pre-btw primary.
+func (b *liveBackend) SwapPrimary(id string) error {
+	b.mu.Lock()
+	old := b.primaryID
+	b.primaryID = id
+	b.respawnFresh = false
+	b.respawnOldID = ""
+	concID := b.forgetConciergeLocked()
+	b.mu.Unlock()
+	if concID != "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with primary swap (" + concID + ")"})
+	}
+	if old != "" && old != id {
+		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
+	}
+	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: id, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
+	}})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary session swapped to " + id})
+	return nil
+}
+
 // ---------------------------------------------------------------- office session seams (ADDITIVE)
 
 // PrimaryOverride pins the boss-session id Start should resume (the app

@@ -264,6 +264,14 @@ type NotifyBus interface {
 	Notify(kind, title, body string)
 }
 
+// btwSnapshot — saved state for a /btw subchat session.
+type btwSnapshot struct {
+	chat      []state.ChatMsg
+	tasks     []state.BoardTask
+	mails     []state.MailItem
+	primaryID string
+}
+
 // Model is the tea.Model for the whole app.
 type Model struct {
 	backend state.Backend
@@ -452,6 +460,11 @@ type Model struct {
 	// Message backlog (model-level so it survives tab switches): texts typed
 	// while a boss reply is pending, each with its board row id.
 	queue []queueEntry
+
+	// btw — the /btw subchat save slot: non-nil while in a btw side session.
+	// /done restores and nils it. /btw while non-nil is rejected (no nesting).
+	// /new while in btw discards the save (you abandoned it).
+	btwSaved *btwSnapshot
 
 	// Batch dispatch bookkeeping (set by dispatchQueued, consumed by the
 	// pending→non-pending completion transition):
@@ -2127,6 +2140,9 @@ func (m Model) hintLine() string {
 		// F1 — the ctrl+x approve arm rides the same warn seam, just
 		// under the quit arm (quit-out-everything outranks approve).
 		return chrome.OnBarBold(chrome.Warn, " "+approveArmToast+" ")
+	}
+	if m.btwSaved != nil {
+		return chrome.OnBarBold(chrome.OK, " btw — /done to return ")
 	}
 	if m.copyNote != "" {
 		if m.copyNoteBad {
@@ -5387,6 +5403,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		}
 		m.chat.SetQuestion(m.questionView(m.question))
 	case "/new":
+		m.btwSaved = nil // /new abandons any btw session
 		m.newOffice() // sessions.go — clear surfaces + fresh "theboringoffice office"
 	case "/backend":
 		// install-seeded brain.json backend.name's in-app twin: show the
@@ -5425,6 +5442,96 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// browser tab: parse the arg, jump to the pane, load — the dim
 		// completion notice lands with the fetch verdict (app/browser.go).
 		return m.applyOpenSlash(fields)
+	case "/btw":
+		if m.btwSaved != nil {
+			m.noticeErr("already in a btw session — /done to return first")
+			return nil
+		}
+		if hasPendingBoss(m.st) {
+			m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+			return nil
+		}
+		// Save current state.
+		var savedPrimary string
+		if pb, ok := m.backend.(primarySeamBackend); ok {
+			savedPrimary = pb.PrimaryID()
+		}
+		m.btwSaved = &btwSnapshot{
+			chat:      append([]state.ChatMsg(nil), m.st.Chat...),
+			tasks:     append([]state.BoardTask(nil), m.st.Tasks...),
+			mails:     append([]state.MailItem(nil), m.st.Mails...),
+			primaryID: savedPrimary,
+		}
+		// Clear surfaces (same pattern as newOffice).
+		m.st.Chat = nil
+		m.st.Tasks = nil
+		m.st.Mails = nil
+		m.st.Bubbles = nil
+		m.st.BossThinking = false
+		m.st.BossDelegating = false
+		m.resetPager()
+		if m.chat != nil {
+			m.chat.ClearAttachments()
+		}
+		// Mint fresh backend session.
+		if ob, ok := m.backend.(officeSpawnBackend); ok && m.st.Mode == state.ModeLive {
+			if tb, ok := m.team(); ok {
+				_ = tb.ResetPrimary(true)
+			}
+			if _, err := ob.NewOffice(); err != nil {
+				m.noticeErr("/btw: " + err.Error())
+				// Restore on failure.
+				m.st.Chat = m.btwSaved.chat
+				m.st.Tasks = m.btwSaved.tasks
+				m.st.Mails = m.btwSaved.mails
+				m.btwSaved = nil
+				return nil
+			}
+		}
+		m.tabs.SetState(m.st)
+		m.notice("btw session — /done to return")
+		// If there's a message after /btw, send it.
+		msg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/btw"))
+		if msg != "" {
+			b := m.backend
+			return func() tea.Msg {
+				if b == nil {
+					return nil
+				}
+				_ = b.Send(msg)
+				return nil
+			}
+		}
+	case "/done":
+		if m.btwSaved == nil {
+			m.noticeErr("not in a btw session (/btw starts one)")
+			return nil
+		}
+		if hasPendingBoss(m.st) {
+			m.noticeErr("/done: boss is mid-turn — wait for it to finish or /stop first")
+			return nil
+		}
+		saved := m.btwSaved
+		m.btwSaved = nil
+		// Restore surfaces.
+		m.st.Chat = saved.chat
+		m.st.Tasks = saved.tasks
+		m.st.Mails = saved.mails
+		m.st.Bubbles = nil
+		m.st.BossThinking = false
+		m.st.BossDelegating = false
+		m.resetPager()
+		if m.chat != nil {
+			m.chat.ClearAttachments()
+		}
+		// Re-pin the original backend session.
+		if saved.primaryID != "" {
+			if sb, ok := m.backend.(btwSwapBackend); ok {
+				_ = sb.SwapPrimary(saved.primaryID)
+			}
+		}
+		m.tabs.SetState(m.st)
+		m.notice("back from btw")
 	case "/quit":
 		m.persistOfficeSession(true) // final SYNC snapshot (live only)
 		m.closeTerminal()
