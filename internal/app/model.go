@@ -2105,12 +2105,14 @@ func (m Model) Frame() string {
 			side = m.plan.View()
 		} else {
 			side = lipgloss.NewStyle().Width(m.width).Height(m.middleH - bandH).
+				Background(chrome.PanelBgColor).
 				Render(m.tabs.View())
 		}
 		mid = lipgloss.JoinVertical(lipgloss.Left, left, side)
 		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	} else {
 		side := lipgloss.NewStyle().Width(m.sidebar).Height(m.middleH).
+			Background(chrome.PanelBgColor).
 			Render(m.tabs.View())
 		if m.planPaneVisible() {
 			// a presented/edited plan: the plan editor owns the floor slot.

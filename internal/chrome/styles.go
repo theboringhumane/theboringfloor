@@ -51,6 +51,7 @@ type Theme struct {
 
 	BarBg     color.Color // inverted bar background (topbar + statusbar)
 	Border    color.Color // panel rounded border
+	PanelBg   color.Color // sidebar panel background — subtle offset from terminal bg
 	ToolColor color.Color // chat tool one-liner ink (noir: dim cyan)
 
 	// Deep-work stream accents.
@@ -94,6 +95,7 @@ var themeList = []Theme{
 		White: lipgloss.Color("7"), Black: lipgloss.Color("0"),
 		Dim:   lipgloss.Color("8"),
 		BarBg: lipgloss.Color("8"), Border: lipgloss.Color("7"),
+		PanelBg:      lipgloss.Color("#161619"),
 		ToolColor:    lipgloss.Color("6"),
 		Warn:         lipgloss.Color("3"),
 		Question:     lipgloss.Color("11"),
@@ -121,6 +123,7 @@ var themeList = []Theme{
 		White: lipgloss.Color("#201f1e"), Black: lipgloss.Color("#ffffff"),
 		Dim:   lipgloss.Color("#57606a"),
 		BarBg: lipgloss.Color("#d8dce1"), Border: lipgloss.Color("#57606a"),
+		PanelBg:      lipgloss.Color("#f0f1f4"),
 		ToolColor:    lipgloss.Color("#0891b2"),
 		Warn:         lipgloss.Color("#b35900"),
 		Question:     lipgloss.Color("#9a6700"),
@@ -148,6 +151,7 @@ var themeList = []Theme{
 		White: lipgloss.Color("#e4e4e4"), Black: lipgloss.Color("#111111"),
 		Dim:   lipgloss.Color("#6f6f6f"),
 		BarBg: lipgloss.Color("#3a3a3a"), Border: lipgloss.Color("#8a8a8a"),
+		PanelBg:      lipgloss.Color("#181818"),
 		ToolColor:    lipgloss.Color("#a8a8a8"),
 		Warn:         lipgloss.Color("#efefef"),
 		Question:     lipgloss.Color("#c6c6c6"),
@@ -177,6 +181,7 @@ var themeList = []Theme{
 		White: lipgloss.Color("#f8f8f2"), Black: lipgloss.Color("#282a36"),
 		Dim:   lipgloss.Color("#6272a4"),
 		BarBg: lipgloss.Color("#44475a"), Border: lipgloss.Color("#6272a4"),
+		PanelBg:      lipgloss.Color("#1e1f29"),
 		ToolColor:    lipgloss.Color("#8be9fd"),
 		Warn:         lipgloss.Color("#ffb86c"),
 		Question:     lipgloss.Color("#f1fa8c"),
@@ -204,6 +209,7 @@ var themeList = []Theme{
 		White: lipgloss.Color("#839496"), Black: lipgloss.Color("#002b36"),
 		Dim:   lipgloss.Color("#586e75"),
 		BarBg: lipgloss.Color("#073642"), Border: lipgloss.Color("#586e75"),
+		PanelBg:      lipgloss.Color("#012a38"),
 		ToolColor:    lipgloss.Color("#2aa198"),
 		Warn:         lipgloss.Color("#cb4b16"),
 		Question:     lipgloss.Color("#b58900"),
@@ -406,6 +412,9 @@ var (
 // BarBgColor is the inverted bar background of the active theme.
 var BarBgColor color.Color
 
+// PanelBgColor is the sidebar panel background of the active theme.
+var PanelBgColor color.Color
+
 // Expanded diff slots of the active theme (re-pointed by SetTheme).
 // DiffAddBg/DiffDelBg are nil in themes with suppressed tints (mono).
 var (
@@ -460,9 +469,10 @@ func applyTheme(t Theme) {
 	Magenta, Blue, White, Black, Dim = t.Magenta, t.Blue, t.White, t.Black, t.Dim
 	Warn, Question = t.Warn, t.Question
 	BarBgColor = t.BarBg
+	PanelBgColor = t.PanelBg
 
 	Bar = lipgloss.NewStyle().Background(BarBgColor).Foreground(White)
-	PanelBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border)
+	PanelBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).BorderBackground(t.PanelBg).Background(t.PanelBg)
 	TabActive = lipgloss.NewStyle().Background(Accent).Foreground(Black).Bold(true)
 	TabInactive = lipgloss.NewStyle().Foreground(Dim)
 	Header = lipgloss.NewStyle().Bold(true).Foreground(White)
