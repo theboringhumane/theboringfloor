@@ -480,6 +480,15 @@ func (ctx *claudeNormCtx) nameBaseClaude(role state.EmployeeRole) string {
 	return nameBase(role)
 }
 
+// isSubagentTool returns true for tool names that represent a subagent dispatch.
+func isSubagentTool(name string) bool {
+	switch strings.ToLower(name) {
+	case "task", "agent":
+		return true
+	}
+	return false
+}
+
 // taskFor resolves the subagent run a parent-tool-use frame belongs to.
 func (ctx *claudeNormCtx) taskFor(parentToolUseID string) (*claudeTask, bool) {
 	t, ok := ctx.tasks[parentToolUseID]
@@ -865,6 +874,18 @@ func (ctx *claudeNormCtx) mapClaudeStream(inner claudeStreamInner, parentToolUse
 		if kind == "tool_use" {
 			id := inner.ContentBlock.ID
 			ctx.blockTool[inner.Index] = id
+			// Subagent tools on the boss's own stream: hire early so
+			// ownerFor resolves before the snapshot arrives.
+			if isSubagentTool(inner.ContentBlock.Name) && parentToolUseID == "" {
+				if _, hired := ctx.tasks[id]; !hired {
+					_, _, hires := ctx.claudeIssueEmployee(id, "", "")
+					if ctx.tools[id] == nil {
+						ctx.tools[id] = &claudeToolHold{callID: id}
+					}
+					return hires
+				}
+				return nil // already hired from a prior frame
+			}
 			ownerID, ownerName := ctx.ownerFor(parentToolUseID)
 			return ctx.claudeToolStart(id, inner.ContentBlock.Name, ownerID, ownerName, nil)
 		}
@@ -991,19 +1012,37 @@ func (ctx *claudeNormCtx) mapClaudeAssistant(raw claudeEvent, now int64) []state
 			}
 		case "tool_use":
 			name := block.Name
-			if strings.EqualFold(name, "Task") || strings.EqualFold(name, "Agent") {
+			if isSubagentTool(name) {
 				subagentType, _ := block.Input["subagent_type"].(string)
 				description, _ := block.Input["description"].(string)
-				// a Task call's hire is one-shot per tool_use id
-				if _, hired := ctx.tasks[block.ID]; !hired {
+				if t, hired := ctx.tasks[block.ID]; hired {
+					// Stream already hired this task — enrich title if the
+					// snapshot carries a real description, and freeze the
+					// tool hold (snapshotIn) so claudeToolFold stops growing.
+					if h := ctx.tools[block.ID]; h != nil {
+						h.snapshotIn = true
+					}
+					title := shortTitle(orTitle(description), 0)
+					defaultTitle := shortTitle(orTitle(""), 0)
+					if t.employee.Task == defaultTitle && title != defaultTitle {
+						t.employee.Task = title
+						evs = append(evs, state.Event{
+							Kind: state.EvTask, EmployeeID: t.employeeID,
+							Task: state.BoardTask{
+								ID: t.employeeID, Title: title,
+								Status: state.TaskInProgress, Owner: t.employee.Name, At: nowMs(),
+							},
+						})
+					}
+				} else {
 					_, _, hires := ctx.claudeIssueEmployee(block.ID, subagentType, description)
 					h := ctx.tools[block.ID]
 					if h == nil {
 						ctx.tools[block.ID] = &claudeToolHold{callID: block.ID, snapshotIn: true}
 					}
 					evs = append(evs, hires...)
-					continue
 				}
+				continue
 			}
 			evs = append(evs, ctx.claudeToolStart(block.ID, name, ownerID, ownerName, block.Input)...)
 			if h := ctx.tools[block.ID]; h != nil {

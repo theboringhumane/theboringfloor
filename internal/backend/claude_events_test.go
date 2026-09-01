@@ -659,3 +659,90 @@ func TestClaudeInterruptedStreamFlush(t *testing.T) {
 		t.Fatalf("interrupted flush drifted: %+v", evs)
 	}
 }
+
+func TestIsSubagentTool(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{
+		{"Task", true}, {"Agent", true},
+		{"task", true}, {"agent", true},
+		{"AGENT", true}, {"TASK", true},
+		{"Read", false}, {"Bash", false}, {"Edit", false}, {"Workflow", false}, {"", false},
+	} {
+		if got := isSubagentTool(tc.name); got != tc.want {
+			t.Errorf("isSubagentTool(%q) = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestClaudeStreamSubagentHireOnContentBlockStart(t *testing.T) {
+	// A content_block_start with a subagent tool name on the boss stream
+	// (parent_tool_use_id="") must emit EvHire early, before the snapshot.
+	for _, toolName := range []string{"Agent", "Task"} {
+		t.Run(toolName, func(t *testing.T) {
+			ctx := newClaudeNormCtx(nil)
+			ctx.primaryID = "sess-1"
+			claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-sub"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+			evs := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_x1","name":"`+toolName+`","input":{}}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+			if len(evs) == 0 {
+				t.Fatalf("content_block_start for %s must emit hire events", toolName)
+			}
+			if evs[0].Kind != state.EvHire {
+				t.Fatalf("first event must be EvHire, got %v", evs[0].Kind)
+			}
+			if evs[0].Employee.ID != "task-toolu_x1" {
+				t.Fatalf("employee ID drifted: %s", evs[0].Employee.ID)
+			}
+			// a duplicate content_block_start for the same tool_use is a no-op
+			evs = claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_x1","name":"`+toolName+`","input":{}}},"session_id":"sess-1","parent_tool_use_id":null}`, 120)
+			if len(evs) != 0 {
+				t.Fatalf("duplicate hire must be silent, got %v", claudeKinds(evs))
+			}
+		})
+	}
+}
+
+func TestClaudeStreamSubagentHireNotOnWorkerStream(t *testing.T) {
+	// A subagent tool on a WORKER stream (parent_tool_use_id set) must NOT
+	// trigger an early hire — it falls through to the normal tool_use path.
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-w"}},"session_id":"sess-1","parent_tool_use_id":"toolu_parent"}`, 100)
+	evs := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_nested","name":"Agent","input":{}}},"session_id":"sess-1","parent_tool_use_id":"toolu_parent"}`, 110)
+	for _, e := range evs {
+		if e.Kind == state.EvHire {
+			t.Fatalf("a subagent tool on a worker stream must not early-hire: %+v", e)
+		}
+	}
+}
+
+func TestClaudeStreamSubagentSnapshotNoDoubleHire(t *testing.T) {
+	// After stream-path hire, the snapshot must NOT re-hire (no duplicate
+	// EvHire/EvDispatch). The stream hire already seated the employee with
+	// the "untitled brief" default; the snapshot recognises the existing task.
+	ctx := newClaudeNormCtx(nil)
+	ctx.primaryID = "sess-1"
+	claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg-e1"}},"session_id":"sess-1","parent_tool_use_id":null}`, 100)
+	hires := claudeFeed(t, ctx, `{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_e1","name":"Agent","input":{}}},"session_id":"sess-1","parent_tool_use_id":null}`, 110)
+	if len(hires) == 0 || hires[0].Kind != state.EvHire {
+		t.Fatalf("stream must hire, got %v", claudeKinds(hires))
+	}
+	// the snapshot carries the description — must not re-hire but MUST enrich title
+	evs := claudeFeed(t, ctx, `{"type":"assistant","message":{"id":"msg-e1","role":"assistant","content":[{"type":"tool_use","id":"toolu_e1","name":"Agent","input":{"description":"check migrations","subagent_type":"Explore"}}]},"session_id":"sess-1","uuid":"msg-e1","parent_tool_use_id":null}`, 120)
+	for _, e := range evs {
+		if e.Kind == state.EvHire {
+			t.Fatalf("snapshot must not re-hire an already-seated subagent: %+v", e)
+		}
+	}
+	// verify enrichment: the task title should now reflect the description
+	var enriched bool
+	for _, e := range evs {
+		if e.Kind == state.EvTask && e.Task.Title == "check migrations" {
+			enriched = true
+		}
+	}
+	if !enriched {
+		t.Fatalf("snapshot must enrich the task title, got %v", claudeKinds(evs))
+	}
+}

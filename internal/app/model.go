@@ -963,6 +963,14 @@ type stopWorkMsg struct{}
 // silence on success — the G1 contract, off the UI goroutine).
 type stopAbortResultMsg struct{ err error }
 
+// btwOfficeMsg ferries the async /btw NewOffice result back to the UI
+// goroutine: the backend spawn + teardown rides a tea.Cmd so the 30s
+// drain never parks the input.
+type btwOfficeMsg struct {
+	err      error
+	trailing string // message after "/btw " to send on success
+}
+
 // armClearMsg — the ctrl+q quit arm's own expiry tick landed (scheduled
 // with quitArmWindow by the arming press): retires the arm + its toast.
 type armClearMsg struct{}
@@ -1883,6 +1891,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			qdebugf("/stop: AbortSessions failed (unwound anyway): %v", msg.err)
 			m.notice("/stop: abort signal failed remotely — office unwound anyway (the turn may still finish server-side; its reply lands as a fresh bubble)")
+		}
+	case btwOfficeMsg:
+		// the /btw backend spawn landed back on the UI goroutine.
+		if msg.err != nil {
+			qdebugf("/btw: NewOffice failed: %v", msg.err)
+			m.noticeErr("/btw: " + msg.err.Error())
+			// Restore on failure.
+			if m.btwSaved != nil {
+				m.st.Chat = m.btwSaved.chat
+				m.st.Tasks = m.btwSaved.tasks
+				m.st.Mails = m.btwSaved.mails
+				m.btwSaved = nil
+			}
+		} else {
+			m.tabs.SetState(m.st)
+			m.notice("btw session — /done to return")
+			if msg.trailing != "" {
+				b := m.backend
+				cmds = append(cmds, func() tea.Msg {
+					if b == nil {
+						return nil
+					}
+					_ = b.Send(msg.trailing)
+					return nil
+				})
+			}
 		}
 	case armClearMsg:
 		// the quit arm's expiry tick landed: a still-live arm old enough
@@ -5493,35 +5527,23 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		if m.chat != nil {
 			m.chat.ClearAttachments()
 		}
-		// Mint fresh backend session.
+		// Mint fresh backend session — async so the 30s teardown never
+		// parks the UI goroutine.
 		if ob, ok := m.backend.(officeSpawnBackend); ok && m.st.Mode == state.ModeLive {
-			if tb, ok := m.team(); ok {
-				_ = tb.ResetPrimary(true)
-			}
-			if _, err := ob.NewOffice(); err != nil {
-				m.noticeErr("/btw: " + err.Error())
-				// Restore on failure.
-				m.st.Chat = m.btwSaved.chat
-				m.st.Tasks = m.btwSaved.tasks
-				m.st.Mails = m.btwSaved.mails
-				m.btwSaved = nil
-				return nil
+			trailing := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/btw"))
+			tb, hasTB := m.team()
+			m.tabs.SetState(m.st)
+			m.notice("starting btw session…")
+			return func() tea.Msg {
+				if hasTB {
+					_ = tb.ResetPrimary(true)
+				}
+				_, err := ob.NewOffice()
+				return btwOfficeMsg{err: err, trailing: trailing}
 			}
 		}
 		m.tabs.SetState(m.st)
 		m.notice("btw session — /done to return")
-		// If there's a message after /btw, send it.
-		msg := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/btw"))
-		if msg != "" {
-			b := m.backend
-			return func() tea.Msg {
-				if b == nil {
-					return nil
-				}
-				_ = b.Send(msg)
-				return nil
-			}
-		}
 	case "/done":
 		if m.btwSaved == nil {
 			m.noticeErr("not in a btw session (/btw starts one)")
