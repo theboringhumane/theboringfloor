@@ -971,6 +971,11 @@ type btwOfficeMsg struct {
 	trailing string // message after "/btw " to send on success
 }
 
+// doneOfficeMsg ferries the async /done SwapPrimary result back to the UI
+// goroutine: same pattern as btwOfficeMsg — the teardown+spawn never parks
+// the input.
+type doneOfficeMsg struct{ err error }
+
 // armClearMsg — the ctrl+q quit arm's own expiry tick landed (scheduled
 // with quitArmWindow by the arming press): retires the arm + its toast.
 type armClearMsg struct{}
@@ -1906,7 +1911,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else {
 			m.tabs.SetState(m.st)
-			m.notice("btw session — /done to return")
+			m.notice("btw session — esc or /done to return")
 			if msg.trailing != "" {
 				b := m.backend
 				cmds = append(cmds, func() tea.Msg {
@@ -1917,6 +1922,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return nil
 				})
 			}
+		}
+	case doneOfficeMsg:
+		if msg.err != nil {
+			qdebugf("/done: SwapPrimary failed: %v", msg.err)
+			m.noticeErr("/done: " + msg.err.Error())
+		} else {
+			m.notice("back from btw")
 		}
 	case armClearMsg:
 		// the quit arm's expiry tick landed: a still-live arm old enough
@@ -2176,7 +2188,7 @@ func (m Model) hintLine() string {
 		return chrome.OnBarBold(chrome.Warn, " "+approveArmToast+" ")
 	}
 	if m.btwSaved != nil {
-		return chrome.OnBarBold(chrome.OK, " btw — /done to return ")
+		return chrome.OnBarBold(chrome.OK, " btw — esc or /done to return ")
 	}
 	if m.copyNote != "" {
 		if m.copyNoteBad {
@@ -2360,6 +2372,13 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// modelPicker pattern: a parked turn outranks the view.
 	if m.threadFocus != nil && m.permQ.front() == nil && m.question == nil {
 		return m.focusKey(msg)
+	}
+
+	// ESC while in a /btw side session exits back to the main session,
+	// same as /done. Claimed after thread-focus (its esc wins while open)
+	// and after model-picker, but before tab switches.
+	if key == "esc" && m.btwSaved != nil && m.permQ.front() == nil && m.question == nil {
+		return m.exitBtw()
 	}
 
 	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
@@ -5498,7 +5517,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		return m.applyOpenSlash(fields)
 	case "/btw":
 		if m.btwSaved != nil {
-			m.noticeErr("already in a btw session — /done to return first")
+			m.noticeErr("already in a btw session — esc or /done to return first")
 			return nil
 		}
 		if hasPendingBoss(m.st) {
@@ -5543,37 +5562,9 @@ func (m *Model) applySlash(input string) tea.Cmd {
 			}
 		}
 		m.tabs.SetState(m.st)
-		m.notice("btw session — /done to return")
+		m.notice("btw session — esc or /done to return")
 	case "/done":
-		if m.btwSaved == nil {
-			m.noticeErr("not in a btw session (/btw starts one)")
-			return nil
-		}
-		if hasPendingBoss(m.st) {
-			m.noticeErr("/done: boss is mid-turn — wait for it to finish or /stop first")
-			return nil
-		}
-		saved := m.btwSaved
-		m.btwSaved = nil
-		// Restore surfaces.
-		m.st.Chat = saved.chat
-		m.st.Tasks = saved.tasks
-		m.st.Mails = saved.mails
-		m.st.Bubbles = nil
-		m.st.BossThinking = false
-		m.st.BossDelegating = false
-		m.resetPager()
-		if m.chat != nil {
-			m.chat.ClearAttachments()
-		}
-		// Re-pin the original backend session.
-		if saved.primaryID != "" {
-			if sb, ok := m.backend.(btwSwapBackend); ok {
-				_ = sb.SwapPrimary(saved.primaryID)
-			}
-		}
-		m.tabs.SetState(m.st)
-		m.notice("back from btw")
+		return m.exitBtw()
 	case "/quit":
 		m.persistOfficeSession(true) // final SYNC snapshot (live only)
 		m.closeTerminal()
@@ -5582,6 +5573,41 @@ func (m *Model) applySlash(input string) tea.Cmd {
 	default:
 		m.noticeErr(fmt.Sprintf("/ %s: no such command (/help)", strings.TrimPrefix(cmd, "/")))
 	}
+	return nil
+}
+
+func (m *Model) exitBtw() tea.Cmd {
+	if m.btwSaved == nil {
+		m.noticeErr("not in a btw session (/btw starts one)")
+		return nil
+	}
+	if hasPendingBoss(m.st) {
+		m.noticeErr("/done: boss is mid-turn — wait for it to finish or /stop first")
+		return nil
+	}
+	saved := m.btwSaved
+	m.btwSaved = nil
+	m.st.Chat = saved.chat
+	m.st.Tasks = saved.tasks
+	m.st.Mails = saved.mails
+	m.st.Bubbles = nil
+	m.st.BossThinking = false
+	m.st.BossDelegating = false
+	m.resetPager()
+	if m.chat != nil {
+		m.chat.ClearAttachments()
+	}
+	m.tabs.SetState(m.st)
+	if saved.primaryID != "" {
+		if sb, ok := m.backend.(btwSwapBackend); ok {
+			m.notice("returning from btw…")
+			return func() tea.Msg {
+				err := sb.SwapPrimary(saved.primaryID)
+				return doneOfficeMsg{err: err}
+			}
+		}
+	}
+	m.notice("back from btw")
 	return nil
 }
 

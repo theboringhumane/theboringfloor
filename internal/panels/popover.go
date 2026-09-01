@@ -66,7 +66,7 @@ var slashCommands = []slashCommand{
 	{"/open", "open a page in the browser tab", "/open <url>"},
 	{"/question", "re-open a deferred boss question", ""},
 	{"/btw", "side chat — ask something without polluting main", "/btw [message]"},
-	{"/done", "close btw side chat and return", ""},
+	{"/done", "close btw side chat and return (or press esc)", ""},
 	{"/power", "power governor", "/power auto|performance|saver"},
 	{"/notify", "desktop notifications while unfocused", "/notify on|off"},
 	{"/model", "boss model", "/model provider/model"},
