@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 )
 
 // bgLuminance computes WCAG relative luminance of a registry color. ANSI
@@ -26,6 +28,39 @@ func bgLuminance(c color.Color) float64 {
 		return math.Pow((x+0.055)/1.055, 2.4)
 	}
 	return 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b)
+}
+
+// TestPanelBackgroundOwnership keeps the panel fill at its structural
+// containers. Inline panel semantics must inherit that fill: emitting a
+// background for each wrapped fragment produces visible patch rectangles in
+// light and monochrome themes.
+func TestPanelBackgroundOwnership(t *testing.T) {
+	defer restoreTheme()
+	for _, name := range []string{"noir", "paper", "mono", "dracula", "solarized"} {
+		t.Run(name, func(t *testing.T) {
+			if !SetTheme(name) {
+				t.Fatalf("SetTheme(%q) returned false", name)
+			}
+			if _, absent := PanelBgColor.(lipgloss.NoColor); absent || PanelBgColor == nil {
+				t.Fatal("PanelBgColor must be set for every shipped theme")
+			}
+			if _, absent := PanelBox.GetBackground().(lipgloss.NoColor); absent {
+				t.Fatal("PanelBox must own the panel background")
+			}
+			for label, style := range map[string]lipgloss.Style{
+				"PanelDim": PanelDim, "PanelHeader": PanelHeader, "PanelAccent": PanelAccent,
+				"PanelErr": PanelErr, "PanelOK": PanelOK, "PanelInfo": PanelInfo,
+				"PanelTool": PanelTool, "PanelWarn": PanelWarn,
+			} {
+				if _, absent := style.GetBackground().(lipgloss.NoColor); !absent {
+					t.Errorf("%s must inherit the panel background, got %#v", label, style.GetBackground())
+				}
+			}
+			if _, absent := TabActive.GetBackground().(lipgloss.NoColor); absent {
+				t.Error("active tabs must retain their semantic fill")
+			}
+		})
+	}
 }
 
 // TestThemeClassificationMatchesBackground asserts the Dark flag of every

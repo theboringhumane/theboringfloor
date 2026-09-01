@@ -94,7 +94,7 @@ const threadHintText = "ctrl+g · view subagents"
 // on /theme switches via RefreshTheme — read through a constructor so
 // the SGR pair lands again.
 func threadSpinnerStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor)
+	return lipgloss.NewStyle().Foreground(chrome.Accent)
 }
 
 // threadLiveFrames — the braille run the LIVE header glyph walks:

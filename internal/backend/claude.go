@@ -98,6 +98,7 @@ type liveClaudeBackend struct {
 	chatSlots    map[string]*thoughtSlot
 
 	lastUserText string
+	lastUserMeta string
 	lastUserAt   int64
 
 	// questionStash holds the decoded question pages of each PENDING
@@ -1000,15 +1001,38 @@ func (b *liveClaudeBackend) writeLine(body []byte) error {
 // pending boss placeholder stages per send; a dead process triggers the
 // --resume respawn FIRST (never auto-respawned earlier).
 func (b *liveClaudeBackend) Send(text string) error {
-	trimmed := strings.TrimSpace(text)
+	return b.send(text, text, nil)
+}
+
+// SendWith is the optional attachment seam the app type-asserts. Claude's
+// stream-json media schema has not been verified, so every readable regular
+// attachment rides its safe absolute path reference through the existing
+// text-only user-message flow rather than being silently dropped.
+func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error {
+	prepared, skipped := prepareAttachments(atts)
+	if len(skipped) > 0 {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] could not attach " +
+			strings.Join(skipped, ", ") + " (file unreadable) — sent without it"})
+	}
+	return b.send(attachmentPrompt(text, prepared, func(string) bool { return false }), text, preparedAttachmentNames(prepared))
+}
+
+// send owns Claude's existing text-only transport flow. wireText is what
+// reaches stdin; echoText stays the original user text so path references
+// remain transport detail rather than transcript noise.
+func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []string) error {
+	trimmed := strings.TrimSpace(wireText)
+	echoTrimmed := strings.TrimSpace(echoText)
 	if trimmed == "" || b.fl.isStopped() {
 		return nil
 	}
+	meta := state.AttachMeta(attachmentNames)
 	b.mu.Lock()
 	now := nowMs()
-	duplicate := trimmed == b.lastUserText && b.lastUserText != "" && now-b.lastUserAt < 2000
+	duplicate := echoTrimmed == b.lastUserText && meta == b.lastUserMeta && b.lastUserText != "" && now-b.lastUserAt < 2000
 	if !duplicate {
-		b.lastUserText = trimmed
+		b.lastUserText = echoTrimmed
+		b.lastUserMeta = meta
 		b.lastUserAt = now
 	}
 	b.chatSeq++
@@ -1016,7 +1040,7 @@ func (b *liveClaudeBackend) Send(text string) error {
 	b.mu.Unlock()
 	if !duplicate {
 		b.fl.emit(state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
-			ID: userID, From: "user", Text: trimmed, At: now, Kind: "user",
+			ID: userID, From: "user", Text: echoTrimmed, At: now, Kind: "user", Meta: meta,
 		}})
 	}
 

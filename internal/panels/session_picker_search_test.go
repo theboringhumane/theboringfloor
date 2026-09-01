@@ -61,7 +61,7 @@ func TestSessPickerSearchHighlightRow(t *testing.T) {
 	// the cursor row under a live filter is UNCHANGED: the whole-row
 	// reversed accent IS its highlight.
 	body := "› " + fitPlain("alpha brief", 34) + " 3m · 12 msgs · ses-alph"
-	if got, want := sessMenuRow(row, true, 60, "brief"), sessHigh.Render(fitLabel(body, 60)); got != want {
+	if got, want := sessMenuRow(row, true, 60, "brief"), sessHigh().Render(fitLabel(body, 60)); got != want {
 		t.Fatalf("the cursor row must keep its whole-row reversed accent:\ngot  %q\nwant %q", got, want)
 	}
 

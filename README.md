@@ -35,6 +35,14 @@ curl -fsSL \
   https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
 ```
 
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 | iex
+```
+
+The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringoffice.exe` in `%LOCALAPPDATA%\theboringoffice\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringoffice --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringoffice/releases), verify the checksum, then put `theboringoffice.exe` in a directory on your `PATH`.
+
 Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI):
 
 ```bash
@@ -50,7 +58,7 @@ theboringoffice --demo     # touring mode
 theboringoffice --version  # stamp: version, commit, date
 ```
 
-Pin a tag, or grab a prebuilt (darwin/linux, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringoffice/releases):
+Pin a tag, or grab a prebuilt (macOS/Linux/Windows, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringoffice/releases):
 
 ```bash
 go install github.com/theboringhumane/theboringoffice/cmd/theboringoffice@latest

@@ -106,6 +106,37 @@ export default function GettingStartedPage() {
               />
             </div>
             <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              On Windows, open PowerShell and run this one-liner. It selects the matching Windows
+              release, verifies its SHA-256 checksum, installs{' '}
+              <code className="font-mono text-xs text-foreground">theboringoffice.exe</code> in{' '}
+              <code className="font-mono text-xs text-foreground">
+                %LOCALAPPDATA%\theboringoffice\bin
+              </code>, and adds that directory to your user PATH.
+            </p>
+            <div className="mt-8 max-w-2xl">
+              <CmdBlock
+                lines={[
+                  { t: '# PowerShell — Windows amd64 or arm64', dim: true },
+                  { t: 'irm https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 | iex' },
+                ]}
+              />
+            </div>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Open a new PowerShell window after it finishes, then run{' '}
+              <code className="font-mono text-xs text-foreground">theboringoffice --demo</code>.
+              Prefer a manual install? Download the matching Windows <code className="font-mono text-xs text-foreground">.zip</code>{' '}
+              and checksums file from{' '}
+              <a
+                href="https://github.com/theboringhumane/theboringoffice/releases"
+                className="text-foreground underline underline-offset-4 hover:text-accent"
+              >
+                Releases
+              </a>
+              , verify the SHA-256 checksum, and place{' '}
+              <code className="font-mono text-xs text-foreground">theboringoffice.exe</code> in a
+              directory on your PATH.
+            </p>
+            <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Want Claude Code as the brain instead of the default opencode? Pass{' '}
               <code className="font-mono text-xs text-foreground">--backend</code> at install time
               — it seeds <code className="font-mono text-xs text-foreground">brain.json</code>

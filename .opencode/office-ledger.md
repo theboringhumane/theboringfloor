@@ -7,6 +7,76 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-01 · Harden attachment validation (@developer suba... — tekton-6 (developer) · `issues`
+- summary: Enforced content-validated upload eligibility: only sniffed PNG, JPEG, GIF, WebP, and `%PDF-` PDFs can produce OpenCode file parts.
+- files: `internal/backend/parts.go`, `internal/backend/claude.go`, `internal/backend/parts_test.go`, `internal/backend/claude_attachment_test.go`
+- verify: ```
+- proof: ### Spoofed or mismatched content — one text/path-reference part, zero file parts
+- ledgerId: led-1788278696126-92c03363
+
+### 2026-09-01 · Add Windows installer docs (@developer subagent) — tekton-7 (developer) · `issues`
+- summary: Added `install.ps1`, a Windows PowerShell installer that:
+- files: `install.ps1`, `README.md`, `website/app/docs/getting-started/page.tsx`
+- verify: ```
+- proof: ### Windows installation instructions
+- ledgerId: led-1788278470142-008c64bc
+
+### 2026-09-01 · Audit Windows support (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Mapped the current release mechanism: a tag-triggered GitHub Actions workflow invokes GoReleaser, which currently builds only `darwin` and `linux` archives.
+- files: ### Repository conventions inspected, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/CLAUDE.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.opencode/oikonomos.md`, ### Release pipeline and artifacts, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/go.mod`, ### Installer and installation documentation, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.sh`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/README.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/docs/getting-started/page.tsx`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/get-started/page.tsx`
+- verify: ```
+- proof: ### Intended Windows install and release flow
+- ledgerId: led-1788278367901-b193f8c1
+
+### 2026-09-01 · Review attachment + theme fixes (@reviewer su... — theboringcto-2 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788277949403-fd4aa6ca
+
+### 2026-09-01 · Fix theme cache and frame proof (@developer s... — tekton-5 (developer) · `done`
+- summary: Added active theme identity (`chrome.CurrentTheme().Name`) to `frameDigest`, so chrome’s package-global palette changes invalidate cached frame bytes without co
+- files: `internal/app/digest.go`, `internal/app/theme_frame_test.go`, `cmd/uishot/main.go`
+- verify: ```
+- proof: ### Cache identity and reuse
+- ledgerId: led-1788273016116-0f6a6c2a
+
+### 2026-09-01 · Unify panel background styling (@developer su... — tekton-4 (developer) · `issues`
+- summary: Made `Panel*` and `OnPanel*` semantic text styles foreground-only; sidebar wrappers and `PanelBox` remain the sole continuous panel-background owners.
+- files: `internal/chrome/styles.go`, `internal/chrome/styles_test.go`, `internal/panels/chat.go`, `internal/panels/threads_opencode.go`, `internal/panels/agents.go`, `internal/panels/board.go`, `internal/panels/question_modal.go`, `internal/panels/links.go`, `internal/panels/model_picker.go`, `internal/panels/session_picker.go`, `internal/panels/session_picker_search_test.go`, `internal/panels/theme_surface_test.go`
+- verify: ```
+- proof: *Paper — ANSI-stripped populated chat and expanded tool output**
+- ledgerId: led-1788272544629-537b4e8d
+
+### 2026-09-01 · Fix attachment transport policy (@developer s... — tekton-3 (developer) · `issues`
+- summary: Added a shared attachment preparation path that accepts only readable regular files, resolves missing MIME types, converts paths to absolute paths, and safely q
+- files: `internal/backend/parts.go`, `internal/backend/parts_test.go`, `internal/backend/claude.go`, `internal/backend/claude_attachment_test.go`
+- verify: ```
+- proof: *OpenCode mixed attachment payload** — text/source/archive become path references; PNG, PDF, and JPEG remain real file parts:
+- ledgerId: led-1788272376527-e1ff52b3
+
+### 2026-09-01 · Audit theme background clash (@general subagent) — tekton-2 (developer) · `issues`
+- summary: Audited the in-flight `PanelBg` path and all requested sidebar surfaces without changing files.
+- files: None. Read-only audit.
+- verify: None. Read-only task; no test or mutation commands run.
+- proof: ### Theme initialization and propagation
+- ledgerId: led-1788271986249-b7c64a1b
+
+### 2026-09-01 · Review current dirty regression (@general sub... — theboringcto-1 (cto) · `issues`
+- summary: Performed a read-only regression review of attachment transport and `PanelBg` rendering seams.
+- files: None modified., Relevant reviewed files:, `internal/app/model.go:139-196`, `internal/app/model.go:1363-1370`, `internal/app/digest.go:31-77`, `internal/backend/parts.go:23-52`, `internal/backend/opencode.go:437-450`, `internal/backend/claude.go:996-1096`, `internal/panels/chat_attach.go:249-335, 418-432`, `internal/chrome/styles.go:477-514`, `internal/panels/chat.go:609-612, 3045-3104`, `internal/app/model.go:4323-4370`
+- verify: ```
+- proof: ### Attachment ownership and regression proof
+- ledgerId: led-1788271942905-0329b4d8
+
+### 2026-09-01 · Map attachment send pipeline (@general subagent) — tekton-1 (developer) · `issues`
+- summary: Traced the attachment path from picker/paste staging through `state.Attachment`, app dispatch, and both live backends.
+- files: None. Read-only recon.
+- verify: None. Read-only task; no test or mutation commands run.
+- proof: ### Attachment model and MIME detection
+- ledgerId: led-1788271926463-19c48cee
+
 ### 2026-08-31 · Dev W2: tool output expand UI (@developer sub... — tekton-4 (developer) · `issues`
 - summary: All green. Assembling the return contract:
 - files: `cmd/uishot/main.go`, `internal/panels/threads_opencode_test.go`, `internal/app/model.go`
@@ -286,74 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: New tests: `TestKittyStream{SplitCleanGrid,SplitBoundaries,BELTerminator,ChainFinalChunkOmitsM,ProbeIgnored,Malformed,APCBodyCap}`, `TestZen
 - proof: *1. The REAL stream (825KB captured from terminal-browser v0.6.0 on a PTY) — before → after:**
 - ledgerId: led-1787856360063-526c5f07
-
-### 2026-08-27 · Scout: kitty escape surface map (@explore sub... — skopos-1 (scout) · `issues`
-- summary: Recon complete. All evidence gathered; the tree was never modified.
-- files: `internal/panels/kitty_lanes.go`, `chat_raster.go`, `image_detect.go`, `internal/panels/chat.go`, `tabs.go`, `terminal.go`, `internal/panels/browser_lane.go`, `browser.go`, `internal/term/term.go`, `grid.go`, `notify.go`, `internal/app/model.go`, `browser.go`, `images.go`, `power.go`, `cmd/theboringoffice/main.go`, `cmd/uishot/main.go`, `go.mod`, `README.md`, module cache: `charm.land/bubbletea/v2@v2.0.9/{tea,options,cursed_renderer}.go`, `github.com/charmbr
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1787855712243-206df16b
-
-### 2026-08-27 · Dev J: text-lane reason hint (@developer suba... — tekton-1 (developer) · `issues`
-- summary: All gates green. Assembling the final return.
-- files: `internal/panels/browser_lane.go`, `internal/panels/browser.go`, `internal/panels/browser_hint_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched
-- verify: ```
-- proof: *The ANSI-stripped starter card with the binary-missing hint** (`go run ./cmd/uishot --browser --lane hint`, leg E — hermetic empty-PATH fix
-- ledgerId: led-1787853075573-5c5d2d1c
-
-### 2026-08-27 · Dev K: installer terminal-browser step (@deve... — tekton-2 (developer) · `issues`
-- summary: All gates green. Assembling the final return.
-- files: `install.sh`, `internal/panels/browser_lane.go` shows modified in `git status`
-- verify: *7. shellcheck:** NOT on PATH (`which shellcheck` → not found) — could not run; see ISSUES.
-- proof: *Help text — before → after:**
-- ledgerId: led-1787852194575-4788f24f
-
-### 2026-08-27 · Dev I: abort-ladder test budgets (@developer... — tekton-6 (developer) · `issues`
-- summary: **Fully green loaded run** — `grep -cE '^FAIL'` → **0**, my test `--- PASS` under full-suite load, and even the previously-flaked panels test and the concurrent
-- files: `internal/backend/claude_abort_test.go`
-- verify: ```
-- proof: Before → after of each raised budget (verbatim diff hunks):
-- ledgerId: led-1787849348047-ef91c581
-
-### 2026-08-27 · Dev H: perm SessionID + wire fixtures (@devel... — tekton-5 (developer) · `issues`
-- summary: **FIX A (SessionID fallback):** `mapClaudeControlRequest`'s `can_use_tool` arm now computes `sessionID := raw.SessionID; if sessionID == "" { sessionID = ctx.pr
-- files: `internal/backend/claude_events.go`, `internal/backend/claude_wire_21247_test.go`, `internal/backend/claude_events_test.go`
-- verify: ```
-- proof: *FIX A — the mapper before→after** (verbatim `git diff internal/backend/claude_events.go`):
-- ledgerId: led-1787849344177-bd8f7527
-
-### 2026-08-27 · Dev G: real claude CLI integration (@develope... — tekton-4 (developer) · `issues`
-- summary: Everything is green and evidence-complete. Assembling the final return.
-- files: `internal/backend/claude_live_test.go`, `internal/backend/claude.go`
-- verify: My diff cannot reach that path: the seam is one nil-guarded hook call per parsed stdout frame; the abort stubs never set it.
-- proof: *Test 1 — one bubble per message.id, live:** the real wire produced ONE assistant message (`msg_bdrk_01VYNbLS7HFdMQdjnwLFGmNe`) across TWO a
-- ledgerId: led-1787848497729-bcf8d3de
-
-### 2026-08-27 · Dev E: wire zenbu lane live (@developer subag... — tekton-2 (developer) · `issues`
-- summary: All gates green. Assembling the final return.
-- files: `internal/panels/browser.go`, `internal/app/browser.go`, `internal/panels/browser_panel_lane_test.go`, `internal/app/browser_lane_test.go`, `internal/panels/browser_nav_test.go`, `internal/app/browser_test.go`, `internal/app/browser_open_test.go`, `cmd/uishot/main.go`, `README.md`, NOT touched (foreign in-flight work, ledger led-1787844677003 / led-1787846237568): `install.sh`, `i
-- verify: $ `go run ./cmd/uishot --browsertab` → `exit=0` (byte-identical two drives, text lane unchanged)
-- proof: *Leg C — `/open` through the REAL app: the zenbu lane live in the LEFT slot** (ANSI-stripped, `go run ./cmd/uishot --browser --lane live`):
-- ledgerId: led-1787847438500-935cead5
-
-### 2026-08-27 · Dev D: claude bubble/perm/think fixes (@devel... — tekton-1 (developer) · `issues`
-- summary: All gates green — 18/18 packages ok. Assembling the final return.
-- files: `internal/backend/claude_regression_test.go`, `internal/backend/claude.go`, `internal/backend/claude_events.go`
-- verify: (all 18 packages `ok` in the clean sweep, including `internal/backend 31.974s` and `internal/panels 4.418s`. The two Requirement-6 flakes —
-- proof: ### Bug 1 — the two IDs and the single-bubble assertion
-- ledgerId: led-1787846237568-0edae27f
-
-### 2026-08-27 · Dev F: fix installer npm 404 (@developer suba... — tekton-3 (developer) · `issues`
-- summary: **Renamed the npm package to the real scoped name** `@agentmemory/agentmemory` in both mandated spots: the auto-install command inside `setup_agentmemory` and t
-- files: `install.sh`
-- verify: The run really executed end-to-end (downloaded v0.2.23, installed the binary into the scratch prefix, seeded scratch brain.json) — and still
-- proof: *Before → after, auto-install (setup_agentmemory):**
-- ledgerId: led-1787844677003-48d81f07
-
-### 2026-08-27 · Commit, tag v0.2.23, push release (@developer... — tekton-14 (developer) · `issues`
-- summary: Full suite green before any commit: `go test ./...` all packages `ok`, `go build ./...` exit 0, gofmt clean on every pending file.
-- files: n/a (no content edits
-- verify: ```
-- proof: $ `git log --oneline -6`
-- ledgerId: led-1787840610933-b0e063ec
 

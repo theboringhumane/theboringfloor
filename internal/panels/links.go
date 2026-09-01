@@ -462,8 +462,9 @@ type linkPickState struct {
 // linkPickHint — the card's dim footer (sessHint's twin).
 const linkPickHint = "↑/↓: move · enter: open · esc: cancel"
 
-// linkHigh — the cursor row's reversed-accent run (sessHigh's twin).
-var linkHigh = lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true)
+// linkHigh builds the cursor row's reversed-accent run at render time so it
+// follows the active theme rather than retaining the boot palette.
+func linkHigh() lipgloss.Style { return lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true) }
 
 // SetLinkPickHandlers wires the app's pick/cancel ferries (the session
 // picker's contract): enter on a row submits its target, esc cancels —
@@ -594,7 +595,7 @@ func linkMenuRow(t LinkTarget, on bool, inner int) string {
 	}
 	body := mark + glyph + " " + t.Name + " " + t.Value
 	if on {
-		return linkHigh.Render(fitLabel(body, inner))
+		return linkHigh().Render(fitLabel(body, inner))
 	}
 	out := mark + glyph + " " + t.Name + " " + chrome.DimText.Render(t.Value)
 	return fitLabel(out, inner)

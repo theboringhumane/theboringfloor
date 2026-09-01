@@ -71,9 +71,11 @@ const modelVisibleRows = 8
 // modelPickHint — the picker's dim footer.
 const modelPickHint = "type: narrow · ↑/↓: move · enter: switch · esc: cancel"
 
-// modelPickHigh — the cursor row's reversed-accent run (sessHigh's twin,
-// in the app pickers' accent color).
-var modelPickHigh = lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true)
+// modelPickHigh builds the cursor row's reversed-accent run at render time,
+// using the current theme's accent color.
+func modelPickHigh() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true)
+}
 
 // NewModelPicker opens the card in its LOADING state; the app's fetch hop
 // fills it via SetRows. pick fires enter's full "provider/id" ref, cancel
@@ -338,7 +340,7 @@ func modelMenuRow(row ModelPickRow, on bool, inner int) string {
 		body += " " + meta
 	}
 	if on {
-		return modelPickHigh.Render(fitLabel(body, inner))
+		return modelPickHigh().Render(fitLabel(body, inner))
 	}
 	out := mark
 	if row.Current {

@@ -45,7 +45,7 @@ func wordStyle(word string, s string) string {
 	case "meeting":
 		return chrome.OnPanel(chrome.Accent, s)
 	case "coffee":
-		return lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor).Faint(true).Render(s)
+		return lipgloss.NewStyle().Foreground(chrome.Accent).Faint(true).Render(s)
 	case "blocked":
 		return chrome.OnPanelBold(chrome.Err, s)
 	case "at desk":
@@ -218,7 +218,7 @@ func (a *Agents) render() string {
 		// floor-click selection marker: "▸ " + bold row (2 cells of the
 		// width budget go to the marker)
 		sel := a.selected != "" && e.Name == a.selected
-		marker := lipgloss.NewStyle().Background(chrome.PanelBgColor).Render("  ")
+		marker := "  "
 		if sel {
 			marker = chrome.OnPanelBold(c, "▸ ")
 		}
@@ -244,9 +244,9 @@ func (a *Agents) render() string {
 				wordStyle(word, word)
 		}
 		if sel {
-			left = lipgloss.NewStyle().Background(chrome.PanelBgColor).Bold(true).Render(left)
+			left = lipgloss.NewStyle().Bold(true).Render(left)
 		}
-		line := marker + left + lipgloss.NewStyle().Background(chrome.PanelBgColor).Render(strings.Repeat(" ", gap))
+		line := marker + left + strings.Repeat(" ", gap)
 		if task != "" && gap > 1 {
 			line += chrome.PanelDim.Render(task)
 		}
@@ -282,5 +282,5 @@ func (a *Agents) officeRow() string {
 	if gap < 1 {
 		gap = 1
 	}
-	return lipgloss.NewStyle().Background(chrome.PanelBgColor).Render("  ") + left + lipgloss.NewStyle().Background(chrome.PanelBgColor).Render(strings.Repeat(" ", gap))
+	return "  " + left + strings.Repeat(" ", gap)
 }

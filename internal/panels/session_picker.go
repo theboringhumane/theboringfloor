@@ -74,9 +74,9 @@ const sessVisibleRows = 8
 // sessHint — the picker's dim footer.
 const sessHint = "type: narrow · ↑/↓: move · enter: resume · esc: cancel"
 
-// sessHigh — the cursor row's reversed-accent run (the questHigh yellow
-// parallel, in the app pickers' accent color rather than a modal alert).
-var sessHigh = lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true)
+// sessHigh builds the cursor row's reversed-accent run from the current
+// palette. A package-level style would retain the boot theme after /theme.
+func sessHigh() lipgloss.Style { return lipgloss.NewStyle().Foreground(chrome.Accent).Reverse(true) }
 
 // SetSessionPickerHandlers wires the app's pick/cancel callbacks: enter
 // on a row submits its full session id (→ the office re-anchors live),
@@ -374,7 +374,7 @@ func sessMenuRow(row SessionPickRow, on bool, inner int, frag string) string {
 	title := fitPlain(row.Title, titleW)
 	body := mark + title + " " + meta
 	if on {
-		return sessHigh.Render(fitLabel(body, inner))
+		return sessHigh().Render(fitLabel(body, inner))
 	}
 	if strings.TrimSpace(frag) != "" {
 		return fitLabel(mark+accentMatches(title, frag)+" "+accentMatches(meta, frag), inner)

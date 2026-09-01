@@ -8024,9 +8024,86 @@ func runToolOutputProof() error {
 	return nil
 }
 
+// --- theme/frame matrix (--theme-matrix) ------------------------------------
+// Four synchronous, populated frames pin the app-level PanelBg wrapper:
+// paper/noir × desktop/mobile. Each frame expands a real tool-output row,
+// then raises a real permission modal over the same panel. The checks stay at
+// the public frame boundary: terminal geometry and the emitted PanelBg ANSI
+// code, rather than inspecting lipgloss internals.
+func runThemeMatrixProof() error {
+	legs := []struct {
+		theme, layout, panelCode string
+		width                    int
+	}{
+		{"paper", "desktop", "48;2;240;241;244", shotCols},
+		{"paper", "mobile", "48;2;240;241;244", 70},
+		{"noir", "desktop", "48;2;22;22;25", shotCols},
+		{"noir", "mobile", "48;2;22;22;25", 70},
+	}
+	for _, leg := range legs {
+		if !chrome.SetTheme(leg.theme) {
+			return fmt.Errorf("theme matrix: SetTheme(%q) failed", leg.theme)
+		}
+		d := &focusDriver{m: app.New(&stubBackend{done: make(chan struct{})}, config.Default())}
+		d.send(tea.WindowSizeMsg{Width: leg.width, Height: shotRows})
+		d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("theme-user", "user", "show the themed panel", false)})
+		d.send(focusTool("", "", "theme-tool", "read", "theme.go", "done"))
+		d.send(state.Event{Kind: state.EvTool, EmployeeName: "boss", CallID: "theme-tool", ToolName: "read", ToolSummary: "theme.go", ToolState: "done", ToolOutput: "panel paint verified"})
+
+		collapsed := d.m.Frame()
+		needle := "[tool] ▸ read · theme.go ✓"
+		y := -1
+		for i, line := range strings.Split(collapsed, "\n") {
+			if strings.Contains(ansi.Strip(line), needle) {
+				y = i
+				break
+			}
+		}
+		if y < 0 {
+			return fmt.Errorf("theme matrix %s %s: collapsed tool row missing", leg.theme, leg.layout)
+		}
+		_, _, _, floorW := d.m.LayoutInfo()
+		x := 5
+		if leg.layout == "desktop" {
+			x = floorW + 5
+		}
+		clickAt(d, x, y)
+		// The permission modal is deliberately applied after expansion: the
+		// output remains in the populated underlay while the modal proves the
+		// wrapper survives an app-level overlay.
+		d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "theme-perm", ToolName: "write", ToolSummary: "theme.go"})
+		frame := d.m.Frame()
+		if err := assertThemeMatrixFrame(leg.theme+" "+leg.layout, frame, leg.width, leg.panelCode); err != nil {
+			return err
+		}
+		if !ansiContains(frame, "PERMISSION") || !ansiContains(frame, "show the themed panel") {
+			return fmt.Errorf("theme matrix %s %s: populated panel or permission modal missing", leg.theme, leg.layout)
+		}
+		fmt.Printf("===== UI SHOT · theme matrix %s %s (expanded tool under permission modal) =====\n", leg.theme, leg.layout)
+		fmt.Println(frame)
+		fmt.Println("===== UI SHOT =====")
+		fmt.Printf("assert: %s %s cols=%d PanelBg=%s tool=expanded modal=permission\n", leg.theme, leg.layout, leg.width, leg.panelCode)
+	}
+	fmt.Println("asserts: OK — paper/noir × desktop/mobile frames retain exact widths, emitted PanelBg codes, populated chat/tool underlays, and the permission modal")
+	return nil
+}
+
+func assertThemeMatrixFrame(tag, frame string, width int, panelCode string) error {
+	if !strings.Contains(frame, panelCode) {
+		return fmt.Errorf("theme matrix %s: PanelBg ANSI code %q missing", tag, panelCode)
+	}
+	for i, line := range strings.Split(frame, "\n") {
+		if got := ansi.StringWidth(line); got != width {
+			return fmt.Errorf("theme matrix %s: row %d width=%d want=%d", tag, i, got, width)
+		}
+	}
+	return nil
+}
+
 func main() {
 	tab := flag.String("tab", defaultTab, "active tab: chat|terminal|agents|board|mail|activity")
 	theme := flag.String("theme", "", "force a ui theme: "+strings.Join(chrome.ThemeNames(), "|"))
+	themeMatrix := flag.Bool("theme-matrix", false, "theme/frame proof: paper|noir × desktop|mobile with expanded tool output and permission modal; asserts widths + PanelBg ANSI codes")
 	slash := flag.Bool("slash", false, "simulate typing /theme dracula + /themes (exercises slash dispatch + theme persist)")
 	perm := flag.Bool("perm", false, "auto-answer the boss permission prompt with 'once' at 3s (open → answered)")
 	diffs := flag.Bool("diffs", false, "press ctrl+d to expand all diff entries")
@@ -8073,6 +8150,13 @@ func main() {
 	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc FREEZES the session (keep-alive: alive behind the floor, PID unchanged) + returns to the floor, the ctrl+c quit path reaps it; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane keepalive: the freeze/thaw flip cycle — /open → ctrl+b (floor: the child FREEZES, PID stable + alive + ps T…, ONE a=d through the wrapper's diff) → ctrl+b (the SAME pid thaws; the RETAINED frame re-emits byte-identically — the parked fake emits zero new bytes — with ZERO a=d interleaved) → ctrl+b → ctrl+c (the quit path reaps the frozen child, the delete riding the direct seam); ONE spawn total. --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
+	if *themeMatrix {
+		if err := runThemeMatrixProof(); err != nil {
+			fmt.Fprintf(os.Stderr, "uishot: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if *persist {
 		if err := runPersistDemoSkipProof(); err != nil {

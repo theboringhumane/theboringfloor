@@ -462,8 +462,9 @@ var (
 	WarnBold     lipgloss.Style // permission amber, bold (modal header)
 	QuestionText lipgloss.Style // question-tool yellow
 
-	// Panel-aware text styles — same semantics as DimText/Header/… but with
-	// PanelBgColor background so they don't punch holes in the sidebar.
+	// Panel-aware text styles — semantic foregrounds used inside the sidebar.
+	// The sidebar wrapper and PanelBox own its continuous background; inline
+	// text deliberately inherits it so wrapped fragments cannot make patches.
 	PanelDim    lipgloss.Style
 	PanelHeader lipgloss.Style
 	PanelAccent lipgloss.Style
@@ -498,14 +499,14 @@ func applyTheme(t Theme) {
 	WarnBold = lipgloss.NewStyle().Foreground(t.Warn).Bold(true)
 	QuestionText = lipgloss.NewStyle().Foreground(t.Question)
 
-	PanelDim = lipgloss.NewStyle().Foreground(Dim).Background(PanelBgColor)
-	PanelHeader = lipgloss.NewStyle().Bold(true).Foreground(White).Background(PanelBgColor)
-	PanelAccent = lipgloss.NewStyle().Foreground(Accent).Background(PanelBgColor)
-	PanelErr = lipgloss.NewStyle().Foreground(Err).Background(PanelBgColor)
-	PanelOK = lipgloss.NewStyle().Foreground(OK).Background(PanelBgColor)
-	PanelInfo = lipgloss.NewStyle().Foreground(Info).Background(PanelBgColor)
-	PanelTool = lipgloss.NewStyle().Foreground(t.ToolColor).Faint(true).Background(PanelBgColor)
-	PanelWarn = lipgloss.NewStyle().Foreground(t.Warn).Background(PanelBgColor)
+	PanelDim = lipgloss.NewStyle().Foreground(Dim)
+	PanelHeader = lipgloss.NewStyle().Bold(true).Foreground(White)
+	PanelAccent = lipgloss.NewStyle().Foreground(Accent)
+	PanelErr = lipgloss.NewStyle().Foreground(Err)
+	PanelOK = lipgloss.NewStyle().Foreground(OK)
+	PanelInfo = lipgloss.NewStyle().Foreground(Info)
+	PanelTool = lipgloss.NewStyle().Foreground(t.ToolColor).Faint(true)
+	PanelWarn = lipgloss.NewStyle().Foreground(t.Warn)
 
 	DiffAddBg, DiffDelBg = t.DiffAddBg, t.DiffDelBg
 	DiffAddFg, DiffDelFg = t.DiffAddFg, t.DiffDelFg
@@ -572,14 +573,15 @@ func OnBarBold(c color.Color, s string) string {
 	return lipgloss.NewStyle().Background(BarBgColor).Foreground(c).Bold(true).Render(s)
 }
 
-// OnPanel renders s colored against the panel background.
+// OnPanel renders s in a semantic foreground that inherits the panel
+// background from its container.
 func OnPanel(c color.Color, s string) string {
-	return lipgloss.NewStyle().Background(PanelBgColor).Foreground(c).Render(s)
+	return lipgloss.NewStyle().Foreground(c).Render(s)
 }
 
-// OnPanelBold renders s bold-and-colored against the panel background.
+// OnPanelBold renders s bold-and-colored while inheriting the panel background.
 func OnPanelBold(c color.Color, s string) string {
-	return lipgloss.NewStyle().Background(PanelBgColor).Foreground(c).Bold(true).Render(s)
+	return lipgloss.NewStyle().Foreground(c).Bold(true).Render(s)
 }
 
 // ModeColor — accent in demo, ok when live (matches the TS bars).

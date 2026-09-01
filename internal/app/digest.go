@@ -13,6 +13,7 @@ import (
 	"hash/fnv"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/projinfo"
 )
 
@@ -32,6 +33,11 @@ type governor struct {
 func (m *Model) frameDigest() uint64 {
 	h := fnv.New64a()
 	fmt.Fprintf(h, "%d|%d|%d|%d|%d|%d", m.width, m.height, m.sidebar, m.floorW, m.tabs.ActiveIndex(), m.frameNonce)
+	// Chrome styles are package-global, outside Model's state graph. Hash the
+	// stable active-theme identity rather than a color.Color interface: a
+	// /theme command or terminal BackgroundColorMsg can repaint every chrome
+	// surface without otherwise moving model state.
+	fmt.Fprintf(h, "|theme=%s", chrome.CurrentTheme().Name)
 	// the left pane's floor|browser switcher swaps the whole left region.
 	fmt.Fprintf(h, "|%d", m.leftTab)
 	fmt.Fprintf(h, "|%s|%s|%d|%d|%t|%t|%t|%t", m.st.Mode, m.st.StatusLine, len(m.queue), m.st.Tick, m.st.BossThinking, m.st.BossDelegating, m.permQ.front() != nil, m.question != nil)

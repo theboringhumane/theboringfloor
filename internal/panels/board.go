@@ -146,7 +146,7 @@ func (b *Board) render() string {
 
 		done := col.status == state.TaskDone
 		var lines []string
-		lines = append(lines, lipgloss.NewStyle().Foreground(col.color).Background(chrome.PanelBgColor).Bold(true).Underline(true).
+		lines = append(lines, lipgloss.NewStyle().Foreground(col.color).Bold(true).Underline(true).
 			Render(clipPlain(col.title, colW)))
 		if len(rows) == 0 {
 			lines = append(lines, chrome.PanelDim.Render("-"))
@@ -169,13 +169,13 @@ func renderTaskRow(t state.BoardTask, color color.Color, done bool, colW int) st
 	if t.Owner != "" && len(title)+1 < colW {
 		owner = clipPlain(t.Owner, colW-len(title)-1)
 	}
-	style := lipgloss.NewStyle().Foreground(color).Background(chrome.PanelBgColor)
+	style := lipgloss.NewStyle().Foreground(color)
 	if done {
 		style = style.Faint(true)
 	}
 	row := style.Render(title)
 	if owner != "" {
-		oc := lipgloss.NewStyle().Foreground(chrome.RoleColor(t.Owner)).Background(chrome.PanelBgColor)
+		oc := lipgloss.NewStyle().Foreground(chrome.RoleColor(t.Owner))
 		if done {
 			oc = oc.Faint(true)
 		}

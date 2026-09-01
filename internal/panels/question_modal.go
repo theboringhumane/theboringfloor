@@ -120,9 +120,9 @@ const (
 	questHintConfirm = "↑/↓ select · enter answer · y/n quick · esc later"
 )
 
-// questHigh — the cursor row's reversed-yellow run (the opencode look;
-// perm's reversed-amber parallel).
-var questHigh = lipgloss.NewStyle().Foreground(chrome.Question).Reverse(true)
+// questHigh builds the cursor row's reversed-yellow run at render time. Theme
+// switches re-point chrome.Question, so this must not be a boot-time style.
+func questHigh() lipgloss.Style { return lipgloss.NewStyle().Foreground(chrome.Question).Reverse(true) }
 
 // questCaret is the reversed-space typing marker appended at the text
 // end (the TEXT echo box and the custom-answer row).
@@ -470,7 +470,7 @@ func questMenuRow(label, desc string, inner int, on bool) string {
 		if desc != "" {
 			s += "  " + desc
 		}
-		return questHigh.Render(fitLabel(s, inner))
+		return questHigh().Render(fitLabel(s, inner))
 	}
 	row := label
 	if desc != "" {

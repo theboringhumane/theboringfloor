@@ -606,11 +606,21 @@ func NewChat(onSend func(text string, atts []state.Attachment) tea.Cmd) *Chat {
 // called at build time AND on every /theme switch (RefreshTheme).
 func applyTextareaStyles(ta *textarea.Model) {
 	styles := textarea.DefaultDarkStyles()
+	// Bubbles renders the editing surface independently of the sidebar
+	// wrapper. Paint every cell-bearing state so the textarea stays one
+	// continuous panel surface in both focus states (including its blank tail).
+	styles.Focused.Base = styles.Focused.Base.Background(chrome.PanelBgColor)
 	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor)
 	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(chrome.Dim).Background(chrome.PanelBgColor)
 	styles.Focused.CursorLine = lipgloss.NewStyle().Background(chrome.PanelBgColor)
 	styles.Focused.Text = lipgloss.NewStyle().Background(chrome.PanelBgColor)
-	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(chrome.Accent).Faint(true)
+	styles.Focused.EndOfBuffer = lipgloss.NewStyle().Background(chrome.PanelBgColor)
+	styles.Blurred.Base = styles.Blurred.Base.Background(chrome.PanelBgColor)
+	styles.Blurred.Prompt = styles.Blurred.Prompt.Background(chrome.PanelBgColor)
+	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(chrome.Accent).Faint(true).Background(chrome.PanelBgColor)
+	styles.Blurred.CursorLine = styles.Blurred.CursorLine.Background(chrome.PanelBgColor)
+	styles.Blurred.Text = styles.Blurred.Text.Background(chrome.PanelBgColor)
+	styles.Blurred.EndOfBuffer = styles.Blurred.EndOfBuffer.Background(chrome.PanelBgColor)
 	ta.SetStyles(styles)
 }
 
