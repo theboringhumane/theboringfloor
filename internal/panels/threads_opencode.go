@@ -94,7 +94,7 @@ const threadHintText = "ctrl+g · view subagents"
 // on /theme switches via RefreshTheme — read through a constructor so
 // the SGR pair lands again.
 func threadSpinnerStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(chrome.Accent)
+	return lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor)
 }
 
 // threadLiveFrames — the braille run the LIVE header glyph walks:
@@ -276,11 +276,11 @@ func (c *Chat) threadHeaderRows(g workerGroup, live, stopped, collapsed bool) []
 	var glyph string
 	switch {
 	case stopped:
-		glyph = chrome.ErrText.Faint(true).Render("✗")
+		glyph = chrome.PanelErr.Faint(true).Render("✗")
 	case live:
 		glyph = threadLiveGlyph(c.tick) // office-tick braille run
 	default:
-		glyph = chrome.DimText.Render("✓")
+		glyph = chrome.PanelDim.Render("✓")
 	}
 	if collapsed && (stopped || !live) {
 		body += " (" + c.threadSummary(g, stopped) + ")"
@@ -288,9 +288,9 @@ func (c *Chat) threadHeaderRows(g workerGroup, live, stopped, collapsed bool) []
 	body = clipPlain(body, c.contentW()-2) // 2-cell glyph field eats the head
 	switch {
 	case stopped:
-		body = chrome.ErrText.Faint(true).Render(body)
+		body = chrome.PanelErr.Faint(true).Render(body)
 	case !live:
-		body = chrome.DimText.Render(body)
+		body = chrome.PanelDim.Render(body)
 	}
 	return []string{glyph + " " + body}
 }
@@ -317,7 +317,7 @@ func (c *Chat) threadSneakRows(g workerGroup) []string {
 			break
 		}
 	}
-	textStyle := chrome.DimText
+	textStyle := chrome.PanelDim
 	var text string
 	budget := c.contentW() - 4
 	if lastTool >= 0 {
@@ -336,10 +336,10 @@ func (c *Chat) threadSneakRows(g workerGroup) []string {
 		}
 	} else {
 		think := g.lines[len(g.lines)-1]
-		textStyle = chrome.DimText.Italic(true)
+		textStyle = chrome.PanelDim.Italic(true)
 		text = "thinking · " + countLines(foldStyledRows(think.Text, c.contentW()-4, c.contentW()-4)) + " lines"
 	}
-	return []string{chrome.DimText.Render("  ↳ ") + textStyle.Render(clipPlain(text, budget))}
+	return []string{chrome.PanelDim.Render("  ↳ ") + textStyle.Render(clipPlain(text, budget))}
 }
 
 // threadExpandedRows — the thread's merged tool/think rows, 2-cell
@@ -394,9 +394,9 @@ func (c *Chat) threadExpandedRows(g workerGroup, full bool) ([]string, map[int]s
 			if j > 0 {
 				prefix = "    "
 			}
-			row := chrome.ToolStyle.Render(prefix + ln)
+			row := chrome.PanelTool.Render(prefix + ln)
 			if j == len(lines)-1 && suf != "" {
-				row += chrome.DimText.Render(suf)
+				row += chrome.PanelDim.Render(suf)
 			}
 			toolAt[len(rows)] = m.ID
 			rows = append(rows, row)
@@ -465,12 +465,12 @@ func (c *Chat) wdiffRows(m state.ChatMsg) []string {
 	if labelW < 1 {
 		labelW = 1
 	}
-	head := chrome.DimText.Render("  ↳ ") + chrome.DimText.Render(clipPlain("diff · "+path, labelW))
+	head := chrome.PanelDim.Render("  ↳ ") + chrome.PanelDim.Render(clipPlain("diff · "+path, labelW))
 	if adds != "" && adds != "+0" {
-		head += " " + chrome.OKText.Render(adds)
+		head += " " + chrome.PanelOK.Render(adds)
 	}
 	if dels != "" && dels != "-0" {
-		head += " " + chrome.ErrText.Render(dels)
+		head += " " + chrome.PanelErr.Render(dels)
 	}
 	rows := []string{head}
 	if c.threadDiffOpen[m.ID] {
@@ -490,9 +490,9 @@ func (c *Chat) wdiffRows(m state.ChatMsg) []string {
 // dim — dim-red faint once /stop stopped the thread. Never clickable
 // (it is the tail of the tool list, not the thread's toggle).
 func (c *Chat) threadClosingRows(g workerGroup, stopped bool) []string {
-	style := chrome.DimText
+	style := chrome.PanelDim
 	if stopped {
-		style = chrome.ErrText.Faint(true)
+		style = chrome.PanelErr.Faint(true)
 	}
 	rows := foldStyledRows(c.threadSummary(g, stopped), c.contentW()-2, c.contentW()-4)
 	out := make([]string, 0, len(rows))
@@ -513,20 +513,20 @@ func (c *Chat) threadClosingRows(g workerGroup, stopped bool) []string {
 // too — capped to the stream tail (the freshest thinkStreamLines lines),
 // matching the boss's collapsed-vs-expanded thinking shape.
 func (c *Chat) wthinkRows(m state.ChatMsg, full bool) []string {
-	think := chrome.DimText.Italic(true)
+	think := chrome.PanelDim.Italic(true)
 	// fold at the FULL body budget ("    " is 4 cells) so no row clips
 	lines := foldStyledRows(m.Text, c.contentW()-4, c.contentW()-4)
 	if !full {
-		return []string{chrome.DimText.Render("  ") + think.Render("thinking · "+countLines(lines)+" lines")}
+		return []string{chrome.PanelDim.Render("  ") + think.Render("thinking · "+countLines(lines)+" lines")}
 	}
-	rows := []string{chrome.DimText.Render("  ") + think.Render("thinking")}
+	rows := []string{chrome.PanelDim.Render("  ") + think.Render("thinking")}
 	shown := lines
 	if more := len(lines) - thinkStreamLines; more > 0 {
 		rows = append(rows, think.Render("    … "+itoa(more)+" more above"))
 		shown = lines[more:]
 	}
 	for _, ln := range shown {
-		rows = append(rows, chrome.DimText.Render("    "+ln))
+		rows = append(rows, chrome.PanelDim.Render("    "+ln))
 	}
 	return rows
 }

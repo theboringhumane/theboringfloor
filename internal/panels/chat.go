@@ -606,10 +606,10 @@ func NewChat(onSend func(text string, atts []state.Attachment) tea.Cmd) *Chat {
 // called at build time AND on every /theme switch (RefreshTheme).
 func applyTextareaStyles(ta *textarea.Model) {
 	styles := textarea.DefaultDarkStyles()
-	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(chrome.Accent)
-	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(chrome.Dim)
-	styles.Focused.CursorLine = lipgloss.NewStyle()
-	styles.Focused.Text = lipgloss.NewStyle()
+	styles.Focused.Prompt = lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor)
+	styles.Focused.Placeholder = lipgloss.NewStyle().Foreground(chrome.Dim).Background(chrome.PanelBgColor)
+	styles.Focused.CursorLine = lipgloss.NewStyle().Background(chrome.PanelBgColor)
+	styles.Focused.Text = lipgloss.NewStyle().Background(chrome.PanelBgColor)
 	styles.Blurred.Placeholder = lipgloss.NewStyle().Foreground(chrome.Accent).Faint(true)
 	ta.SetStyles(styles)
 }
@@ -2009,7 +2009,7 @@ func (c *Chat) View() string {
 		b.WriteString(row)
 		b.WriteString("\n")
 	}
-	b.WriteString(chrome.DimText.Render(fitPlain(strings.Repeat("─", c.w), c.w)))
+	b.WriteString(chrome.PanelDim.Render(fitPlain(strings.Repeat("─", c.w), c.w)))
 	if c.pendingSpin {
 		// the typing row — glued to the input, not the transcript: the
 		// viewport holds the words, this row holds the pulse. ONE row
@@ -2020,10 +2020,10 @@ func (c *Chat) View() string {
 		if c.delegating {
 			// P3 — the boss dispatched out and went quiet: a settled dim
 			// delegation row, NO spinner blinking for minutes
-			b.WriteString(chrome.DimText.Render(" " + c.delegatingText()))
+			b.WriteString(chrome.PanelDim.Render(" " + c.delegatingText()))
 		} else {
 			b.WriteString(threadSpinnerStyle().Render(pendingBlockBar(c.tick)))
-			b.WriteString(chrome.AccentText.Render(" " + c.typingText()))
+			b.WriteString(chrome.PanelAccent.Render(" " + c.typingText()))
 		}
 	}
 	b.WriteString("\n")
@@ -2139,7 +2139,7 @@ func (c *Chat) buildBlocks() {
 		c.segTitles = alive
 	}
 	if len(visible) == 0 && len(workers) == 0 {
-		content := chrome.DimText.Render("  no messages yet — ask the boss for something.")
+		content := chrome.PanelDim.Render("  no messages yet — ask the boss for something.")
 		c.blocks = []*chatBlock{c.noteBlock(content, "chat-empty")}
 		c.pruneBlockCache()
 		return
@@ -2374,7 +2374,7 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 	case m.From == officeFrom:
 		c.renderNotice(&b, m)
 	case m.From == "user":
-		prefix := chrome.Fg(chrome.Info, userPrefix)
+		prefix := chrome.OnPanel(chrome.Info, userPrefix)
 		lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
 		// the open-in-browser beacon: a verified-target bubble wears a
 		// dim " · o (open)" on its FIRST row (folded bubbles keep their
@@ -2382,13 +2382,13 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// gate (os.Stat-verified paths only) — the beacon never advertises
 		// a target `o` could not fire.
 		if len(ExtractChatTargets(m)) > 0 {
-			lines[0] += chrome.DimText.Render(" · o (open)")
+			lines[0] += chrome.PanelDim.Render(" · o (open)")
 		}
 		attachSuffix := ""
 		if names, ok := state.ParseAttachMeta(m.Meta); ok && len(names) > 0 {
 			// the backend's chat-user echo carries the attachment
 			// names in Meta — history shows the dim " · 📎 N" suffix
-			attachSuffix = chrome.DimText.Render(" · 📎 " + itoa(len(names)))
+			attachSuffix = chrome.PanelDim.Render(" · 📎 " + itoa(len(names)))
 			lines[len(lines)-1] += attachSuffix
 		}
 		lines = foldStyledLines(lines, c.mdWidth+1)
@@ -2410,9 +2410,9 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 			hintW := c.contentW() - cellWidth(userPrefix) // the hanging indent eats the head
 			if c.userExpanded[key] {
 				hits.userFold = map[int]string{len(lines): key}
-				lines = append(lines, chrome.DimText.Italic(true).Render(clipPlain("… collapse", hintW)))
+				lines = append(lines, chrome.PanelDim.Italic(true).Render(clipPlain("… collapse", hintW)))
 			} else {
-				hint := chrome.DimText.Italic(true).Render(clipPlain(
+				hint := chrome.PanelDim.Italic(true).Render(clipPlain(
 					"… +"+itoa(len(lines)-userFoldVisible)+" more lines · click to expand",
 					hintW-cellWidth(ansi.Strip(attachSuffix)))) + attachSuffix
 				hits.userFold = map[int]string{userFoldVisible: key}
@@ -2421,7 +2421,7 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		}
 		writePrefixed(&b, prefix, strings.Repeat(" ", cellWidth(userPrefix)), lines)
 	default:
-		prefix := chrome.Fg(chrome.Accent, bossPrefix)
+		prefix := chrome.OnPanel(chrome.Accent, bossPrefix)
 		lines := cleanMarkdown(c.renderMarkdown(m.Text))
 		// a streaming reply is just the bubble itself growing — no
 		// caret, no extra row: the typing row below the divider is the
@@ -2432,7 +2432,7 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// chip prepends clean ABOVE it with the raster rows untouched).
 		// The extract gate guarantees only verified targets advertise it.
 		if len(lines) > 0 && len(ExtractChatTargets(m)) > 0 {
-			lines[0] += chrome.DimText.Render(" · o (open)")
+			lines[0] += chrome.PanelDim.Render(" · o (open)")
 		}
 		lines = foldStyledLines(lines, c.mdWidth)
 		// Inbound image previews slot the chip + raster ABOVE the body
@@ -2530,7 +2530,7 @@ func (c *Chat) renderGroupBlock(g workerGroup, hint bool, gen uint64) *chatBlock
 	c.threadRows, c.toolDiffRows, c.toolRows = savedThread, savedDiff, savedTool
 	text := strings.TrimPrefix(b.String(), "\n\n") // the block's own lead becomes the assembly's separator
 	if hint {
-		text += "\n\n" + chrome.DimText.Italic(true).Render(threadHintText)
+		text += "\n\n" + chrome.PanelDim.Italic(true).Render(threadHintText)
 	}
 	blk := &chatBlock{id: id, key: key, text: text, hits: hits, lines: g.lines, unstable: live}
 	blk.finish()
@@ -2635,8 +2635,8 @@ var thinkFrames = []string{"|", "/", "-", "\\"}
 //	             stream's Done update lands / a new boss turn starts).
 //	expanded   — dim-italic "thinking" header + greyed body (ctrl+t).
 func (c *Chat) renderThink(b *strings.Builder, m state.ChatMsg) {
-	think := chrome.DimText.Italic(true)
-	body := chrome.DimText
+	think := chrome.PanelDim.Italic(true)
+	body := chrome.PanelDim
 	lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
 	if m.Meta != "" && c.streamingThink[m.Meta] {
 		frame := thinkFrames[c.tick%len(thinkFrames)]
@@ -2704,13 +2704,13 @@ func renderTool(m state.ChatMsg, open bool) string {
 	line := toolWrapPrefix + toolChevron(open) + m.Text
 	switch m.Meta {
 	case "done":
-		return chrome.ToolStyle.Render(line + " ✓")
+		return chrome.PanelTool.Render(line + " ✓")
 	case "error":
-		return chrome.ErrText.Faint(true).Render(line + " ✗")
+		return chrome.PanelErr.Faint(true).Render(line + " ✗")
 	case "aborted": // /stop unwind swung a running call here
-		return chrome.ErrText.Faint(true).Render(line + " ✗ aborted")
+		return chrome.PanelErr.Faint(true).Render(line + " ✗ aborted")
 	default: // running (or anything unexpected)
-		return chrome.ToolStyle.Render(line + " … running")
+		return chrome.PanelTool.Render(line + " … running")
 	}
 }
 
@@ -2732,23 +2732,23 @@ func (c *Chat) renderQuestion(b *strings.Builder, m state.ChatMsg) {
 	wrapW := c.contentW() - cellWidth(qPrefix) - 1 // prefix + transcript insets
 	lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, wrapW), "\n"), "\n")
 	for i := range lines {
-		lines[i] = chrome.QuestionText.Render(lines[i])
+		lines[i] = chrome.PanelWarn.Render(lines[i])
 	}
 	lines = foldStyledLines(lines, wrapW)
-	writePrefixed(b, chrome.QuestionText.Bold(true).Render(qPrefix), indent, lines)
+	writePrefixed(b, chrome.PanelWarn.Bold(true).Render(qPrefix), indent, lines)
 	if options != "" {
 		optLines := strings.Split(strings.TrimRight(wrapPlain("("+options+")", wrapW), "\n"), "\n")
 		for i := range optLines {
-			optLines[i] = chrome.DimText.Render(optLines[i])
+			optLines[i] = chrome.PanelDim.Render(optLines[i])
 		}
 		for _, ln := range foldStyledLines(optLines, wrapW) {
 			b.WriteString("\n" + indent + ln)
 		}
 	}
 	if answered {
-		b.WriteString("\n" + indent + chrome.DimText.Render("✓ answered"))
+		b.WriteString("\n" + indent + chrome.PanelDim.Render("✓ answered"))
 	} else {
-		b.WriteString("\n" + indent + chrome.DimText.Italic(true).Render("(answer by typing below)"))
+		b.WriteString("\n" + indent + chrome.PanelDim.Italic(true).Render("(answer by typing below)"))
 	}
 }
 
@@ -2765,12 +2765,12 @@ func (c *Chat) renderQuestion(b *strings.Builder, m state.ChatMsg) {
 func (c *Chat) renderDiff(b *strings.Builder, m state.ChatMsg) {
 	path, adds, dels := parseDiffMeta(m.Meta)
 	if !c.diffExpanded {
-		header := chrome.DimText.Render("diff · " + path)
+		header := chrome.PanelDim.Render("diff · " + path)
 		if adds != "" {
-			header += " " + chrome.OKText.Render(adds)
+			header += " " + chrome.PanelOK.Render(adds)
 		}
 		if dels != "" {
-			header += " " + chrome.ErrText.Render(dels)
+			header += " " + chrome.PanelErr.Render(dels)
 		}
 		b.WriteString(header)
 		return
@@ -2783,7 +2783,7 @@ func (c *Chat) renderDiff(b *strings.Builder, m state.ChatMsg) {
 	case diffOpDel:
 		opWord = "Delete"
 	}
-	b.WriteString(clipStyled(chrome.DimText.Bold(true), "← "+opWord+" "+path, c.contentW()))
+	b.WriteString(clipStyled(chrome.PanelDim.Bold(true), "← "+opWord+" "+path, c.contentW()))
 	c.renderDiffRows(b, rows)
 }
 
@@ -2816,7 +2816,7 @@ func (c *Chat) renderDiffRows(b *strings.Builder, rows []diffRow) {
 	}
 	if more > 0 {
 		b.WriteString("\n" + strings.Repeat(" ", gutterW+3) +
-			chrome.DimText.Italic(true).Render("+"+itoa(more)+" more"))
+			chrome.PanelDim.Italic(true).Render("+"+itoa(more)+" more"))
 	}
 }
 
@@ -3057,7 +3057,7 @@ func renderDiffRow(row diffRow, gutterW, width int) string {
 			textW = 1
 		}
 		return strings.Repeat(" ", gutterW+3) +
-			chrome.DimText.Italic(true).Render(clipPlain(row.spans[0].text, textW))
+			chrome.PanelDim.Italic(true).Render(clipPlain(row.spans[0].text, textW))
 	}
 	var fg color.Color = chrome.DiffCtxFg
 	var bg color.Color
@@ -3168,11 +3168,11 @@ func clipStyled(style lipgloss.Style, s string, w int) string {
 // as the boss stream, and like the boss stream there is NO caret: the
 // agents roster's "answering" word carries the liveness).
 func (c *Chat) renderOffice(b *strings.Builder, m state.ChatMsg) {
-	prefix := chrome.Fg(chrome.Info, officePrefix)
+	prefix := chrome.OnPanel(chrome.Info, officePrefix)
 	indent := strings.Repeat(" ", cellWidth(officePrefix))
 	if m.Pending && m.Text == "" {
 		b.WriteString(prefix)
-		b.WriteString(chrome.DimText.Render("office is answering…"))
+		b.WriteString(chrome.PanelDim.Render("office is answering…"))
 		return
 	}
 	lines := cleanMarkdown(c.renderMarkdown(m.Text))
@@ -3186,9 +3186,9 @@ func (c *Chat) renderOffice(b *strings.Builder, m state.ChatMsg) {
 // renderNotice renders a local From="office" notice (slash-command output):
 // dim by default, red when Meta == "error".
 func (c *Chat) renderNotice(b *strings.Builder, m state.ChatMsg) {
-	style := chrome.DimText
+	style := chrome.PanelDim
 	if m.Meta == errMeta || m.Meta == bootWarnMeta {
-		style = chrome.ErrText
+		style = chrome.PanelErr
 	}
 	lines := strings.Split(strings.TrimRight(wrapPlain(m.Text, c.mdWidth+1), "\n"), "\n")
 	for i := range lines {
@@ -3387,9 +3387,9 @@ func mediaChipLine(it state.MediaItem, v chatMediaView) string {
 		name = "image"
 	}
 	if v.failed || it.W < 1 || it.H < 1 {
-		return chrome.DimText.Render("🖼 " + clipPlain(name, 40) + " · unsupported image · click txt link")
+		return chrome.PanelDim.Render("🖼 " + clipPlain(name, 40) + " · unsupported image · click txt link")
 	}
-	return chrome.DimText.Render(fmt.Sprintf("🖼 %s · %d×%d · %s", clipPlain(name, 40), it.W, it.H, it.Mime))
+	return chrome.PanelDim.Render(fmt.Sprintf("🖼 %s · %d×%d · %s", clipPlain(name, 40), it.W, it.H, it.Mime))
 }
 
 // wrapPlain greedy word-wraps text to w cells. No semantics — just a

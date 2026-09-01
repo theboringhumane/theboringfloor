@@ -287,18 +287,18 @@ func (e *PlanEditor) bodyDims() (w, h int) {
 // accent for PLAN, ok green for BUILD) + "markdown (N mermaid diagram[s])"
 // on the left, the key hints dim on the right, clipped to the pane width.
 func (e *PlanEditor) header() string {
-	label, labelStyle := "PLAN", chrome.AccentText
+	label, labelStyle := "PLAN", chrome.PanelAccent
 	if e.mode == planModeBuild {
-		label, labelStyle = "BUILD", lipgloss.NewStyle().Foreground(chrome.OK)
+		label, labelStyle = "BUILD", chrome.PanelOK
 	}
 	n := mermaidCount(e.Value())
 	diagrams := fmt.Sprintf("%d mermaid diagram", n)
 	if n != 1 {
 		diagrams += "s"
 	}
-	left := labelStyle.Render(label) + chrome.DimText.Render(" · markdown ") +
-		chrome.DimText.Render("("+diagrams+")")
-	right := chrome.DimText.Render("ctrl+x approve → build · ctrl+p exits")
+	left := labelStyle.Render(label) + chrome.PanelDim.Render(" · markdown ") +
+		chrome.PanelDim.Render("("+diagrams+")")
+	right := chrome.PanelDim.Render("ctrl+x approve → build · ctrl+p exits")
 	gap := e.w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
@@ -325,7 +325,7 @@ func (e *PlanEditor) footer() string {
 	case e.sel.active:
 		hint = "shift+arrows select · ctrl+c copy · ctrl+x cut · esc clear"
 	}
-	s := chrome.DimText.Render(hint)
+	s := chrome.PanelDim.Render(hint)
 	if e.w >= 1 && lipgloss.Width(s) > e.w {
 		s = ansi.Truncate(s, e.w, "")
 	}

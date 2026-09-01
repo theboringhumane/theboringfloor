@@ -503,10 +503,10 @@ func renderGitSummary(s gitx.Summary, w int) string {
 	var b strings.Builder
 	for i, seg := range segs {
 		if i > 0 {
-			b.WriteString(chrome.DimText.Render(" · "))
+			b.WriteString(chrome.PanelDim.Render(" · "))
 		}
 		b.WriteString(strconv.Itoa(seg.n))
-		b.WriteString(chrome.DimText.Render(seg.label))
+		b.WriteString(chrome.PanelDim.Render(seg.label))
 	}
 	return fitLabel(b.String(), w)
 }
@@ -514,18 +514,18 @@ func renderGitSummary(s gitx.Summary, w int) string {
 // renderGitNumstat — line 2: "+120 −45", additions green, removals red
 // (U+2212 minus, matching the design string).
 func renderGitNumstat(s gitx.Summary) string {
-	return chrome.OKText.Render("+"+strconv.Itoa(s.LinesAdded)) + " " +
-		chrome.ErrText.Render("−"+strconv.Itoa(s.LinesRemoved))
+	return chrome.PanelOK.Render("+"+strconv.Itoa(s.LinesAdded)) + " " +
+		chrome.PanelErr.Render("−"+strconv.Itoa(s.LinesRemoved))
 }
 
 // renderList — the scrollable file rows, the clean-state string, or the
 // dim unavailable line.
 func (g *Git) renderList() string {
 	if g.err != nil {
-		return chrome.DimText.Render(clipPlain("git unavailable: "+g.err.Error(), g.w))
+		return chrome.PanelDim.Render(clipPlain("git unavailable: "+g.err.Error(), g.w))
 	}
 	if len(g.files) == 0 {
-		return chrome.OKText.Render("working tree clean")
+		return chrome.PanelOK.Render("working tree clean")
 	}
 	rows := make([]string, len(g.files))
 	for i, fs := range g.files {
@@ -542,7 +542,7 @@ func renderGitRow(fs gitx.FileStatus, selected bool, w int) string {
 	}
 	marker := "  "
 	if selected {
-		marker = chrome.AccentText.Render("› ")
+		marker = chrome.PanelAccent.Render("› ")
 	}
 	cell, kind := glyphCell(fs)
 	pathW := w - 2 - 2 - 1 // marker + glyph cell + separator space
@@ -562,16 +562,16 @@ func (g *Git) renderDiffHeader() string {
 	if w < 1 {
 		w = 1
 	}
-	return chrome.Header.Render("─ " + middleClip(g.diffPath, w) + " ─")
+	return chrome.PanelHeader.Render("─ " + middleClip(g.diffPath, w) + " ─")
 }
 
 // renderDiff — the colored unified-diff body (or the dim error/loading line).
 func (g *Git) renderDiff() string {
 	if g.diffErr != nil {
-		return chrome.DimText.Render(clipPlain("git unavailable: "+g.diffErr.Error(), g.w))
+		return chrome.PanelDim.Render(clipPlain("git unavailable: "+g.diffErr.Error(), g.w))
 	}
 	if g.diffText == "" {
-		return chrome.DimText.Render("loading diff …")
+		return chrome.PanelDim.Render("loading diff …")
 	}
 	lines := strings.Split(strings.TrimRight(g.diffText, "\n"), "\n")
 	for i, ln := range lines {
@@ -619,13 +619,13 @@ func glyphCell(fs gitx.FileStatus) (string, gitGlyphKind) {
 func glyphStyle(kind gitGlyphKind) lipgloss.Style {
 	switch kind {
 	case gitGlyphAdded, gitGlyphUntracked:
-		return chrome.OKText
+		return chrome.PanelOK
 	case gitGlyphDeleted:
-		return chrome.ErrText
+		return chrome.PanelErr
 	case gitGlyphRenamed:
-		return chrome.InfoText
+		return chrome.PanelInfo
 	default:
-		return chrome.WarnText
+		return chrome.PanelWarn
 	}
 }
 
@@ -654,13 +654,13 @@ func classifyDiffLine(line string) gitLineClass {
 func styleDiffLine(line string) string {
 	switch classifyDiffLine(line) {
 	case gitLineAdd:
-		return chrome.OKText.Render(line)
+		return chrome.PanelOK.Render(line)
 	case gitLineDel:
-		return chrome.ErrText.Render(line)
+		return chrome.PanelErr.Render(line)
 	case gitLineHunk:
-		return chrome.InfoText.Render(line)
+		return chrome.PanelInfo.Render(line)
 	case gitLineMeta:
-		return chrome.DimText.Render(line)
+		return chrome.PanelDim.Render(line)
 	default:
 		return line
 	}

@@ -387,9 +387,9 @@ func (c *Chat) renderSlashPopover() string {
 			names[i] = sc.name
 		}
 	}
-	lines = append(lines, chrome.Header.Render(fitPlain(header, inner)))
+	lines = append(lines, chrome.PanelHeader.Render(fitPlain(header, inner)))
 	if len(names) == 0 {
-		lines = append(lines, chrome.DimText.Render(fitPlain("(no matches)", inner)))
+		lines = append(lines, chrome.PanelDim.Render(fitPlain("(no matches)", inner)))
 	}
 	start := 0
 	if c.slashSel >= slashVisibleRows {
@@ -404,10 +404,10 @@ func (c *Chat) renderSlashPopover() string {
 		if c.slashMode == slashModeCmd {
 			// one-line description beside the command (mixed-style string,
 			// so the fit is ANSI-aware)
-			label = names[i] + "  " + chrome.DimText.Render(c.slashCmds[i].desc)
+			label = names[i] + "  " + chrome.PanelDim.Render(c.slashCmds[i].desc)
 		}
 		if i == c.slashSel {
-			lines = append(lines, chrome.AccentText.Render(fitLabel("› "+label, inner)))
+			lines = append(lines, chrome.PanelAccent.Render(fitLabel("› "+label, inner)))
 		} else {
 			lines = append(lines, fitLabel("  "+label, inner))
 		}
@@ -419,7 +419,7 @@ func (c *Chat) renderSlashPopover() string {
 		// prefill preview subline for argument-taking commands
 		footer = c.slashCmds[c.slashSel].usage
 	}
-	lines = append(lines, chrome.DimText.Render(fitPlain(footer, inner)))
+	lines = append(lines, chrome.PanelDim.Render(fitPlain(footer, inner)))
 	return chrome.PanelBox.Width(c.w).Render(strings.Join(lines, "\n"))
 }
 

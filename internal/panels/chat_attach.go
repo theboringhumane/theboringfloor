@@ -730,7 +730,7 @@ func (c *Chat) popoverH() int {
 func (c *Chat) renderAttachChips() string {
 	lines := c.chipsLines()
 	for i := range lines {
-		lines[i] = chrome.DimText.Render(lines[i])
+		lines[i] = chrome.PanelDim.Render(lines[i])
 	}
 	return strings.Join(lines, "\n")
 }
@@ -767,16 +767,16 @@ func (c *Chat) renderAttachPopover() string {
 		inner = 1
 	}
 	lines := make([]string, 0, c.popoverH()-2)
-	lines = append(lines, chrome.Header.Render(fitPlain("attach file", inner)))
+	lines = append(lines, chrome.PanelHeader.Render(fitPlain("attach file", inner)))
 	vis, start := c.atWindow()
 	if len(c.atFiltered) == 0 {
-		lines = append(lines, chrome.DimText.Render(fitPlain("(no matches)", inner)))
+		lines = append(lines, chrome.PanelDim.Render(fitPlain("(no matches)", inner)))
 	}
 	for i, p := range vis {
 		idx := start + i
 		switch {
 		case idx == c.atSel:
-			lines = append(lines, chrome.AccentText.Render(fitPlain("› "+p, inner)))
+			lines = append(lines, chrome.PanelAccent.Render(fitPlain("› "+p, inner)))
 		case c.atFrag != "":
 			lines = append(lines, fitLabel("  "+accentMatches(p, c.atFrag), inner))
 		default:
@@ -784,6 +784,6 @@ func (c *Chat) renderAttachPopover() string {
 		}
 	}
 	footer := itoa(len(c.atFiltered)) + "/" + itoa(len(c.atFiles))
-	lines = append(lines, chrome.DimText.Render(fitPlain(footer, inner)))
+	lines = append(lines, chrome.PanelDim.Render(fitPlain(footer, inner)))
 	return chrome.PanelBox.Width(c.w).Render(strings.Join(lines, "\n"))
 }

@@ -103,7 +103,7 @@ func (m *Mail) Update(msg tea.Msg) tea.Cmd {
 
 // View implements Tab.
 func (m *Mail) View() string {
-	return fit(chrome.Header.Render("MAIL")+"\n"+m.vp.View(), m.h)
+	return fit(chrome.PanelHeader.Render("MAIL")+"\n"+m.vp.View(), m.h)
 }
 
 func kindLetter(k state.MailKind) string {
@@ -125,13 +125,13 @@ func kindStyle(k state.MailKind) func(string) string {
 	return func(s string) string {
 		switch k {
 		case state.MailBrief:
-			return chrome.Fg(chrome.Info, s)
+			return chrome.OnPanel(chrome.Info, s)
 		case state.MailReturn:
-			return chrome.Fg(chrome.OK, s)
+			return chrome.OnPanel(chrome.OK, s)
 		case state.MailNotice:
-			return chrome.Fg(chrome.Dim, s)
+			return chrome.OnPanel(chrome.Dim, s)
 		default: // user
-			return chrome.Fg(chrome.White, s)
+			return chrome.OnPanel(chrome.White, s)
 		}
 	}
 }
@@ -139,7 +139,7 @@ func kindStyle(k state.MailKind) func(string) string {
 // render — newest first; rows built from plain parts, clipped, then colored.
 func (m *Mail) render() string {
 	if len(m.st.Mails) == 0 {
-		return chrome.DimText.Render("- empty -")
+		return chrome.PanelDim.Render("- empty -")
 	}
 	rows := make([]state.MailItem, len(m.st.Mails))
 	copy(rows, m.st.Mails)
@@ -168,7 +168,7 @@ func styleMailRow(it state.MailItem, row string, styleFn func(string) string) st
 	rest := row[len(letter)+2:] // strip "[K] " — machine layout, not NL
 	styled := "[" + styleFn(letter) + "] "
 	if strings.HasPrefix(rest, it.From) && it.From != "" {
-		styled += chrome.Fg(chrome.RoleColor(it.From), it.From) + rest[len(it.From):]
+		styled += chrome.OnPanel(chrome.RoleColor(it.From), it.From) + rest[len(it.From):]
 	} else {
 		styled += rest
 	}

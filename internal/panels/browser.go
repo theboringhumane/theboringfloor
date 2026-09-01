@@ -733,7 +733,7 @@ func (b *Browser) shotRegionView() string {
 	if note == "" && b.shot.path != "" {
 		note = "screenshot: " + b.shot.path
 	}
-	sb.WriteString("\n" + chrome.DimText.Render(fitPlain(note, b.w)))
+	sb.WriteString("\n" + chrome.PanelDim.Render(fitPlain(note, b.w)))
 	return sb.String()
 }
 
@@ -1005,8 +1005,8 @@ func (b *Browser) editBar() string {
 		at = string(b.editBuf[b.editCur])
 		after = string(b.editBuf[b.editCur+1:])
 	}
-	s := chrome.AccentText.Render("▸ ") + before + editCaret.Render(at) + after
-	s += chrome.DimText.Render(editBarHint)
+	s := chrome.PanelAccent.Render("▸ ") + before + editCaret.Render(at) + after
+	s += chrome.PanelDim.Render(editBarHint)
 	return ansi.Truncate(s, b.w, "")
 }
 
@@ -1232,7 +1232,7 @@ func (b *Browser) View() string {
 	}
 	view := b.bar()
 	if hint := b.laneHint(); hint != "" {
-		view += "\n" + chrome.DimText.Render(ansi.Truncate(hint, b.w, ""))
+		view += "\n" + chrome.PanelDim.Render(ansi.Truncate(hint, b.w, ""))
 	}
 	return fit(view+"\n"+b.vp.View(), b.h)
 }
@@ -1352,9 +1352,9 @@ func (b *Browser) bar() string {
 	if loc == "" {
 		loc = "browser"
 	}
-	s := chrome.AccentText.Render("▸ ") + loc
+	s := chrome.PanelAccent.Render("▸ ") + loc
 	if b.page != nil && b.page.Title != "" {
-		s += chrome.DimText.Render(" · " + b.page.Title)
+		s += chrome.PanelDim.Render(" · " + b.page.Title)
 	}
 	return ansi.Truncate(s, b.w, "")
 }
@@ -1382,22 +1382,22 @@ func (b *Browser) refreshBody() {
 func (b *Browser) bodyRows() ([]string, []int) {
 	var rows []string
 	if b.note != "" {
-		rows = append(rows, chrome.DimText.Render(b.note))
+		rows = append(rows, chrome.PanelDim.Render(b.note))
 	}
 	if shotRow := b.shotStateRow(); shotRow != "" {
-		rows = append(rows, chrome.DimText.Render(ansi.Truncate(shotRow, b.wrapW(), "")))
+		rows = append(rows, chrome.PanelDim.Render(ansi.Truncate(shotRow, b.wrapW(), "")))
 	}
 	prefix := len(rows)
 	var pageOuts []rowOut
 	switch {
 	case b.page == nil && b.loading:
-		rows = append(rows, chrome.DimText.Render("▸ loading…"))
+		rows = append(rows, chrome.PanelDim.Render("▸ loading…"))
 	case b.err != "":
 		for _, ln := range strings.Split(wrapPlain(b.err, b.wrapW()), "\n") {
-			rows = append(rows, chrome.DimText.Render(ln))
+			rows = append(rows, chrome.PanelDim.Render(ln))
 		}
 	case b.page == nil:
-		rows = append(rows, chrome.DimText.Render(browserStarterCard))
+		rows = append(rows, chrome.PanelDim.Render(browserStarterCard))
 	default:
 		var pageRows []string
 		pageRows, pageOuts = b.pageRows()
@@ -1430,14 +1430,14 @@ func (b *Browser) pageRows() ([]string, []rowOut) {
 		switch {
 		case len(ro.links) > 0:
 			if intIn(ro.links, b.cursor) {
-				rows = append(rows, chrome.AccentText.Render(ro.text))
+				rows = append(rows, chrome.PanelAccent.Render(ro.text))
 			} else {
-				rows = append(rows, chrome.DimText.Render(ro.text))
+				rows = append(rows, chrome.PanelDim.Render(ro.text))
 			}
 		case ro.kind == blkTitle || ro.kind == blkHeading:
-			rows = append(rows, chrome.Header.Render(ro.text))
+			rows = append(rows, chrome.PanelHeader.Render(ro.text))
 		case ro.kind == blkImage || ro.kind == blkDim:
-			rows = append(rows, chrome.DimText.Render(ro.text))
+			rows = append(rows, chrome.PanelDim.Render(ro.text))
 		default:
 			rows = append(rows, ro.text)
 		}

@@ -116,7 +116,7 @@ func (c *Chat) toolOutputRows(id string, indentCells, budget int) []string {
 	}
 	out := ansi.Strip(c.toolOutputs[id])
 	if strings.TrimSpace(out) == "" {
-		return []string{indent + chrome.DimText.Render(toolOutputEmpty)}
+		return []string{indent + chrome.PanelDim.Render(toolOutputEmpty)}
 	}
 	var rows []string
 	for _, ln := range strings.Split(strings.TrimRight(out, "\n"), "\n") {
@@ -129,10 +129,10 @@ func (c *Chat) toolOutputRows(id string, indentCells, budget int) []string {
 	}
 	body := make([]string, 0, len(rows)+1)
 	for _, ln := range rows {
-		body = append(body, indent+chrome.DimText.Render(ln))
+		body = append(body, indent+chrome.PanelDim.Render(ln))
 	}
 	if more > 0 {
-		body = append(body, indent+chrome.DimText.Italic(true).Render("… "+itoa(more)+" more lines"))
+		body = append(body, indent+chrome.PanelDim.Italic(true).Render("… "+itoa(more)+" more lines"))
 	}
 	return body
 }

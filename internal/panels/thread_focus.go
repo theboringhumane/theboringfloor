@@ -175,7 +175,7 @@ func (tf *ThreadFocus) headerRow() string {
 	if tf.live {
 		return threadLiveGlyph(tf.clone.tick) + " " + body
 	}
-	return chrome.DimText.Render("✓") + " " + chrome.DimText.Render(body)
+	return chrome.PanelDim.Render("✓") + " " + chrome.PanelDim.Render(body)
 }
 
 // View renders: the header on row 0, then the clone's transcript viewport
@@ -187,7 +187,7 @@ func (tf *ThreadFocus) View() string {
 	rows = append(rows, tf.headerRow())
 	if tf.empty {
 		rows = append(rows,
-			chrome.DimText.Render("  "+fmt.Sprintf(focusEmptyText, tf.name)))
+			chrome.PanelDim.Render("  "+fmt.Sprintf(focusEmptyText, tf.name)))
 	} else {
 		rows = append(rows, tf.clone.vp.View())
 	}

@@ -105,7 +105,7 @@ func (b *Board) Update(msg tea.Msg) tea.Cmd {
 
 // View implements Tab.
 func (b *Board) View() string {
-	return fit(chrome.Header.Render("BOARD")+"\n"+b.vp.View(), b.h)
+	return fit(chrome.PanelHeader.Render("BOARD")+"\n"+b.vp.View(), b.h)
 }
 
 type boardCol struct {
@@ -146,10 +146,10 @@ func (b *Board) render() string {
 
 		done := col.status == state.TaskDone
 		var lines []string
-		lines = append(lines, lipgloss.NewStyle().Foreground(col.color).Bold(true).Underline(true).
+		lines = append(lines, lipgloss.NewStyle().Foreground(col.color).Background(chrome.PanelBgColor).Bold(true).Underline(true).
 			Render(clipPlain(col.title, colW)))
 		if len(rows) == 0 {
-			lines = append(lines, chrome.DimText.Render("-"))
+			lines = append(lines, chrome.PanelDim.Render("-"))
 		}
 		for _, t := range rows {
 			// clip plain parts first, then color the pieces
@@ -169,13 +169,13 @@ func renderTaskRow(t state.BoardTask, color color.Color, done bool, colW int) st
 	if t.Owner != "" && len(title)+1 < colW {
 		owner = clipPlain(t.Owner, colW-len(title)-1)
 	}
-	style := lipgloss.NewStyle().Foreground(color)
+	style := lipgloss.NewStyle().Foreground(color).Background(chrome.PanelBgColor)
 	if done {
 		style = style.Faint(true)
 	}
 	row := style.Render(title)
 	if owner != "" {
-		oc := lipgloss.NewStyle().Foreground(chrome.RoleColor(t.Owner))
+		oc := lipgloss.NewStyle().Foreground(chrome.RoleColor(t.Owner)).Background(chrome.PanelBgColor)
 		if done {
 			oc = oc.Faint(true)
 		}

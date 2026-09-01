@@ -41,17 +41,17 @@ func spriteWord(s state.SpriteState) string {
 func wordStyle(word string, s string) string {
 	switch word {
 	case "working":
-		return chrome.Fg(chrome.Info, s)
+		return chrome.OnPanel(chrome.Info, s)
 	case "meeting":
-		return chrome.Fg(chrome.Accent, s)
+		return chrome.OnPanel(chrome.Accent, s)
 	case "coffee":
-		return lipgloss.NewStyle().Foreground(chrome.Accent).Faint(true).Render(s)
+		return lipgloss.NewStyle().Foreground(chrome.Accent).Background(chrome.PanelBgColor).Faint(true).Render(s)
 	case "blocked":
-		return lipgloss.NewStyle().Foreground(chrome.Err).Bold(true).Render(s)
+		return chrome.OnPanelBold(chrome.Err, s)
 	case "at desk":
-		return chrome.Fg(chrome.Dim, s)
+		return chrome.OnPanel(chrome.Dim, s)
 	default:
-		return chrome.Fg(chrome.White, s)
+		return chrome.OnPanel(chrome.White, s)
 	}
 }
 
@@ -179,13 +179,13 @@ func (a *Agents) Update(msg tea.Msg) tea.Cmd {
 
 // View implements Tab.
 func (a *Agents) View() string {
-	return fit(chrome.Header.Render("AGENTS")+"\n"+a.vp.View(), a.h)
+	return fit(chrome.PanelHeader.Render("AGENTS")+"\n"+a.vp.View(), a.h)
 }
 
 // render — boss first, then the rest; task right-aligned when it fits.
 func (a *Agents) render() string {
 	if len(a.st.Employees) == 0 {
-		return chrome.DimText.Render("- empty -")
+		return chrome.PanelDim.Render("- empty -")
 	}
 	ordered := make([]state.Employee, 0, len(a.st.Employees))
 	for _, e := range a.st.Employees {
@@ -218,9 +218,9 @@ func (a *Agents) render() string {
 		// floor-click selection marker: "▸ " + bold row (2 cells of the
 		// width budget go to the marker)
 		sel := a.selected != "" && e.Name == a.selected
-		marker := "  "
+		marker := lipgloss.NewStyle().Background(chrome.PanelBgColor).Render("  ")
 		if sel {
-			marker = lipgloss.NewStyle().Foreground(c).Bold(true).Render("▸ ")
+			marker = chrome.OnPanelBold(c, "▸ ")
 		}
 		leftPlain := label + " " + chrome.RoleGlyph(e.Role) + " " + word
 		task := e.Task
@@ -235,20 +235,20 @@ func (a *Agents) render() string {
 
 		var left string
 		if isBoss {
-			left = lipgloss.NewStyle().Foreground(c).Bold(true).Render(label) + " " +
-				chrome.Fg(c, chrome.RoleGlyph(e.Role)) + " " +
+			left = chrome.OnPanelBold(c, label) + " " +
+				chrome.OnPanel(c, chrome.RoleGlyph(e.Role)) + " " +
 				wordStyle(word, word)
 		} else {
-			left = chrome.Fg(c, label) + " " +
-				chrome.Fg(c, chrome.RoleGlyph(e.Role)) + " " +
+			left = chrome.OnPanel(c, label) + " " +
+				chrome.OnPanel(c, chrome.RoleGlyph(e.Role)) + " " +
 				wordStyle(word, word)
 		}
 		if sel {
-			left = lipgloss.NewStyle().Bold(true).Render(left)
+			left = lipgloss.NewStyle().Background(chrome.PanelBgColor).Bold(true).Render(left)
 		}
-		line := marker + left + strings.Repeat(" ", gap)
+		line := marker + left + lipgloss.NewStyle().Background(chrome.PanelBgColor).Render(strings.Repeat(" ", gap))
 		if task != "" && gap > 1 {
-			line += chrome.DimText.Render(task)
+			line += chrome.PanelDim.Render(task)
 		}
 		b.WriteString(line + "\n")
 	}
@@ -276,11 +276,11 @@ func (a *Agents) officeRow() string {
 	if answering {
 		word = "answering"
 	}
-	left := chrome.Fg(chrome.Info, "office (concierge)") + " " +
-		chrome.Fg(chrome.Info, word)
+	left := chrome.OnPanel(chrome.Info, "office (concierge)") + " " +
+		chrome.OnPanel(chrome.Info, word)
 	gap := a.w - len("office (concierge) "+word) - 2
 	if gap < 1 {
 		gap = 1
 	}
-	return "  " + left + strings.Repeat(" ", gap)
+	return lipgloss.NewStyle().Background(chrome.PanelBgColor).Render("  ") + left + lipgloss.NewStyle().Background(chrome.PanelBgColor).Render(strings.Repeat(" ", gap))
 }

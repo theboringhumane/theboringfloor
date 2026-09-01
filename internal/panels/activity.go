@@ -80,19 +80,19 @@ func (a *Activity) Update(msg tea.Msg) tea.Cmd {
 
 // View implements Tab.
 func (a *Activity) View() string {
-	return fit(chrome.Header.Render("ACTIVITY")+"\n"+a.vp.View(), a.h)
+	return fit(chrome.PanelHeader.Render("ACTIVITY")+"\n"+a.vp.View(), a.h)
 }
 
 // render — dim "[HH:MM]" timestamps, default-text event text.
 func (a *Activity) render() string {
 	if len(a.lines) == 0 {
-		return chrome.DimText.Render("- quiet floor -")
+		return chrome.PanelDim.Render("- quiet floor -")
 	}
 	var b strings.Builder
 	for _, line := range a.lines {
 		row := clipPlain(line, a.w)
 		if end := strings.Index(row, "]"); strings.HasPrefix(row, "[") && end > 0 {
-			b.WriteString(chrome.DimText.Render(row[:end+1]) + row[end+1:])
+			b.WriteString(chrome.PanelDim.Render(row[:end+1]) + row[end+1:])
 		} else {
 			b.WriteString(row)
 		}

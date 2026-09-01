@@ -461,6 +461,17 @@ var (
 	WarnText     lipgloss.Style // permission amber
 	WarnBold     lipgloss.Style // permission amber, bold (modal header)
 	QuestionText lipgloss.Style // question-tool yellow
+
+	// Panel-aware text styles — same semantics as DimText/Header/… but with
+	// PanelBgColor background so they don't punch holes in the sidebar.
+	PanelDim    lipgloss.Style
+	PanelHeader lipgloss.Style
+	PanelAccent lipgloss.Style
+	PanelErr    lipgloss.Style
+	PanelOK     lipgloss.Style
+	PanelInfo   lipgloss.Style
+	PanelTool   lipgloss.Style
+	PanelWarn   lipgloss.Style
 )
 
 // applyTheme re-points every exported style var for the given theme.
@@ -486,6 +497,15 @@ func applyTheme(t Theme) {
 	WarnText = lipgloss.NewStyle().Foreground(t.Warn)
 	WarnBold = lipgloss.NewStyle().Foreground(t.Warn).Bold(true)
 	QuestionText = lipgloss.NewStyle().Foreground(t.Question)
+
+	PanelDim = lipgloss.NewStyle().Foreground(Dim).Background(PanelBgColor)
+	PanelHeader = lipgloss.NewStyle().Bold(true).Foreground(White).Background(PanelBgColor)
+	PanelAccent = lipgloss.NewStyle().Foreground(Accent).Background(PanelBgColor)
+	PanelErr = lipgloss.NewStyle().Foreground(Err).Background(PanelBgColor)
+	PanelOK = lipgloss.NewStyle().Foreground(OK).Background(PanelBgColor)
+	PanelInfo = lipgloss.NewStyle().Foreground(Info).Background(PanelBgColor)
+	PanelTool = lipgloss.NewStyle().Foreground(t.ToolColor).Faint(true).Background(PanelBgColor)
+	PanelWarn = lipgloss.NewStyle().Foreground(t.Warn).Background(PanelBgColor)
 
 	DiffAddBg, DiffDelBg = t.DiffAddBg, t.DiffDelBg
 	DiffAddFg, DiffDelFg = t.DiffAddFg, t.DiffDelFg
@@ -550,6 +570,16 @@ func OnBar(c color.Color, s string) string {
 // OnBarBold renders s bold-and-colored against the shared bar background.
 func OnBarBold(c color.Color, s string) string {
 	return lipgloss.NewStyle().Background(BarBgColor).Foreground(c).Bold(true).Render(s)
+}
+
+// OnPanel renders s colored against the panel background.
+func OnPanel(c color.Color, s string) string {
+	return lipgloss.NewStyle().Background(PanelBgColor).Foreground(c).Render(s)
+}
+
+// OnPanelBold renders s bold-and-colored against the panel background.
+func OnPanelBold(c color.Color, s string) string {
+	return lipgloss.NewStyle().Background(PanelBgColor).Foreground(c).Bold(true).Render(s)
 }
 
 // ModeColor — accent in demo, ok when live (matches the TS bars).

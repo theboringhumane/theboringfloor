@@ -25,20 +25,20 @@ func RenderMCPStatus(servers []state.MCPServer, w int) []string {
 	if w < 1 {
 		w = 1
 	}
-	lines := []string{chrome.Header.Render("mcp servers")}
+	lines := []string{chrome.PanelHeader.Render("mcp servers")}
 	if len(servers) == 0 {
-		lines = append(lines, chrome.DimText.Render("no mcp servers configured"))
+		lines = append(lines, chrome.PanelDim.Render("no mcp servers configured"))
 		return lines
 	}
 	for _, s := range servers {
 		row := mcpStatusGlyph(s.Status) + " " + s.Name
 		if d := strings.TrimSpace(s.Detail); d != "" {
-			row += "  " + chrome.DimText.Render(d)
+			row += "  " + chrome.PanelDim.Render(d)
 		}
 		lines = append(lines, foldStyledRows(row, w, w)...)
 	}
 	if name, ok := firstActionableMCP(servers); ok {
-		lines = append(lines, foldStyledRows(chrome.DimText.Render("reconnect: /mcp reconnect "+name), w, w)...)
+		lines = append(lines, foldStyledRows(chrome.PanelDim.Render("reconnect: /mcp reconnect "+name), w, w)...)
 	}
 	return lines
 }
@@ -49,13 +49,13 @@ func RenderMCPStatus(servers []state.MCPServer, w int) []string {
 func mcpStatusGlyph(status string) string {
 	switch status {
 	case "connected":
-		return chrome.OKText.Render("●")
+		return chrome.PanelOK.Render("●")
 	case "needs_auth", "disabled":
-		return chrome.WarnText.Render("◐")
+		return chrome.PanelWarn.Render("◐")
 	case "failed":
-		return chrome.ErrText.Render("✗")
+		return chrome.PanelErr.Render("✗")
 	default:
-		return chrome.DimText.Render("○")
+		return chrome.PanelDim.Render("○")
 	}
 }
 
