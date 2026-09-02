@@ -622,11 +622,13 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 		evs := mapClaudeEvent(raw, b.ctx, nowMs())
 		// Turn bookkeeping: every main-conversation user write expects a
 		// result; each result settles one FIFO placeholder + one turn.
+		var clearedBossID string
 		if raw.Type == "result" && raw.ParentToolUseID == "" {
 			if b.busyTurns > 0 {
 				b.busyTurns--
 			}
 			if len(b.pendingBoss) > 0 {
+				clearedBossID = b.pendingBoss[0]
 				b.pendingBoss = b.pendingBoss[1:]
 			}
 			if b.busyTurns == 0 {
@@ -644,6 +646,15 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 				b.mu.Unlock()
 			}
 			b.emitMapped(e)
+		}
+		// Turn ended — clear any stale typing placeholder that streaming
+		// never replaced (tool-call-only turn with no boss text). The
+		// reducer strips the boss-N placeholder; if already gone (normal
+		// flow), the empty-text Pending:false event is a no-op.
+		if clearedBossID != "" {
+			b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+				ID: clearedBossID, From: "boss", At: nowMs(), Pending: false,
+			}})
 		}
 	}
 }

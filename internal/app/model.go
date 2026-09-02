@@ -4790,6 +4790,13 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 				rest = append(rest, mgr)
 			}
 		}
+		// A clearing event (Pending:false, empty text) strips stale
+		// placeholders without appending an empty bubble — the turn ended
+		// with no boss text (session.idle / result backstop).
+		if !msg.Pending && strings.TrimSpace(msg.Text) == "" {
+			st.Chat = capChat(rest)
+			return st
+		}
 		st.Chat = capChat(appendChat(rest, msg))
 		return st
 

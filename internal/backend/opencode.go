@@ -2650,11 +2650,13 @@ func (b *liveBackend) onEvent(raw ocSSEEvent) error {
 		}
 		if json.Unmarshal(raw.Properties, &p) == nil {
 			b.maybeChildReturned(p.SessionID)
+			b.maybePrimaryIdle(p.SessionID)
 		}
 	case "session.status":
 		var p ocSessionStatusProps
 		if json.Unmarshal(raw.Properties, &p) == nil && p.Status.Type == "idle" {
 			b.maybeChildReturned(p.SessionID)
+			b.maybePrimaryIdle(p.SessionID)
 		}
 	case "message.updated":
 		var p struct {
@@ -2767,6 +2769,36 @@ func (b *liveBackend) maybeChildReturned(sessionID string) {
 
 	// Tidy the org chart: delete the child 10s later (best effort).
 	b.fl.at(10*time.Second, func() { b.deleteChild(sessionID) })
+}
+
+// maybePrimaryIdle: the primary session went idle — if there are stale
+// typing placeholders (boss-N) that streaming never replaced (tool-call-only
+// turn with no boss text), emit a clearing EvChatBoss (Pending:false, empty
+// text) so the reducer strips them and the typing animation stops. Guarded
+// against mid-turn false idles by checking that no boss text stream is open.
+func (b *liveBackend) maybePrimaryIdle(sessionID string) {
+	b.mu.Lock()
+	if sessionID != b.primaryID || len(b.pendingBoss) == 0 {
+		b.mu.Unlock()
+		return
+	}
+	for _, sess := range b.ctx.textSess {
+		if sess == b.primaryID {
+			b.mu.Unlock()
+			return // boss text still streaming — not truly idle
+		}
+	}
+	var heads []string
+	for len(b.pendingBoss) > 0 {
+		heads = append(heads, b.pendingBoss[0])
+		b.pendingBoss = b.pendingBoss[1:]
+	}
+	b.mu.Unlock()
+	for _, id := range heads {
+		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+			ID: id, From: "boss", At: nowMs(), Pending: false,
+		}})
+	}
 }
 
 // maybeBossCompleted: boss replied — emit a chat-boss bubble pinned to the
