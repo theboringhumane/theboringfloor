@@ -134,6 +134,28 @@ func payloadParts(text string, atts []state.Attachment) (parts []map[string]any,
 	return parts, skipped
 }
 
+// persistPathRefs writes stable copies of temp-file attachments that will
+// become path references (not uploaded inline). The send pipeline cleans
+// the original temp dir; the stable copy survives for the assistant to read.
+// ponytail: leaked ref dirs cleaned by OS; per-session dir if volume matters.
+func persistPathRefs(prepared []preparedAttachment, upload func(string) bool) {
+	for i, att := range prepared {
+		if upload(att.mime) || att.attachment.Temp == "" {
+			continue
+		}
+		dir, err := os.MkdirTemp("", "theboringoffice-ref-*")
+		if err != nil {
+			continue
+		}
+		dst := filepath.Join(dir, filepath.Base(att.path))
+		if err := os.WriteFile(dst, att.data, 0o644); err != nil {
+			_ = os.RemoveAll(dir)
+			continue
+		}
+		prepared[i].path = dst
+	}
+}
+
 // headBytes returns the first ≤512 bytes — DetectContentType's sniff
 // window — of an already-read file body.
 func headBytes(data []byte) []byte {

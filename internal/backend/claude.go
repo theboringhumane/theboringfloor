@@ -1014,7 +1014,9 @@ func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] could not attach " +
 			strings.Join(skipped, ", ") + " (file unreadable) — sent without it"})
 	}
-	return b.send(attachmentPrompt(text, prepared, func(string) bool { return false }), text, preparedAttachmentNames(prepared))
+	noUpload := func(string) bool { return false }
+	persistPathRefs(prepared, noUpload)
+	return b.send(attachmentPrompt(text, prepared, noUpload), text, preparedAttachmentNames(prepared))
 }
 
 // send owns Claude's existing text-only transport flow. wireText is what

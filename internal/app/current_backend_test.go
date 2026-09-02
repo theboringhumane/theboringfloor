@@ -336,3 +336,32 @@ func TestStaleBackendBuildResultCannotReplaceLatestGeneration(t *testing.T) {
 	requireCurrentCalls(t, old, "still old")
 	requireCurrentCalls(t, stale)
 }
+
+func TestStaleBypassBuildClearsLatch(t *testing.T) {
+	old := newCurrentBackendStub("old")
+	stale := newCurrentBackendStub("stale")
+	m := New(old, config.Default())
+	m.bypassRestarting = true
+	m.backendTransitioning = true
+	m.backendTransitionID = 2
+
+	// A bypass build result with a stale transition ID must still clear
+	// the bypass latch so a future /bypass toggle is not permanently wedged.
+	cmd := m.finishBackendTransition(backendBuildMsg{
+		name:       "claudecode",
+		oldName:    "claudecode",
+		backend:    stale,
+		bypass:     true,
+		transition: 1,
+	})
+	if m.backend != old {
+		t.Fatal("stale bypass build must not replace the backend")
+	}
+	if m.bypassRestarting {
+		t.Fatal("stale bypass build must clear bypassRestarting")
+	}
+	// The latch cleanup may return a cmd (queued follow-up); drain it.
+	if cmd != nil {
+		_ = cmd()
+	}
+}

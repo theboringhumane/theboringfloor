@@ -6271,6 +6271,9 @@ func (m *Model) swapBackend(name string) tea.Cmd {
 // returned Cmd, never on Bubble Tea's update goroutine.
 func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
 	if result.transition != m.backendTransitionID {
+		if result.bypass {
+			return m.finishBypassLatch()
+		}
 		return nil
 	}
 	if result.backend == nil {
@@ -6291,6 +6294,9 @@ func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
 // the input handler, and the replacement is already visible to new sends.
 func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 	if result.transition != m.backendTransitionID {
+		if result.bypass {
+			return m.finishBypassLatch()
+		}
 		return nil
 	}
 	m.backendTransitioning = false

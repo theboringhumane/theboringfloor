@@ -37,6 +37,67 @@ func textPart(t *testing.T, parts []map[string]any) string {
 	return text
 }
 
+func TestPersistPathRefsSurvivesTempCleanup(t *testing.T) {
+	// Simulate a paste temp dir that will be cleaned post-send.
+	tempDir, err := os.MkdirTemp("", "theboringoffice-paste-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pastePath := writeAttachmentBytes(t, tempDir, "paste.png", []byte("\x89PNG\r\n\x1a\n"))
+
+	prepared := []preparedAttachment{{
+		attachment: state.Attachment{Name: "paste.png", Mime: "image/png", Path: pastePath, Temp: tempDir},
+		data:       []byte("\x89PNG\r\n\x1a\n"),
+		mime:       "image/png",
+		path:       pastePath,
+	}}
+	noUpload := func(string) bool { return false }
+	persistPathRefs(prepared, noUpload)
+
+	// Simulate post-send cleanup of the original temp dir.
+	os.RemoveAll(tempDir)
+
+	// The persisted copy must still be readable.
+	if prepared[0].path == pastePath {
+		t.Fatal("persistPathRefs did not relocate the path")
+	}
+	data, err := os.ReadFile(prepared[0].path)
+	if err != nil {
+		t.Fatalf("persisted copy unreadable after temp cleanup: %v", err)
+	}
+	if string(data) != string([]byte("\x89PNG\r\n\x1a\n")) {
+		t.Fatal("persisted copy content mismatch")
+	}
+	// Clean up the ref dir.
+	os.RemoveAll(filepath.Dir(prepared[0].path))
+}
+
+func TestPersistPathRefsSkipsNonTempAndUploaded(t *testing.T) {
+	dir := t.TempDir()
+	repoFile := writeAttachment(t, dir, "main.go", "package main")
+	tempDir, err := os.MkdirTemp("", "theboringoffice-paste-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+	pastePath := writeAttachmentBytes(t, tempDir, "paste.png", []byte("\x89PNG\r\n\x1a\n"))
+
+	prepared := []preparedAttachment{
+		{attachment: state.Attachment{Name: "main.go", Path: repoFile}, data: []byte("package main"), mime: "", path: repoFile},
+		{attachment: state.Attachment{Name: "paste.png", Mime: "image/png", Path: pastePath, Temp: tempDir}, data: []byte("\x89PNG\r\n\x1a\n"), mime: "image/png", path: pastePath},
+	}
+	alwaysUpload := func(string) bool { return true }
+	persistPathRefs(prepared, alwaysUpload)
+
+	// Neither should be relocated: repo file has no Temp, paste is "uploaded".
+	if prepared[0].path != repoFile {
+		t.Fatal("non-temp attachment was relocated")
+	}
+	if prepared[1].path != pastePath {
+		t.Fatal("uploaded temp attachment was relocated")
+	}
+}
+
 func TestPayloadTextOnly(t *testing.T) {
 	parts, skipped := payloadParts("ship it", nil)
 	if len(skipped) != 0 || len(parts) != 1 || textPart(t, parts) != "ship it" {
