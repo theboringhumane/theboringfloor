@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/browsertools"
+	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -424,7 +425,7 @@ done
 	if len(lines) != 2 {
 		t.Fatalf("want 2 stdin lines, got %d", len(lines))
 	}
-	wantFirst := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\nopen the docs please"))
+	wantFirst := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\nopen the docs please"))
 	if lines[0] != wantFirst {
 		t.Fatalf("the first line must be preamble + prompt:\n got %q\nwant %q", lines[0], wantFirst)
 	}

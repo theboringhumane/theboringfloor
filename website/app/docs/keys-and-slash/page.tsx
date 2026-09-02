@@ -315,6 +315,16 @@ export default function KeysAndSlashPage() {
             </p>
 
             <SlashGroup
+              title="Agent context-recovery tool"
+              commands={[
+                {
+                  cmd: '⟦recent-messages⟧ / ⟦recent-messages: N⟧',
+                  does: 'agent-only marker, on its own line and once per reply — recover the latest 20 messages by default, or N clamped to 1..50; read-only and no permission prompt',
+                },
+              ]}
+            />
+
+            <SlashGroup
               title="The queue"
               commands={[
                 { cmd: '/queue [clear]', does: 'show the backlog — clear drops it' },

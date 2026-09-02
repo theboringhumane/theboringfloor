@@ -74,6 +74,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/browsertools"
+	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/netwatch"
@@ -605,7 +606,7 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 	briefed := b.browserBriefedFor == primaryID
 	b.mu.Unlock()
 	if !briefed {
-		prompt = browsertools.PromptPreamble + "\n\n" + trimmed
+		prompt = browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + trimmed
 	}
 	err := b.postPrompt(primaryID, prompt, atts, agent)
 	if err == nil && !briefed {
@@ -2924,6 +2925,9 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 	// fire the requests (the policy runs inside the bridge, one event
 	// kind per directive kind; the app owns the reaction — for
 	// browser-action that's the member's permission modal).
+	text = chatcontext.Scrub(text, func(count int) {
+		b.fl.emit(state.Event{Kind: state.EvRecentMessages, RecentMessagesCount: count})
+	})
 	text = browsertools.Scrub(text, b.browserBridge)
 	// Boss edits surface as diff events on message completion.
 	b.fetchDiffAndEmit(primaryID)

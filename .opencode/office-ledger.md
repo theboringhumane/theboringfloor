@@ -7,6 +7,97 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-02 · Exclude recovery control noise (@developer su... — tekton-10 (developer) · `done`
+- summary: Added exported recent-message control protocol constants and `chatcontext.IsControlText`.
+- files: `internal/chatcontext/chatcontext.go`, `internal/chatcontext/chatcontext_test.go`, `internal/app/recent_messages.go`, `internal/app/recent_messages_test.go`
+- verify: ```
+- proof: ### Recovery transcript after a marker-only request
+- ledgerId: led-1788358198859-eacde36d
+
+### 2026-09-02 · Review recent context tool (@reviewer subagent) — theboringcto-2 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788358006305-3a6a8118
+
+### 2026-09-02 · Implement recent-message context reply (@deve... — tekton-8 (developer) · `issues`
+- summary: Added `EvRecentMessages` app handling that builds and asynchronously sends a bounded synthetic transcript follow-up through `currentBackend`, so a backend repla
+- files: `internal/app/recent_messages.go`, `internal/app/recent_messages_test.go`, `internal/app/model.go`
+- verify: ```
+- proof: ### Synthetic follow-up delivered to the current backend
+- ledgerId: led-1788357742342-f5e928ad
+
+### 2026-09-02 · Build recent-message tool protocol (@develope... — tekton-7 (developer) · `done`
+- summary: Added backend-neutral `internal/chatcontext` marker parsing, preamble, scrubbing, count clamping, and marker-only fallback behavior.
+- files: `internal/chatcontext/chatcontext.go`, `internal/chatcontext/chatcontext_test.go`, `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/recent_messages_test.go`, `internal/backend/browser_open_test.go`, `internal/backend/claude_attachment_test.go`, `internal/backend/claude_office_swap_test.go`, `internal/backend/claude_spawn_test.go`
+- verify: ```
+- proof: ### First-boss-prompt preamble appended after the browser preamble
+- ledgerId: led-1788357466180-7e0bdb38
+
+### 2026-09-02 · Make tabs clickable (@developer subagent) — tekton-5 (developer) · `done`
+- summary: Added rendered-tab hit testing that shares the exact density, compact-label, separator, and narrow-width geometry used by the right-panel tab bar.
+- files: `internal/panels/tabs.go`, `internal/panels/tabs_test.go`, `internal/app/selection.go`, `internal/app/tab_mouse_test.go`
+- verify: ```
+- proof: | Click target in the rendered right-panel tab row | Resulting active tab |
+- ledgerId: led-1788357422937-adffc8d5
+
+### 2026-09-02 · Document recent-message tool (@developer suba... — tekton-9 (developer) · `done`
+- summary: Added a concise README reference and recovery behavior paragraph for the agent-only recent-message marker.
+- files: `README.md`, `website/app/docs/chat-and-threads/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`
+- verify: ```
+- proof: ### README — Keys reference
+- ledgerId: led-1788357314604-9760bcd4
+
+### 2026-09-02 · Improve terminal focus (@developer subagent) — tekton-6 (developer) · `issues`
+- summary: Made a left click inside the terminal viewport capture terminal keyboard focus, including blank body cells.
+- files: `internal/panels/terminal.go`, `internal/panels/terminal_sel_test.go`, `internal/app/terminal.go`, `internal/app/model.go`, `internal/app/term_mouse_test.go`, `internal/app/grab_test.go`
+- verify: ```
+- proof: ### Terminal focus interaction
+- ledgerId: led-1788357185580-50cd0e3c
+
+### 2026-09-02 · Review post-bypass sends (@reviewer subagent) — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788357123804-6121aabd
+
+### 2026-09-02 · Map click focus UX (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Mapped the existing right-panel tab rendering and selection seams.
+- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/panels/tabs.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/panels/tabs_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/model.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/selection.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/terminal.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/term_mouse_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/grab_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/panels/terminal.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/panels/terminal_sel_test.go`
+- verify: Targeted read/search only; no tests or mutations were run.
+- proof: ### Current interaction flow
+- ledgerId: led-1788356875568-12c362d5
+
+### 2026-09-02 · Trace bypass message black hole (@developer s... — tekton-1 (developer) · `done`
+- summary: Changed unavailable current-backend sends from a silent success to `active backend unavailable`, which routes through the existing visible `sendErrMsg` path ins
+- files: `internal/app/model.go`, `internal/app/bypass_test.go`, `internal/app/current_backend_test.go`
+- verify: ```
+- proof: ### Successful bypass ON — ordinary Enter routing
+- ledgerId: led-1788356808316-879f94db
+
+### 2026-09-02 · Live OpenCode post-bypass send (@developer su... — tekton-2 (developer) · `issues`
+- summary: Added a hermetic, spawned-serve OpenCode integration test for the bypass replacement path.
+- files: `internal/backend/opencode_bypass_integration_test.go`
+- verify: ```
+- proof: ### Hermetic bypass replacement round trip
+- ledgerId: led-1788356498572-80e0515c
+
+### 2026-09-02 · Live Claude post-bypass send (@developer suba... — tekton-3 (developer) · `issues`
+- summary: Added deterministic Claude bypass-candidate integration coverage for the `/bypass` handoff shape:
+- files: `internal/backend/claude_bypass_candidate_integration_test.go`
+- verify: ```
+- proof: ### Deterministic candidate handoff
+- ledgerId: led-1788356473861-e8b025c9
+
+### 2026-09-02 · Refresh changelog v0.3.20 (@developer subagent) — tekton-4 (developer) · `done`
+- summary: Updated changelog release fetching so each static-export build gets a distinct GitHub API fetch URL, preventing a prior build cache from reusing a stale release
+- files: `website/lib/changelog.ts`
+- verify: ```
+- proof: *Live:** https://office.theboring.name/changelog/
+- ledgerId: led-1788356383888-74b5c70a
+
 ### 2026-09-02 · Final bypass signoff (@reviewer subagent) — theboringcto-3 (cto) · `done`
 - summary: ## VERDICT
 - files: (none)
@@ -265,95 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *Generated CLAUDE.md, create case (exact bytes):**
 - ledgerId: led-1788107692913-a438188d
-
-### 2026-08-30 · Dev V2: backend priming docs (@developer suba... — tekton-2 (developer) · `issues`
-- summary: Scope clean — exactly my two files. All gates green. Composing the return.
-- files: `README.md`, `website/app/docs/backends/page.tsx`
-- verify: $ `git status --porcelain` → ` M README.md` / ` M website/app/docs/backends/page.tsx` (scope-exact, no commits)
-- proof: *README — the new paragraph as a GitHub reader sees it (rendered):**
-- ledgerId: led-1788107061420-80830a89
-
-### 2026-08-30 · Dev U: match sections + invert shots (@develo... — tekton-11 (developer) · `issues`
-- summary: All gates green. Composing the return.
-- files: `website/app/globals.css`, `website/components/home/hero.tsx`, `website/components/home/product-platform.tsx`, `website/components/home/agents-need-action.tsx`, `website/components/home/plan-then-build.tsx`, `website/components/home/feature-grid.tsx`, `website/app/docs/{page,backends,chat-and-threads,getting-started,keys-and-slash,layout-themes-power, `website/components/site-footer.tsx`, scratch only
-- verify: $ CDP-driven real Chrome (`Google Chrome.app --headless=new`, served `out/`): html class confirmed `light`/`dark` per scenario; home 13411px
-- proof: *(a) Light home, full page (segments 0–3):** every section light. Hero: off-white band, near-black headline, `coworkers.` in the light-theme
-- ledgerId: led-1788101277659-a2b5ec62
-
-### 2026-08-30 · Dev U: site light theme + toggle (@developer... — tekton-10 (developer) · `issues`
-- summary: All gates green. Scope is exactly my files (the ledger modification is the office app's own recorder; the untracked blog post untouched). Composing the return.
-- files: `website/app/globals.css`, `website/app/layout.tsx`, `website/components/theme-provider.tsx`, `website/components/theme-toggle.tsx`, `website/components/site-header.tsx`, `website/components/home/hero.tsx`, `website/components/home/context-model.tsx`
-- verify: $ Contrast spot-check (computed oklch→sRGB): accent `rgb(31,93,194)` on light bg = **5.98:1** (AA); foreground **19.72:1**; muted-foreground
-- proof: *Screenshot 1 — LIGHT default (fresh profile, no localStorage → script resolves light):** white/off-white page with faint gutter grid; light
-- ledgerId: led-1788099926687-04ed2fd8
-
-### 2026-08-30 · Blog: AGENTS.md best practices (@developer su... — tekton-9 (developer) · `done`
-- summary: All gates green. Composing the return.
-- files: `website/content/blog/agents-md-best-practices.md`
-- verify: Bonus checks: `grep -o 'agents-md-best-practices' out/sitemap.xml` → `agents-md-best-practices`; `grep -c 'agents-md-best-practices' out/rss
-- proof: *Frontmatter (verbatim):**
-- ledgerId: led-1788099390242-ea217786
-
-### 2026-08-30 · Dev T1: finish bypass core + UI (@developer s... — tekton-8 (developer) · `issues`
-- summary: All 11 bypass tests pass, and the diff confirms the in-tree work spans exactly the scoped files. The earlier 5-FAIL full-suite run was parallel-load flake (this
-- files: `internal/app/model.go`, `internal/app/browser_open.go`, `internal/app/digest.go`, `internal/app/bypass_test.go`, `cmd/uishot/main.go`
-- verify: ```
-- proof: *1. The confirm modal's exact copy** (leg A — `/bypass` typed, mode still OFF, amber QUESTION card centered over chat):
-- ledgerId: led-1788085240989-7f3798ae
-
-### 2026-08-30 · Dev T1: bypass core + UI (@developer subagent) — tekton-1 (developer) · `done`
-- summary: Final verification runs, captured clean:
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788081642205-4ca0f989
-
-### 2026-08-30 · Docs: disable strips bypass block (@developer... — tekton-7 (developer) · `done`
-- summary: **README.md** — rewrote the tail of the `/bypass` paragraph: the stale "it stays on disk until you remove it" claim is now "disabling `/bypass` strips it automa
-- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
-- verify: ```
-- proof: *README.md — the `/bypass` paragraph a reader sees (verbatim, line 122):**
-- ledgerId: led-1788074746754-c53f5f94
-
-### 2026-08-30 · Recon in-flight bypass diff (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: Scout recon complete. The tree is fully green on the final snapshot. Return per contract:
-- files: | Path | Role |, |---|---|, | `internal/app/model.go`, | `internal/app/browser_open.go`, | `internal/app/digest.go`, | `internal/app/bypass_test.go` (new, 499 lines) | 11 app-layer tests, | `internal/backend/claude.go`, | `internal/backend/opencode.go`, | `internal/backend/charter.go`, | `internal/backend/bypass_permissions_test.go`, | `internal/backend/claude_live_test.go`, | `cmd/uishot/main.go` | `--bypass` demo-proof leg (appeared as modified DURING this scout
-- verify: `go test ./internal/backend/ -count=1` (full) → one FAIL `TestClaudeSendMidTurnQueuedNoBlocking` under parallel-suite load; **isolated re-ru
-- proof: | Layer | Status | Evidence |
-- ledgerId: led-1788074510988-72aa04ea
-
-### 2026-08-30 · Verify bypass docs+website (@developer subagent) — tekton-5 (developer) · `issues`
-- summary: Everything verified. Composing the return.
-- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
-- verify: (36/36 static pages generated — both edited docs pages compiled and prerendered, so the JSX/TSX in my edits is syntactically valid. README i
-- proof: *README.md — the corrected `/bypass` paragraph a reader sees:**
-- ledgerId: led-1788074473205-f40e45e1
-
-### 2026-08-30 · Verify+fix backend/app bypass (@developer sub... — tekton-4 (developer) · `issues`
-- summary: All gates green. Composing the return.
-- files: `internal/app/bypass_test.go`, Read-only for verification: `internal/app/backend_switch_test.go`
-- verify: (none of these are in my scope — gofmt is clean on every file I touched: `gofmt -l` on all 9 scoped files returns nothing)
-- proof: The compile error before → after (vet, verbatim):
-- ledgerId: led-1788074472169-89e3ef6b
-
-### 2026-08-30 · Dev T2: backend bypass surfaces (@developer s... — tekton-2 (developer) · `issues`
-- summary: Everything is green on the settled tree. Composing the return.
-- files: `internal/backend/claude.go`, `internal/backend/opencode.go`, `internal/backend/charter.go`, `internal/backend/bypass_permissions_test.go`, `internal/backend/claude_live_test.go`, NOT touched: `internal/state/state.go` (interface lives here
-- verify: ```
-- proof: *The two claude argv shapes** (stub-recorded, byte-exact pinned in `TestClaudeSpawnArgvBypassPermissions` / `TestClaudeSpawnArgvWithoutBypas
-- ledgerId: led-1788070903262-1fe015ae
-
-### 2026-08-30 · Dev T3: bypass docs (@developer subagent) — tekton-3 (developer) · `done`
-- summary: My three files are exactly the in-scope ones; the other dirty paths are pre-existing foreign work (I never touched them, no commits made).
-- files: `README.md`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`
-- verify: ```
-- proof: *README — the new row and paragraph, as rendered:**
-- ledgerId: led-1788069094327-95b6629e
-
-### 2026-08-28 · Dev S2: picker harmonization (@developer suba... — tekton-9 (developer) · `issues`
-- summary: All gates green on the settled tree. Composing the return.
-- files: `internal/panels/session_picker.go`, `internal/panels/chat_attach.go`, `internal/panels/chat_attach_test.go`, `internal/panels/session_picker_search_test.go`, `internal/panels/chat.go`, NOT touched: `chat_attach_ignore.go`
-- verify: (21 packages `ok`, incl. `internal/backend 33.105s`, `internal/panels 13.710s`, `internal/app 79.979s`. A first full-suite run flaked `TestC
-- proof: *1. /session card mid-filter (typed `a`) — ANSI-stripped render** (cursor row reversed; rows 2–3 re-inked):
-- ledgerId: led-1787925672531-0028a687
 

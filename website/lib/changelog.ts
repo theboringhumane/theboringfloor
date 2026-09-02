@@ -9,9 +9,13 @@ export interface Release {
 }
 
 const REPO_API = GITHUB_REPO.replace('https://github.com/', 'https://api.github.com/repos/')
+// A static export cannot use no-store: it would make /changelog dynamic and
+// fail the export. Give each build a distinct fetch URL instead, so the
+// cached build fetch cannot reuse a release list from an earlier build.
+const BUILD_CACHE_BUSTER = Date.now().toString()
 
 export async function getAllReleases(): Promise<Release[]> {
-  const res = await fetch(`${REPO_API}/releases?per_page=100`, {
+  const res = await fetch(`${REPO_API}/releases?per_page=100&build=${BUILD_CACHE_BUSTER}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),

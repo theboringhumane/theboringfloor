@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -311,6 +312,19 @@ func TestBypassDisableInstantNoConfirm(t *testing.T) {
 	if got := fresh.bypasses(); len(got) != 1 || got[0] != false {
 		t.Fatalf("the fresh instance got SetBypassPermissions(false), got %v", got)
 	}
+	// The same holder used by the chat callback must now point at the OFF
+	// replacement, not at the just-retired ON backend.
+	if msg := currentBackendSend(m.currentBackend, m.plan, "after bypass off", nil)(); msg == nil {
+		t.Fatal("ordinary Enter after bypass OFF returned nil")
+	} else if _, ok := msg.(chatSentMsg); !ok {
+		t.Fatalf("ordinary Enter after bypass OFF = %T, want chatSentMsg", msg)
+	}
+	if got := oldStub.sentTexts; len(got) != 0 {
+		t.Fatalf("retired ON backend send ledger = %v, want no calls", got)
+	}
+	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{"after bypass off"}) {
+		t.Fatalf("OFF replacement send ledger = %v", got)
+	}
 }
 
 // --- indicator -----------------------------------------------------------------
@@ -562,6 +576,21 @@ func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
 	if m.backend != freshOff || m.bypassRestarting || m.bypassQueued {
 		t.Fatalf("final backend/latches = backend:%T restarting:%v queued:%v, want fresh-off/false/false", m.backend, m.bypassRestarting, m.bypassQueued)
 	}
+	attachment := state.Attachment{Name: "handoff.pdf", Mime: "application/pdf", Path: "/tmp/handoff.pdf"}
+	if msg := currentBackendSend(m.currentBackend, m.plan, "after rapid toggles", []state.Attachment{attachment})(); msg == nil {
+		t.Fatal("ordinary Enter after rapid toggles returned nil")
+	} else if _, ok := msg.(chatSentMsg); !ok {
+		t.Fatalf("ordinary Enter after rapid toggles = %T, want chatSentMsg", msg)
+	}
+	if got := old.sentTexts; len(got) != 0 {
+		t.Fatalf("original backend send ledger = %v, want no calls", got)
+	}
+	if got := freshOn.sentTexts; len(got) != 0 {
+		t.Fatalf("discarded ON candidate send ledger = %v, want no calls", got)
+	}
+	if got := freshOff.sentTexts; !reflect.DeepEqual(got, []string{"after rapid toggles"}) || len(freshOff.sentAtts) != 1 || len(freshOff.sentAtts[0]) != 1 || freshOff.sentAtts[0][0] != attachment {
+		t.Fatalf("final OFF backend send/attachment ledger = texts:%v atts:%+v", got, freshOff.sentAtts)
+	}
 }
 
 func TestBypassSlowStartKeepsOldBackendAndActiveIndicator(t *testing.T) {
@@ -606,6 +635,83 @@ func TestBypassSlowStartKeepsOldBackendAndActiveIndicator(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(m.Frame()), "⚠ BYPASS") {
 		t.Fatal("badge must turn ON only after the ON backend starts")
+	}
+}
+
+func TestBypassCommitRoutesOrdinarySendsBeforeAndAfterOldCleanup(t *testing.T) {
+	scratchHome(t)
+	log := &bypassLog{}
+	old := newBypassStub("old", "ses-live-1", log)
+	fresh := newBypassStub("fresh", "", log)
+	fresh.startEntered = make(chan struct{})
+	fresh.startRelease = make(chan struct{})
+	bypassFactory(t, fresh)
+	m := newBypassModel(old, config.Default(), t.TempDir())
+	m.SetEventSink(func(state.Event) {})
+	m.bypassDesired = true
+
+	// Drive build and Start separately so fresh is committed while old cleanup
+	// remains delayed; this mirrors a user pressing Enter immediately after ON.
+	build := m.respawnForBypass()
+	next, start := m.Update(build())
+	m = next.(Model)
+	started := make(chan tea.Msg, 1)
+	go func() { started <- start() }()
+	select {
+	case <-fresh.startEntered:
+	case <-time.After(time.Second):
+		t.Fatal("fresh Start did not begin")
+	}
+	close(fresh.startRelease)
+	next, committed := m.Update(<-started)
+	m = next.(Model)
+	if m.backend != fresh || !m.bypassPerms || m.bypassRestarting {
+		t.Fatalf("successful bypass commit = backend:%T on:%v restarting:%v, want fresh/true/false", m.backend, m.bypassPerms, m.bypassRestarting)
+	}
+
+	// With no status side-effect command, tea.Batch elides to the cleanup
+	// command itself. Keep it unexecuted until after the first fresh send.
+	cleanup := committed
+	if cleanup == nil {
+		t.Fatal("successful commit must retain old-generation cleanup")
+	}
+
+	before := currentBackendSend(m.currentBackend, m.plan, "before old cleanup", nil)()
+	if _, ok := before.(chatSentMsg); !ok {
+		t.Fatalf("pre-cleanup ordinary Enter = %T, want chatSentMsg", before)
+	}
+	m = runMsg(t, m, before)
+	attachment := state.Attachment{Name: "notes.md", Mime: "text/markdown", Path: "/tmp/notes.md"}
+	after := currentBackendSend(m.currentBackend, m.plan, "after old cleanup", []state.Attachment{attachment})()
+	if _, ok := after.(chatSentMsg); !ok {
+		t.Fatalf("post-cleanup ordinary Enter = %T, want chatSentMsg", after)
+	}
+	m = runMsg(t, m, cleanup())
+	m = runMsg(t, m, after)
+
+	if got := old.stopCount(); got != 1 {
+		t.Fatalf("old backend Stop calls = %d, want 1", got)
+	}
+	if got := fresh.stopCount(); got != 0 {
+		t.Fatalf("fresh backend Stop calls = %d, want 0", got)
+	}
+	if got := old.sentTexts; len(got) != 0 {
+		t.Fatalf("old backend send ledger = %v, want no calls", got)
+	}
+	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{"before old cleanup", "after old cleanup"}) {
+		t.Fatalf("fresh backend send ledger = %v", got)
+	}
+	if got := fresh.sentAtts; len(got) != 2 || len(got[0]) != 0 || len(got[1]) != 1 || got[1][0] != attachment {
+		t.Fatalf("fresh attachment ledger = %+v, want only the second SendWith to carry %+v", got, attachment)
+	}
+
+	// Send acceptance makes no duplicate local bubbles. The backend's normal
+	// user/pending events still update the post-transition transcript.
+	chatBefore := len(m.st.Chat)
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{From: "user", Text: "after old cleanup"}})
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{From: "boss", Pending: true}})
+	if len(m.st.Chat) != chatBefore+2 || m.st.Chat[len(m.st.Chat)-2].From != "user" || !m.st.Chat[len(m.st.Chat)-1].Pending {
+		t.Fatalf("post-commit user/pending lifecycle = %+v", m.st.Chat[chatBefore:])
 	}
 }
 

@@ -14,6 +14,7 @@
 package panels
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -120,5 +121,41 @@ func TestTabsViewWidePadNumberedTier(t *testing.T) {
 	want := " 1 chat   2 terminal   3 agents   4 board   5 mail   6 activity   7 git"
 	if bar != want {
 		t.Fatalf("72-col bar = %q, want padNumbered tier %q", bar, want)
+	}
+}
+
+func TestTabsTabAtRenderedLabels(t *testing.T) {
+	for _, width := range []int{72, 44} {
+		t.Run(fmt.Sprintf("width-%d", width), func(t *testing.T) {
+			tb := sevenTabs()
+			tb.SetSize(width, 12)
+			_, spans := tb.tabBarForWidth()
+			if len(spans) != 7 {
+				t.Fatalf("rendered tab spans = %d, want 7", len(spans))
+			}
+			for _, span := range spans {
+				x := span.start + (span.end-span.start)/2
+				got, ok := tb.TabAt(x, 0)
+				if !ok || got != span.index {
+					t.Errorf("click at rendered tab %d cell %d = (%d, %t), want (%d, true)", span.index, x, got, ok, span.index)
+				}
+			}
+		})
+	}
+}
+
+func TestTabsTabAtMissesSeparatorAndPanel(t *testing.T) {
+	tb := sevenTabs()
+	tb.SetSize(72, 12)
+	_, spans := tb.tabBarForWidth()
+	separator := spans[0].end
+	if got, ok := tb.TabAt(separator, 0); ok {
+		t.Fatalf("separator cell %d hit tab %d, want miss", separator, got)
+	}
+	if got, ok := tb.TabAt(spans[0].start, 1); ok {
+		t.Fatalf("panel row hit tab %d, want miss", got)
+	}
+	if got, ok := tb.TabAt(-1, 0); ok {
+		t.Fatalf("negative x hit tab %d, want miss", got)
 	}
 }

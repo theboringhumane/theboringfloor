@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringoffice/internal/browsertools"
+	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/gitx"
 	"github.com/theboringhumane/theboringoffice/internal/state"
@@ -690,6 +691,9 @@ func (b *liveClaudeBackend) emitMapped(e state.Event) {
 	// parity: maybeBossCompleted; one event kind per directive kind;
 	// browser-action's reaction is the member's permission modal).
 	if e.Kind == state.EvChatBoss && !e.Msg.Pending && e.Msg.Text != "" {
+		e.Msg.Text = chatcontext.Scrub(e.Msg.Text, func(count int) {
+			b.fl.emit(state.Event{Kind: state.EvRecentMessages, RecentMessagesCount: count})
+		})
 		e.Msg.Text = browsertools.Scrub(e.Msg.Text, b.browserBridge)
 	}
 	b.fl.emit(e)
@@ -1116,7 +1120,7 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 	b.mu.Unlock()
 	line := claudeUserLineFor(trimmed)
 	if !briefed {
-		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + trimmed)
+		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + trimmed)
 	}
 	if err := b.writeLine(line); err != nil {
 		b.mu.Lock()

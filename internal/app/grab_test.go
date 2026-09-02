@@ -83,11 +83,16 @@ func (f *grabFakeTerm) lastKey() string {
 // spellings handleKey switches on ("tab", "shift+tab", "ctrl+space",
 // "ctrl+o"). (ctrl+i is GONE: it was byte-identical to tab — 0x09 on
 // non-kitty terminals — so the toggle key is ctrl+space, 0x00.)
-func grabTab() tea.KeyPressMsg       { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}) }
-func grabShiftTab() tea.KeyPressMsg  { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}) }
-func grabCtrlSpace() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl}) }
-func grabCtrlO() tea.KeyPressMsg     { return tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl}) }
-func pressEnter() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}) }
+func grabTab() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}) }
+func grabShiftTab() tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift})
+}
+func grabCtrlSpace() tea.KeyPressMsg {
+	return tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl})
+}
+func grabCtrlO() tea.KeyPressMsg  { return tea.KeyPressMsg(tea.Key{Code: 'o', Mod: tea.ModCtrl}) }
+func grabEsc() tea.KeyPressMsg    { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEscape}) }
+func pressEnter() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}) }
 
 // grabSetupTerminal — a scratch-home model with the SpawnTerminal seam
 // wired to a recording fake, arrived at the terminal tab the REAL way (one
@@ -241,6 +246,21 @@ func TestTerminalCtrlSpaceTogglesCaptureBothWays(t *testing.T) {
 	}
 	if m.termCapturedNow() {
 		t.Fatalf("the tab cycle must not re-capture (toggle is ctrl+space only)")
+	}
+}
+
+func TestTerminalEscapeReleasesCaptureWithoutForwarding(t *testing.T) {
+	m, fake := grabSetupCaptured(t)
+	nm, _ := m.Update(grabEsc())
+	m = nm.(Model)
+	if m.termCapturedNow() {
+		t.Fatal("escape must release terminal capture")
+	}
+	if len(fake.keys) != 0 {
+		t.Fatalf("escape must not reach the terminal process, got %v", fake.keys)
+	}
+	if hint := m.hintLine(); hint != termHintReleased {
+		t.Fatalf("escape release must show the released hint, got %q", hint)
 	}
 }
 

@@ -3,6 +3,7 @@
 package app
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -247,6 +248,20 @@ func TestCurrentBackendRapidReplacementStopsEachRetiredGenerationOnce(t *testing
 		t.Fatalf("third generation send: %v", err)
 	}
 	requireCurrentCalls(t, third, "third send")
+}
+
+func TestCurrentBackendUnavailableSendSurfacesError(t *testing.T) {
+	current := &currentBackend{}
+	if err := current.send("must not disappear", nil, ""); !errors.Is(err, errBackendUnavailable) {
+		t.Fatalf("unavailable backend send error = %v, want %v", err, errBackendUnavailable)
+	}
+
+	cmd := currentBackendSend(current, nil, "must not disappear", nil)
+	if msg := cmd(); msg == nil {
+		t.Fatal("unavailable ordinary Enter must produce sendErrMsg, got nil")
+	} else if _, ok := msg.(sendErrMsg); !ok {
+		t.Fatalf("unavailable ordinary Enter must produce sendErrMsg, got %T", msg)
+	}
 }
 
 func TestCurrentBackendLeaseDrainsBeforeRetiring(t *testing.T) {

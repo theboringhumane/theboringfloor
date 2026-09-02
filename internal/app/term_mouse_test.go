@@ -132,6 +132,28 @@ func TestTermMouseRoutesReleased(t *testing.T) {
 	}
 }
 
+func TestTermViewportClickCapturesButOutsideDoesNot(t *testing.T) {
+	m, fake := mouseSetupTerminal(t, false)
+	dx, dy := m.tabs.ContentOffset()
+	insideX := m.floorW + dx + 3
+	insideY := 1 + dy + 3
+
+	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: insideX, Y: insideY, Button: tea.MouseLeft}))
+	m = nm.(Model)
+	if !m.termCapturedNow() || fake.focuses == 0 {
+		t.Fatalf("a left click in a blank terminal viewport cell must capture, captured=%v focuses=%d", m.termCapturedNow(), fake.focuses)
+	}
+
+	// The tab strip is outside the viewport. Its click may be routed by the
+	// terminal mouse seam, but must not alter the released capture state.
+	m.setTermCaptured(false)
+	nm, _ = m.Update(tea.MouseClickMsg(tea.Mouse{X: m.floorW + dx + 3, Y: 1, Button: tea.MouseLeft}))
+	m = nm.(Model)
+	if m.termCapturedNow() {
+		t.Fatal("a click outside the terminal viewport must not capture")
+	}
+}
+
 func TestTermMouseRoutesCaptured(t *testing.T) {
 	m, fake := mouseSetupTerminal(t, true)
 	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: m.floorW + 12, Y: 8, Button: tea.MouseLeft}))

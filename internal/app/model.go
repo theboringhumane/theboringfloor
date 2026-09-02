@@ -207,6 +207,12 @@ type currentBackend struct {
 	beforeSend func(*backendGeneration) // test seam: runs after admission, before transport I/O
 }
 
+// errBackendUnavailable is returned rather than treating an unavailable
+// generation as a successful send. A successful tea command produces the
+// normal chatSentMsg, so silently returning nil here makes the composer look
+// accepted even though no transport ever received the prompt.
+var errBackendUnavailable = errors.New("active backend unavailable")
+
 type backendGenerationState uint8
 
 const (
@@ -231,7 +237,7 @@ func (c *currentBackend) send(text string, atts []state.Attachment, agent string
 	g := c.current
 	if g == nil || g.backend == nil || g.state != backendAccepting {
 		c.mu.Unlock()
-		return nil
+		return errBackendUnavailable
 	}
 	g.inFlight++
 	beforeSend := c.beforeSend
@@ -381,9 +387,13 @@ type btwSnapshot struct {
 type Model struct {
 	backend        state.Backend
 	currentBackend *currentBackend // shared across value-copy tea updates
-	st             state.OfficeState
-	cfg            *config.Config // brain.json (nil-tolerant: Default() substituted)
-	gov            *governor      // power/caching bookkeeping, shared across copies
+	// recentToolOutputs keeps the completed body beside the compact transcript
+	// row. ChatMsg deliberately stores only a one-line tool summary; the recent
+	// context handoff needs the bounded output too.
+	recentToolOutputs map[string]string
+	st                state.OfficeState
+	cfg               *config.Config // brain.json (nil-tolerant: Default() substituted)
+	gov               *governor      // power/caching bookkeeping, shared across copies
 
 	// social — the office's SocialClock (ambient.go). Pointer, so the plan
 	// survives the value-copy update loop. lastDispatchTick feeds its
@@ -1188,26 +1198,27 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	agents.SetBossName(bossName)
 	activity := panels.NewActivity()
 	m := Model{
-		backend:          b,
-		currentBackend:   current,
-		cfg:              cfg,
-		gov:              &governor{lastBusy: time.Now()},
-		bossName:         bossName,
-		bossShort:        bossShort,
-		st:               initialState(b.Mode()),
-		chat:             chat,
-		agents:           agents,
-		activity:         activity,
-		termTab:          termTab,
-		browser:          browserTab,
-		plan:             plan,
-		planTemplate:     plan.Value(),
-		agentMode:        agentModeBuild,
-		activeThink:      map[string]bool{},
-		focused:          true, // default: unknown == focused — never false-ping
-		permNotifyIDs:    map[string]bool{},
-		social:           newSocialClock(),
-		lastDispatchTick: -1,
+		backend:           b,
+		currentBackend:    current,
+		recentToolOutputs: map[string]string{},
+		cfg:               cfg,
+		gov:               &governor{lastBusy: time.Now()},
+		bossName:          bossName,
+		bossShort:         bossShort,
+		st:                initialState(b.Mode()),
+		chat:              chat,
+		agents:            agents,
+		activity:          activity,
+		termTab:           termTab,
+		browser:           browserTab,
+		plan:              plan,
+		planTemplate:      plan.Value(),
+		agentMode:         agentModeBuild,
+		activeThink:       map[string]bool{},
+		focused:           true, // default: unknown == focused — never false-ping
+		permNotifyIDs:     map[string]bool{},
+		social:            newSocialClock(),
+		lastDispatchTick:  -1,
 		tabs: panels.NewTabs(
 			chat,
 			termTab,
@@ -2109,6 +2120,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case state.Event:
 		cmds = append(cmds, m.applyEvent(msg))
+	case recentMessagesResult:
+		if msg.err != nil {
+			m.noticeErr("context: could not send recent messages to the boss — " + msg.err.Error())
+		} else {
+			m.notice(fmt.Sprintf("context: sent %d recent messages to the boss", msg.sent))
+		}
 	case imageRasterMsg:
 		// the lazy image rasterize landed back on the UI goroutine
 		// (images.go): rows into the chat panel, one owning-block repaint.
@@ -2570,6 +2587,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	case "ctrl+o":
 		// release OUT of shell capture (documented alias — never a dive):
 		// stays on the tab, office keys live; inert while released.
+		if m.termCapturedNow() {
+			m.setTermCaptured(false)
+			return nil
+		}
+	case "esc":
+		// Escape is the quick exit from an actively captured terminal. Keep
+		// it above the generic captured-key forward below so the shell never
+		// receives its 0x1b byte.
 		if m.termCapturedNow() {
 			m.setTermCaptured(false)
 			return nil
@@ -3153,7 +3178,7 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // inbound boss-turn image payloads and fires the lazy rasterize cmd —
 // model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.bypassLatchKick(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.applyRecentMessages(ev), m.bypassLatchKick(ev))
 }
 
 // bypassLatchKick remains in the event batch for compatibility with backends
@@ -3273,6 +3298,7 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 
 	prevPending := hasPendingBoss(m.st)
 	m.st = reducer(m.st, ev)
+	m.pruneRecentToolOutputs()
 	m.applyDelegation(ev) // P3 — before panels see the state
 	// tool-output capture (EvTool.ToolOutput → the transcript's
 	// click-to-expand body): the reducer's ChatMsg has no output field,
@@ -3282,6 +3308,12 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	// pinned "no output as such" empty state there).
 	if ev.Kind == state.EvTool && ev.ToolOutput != "" && m.chat != nil {
 		m.chat.SetToolOutput(toolEntryID(ev.EmployeeName, ev.CallID), ev.ToolOutput)
+	}
+	if ev.Kind == state.EvTool && ev.ToolOutput != "" {
+		if m.recentToolOutputs == nil {
+			m.recentToolOutputs = map[string]string{}
+		}
+		m.recentToolOutputs[toolEntryID(ev.EmployeeName, ev.CallID)] = ev.ToolOutput
 	}
 	if m.chat != nil {
 		m.chat.SetStreamingThink(m.activeThink)

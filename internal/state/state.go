@@ -521,6 +521,11 @@ const (
 	// BrowserActionResult; failure carries the member/agent-facing error
 	// in BrowserOpenReason. The reducer passes it through untouched.
 	EvBrowserAction EventKind = "browser-action"
+	// EvRecentMessages — a read-only boss request for a synthetic follow-up
+	// containing recent office transcript context. RecentMessagesCount is
+	// already clamped by internal/chatcontext to 1..50; the reducer passes
+	// this additive event to the app, which owns collecting and sending it.
+	EvRecentMessages EventKind = "recent-messages"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -627,6 +632,9 @@ type Event struct {
 	BrowserActionArg      string `json:"browserActionArg,omitempty"`
 	BrowserActionFinalURL string `json:"browserActionFinalUrl,omitempty"`
 	BrowserActionResult   string `json:"browserActionResult,omitempty"`
+	// RecentMessagesCount is the requested transcript-message count for
+	// EvRecentMessages. It is meaningful only for that event kind.
+	RecentMessagesCount int `json:"recentMessagesCount,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

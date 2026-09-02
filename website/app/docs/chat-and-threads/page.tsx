@@ -172,6 +172,33 @@ export default function ChatAndThreadsPage() {
 
         <section className="border-b border-border">
           <div className="mx-auto max-w-5xl px-6 py-20">
+            <SectionTag>Context recovery</SectionTag>
+            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+              A compact marker can restore the boss&apos;s recent context.
+            </h2>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              If a boss has lost its place after context compaction, either backend can emit{' '}
+              <span className="font-mono text-foreground">⟦recent-messages⟧</span> on its own
+              line. The office removes that marker from the reply, collects the 20 most recent
+              user, boss, and tool transcript entries, and sends them back as a bounded synthetic
+              follow-up. It is a read-only recovery path: no tool runs and no permission prompt.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              To request a different amount, the boss writes{' '}
+              <span className="font-mono text-foreground">⟦recent-messages: N⟧</span> on its own
+              line. <span className="font-mono text-foreground">N</span> is clamped from 1 to 50,
+              and a reply can request recovery only once. The synthetic follow-up is capped at
+              12KB while preserving the newest content; the chat confirms the handoff as{' '}
+              <span className="font-mono text-foreground">
+                context: sent N recent messages to the boss
+              </span>
+              .
+            </p>
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Work threads</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
               Sub-agent work hangs off the transcript as threads.

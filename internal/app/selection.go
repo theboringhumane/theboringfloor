@@ -81,6 +81,13 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 		m.threadFocus.Click(msg.X, msg.Y-1) // pane coords: row 0 = its header
 		return nil
 	}
+	// The sidebar tab bar owns its rendered label cells before either the chat
+	// selection or terminal mouse surfaces see a press. TabAt shares the exact
+	// density/fallback geometry used by Tabs.View, while this seam translates
+	// only the outer topbar and desktop/mobile pane offsets.
+	if m.activateTabAt(msg) {
+		return nil
+	}
 	if cx, cy, ok := m.chatContentCoords(msg.X, msg.Y); ok && m.chat.SelectionBegin(cx, cy) {
 		m.sel = mselArmed
 		m.selPress = tea.Mouse(msg)
@@ -101,6 +108,30 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 	}
 	m.sel = mselIdle
 	return m.handleClick(msg)
+}
+
+// activateTabAt switches a visible right-panel tab label. It returns false
+// outside the tab row so existing floor and panel click routing stays intact.
+func (m *Model) activateTabAt(msg tea.MouseClickMsg) bool {
+	var x, y int
+	if m.mobile() {
+		if msg.Y < 1+m.floorBandH() {
+			return false
+		}
+		x, y = msg.X, msg.Y-(1+m.floorBandH())
+	} else {
+		if msg.X < m.floorW {
+			return false
+		}
+		x, y = msg.X-m.floorW, msg.Y-1
+	}
+	idx, ok := m.tabs.TabAt(x, y)
+	if !ok {
+		return false
+	}
+	m.tabs.SetActive(idx)
+	m.maybeSpawnTerminal()
+	return true
 }
 
 // handleMotion extends the armed selection's drag. Cheap: the Update arm

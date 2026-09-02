@@ -18,8 +18,8 @@
 //	    selection shifts the endpoints with the scroll delta (pinned to
 //	    the words, edge-clamped);
 //	(e) a motionless release is the plain click — no copy, no selection;
-//	(f) clearing: new PTY input retires the selection; esc owns it first
-//	    (never reaches the shell — a second esc does); respawn clears;
+//	(f) clearing: new PTY input retires the selection; esc clears it and
+//	    releases focus without reaching the shell; respawn clears;
 //	(g) a press outside the body rows clears (webpage rule); a second
 //	    release copies NOTHING again (the copy fires exactly once);
 //	(h) a failed copy (no clipboard tool) swaps to the dim failure note —
@@ -152,6 +152,8 @@ func selKey(s string) tea.KeyPressMsg {
 		return tea.KeyPressMsg(tea.Key{Code: 'r', Text: "r"})
 	case "a":
 		return tea.KeyPressMsg(tea.Key{Code: 'a', Text: "a"})
+	case "ctrl+space":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeySpace, Mod: tea.ModCtrl})
 	}
 	panic("selKey: unmapped " + s)
 }
@@ -411,7 +413,7 @@ func TestTermSelectClearsOnPTYInput(t *testing.T) {
 	}
 }
 
-func TestTermSelectEscOwnsTheHighlight(t *testing.T) {
+func TestTermEscapeReleasesWithoutForwarding(t *testing.T) {
 	calls := stubClipboard(t, nil)
 	p, f := newSelTestPanel(20, 8)
 	p.Focus()
@@ -429,22 +431,32 @@ func TestTermSelectEscOwnsTheHighlight(t *testing.T) {
 		t.Fatalf("an esc-cancelled drag must never copy, got %v", *calls)
 	}
 
-	// finalized: esc clears the highlight; the NEXT esc reaches the PTY
+	// finalized: esc clears the highlight AND releases capture. It must never
+	// reach the PTY, including on a second press while now blurred.
 	_ = selDrag(p, 0, 0, 3, 0)
 	writesBefore := len(f.writes)
 	p.Update(selKey("esc"))
 	if p.sel.state != termSelIdle {
 		t.Fatalf("esc must clear a finalized selection, state = %d", p.sel.state)
 	}
+	if p.Focused() {
+		t.Fatal("esc must release terminal focus")
+	}
 	if len(f.writes) != writesBefore {
-		t.Fatalf("the selection's esc must never reach the PTY")
+		t.Fatalf("esc must never reach the PTY")
 	}
 	p.Update(selKey("esc"))
-	if len(f.writes) != writesBefore+1 {
-		t.Fatalf("a bare esc must reach the PTY once the highlight is gone")
+	if len(f.writes) != writesBefore {
+		t.Fatalf("a released esc must not write to the PTY")
 	}
-	if got := f.writes[len(f.writes)-1]; len(got) != 1 || got[0] != 0x1b {
-		t.Fatalf("the PTY esc byte must be 0x1b, got %v", got)
+
+	p.Focus()
+	p.Update(selKey("ctrl+space"))
+	if p.Focused() {
+		t.Fatal("ctrl+space must release terminal focus")
+	}
+	if len(f.writes) != writesBefore {
+		t.Fatalf("ctrl+space must never reach the PTY")
 	}
 }
 

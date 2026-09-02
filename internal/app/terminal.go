@@ -182,7 +182,9 @@ func (t *termTabWrap) alive() bool {
 //
 // PRESSES region-gate: ok=false when the point is outside the panel box
 // (floor cols / above the mobile panel), so the caller falls through to
-// its normal path (floor picks etc). Motion and release forward
+// its normal path (floor picks etc). A left press inside the terminal's
+// rendered viewport captures its keyboard; tab-strip and box-chrome presses
+// only route mouse and never change capture. Motion and release forward
 // unconditionally while the terminal tab is active — an in-flight drag
 // clamps at the panel edge (TermPanel.motion) and unarmed landings are
 // cheap no-ops. Wheel does NOT ride this seam: the shared wheel arm in
@@ -209,6 +211,9 @@ func (m *Model) sendTermMouse(msg tea.Msg) (tea.Cmd, bool) {
 			return nil, false
 		}
 		msg.X, msg.Y = translate(msg.X, msg.Y)
+		if msg.Button == tea.MouseLeft && m.termViewportHit(msg.X, msg.Y) {
+			m.setTermCaptured(true)
+		}
 		return m.tabs.Update(msg), true
 	case tea.MouseReleaseMsg:
 		msg.X, msg.Y = translate(msg.X, msg.Y)
@@ -218,6 +223,19 @@ func (m *Model) sendTermMouse(msg tea.Msg) (tea.Cmd, bool) {
 		return m.tabs.Update(msg), true
 	}
 	return nil, false
+}
+
+// termViewportHit reports whether sidebar-box coordinates land in the
+// terminal content body. The panel's final row is its focus-status badge,
+// not part of the terminal viewport; tabs and border chrome likewise stay
+// outside this focus gesture. This deliberately does not inspect tab labels
+// or participate in tab hit-testing.
+func (m *Model) termViewportHit(x, y int) bool {
+	if m.termTab == nil {
+		return false
+	}
+	dx, dy := m.tabs.ContentOffset()
+	return x >= dx && x < dx+m.termTab.w && y >= dy && y < dy+m.termTab.h-1
 }
 
 // View implements panels.Tab: the shell surface while alive; otherwise a

@@ -50,6 +50,13 @@ type Tabs struct {
 	compact bool
 }
 
+// tabSpan is one rendered tab-label segment in the bar, measured in terminal
+// cells. The spaces between spans are visual separators, not click targets.
+type tabSpan struct {
+	index      int
+	start, end int
+}
+
 // compactLabels — the /compact sidebar's short tab labels, keyed by the
 // canonical Title(). Unknown titles keep their full name. (The browser
 // has no entry: it rides the left pane's own switcher, never this strip.)
@@ -133,6 +140,23 @@ func (t *Tabs) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
+// TabAt returns the tab whose rendered label contains the strip-local cell
+// (x, y). The tab row is row zero; the bordered panel begins below it. This
+// deliberately shares tabBarForWidth with View so density fallbacks, compact
+// labels, separators, and a narrow-strip truncate all use the same geometry.
+func (t *Tabs) TabAt(x, y int) (int, bool) {
+	if y != 0 || x < 0 || x >= t.w || len(t.tabs) == 0 {
+		return 0, false
+	}
+	_, spans := t.tabBarForWidth()
+	for _, span := range spans {
+		if x >= span.start && x < span.end {
+			return span.index, true
+		}
+	}
+	return 0, false
+}
+
 // View renders: tab bar row + rounded-border box with the active tab.
 func (t *Tabs) View() string {
 	if len(t.tabs) == 0 {
@@ -146,18 +170,7 @@ func (t *Tabs) View() string {
 	// (14). The tight tier is one cell over the default 44-col sidebar at
 	// seven tabs, so the letters tier keeps "git" alive instead of letting
 	// the hard clip truncate it to "gi".
-	var barFinal string
-	for _, barKind := range []barPad{padNumbered, padBare, padTight, padLetters} {
-		if bar := t.tabBar(barKind); lipgloss.Width(bar) <= t.w {
-			barFinal = bar
-			break
-		}
-	}
-	if barFinal == "" {
-		// narrower still: hard ansi-aware clip (never overflow the strip)
-		barFinal = ansi.Truncate(t.tabBar(padLetters), t.w, "")
-	}
-	bar := barFinal
+	bar, _ := t.tabBarForWidth()
 
 	content := t.tabs[t.active].View()
 	ch := t.h - 1
@@ -167,6 +180,30 @@ func (t *Tabs) View() string {
 	// lipgloss v2: Width/Height INCLUDE the border — pass outer dims.
 	box := chrome.PanelBox.Width(t.w).Height(ch).Render(content)
 	return lipgloss.JoinVertical(lipgloss.Left, bar, box)
+}
+
+// tabBarForWidth chooses View's first fitting density and returns the exact
+// rendered label spans alongside it. On an extremely narrow strip, spans are
+// clipped with the ansi-aware bar so off-screen label cells cannot be hit.
+func (t *Tabs) tabBarForWidth() (string, []tabSpan) {
+	for _, barKind := range []barPad{padNumbered, padBare, padTight, padLetters} {
+		bar, spans := t.tabBarWithSpans(barKind)
+		if lipgloss.Width(bar) <= t.w {
+			return bar, spans
+		}
+	}
+	bar, spans := t.tabBarWithSpans(padLetters)
+	bar = ansi.Truncate(bar, t.w, "")
+	for i := range spans {
+		if spans[i].start >= t.w {
+			spans[i].start, spans[i].end = t.w, t.w
+			continue
+		}
+		if spans[i].end > t.w {
+			spans[i].end = t.w
+		}
+	}
+	return bar, spans
 }
 
 // barPad — label density tiers for the tab bar, widest first.
@@ -179,9 +216,15 @@ const (
 	padLetters                // " g "      — compactLabels letters (last resort)
 )
 
-// tabBar composes the strip row at the given label density.
-func (t *Tabs) tabBar(pad barPad) string {
+// tabBarWithSpans composes one density tier and records the cells occupied by
+// each rendered label. Keep this in lockstep with tabBar's visual assembly.
+func (t *Tabs) tabBarWithSpans(pad barPad) (string, []tabSpan) {
 	var segs []string
+	spans := make([]tabSpan, 0, len(t.tabs))
+	x := 0
+	if pad >= padTight {
+		x++ // tabBar's leading cell keeps the box border readable
+	}
 	for i, tb := range t.tabs {
 		title := tb.Title()
 		// padLetters forces single-letter labels even outside /compact —
@@ -200,6 +243,12 @@ func (t *Tabs) tabBar(pad barPad) string {
 		default:
 			label = title
 		}
+		if i > 0 {
+			x++ // strings.Join's one-cell separator
+		}
+		start := x
+		x += lipgloss.Width(label)
+		spans = append(spans, tabSpan{index: i, start: start, end: x})
 		if i == t.active {
 			segs = append(segs, chrome.TabActive.Render(label))
 		} else {
@@ -210,7 +259,7 @@ func (t *Tabs) tabBar(pad barPad) string {
 	if pad >= padTight {
 		bar = " " + bar // one leading cell keeps the box border readable
 	}
-	return bar
+	return bar, spans
 }
 
 // --- shared panel helpers -------------------------------------------------

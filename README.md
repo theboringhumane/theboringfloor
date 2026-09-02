@@ -127,10 +127,13 @@ One line per key — the full table lives at [keys & slash commands](https://the
 | `/model` · `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
 | `y` `a` `n` `esc` | answer a permission prompt — allow once / always / reject / defer |
 | click a tool row | expand what the tool returned (all kinds — capped, tail-kept; `no output as such` when there's none) |
+| `⟦recent-messages⟧` / `⟦recent-messages: N⟧` | agent-only context recovery marker — on its own line once per reply; sends the boss the latest 20 messages by default, or `N` clamped to 1..50 |
 | `/bypass` | toggle bypass-permissions mode — session-only, confirm-on-enable, ` ⚠ BYPASS ` rides the topbar while on |
 | `ctrl+q` | arm quit — works everywhere |
 
 `/bypass` is the deliberate escape hatch. Enabling asks for an explicit confirm — agents will run tools and browser actions WITHOUT asking, this office session only — disabling is instant. While on, every tab's topbar carries a loud ` ⚠ BYPASS ` segment, backend permission asks stop (claude spawns with `--dangerously-skip-permissions`; the office-owned opencode process gets an ephemeral `OPENCODE_CONFIG_CONTENT={"permission":{"*":"allow"}}` override), any stray ask is auto-approved with a dim log row, and the office's own browser-action prompt is skipped the same way. Toggling builds and starts a fresh backend before switching; the current backend stays usable until the replacement is live, and claude resumes your session context. Every boot starts with bypass OFF. `brain.json`, `.opencode/opencode.json`, and the parent process environment stay untouched.
+
+If the boss loses context after compaction, it can place `⟦recent-messages⟧` (the default 20) or `⟦recent-messages: N⟧` (1..50) on its own line, once in a reply. The office removes the marker and sends a read-only synthetic follow-up containing recent user, boss, and tool transcript entries — newest content preserved, capped at 12KB — then shows `context: sent N recent messages to the boss`. It never asks permission.
 
 Browser tab (the left pane, behind `ctrl+b`):
 

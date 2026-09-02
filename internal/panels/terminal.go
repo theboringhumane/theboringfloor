@@ -17,10 +17,10 @@
 //	         badge for termNoteWindow when a drag-release copies.
 //
 // Keyboard contract (wave-42: capture is OPT-IN — the app flips Focus/Blur
-// via its ctrl+space toggle (both ways) and ctrl+o release alias; see
+// via a viewport click or its ctrl+space toggle (both ways); see
 // internal/term/term.go for the full byte-level matrix). Only while Focused
-// do chars/enter/backspace/tab/esc/arrows/home/end/pgup/pgdown/delete/
-// ctrl+letter forward to the PTY; ctrl+space and ctrl+o are RESERVED
+// do chars/enter/backspace/tab/arrows/home/end/pgup/pgdown/delete/
+// ctrl+letter forward to the PTY; esc, ctrl+space, and ctrl+o are RESERVED
 // (release capture back to the app — never reach the shell). Mouse wheel
 // scrolls the retained scrollback; a click focuses.
 //
@@ -53,9 +53,9 @@
 //
 // CLEARING (frozen rules): the selection retires on (a) new input to the
 // PTY — any keystroke that forwards bytes; (b) respawn ("r" on a dead
-// shell) and spawn generally; (c) esc — which OWNS the highlight first
-// (focused or blurred it cancels the selection and never reaches the
-// shell; a second esc does); (d) a press OUTSIDE the body rows (webpage
+// shell) and spawn generally; (c) esc — which clears the highlight and
+// releases focused capture without reaching the shell; (d) a press OUTSIDE
+// the body rows (webpage
 // rule); (e) a fresh arm. Releasing capture (ctrl+space / ctrl+o) does
 // NOT clear — the highlight survives the hop back to the office keys.
 //
@@ -284,7 +284,7 @@ func (p *TermPanel) SetState(st state.OfficeState) {
 }
 
 // Update implements Interactive. While focused every keypress goes to the
-// PTY (ctrl+space / ctrl+o release focus); while blurred only viewing keys
+// PTY (esc / ctrl+space / ctrl+o release focus); while blurred only viewing keys
 // work (pgup/pgdn scroll) plus "r" to respawn a dead shell. Mouse: wheel
 // scrolls; left press/drag/release run the text-selection contract in the
 // file header (both focus states — the press itself captures).
@@ -304,18 +304,16 @@ func (p *TermPanel) Update(msg tea.Msg) tea.Cmd {
 			return nil
 		}
 		if p.focused {
-			if key == "ctrl+space" || key == "ctrl+o" {
+			if key == "esc" || key == "ctrl+space" || key == "ctrl+o" {
 				// internal belt: the app gates both keeps before its own
-				// forward, but a directly-driven panel releases here too.
+				// forward, but a directly-driven panel releases here too. Esc
+				// owns any visible selection while leaving capture; it never
+				// reaches the shell.
+				if key == "esc" {
+					p.selClear()
+				}
 				p.Blur()
 				p.cached = ""
-				return nil
-			}
-			if key == "esc" && p.sel.state != termSelIdle {
-				// esc OWNS the highlight first (webpage rule): while a
-				// selection is up it cancels and never reaches the shell —
-				// a second esc forwards as the real 0x1b.
-				p.selClear()
 				return nil
 			}
 			if b, ok := keyToBytes(msg); ok {
@@ -376,15 +374,11 @@ func (p *TermPanel) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// click handles a mouse PRESS: the legacy click-focuses behavior first
-// (any button keeps it), then — a LEFT press over a body row arms the
-// selection; a press anywhere else (badge row, gutters, dead shell) clears
-// a finished highlight (webpage rule).
+// click handles a mouse PRESS: a LEFT press inside the live body captures
+// the keyboard and arms selection, including blank cells. A press outside
+// the viewport (badge row, gutters, dead shell) never captures; it only
+// clears a finished highlight (webpage rule).
 func (p *TermPanel) click(msg tea.MouseClickMsg) {
-	if !p.focused {
-		p.Focus()
-		p.cached = ""
-	}
 	if msg.Button != tea.MouseLeft {
 		return
 	}
@@ -392,6 +386,10 @@ func (p *TermPanel) click(msg tea.MouseClickMsg) {
 	if !p.Alive() || cx < 0 || cx >= p.w || cy < 0 || cy >= p.bodyH() {
 		p.selClear()
 		return
+	}
+	if !p.focused {
+		p.Focus()
+		p.cached = ""
 	}
 	p.sel = termSel{state: termSelArmed}
 	p.sel.a = termSelPoint{row: cy, col: cx}
