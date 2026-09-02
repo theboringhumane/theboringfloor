@@ -157,6 +157,37 @@ export default function BrowserTabPage() {
 
         <section className="border-b border-border">
           <div className="mx-auto max-w-5xl px-6 py-20">
+            <SectionTag>Built-in first</SectionTag>
+            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+              Members open; agents direct the office.
+            </h2>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Members use <Code>/open &lt;url&gt;</Code>. Agents use the office&apos;s
+              own-line directives instead of launching a browser process themselves:
+            </p>
+            <div className="mt-6 max-w-3xl border border-border bg-card p-5 font-mono text-xs leading-relaxed text-foreground">
+              <p>/open &lt;url&gt; <span className="text-muted-foreground">member opens a page</span></p>
+              <p>⟦open-browser: URL⟧ <span className="text-muted-foreground">agent opens it in the member&apos;s tab</span></p>
+              <p>⟦browser-screenshot: URL⟧ <span className="text-muted-foreground">agent renders a PNG for the member</span></p>
+              <p>⟦browser-snapshot: URL⟧ <span className="text-muted-foreground">agent reads text and links back</span></p>
+              <p>⟦browser-action: URL | click: CSS-SELECTOR⟧ <span className="text-muted-foreground">agent acts only after permission</span></p>
+              <p>⟦browser-action: URL | fill: CSS-SELECTOR = VALUE⟧ <span className="text-muted-foreground">agent fills only after permission</span></p>
+              <p>⟦browser-action: URL | eval: JS-EXPRESSION⟧ <span className="text-muted-foreground">agent evaluates only after permission</span></p>
+            </div>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              Open, screenshot, and snapshot are read-only. Browser action can click,
+              fill, or evaluate JavaScript, so it is mutating and always
+              permission-gated. The built-in directives work for localhost and
+              external <Code>https://</Code> pages. Agents fall back to Chrome,
+              Chromium, Playwright, Puppeteer, or a terminal browser only when the
+              member explicitly asks, or when the built-in path fails and the agent
+              explains why.
+            </p>
+          </div>
+        </section>
+
+        <section className="border-b border-border">
+          <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The premium lane</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
               Rendered screenshots by default; the embedded browser is opt-in.

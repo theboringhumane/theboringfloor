@@ -137,6 +137,8 @@ If the boss loses context after compaction, it can place `⟦recent-messages⟧`
 
 Browser tab (the left pane, behind `ctrl+b`):
 
+**Built-in browser first.** Members open a page with `/open <url>`. Agents put one of `⟦open-browser: URL⟧`, `⟦browser-screenshot: URL⟧`, or `⟦browser-snapshot: URL⟧` on its own line: open a page, render a PNG for the member, or read its text and links back to the agent. `⟦browser-action: URL | click: CSS-SELECTOR⟧` (or `fill` / `eval`) changes a page and is permission-gated. The built-in directives work for localhost and external `https://` pages; agents use Chrome/Chromium, Playwright, Puppeteer, or a terminal browser only when the member explicitly asks, or when the built-in path fails and they explain why.
+
 | Key | Does |
 |---|---|
 | `↑`/`↓` or `j`/`k` | move the link cursor |

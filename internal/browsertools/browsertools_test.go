@@ -15,9 +15,8 @@
 //	     EvBrowserAction per request (the action event carries the
 //	     parsed op/sel/arg payload), and a marker-only reply degrades
 //	     to the one-line office note (never a blank pin);
-//	preamble — the agent-facing text keeps the open-browser paragraph
-//	     + read-only block byte-identical (strict prefix) and carries
-//	     the browser-action block verbatim.
+//	preamble — the agent-facing text keeps the browser-policy paragraph
+//	     before directive syntax and pins the entire byte contract.
 package browsertools
 
 import (
@@ -401,10 +400,21 @@ func TestScrubFallbackNamesNewKinds(t *testing.T) {
 }
 
 func TestPromptPreambleTeachesTheContract(t *testing.T) {
-	// the agent-facing instruction must carry the marker shapes, the
-	// own-line rule, the policy flag, the strip contract, and the
-	// mutating sibling's grammar + always-ask permission.
+	// the agent-facing instruction must carry the browser preference and
+	// fallback rules, marker shapes, own-line rule, URL-policy flag, strip
+	// contract, and mutating sibling's grammar + always-ask permission.
 	for _, want := range []string{
+		"Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages.",
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself.",
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back.",
+		"The member-facing slash command is /open <url>; agents use the directives below.",
+		"localhost",
+		"external pages",
+		"Chrome",
+		"Chromium",
+		"Playwright",
+		"Puppeteer",
+		"terminal-browser",
 		MarkerOpen + " URL" + MarkerClose,
 		MarkerShot + " URL" + MarkerClose,
 		MarkerSnap + " URL" + MarkerClose,
@@ -424,13 +434,16 @@ func TestPromptPreambleTeachesTheContract(t *testing.T) {
 	}
 }
 
-// TestPromptPreambleByteContract — the open-browser paragraph + the
-// read-only block are a STABLE CONTRACT (backend tests build expected
-// wire lines from them): they must stay byte-identical (a strict
-// prefix), and the browser-action block appends after them verbatim.
+// TestPromptPreambleByteContract — the browser-policy paragraph appears
+// before directive syntax, and the entire first-turn preamble is a stable
+// byte contract (backend tests build expected wire lines from it).
 func TestPromptPreambleByteContract(t *testing.T) {
-	const openParagraph = "[theboringoffice harness — browser tool]\n" +
-		"You can ask the office to open a web page in the member's in-app browser tab. " +
+	const policyParagraph = "[theboringoffice harness — browser tool]\n" +
+		"Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+		"The member-facing slash command is /open <url>; agents use the directives below.\n"
+	const openParagraph = "You can ask the office to open a web page in the member's in-app browser tab. " +
 		"To open a page, emit this directive on ITS OWN line, at most once per reply:\n" +
 		MarkerOpen + " URL" + MarkerClose + "\n" +
 		"URL must be absolute: https:// for any host; http:// only for localhost, 127.0.0.1 or ::1 " +
@@ -438,8 +451,11 @@ func TestPromptPreambleByteContract(t *testing.T) {
 		"The office strips the directive from your visible reply and performs the open, so never quote " +
 		"or explain the marker itself — just place it. Open a page only when it genuinely helps the " +
 		"member (docs, dashboards, pull requests, a dev server you started)."
-	if !strings.HasPrefix(PromptPreamble, openParagraph) {
-		t.Fatalf("the open-browser paragraph must stay byte-identical (it is a strict prefix), got:\n%s", PromptPreamble)
+	if !strings.HasPrefix(PromptPreamble, policyParagraph) {
+		t.Fatalf("the browser-policy paragraph must be the strict pre-directive prefix, got:\n%s", PromptPreamble)
+	}
+	if !strings.HasPrefix(PromptPreamble, policyParagraph+openParagraph) {
+		t.Fatalf("the open-browser paragraph must follow the browser-policy paragraph byte-identically, got:\n%s", PromptPreamble)
 	}
 	const readOnlyBlock = "\nTwo read-only siblings (same own-line rule, same URL policy, at most one of each per reply, " +
 		"3 browser directives total per reply):\n" +
@@ -447,8 +463,8 @@ func TestPromptPreambleByteContract(t *testing.T) {
 		"(kitty terminals) and save the PNG (the member sees the path).\n" +
 		MarkerSnap + " URL" + MarkerClose + " — fetch the page's text + links back to YOU as a follow-up " +
 		"message — use it to READ pages."
-	if !strings.HasPrefix(PromptPreamble, openParagraph+readOnlyBlock) {
-		t.Fatalf("the open paragraph + read-only block must stay byte-identical (a strict prefix), got:\n%s", PromptPreamble)
+	if !strings.HasPrefix(PromptPreamble, policyParagraph+openParagraph+readOnlyBlock) {
+		t.Fatalf("the policy + open paragraph + read-only block must stay byte-identical (a strict prefix), got:\n%s", PromptPreamble)
 	}
 	const actionBlock = "\nOne MUTATING sibling (same own-line rule, same URL policy, counts toward the 3-directive cap) — " +
 		"it CHANGES the page, so the member's permission prompt ALWAYS asks first (approve-once only; " +
@@ -465,8 +481,8 @@ func TestPromptPreambleByteContract(t *testing.T) {
 	if !strings.HasSuffix(PromptPreamble, actionBlock) {
 		t.Fatalf("the browser-action block must append verbatim, got:\n%s", PromptPreamble)
 	}
-	if PromptPreamble != openParagraph+readOnlyBlock+actionBlock {
-		t.Fatal("the preamble is EXACTLY the open paragraph + the read-only block + the action block (nothing between, nothing after)")
+	if PromptPreamble != policyParagraph+openParagraph+readOnlyBlock+actionBlock {
+		t.Fatal("the preamble is EXACTLY the policy paragraph + open paragraph + read-only block + action block (nothing between, nothing after)")
 	}
 }
 

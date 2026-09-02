@@ -20,9 +20,19 @@ func TestCharterAssetSelfCheck(t *testing.T) {
 	if !charter.ContainsPhrases(charterProbePhrases()) {
 		t.Fatalf("embedded charter failed its own subset probe: missing one of %v", charterProbePhrases())
 	}
-	want := "MINIMUM 3 sub-agents"
-	if !strings.Contains(charter.String(), want) {
-		t.Fatalf("embedded charter does not contain %q", want)
+	for _, want := range []string{
+		"MINIMUM 3 sub-agents",
+		"built-in office browser for every URL",
+		"open-browser",
+		"browser-screenshot",
+		"browser-snapshot",
+		"browser-action",
+		"only with member permission",
+		"Never launch Chrome, Chromium, Playwright, Puppeteer",
+	} {
+		if !strings.Contains(charter.String(), want) {
+			t.Fatalf("embedded charter does not contain %q", want)
+		}
 	}
 	if strings.Contains(charter.String(), "\r") {
 		t.Fatal("embedded charter contains CR bytes — expected LF-only")
@@ -58,6 +68,11 @@ func TestEnsureCharterCreatesFresh(t *testing.T) {
 	}
 	if string(chartRaw) != charter.Text {
 		t.Fatal("chart file is not byte-exact the embedded charter")
+	}
+	for _, want := range []string{"built-in office browser for every URL", "open-browser", "browser-screenshot", "browser-snapshot", "browser-action"} {
+		if !strings.Contains(string(chartRaw), want) {
+			t.Fatalf("OpenCode-delivered charter missing %q", want)
+		}
 	}
 	cfgRaw, err := os.ReadFile(filepath.Join(dir, ".opencode", "opencode.json"))
 	if err != nil {

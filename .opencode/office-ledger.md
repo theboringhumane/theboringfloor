@@ -7,6 +7,34 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-02 · Review browser policy prompt (@reviewer subag... — theboringcto-3 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788359451842-23854787
+
+### 2026-09-02 · Strengthen browser tool prompt (@developer su... — tekton-11 (developer) · `done`
+- summary: Added an explicit first-turn browser policy before all directive syntax.
+- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/backend/browser_open_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788359224714-1740b26e
+
+### 2026-09-02 · Add browser policy to charter (@developer sub... — tekton-12 (developer) · `issues`
+- summary: Added one canonical **Browser use (office default)** section to the embedded office charter.
+- files: `internal/charter/charter.md`, `.opencode/oikonomos.md`, `internal/charter/charter_test.go`, `internal/backend/charter_test.go`, `internal/backend/charter_claude_test.go`
+- verify: ```
+- proof: ### Canonical charter section
+- ledgerId: led-1788359196951-3c2bfb6e
+
+### 2026-09-02 · Document built-in browser preference (@develo... — tekton-13 (developer) · `done`
+- summary: Added a concise README reference directing agents to the office’s built-in browser directives first.
+- files: `README.md`, `website/app/docs/browser-tab/page.tsx`
+- verify: ```
+- proof: ### Built-in first
+- ledgerId: led-1788358967521-41f5ab2d
+
 ### 2026-09-02 · Exclude recovery control noise (@developer su... — tekton-10 (developer) · `done`
 - summary: Added exported recent-message control protocol constants and `chatcontext.IsControlText`.
 - files: `internal/chatcontext/chatcontext.go`, `internal/chatcontext/chatcontext_test.go`, `internal/app/recent_messages.go`, `internal/app/recent_messages_test.go`
@@ -328,32 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *1. Expanded row WITH output** (unit test log, verbatim — `TestToolRowExpandShowsOutput`, 44 cols, ANSI-stripped):
 - ledgerId: led-1788153137253-e58a3047
-
-### 2026-08-31 · Dev W1: tool output capture (@developer subag... — tekton-1 (developer) · `issues`
-- summary: All verification complete. Composing the return.
-- files: `internal/state/state.go`, `internal/backend/events.go`, `internal/backend/claude_events.go`, `internal/backend/tool_output_test.go` *(new)*, `internal/backend/claude_live_test.go`, NOT touched
-- verify: ```
-- proof: *claude done-event JSON** (unit test log, verbatim — text result `"total 42"`):
-- ledgerId: led-1788152725848-9c68eb87
-
-### 2026-08-31 · Dev: claude backend NewOffice+SwapPrimary (@d... — tekton-3 (developer) · `issues`
-- summary: All gates green — 92 TestClaude tests pass (including the 3 new ones), zero FAILs. Composing the return.
-- files: `internal/backend/claude.go`, `internal/backend/claude_office_swap_test.go`, Foreign dirty paths in `git status` (`internal/app/*`, `internal/panels/*`, `internal/backend/claude
-- verify: (`git diff … | grep -c '^-[^-]'` → `0`: purely additive)
-- proof: Stub-recorded claude argv (verbatim from `-v` run) — **NewOffice respawns FRESH, SwapPrimary respawns with `--resume <saved>`**:
-- ledgerId: led-1788152562733-a7c99f48
-
-### 2026-08-31 · Scout: opencode→claude backend parity gap (@e... — skopos-1 (scout) · `issues`
-- summary: Recon complete. All evidence gathered; the tree was never touched.
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788151932135-a37dc962
-
-### 2026-08-30 · Dev V: claude charter bridge (@developer suba... — tekton-1 (developer) · `issues`
-- summary: All gates green. Composing the return.
-- files: `internal/backend/charter_claude.go`, `internal/backend/claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/claude_live_test.go`
-- verify: ```
-- proof: *Generated CLAUDE.md, create case (exact bytes):**
-- ledgerId: led-1788107692913-a438188d
 

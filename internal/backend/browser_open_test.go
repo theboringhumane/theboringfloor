@@ -40,6 +40,17 @@ func browserOpens(log *eventLog) []state.Event {
 // member's chat-user echo NEVER carries the preamble; and a NEW primary
 // id (respawn/fresh) re-briefs exactly once.
 func TestBrowserPreambleRidesFirstBossPrompt(t *testing.T) {
+	const browserPolicy = "Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+		"The member-facing slash command is /open <url>; agents use the directives below."
+	const wireBrowserPolicy = "Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+		"The member-facing slash command is /open \\u003curl\\u003e; agents use the directives below."
+	if !strings.Contains(browsertools.PromptPreamble, browserPolicy) {
+		t.Fatalf("browsertools.PromptPreamble must carry the exact browser policy paragraph, got %q", browsertools.PromptPreamble)
+	}
 	stub := &modelStub{}
 	srv := stub.serve(t)
 	b := liveStubBackend(stub, srv, config.Default())
@@ -59,6 +70,9 @@ func TestBrowserPreambleRidesFirstBossPrompt(t *testing.T) {
 	if !strings.Contains(posts[0], browsertools.MarkerOpen) ||
 		!strings.Contains(posts[0], "open the docs please") {
 		t.Fatalf("the FIRST prompt must carry the preamble + the member text, got %s", posts[0])
+	}
+	if !strings.Contains(posts[0], wireBrowserPolicy) {
+		t.Fatalf("the FIRST prompt must carry the exact browser policy paragraph, got %s", posts[0])
 	}
 	if strings.Contains(posts[1], browsertools.MarkerOpen) {
 		t.Fatalf("the SECOND prompt ships raw (no re-brief), got %s", posts[1])
@@ -392,6 +406,17 @@ func TestBrowserActionMarkerScrubbedAtPin(t *testing.T) {
 // the production encoder + the literal marker intro); the second line
 // ships raw; the member's chat-user echo stays preamble-free.
 func TestClaudeBrowserPreambleRidesFirstLine(t *testing.T) {
+	const browserPolicy = "Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+		"The member-facing slash command is /open <url>; agents use the directives below."
+	const wireBrowserPolicy = "Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+		"The member-facing slash command is /open \\u003curl\\u003e; agents use the directives below."
+	if !strings.Contains(browsertools.PromptPreamble, browserPolicy) {
+		t.Fatalf("browsertools.PromptPreamble must carry the exact browser policy paragraph, got %q", browsertools.PromptPreamble)
+	}
 	capture := filepath.Join(t.TempDir(), "capture.log")
 	stubBody := claudeStubPreambleSh() + `while IFS= read -r line; do
   printf '%s\n' "$line" >> "` + capture + `"
@@ -431,6 +456,9 @@ done
 	}
 	if !strings.Contains(lines[0], "⟦open-browser:") {
 		t.Fatalf("the literal marker intro must ride the first line, got %q", lines[0])
+	}
+	if !strings.Contains(lines[0], wireBrowserPolicy) {
+		t.Fatalf("the first line must carry the exact browser policy paragraph, got %q", lines[0])
 	}
 	wantSecond := `{"type":"user","message":{"role":"user","content":[{"type":"text","text":"thanks"}]},"parent_tool_use_id":null}`
 	if lines[1] != wantSecond {

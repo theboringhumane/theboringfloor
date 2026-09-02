@@ -173,10 +173,14 @@ var blankCollapseRe = regexp.MustCompile(`\n{3,}`)
 // PromptPreamble — the harness instruction riding the FIRST prompt of
 // every boss session (both backends): teaches the markers, the
 // member-controlled URL policy, and the strip contract (the agent must
-// never quote a marker as prose). The open-browser paragraph +
-// read-only block are byte-stable (backend tests pin them); new
-// capabilities APPEND lines.
+// never quote a marker as prose). The browser-policy paragraph is
+// intentionally first, before directive syntax, and the full byte contract
+// is pinned by browsertools and both backend first-prompt tests.
 const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
+	"Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
+	"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
+	"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
+	"The member-facing slash command is /open <url>; agents use the directives below.\n" +
 	"You can ask the office to open a web page in the member's in-app browser tab. " +
 	"To open a page, emit this directive on ITS OWN line, at most once per reply:\n" +
 	MarkerOpen + " URL" + MarkerClose + "\n" +

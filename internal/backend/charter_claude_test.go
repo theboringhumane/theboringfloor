@@ -53,6 +53,11 @@ func TestEnsureClaudeCharterCreatesFresh(t *testing.T) {
 	if string(payload) != charter.Text {
 		t.Fatal("seeded payload is not byte-exact the embedded charter")
 	}
+	for _, want := range []string{"built-in office browser for every URL", "open-browser", "browser-screenshot", "browser-snapshot", "browser-action"} {
+		if !strings.Contains(string(payload), want) {
+			t.Fatalf("Claude-delivered charter missing %q", want)
+		}
+	}
 	if !containsNote(notes, "claude charter: seeded .opencode/oikonomos.md") {
 		t.Fatalf("notes missing the payload-seed line: %v", notes)
 	}

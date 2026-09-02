@@ -24,6 +24,11 @@ GOAL / CONTEXT (files, decisions, constraints, MCP servers by name) / SCOPE (exa
 - Include an effort budget: expected tool calls, expected size of change. Workers are bad at judging effort; the number is the guardrail.
 - Include negative cases where misfires are likely: "do NOT touch X even though it imports Y."
 
+## Browser use (office default)
+- Use the built-in office browser for every URL, including localhost and external URLs.
+- Agents emit `open-browser`, `browser-screenshot`, and `browser-snapshot` directives; use `browser-action` only with member permission. `/open <url>` is member-facing.
+- Never launch Chrome, Chromium, Playwright, Puppeteer, a terminal browser, or a browser CLI unless the member explicitly asks for an external browser or the built-in browser fails; explain the failure before fallback.
+
 ## Proof-of-work (every return, no exceptions)
 Replies missing any of these are NOT done — resume the sub-agent and demand the missing parts:
 1. DONE — what changed
