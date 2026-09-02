@@ -24,6 +24,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -195,6 +196,110 @@ func sendChat(b state.Backend, text string, atts []state.Attachment) error {
 	return b.Send(text)
 }
 
+// currentBackend owns a generation of the transport. A send takes a short
+// lease on the accepting generation, then performs transport I/O without the
+// holder lock. Replacing it moves the old generation to draining: existing
+// leases may still enter Send, but no new lease can be admitted. Cleanup marks
+// it retired immediately before Stop, once every lease has returned.
+type currentBackend struct {
+	mu         sync.Mutex
+	current    *backendGeneration
+	beforeSend func(*backendGeneration) // test seam: runs after admission, before transport I/O
+}
+
+type backendGenerationState uint8
+
+const (
+	backendAccepting backendGenerationState = iota
+	backendDraining
+	backendRetired
+)
+
+type backendGeneration struct {
+	backend  state.Backend
+	state    backendGenerationState
+	inFlight int
+	drained  chan struct{}
+}
+
+func newCurrentBackend(b state.Backend) *currentBackend {
+	return &currentBackend{current: &backendGeneration{backend: b, state: backendAccepting, drained: make(chan struct{})}}
+}
+
+func (c *currentBackend) send(text string, atts []state.Attachment, agent string) error {
+	c.mu.Lock()
+	g := c.current
+	if g == nil || g.backend == nil || g.state != backendAccepting {
+		c.mu.Unlock()
+		return nil
+	}
+	g.inFlight++
+	beforeSend := c.beforeSend
+	c.mu.Unlock()
+	defer c.release(g)
+	if beforeSend != nil {
+		beforeSend(g)
+	}
+	return sendChatMode(g.backend, text, atts, agent)
+}
+
+func (c *currentBackend) release(g *backendGeneration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	g.inFlight--
+	if g.state == backendDraining && g.inFlight == 0 {
+		close(g.drained)
+	}
+}
+
+// replace makes b current before returning. It never waits for old sends or
+// calls Stop itself: callers schedule the returned command so Bubble Tea's
+// update loop stays free of transport teardown.
+func (c *currentBackend) replace(b state.Backend) tea.Cmd {
+	c.mu.Lock()
+	old := c.current
+	c.current = &backendGeneration{backend: b, state: backendAccepting, drained: make(chan struct{})}
+	if old != nil {
+		old.state = backendDraining
+		if old.inFlight == 0 {
+			close(old.drained)
+		}
+	}
+	c.mu.Unlock()
+	if old == nil || old.backend == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		<-old.drained
+		c.mu.Lock()
+		// drained closes only after replace made this generation draining and
+		// every admitted lease released. Retiring under the same lock makes
+		// this transition the final state change before Stop.
+		old.state = backendRetired
+		c.mu.Unlock()
+		return backendStopMsg{err: old.backend.Stop()}
+	}
+}
+
+// currentBackendSend is the chat panel's ordinary-Enter callback. Its backend
+// lookup deliberately happens inside the returned tea.Cmd, at SEND time.
+func currentBackendSend(current *currentBackend, plan *panels.PlanEditor, text string, atts []state.Attachment) tea.Cmd {
+	return func() tea.Msg {
+		// Slash commands dispatch locally, never touch the backend, and
+		// never echo as chat-user.
+		if strings.HasPrefix(text, "/") {
+			return slashMsg{text: text}
+		}
+		agent := paneAgent(plan)
+		if err := current.send(text, atts, agent); err != nil {
+			cleanupAttachments(atts) // nobody will retry this prompt
+			return sendErrMsg{err: err}
+		}
+		cleanupAttachments(atts)
+		return chatSentMsg{text: text, agent: agent}
+	}
+}
+
 // queueEntry — one backlog item: the typed text, its chat-input
 // attachments (they must survive the busy wait and ride the flush), and
 // the board row id QueueItemStart handed back ("" when the backend has no
@@ -274,10 +379,11 @@ type btwSnapshot struct {
 
 // Model is the tea.Model for the whole app.
 type Model struct {
-	backend state.Backend
-	st      state.OfficeState
-	cfg     *config.Config // brain.json (nil-tolerant: Default() substituted)
-	gov     *governor      // power/caching bookkeeping, shared across copies
+	backend        state.Backend
+	currentBackend *currentBackend // shared across value-copy tea updates
+	st             state.OfficeState
+	cfg            *config.Config // brain.json (nil-tolerant: Default() substituted)
+	gov            *governor      // power/caching bookkeeping, shared across copies
 
 	// social — the office's SocialClock (ambient.go). Pointer, so the plan
 	// survives the value-copy update loop. lastDispatchTick feeds its
@@ -530,12 +636,18 @@ type Model struct {
 	// respawns the transport: the backend freezes the flag into its spawn
 	// argv/boot config at Start, so SetBypassPermissions rides the FRESH
 	// instance pre-Start (respawnForBypass). bypassRestarting is the
-	// one-respawn-in-flight latch: a toggle landing mid-respawn queues
-	// ONE follow-up (bypassQueued) behind the fresh transport's boot
-	// line (applyEvent's bypassLatchKick).
+	// one-respawn-in-flight latch, armed before construction: a toggle
+	// landing mid-build or mid-boot queues ONE follow-up (bypassQueued)
+	// behind the fresh transport's boot line (applyEvent's bypassLatchKick).
 	bypassPerms      bool
 	bypassRestarting bool
 	bypassQueued     bool
+
+	// backendTransitioning admits exactly one asynchronous construction at a
+	// time. backendTransitionID makes a delayed result harmless if an older
+	// command ever reaches Update after its transition has been superseded.
+	backendTransitioning bool
+	backendTransitionID  uint64
 
 	// Question holds (boss/primary session only): question is the OPEN
 	// hold whose WIZARD popover replaces the textarea (radio/checkbox/
@@ -976,6 +1088,26 @@ type btwOfficeMsg struct {
 // the input.
 type doneOfficeMsg struct{ err error }
 
+// backendBuildMsg lands after a potentially slow BackendFactory call. The
+// UI loop installs the completed transport in one short holder operation.
+type backendBuildMsg struct {
+	name        string
+	oldName     string
+	backend     state.Backend
+	resumeID    string
+	bypass      bool
+	bypassValue bool
+	transition  uint64
+}
+
+type backendReadyMsg struct{ result backendBuildMsg }
+
+// backendStopMsg is the asynchronous teardown verdict for a retired backend.
+// A failed Stop is intentionally non-fatal: the replacement is already live.
+type backendStopMsg struct{ err error }
+
+type backendConfigSaveMsg struct{ err error }
+
 // armClearMsg — the ctrl+q quit arm's own expiry tick landed (scheduled
 // with quitArmWindow by the arming press): retires the arm + its toast.
 type armClearMsg struct{}
@@ -1036,24 +1168,9 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	// office's build-mode rest state so paneAgent never misroutes a
 	// build-mode prompt onto the "plan" wire tag.
 	plan.SetMode(agentModeBuild)
+	current := newCurrentBackend(b)
 	chat := panels.NewChat(func(text string, atts []state.Attachment) tea.Cmd {
-		return func() tea.Msg {
-			// Slash commands dispatch locally, never touch the backend, and
-			// never echo as chat-user.
-			if strings.HasPrefix(text, "/") {
-				return slashMsg{text: text}
-			}
-			if b != nil {
-				agent := paneAgent(plan)
-				if err := sendChatMode(b, text, atts, agent); err != nil {
-					cleanupAttachments(atts) // nobody will retry this prompt
-					return sendErrMsg{err: err}
-				}
-				cleanupAttachments(atts)
-				return chatSentMsg{text: text, agent: agent}
-			}
-			return chatSentMsg{text: text}
-		}
+		return currentBackendSend(current, plan, text, atts)
 	})
 	chat.SetBossShortName(bossShort)
 	agents := panels.NewAgents()
@@ -1061,6 +1178,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	activity := panels.NewActivity()
 	m := Model{
 		backend:          b,
+		currentBackend:   current,
 		cfg:              cfg,
 		gov:              &governor{lastBusy: time.Now()},
 		bossName:         bossName,
@@ -1563,6 +1681,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Kind: state.EvStatus,
 			Text: fmt.Sprintf("[theboringoffice] send failed: %v", msg.err),
 		}))
+	case backendBuildMsg:
+		cmds = append(cmds, m.finishBackendTransition(msg))
+	case backendReadyMsg:
+		cmds = append(cmds, m.completeBackendTransition(msg.result))
+	case backendStopMsg:
+		if msg.err != nil {
+			m.noticeErr("backend stop: " + msg.err.Error())
+		}
+	case backendConfigSaveMsg:
+		if msg.err != nil {
+			m.noticeErr("backend swap: brain.json save failed: " + msg.err.Error() + " — the swap holds for this session only")
+		}
 	case approveSentMsg:
 		// F3 — the plan→build flip rides SEND ACCEPTANCE: the approved
 		// plan's wire POST landed; NOW the office flips back (the pane
@@ -3028,12 +3158,7 @@ func (m *Model) bypassLatchKick(ev state.Event) tea.Cmd {
 	if !strings.HasPrefix(ev.Text, backendStatusMarker) && !strings.HasPrefix(ev.Text, backendFailedMarker) {
 		return nil
 	}
-	m.bypassRestarting = false
-	if !m.bypassQueued {
-		return nil
-	}
-	m.bypassQueued = false
-	return m.respawnForBypass()
+	return m.finishBypassLatch()
 }
 
 func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
@@ -6105,6 +6230,10 @@ func (m *Model) applyBackendSlash(fields []string) tea.Cmd {
 		m.notice("backend already on " + name + " · /session resumes a past one instead")
 		return nil
 	}
+	if m.backendTransitioning {
+		m.noticeErr("/backend: a backend transition is already being constructed — wait for it to finish")
+		return nil
+	}
 	if why := m.backendSwapBlockers(); len(why) > 0 {
 		msg := fmt.Sprintf("backend swap %s → %s refused — office busy: %s · wait for the turn to finish (esc-esc / /stop first), then /backend %s again",
 			m.backendName(), name, strings.Join(why, "; "), name)
@@ -6113,45 +6242,94 @@ func (m *Model) applyBackendSlash(fields []string) tea.Cmd {
 		// marker grammar is deliberately NOT used — nothing re-latches).
 		return m.applyEvent(state.Event{Kind: state.EvStatus, Text: msg})
 	}
+	m.backendTransitioning = true
+	m.backendTransitionID++
 	return m.swapBackend(name)
 }
 
-// swapBackend — the drain-first transport swap. Order is BINDING: stop the
-// old transport (its own teardown is bounded), persist the archive (the
-// chat transcript AND the per-backend session pins survive), construct the
-// new one, pin ITS last session id for this directory, re-Start on main's
-// tea-loop sink (same goroutine→Send pattern as boot), land the ONE
-// EvStatus swap line — which is also the reducer latch that re-names the
-// topbar segment — and persist the choice to brain.json.
+// swapBackend runs BackendFactory in a tea.Cmd. The old backend remains
+// current until that result lands, so construction cannot park the UI loop.
 func (m *Model) swapBackend(name string) tea.Cmd {
 	oldName := m.backendName()
-	if old := m.backend; old != nil {
-		_ = old.Stop() // bounded internally (stopDrainTimeout/stopKillGrace)
-	}
-	m.PersistSession() // quit-path twin — the chat archive is preserved
-
-	m.backend = BackendFactory(name, m.serverURL, m.sessDir, m.cfg)
-
-	// Per-backend resume pin: the archived session id the NEW transport
-	// last used in this directory ("" = its first fresh boot here).
-	if ps, ok := m.backend.(primarySeamBackend); ok && m.sessDir != "" {
-		if sf, ok := LoadSession(m.sessDir); ok {
-			if id := sf.primaryIDFor(name); id != "" {
-				ps.PrimaryOverride(id)
+	serverURL, sessDir, cfg := m.serverURL, m.sessDir, m.cfg
+	transition := m.backendTransitionID
+	return func() tea.Msg {
+		m.PersistSession() // outgoing archive; disk I/O stays off the UI loop
+		resumeID := ""
+		if sessDir != "" {
+			if sf, ok := LoadSession(sessDir); ok {
+				resumeID = sf.primaryIDFor(name)
 			}
 		}
+		return backendBuildMsg{name: name, oldName: oldName, resumeID: resumeID, transition: transition,
+			backend: BackendFactory(name, serverURL, sessDir, cfg)}
 	}
-	if m.cfg != nil {
-		m.cfg.Backend.Name = name
+}
+
+// finishBackendTransition installs a completed replacement. Holder locking is
+// limited to replace's generation flip; old send draining and Stop run in the
+// returned Cmd, never on Bubble Tea's update goroutine.
+func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
+	if result.transition != m.backendTransitionID {
+		return nil
+	}
+	if result.backend == nil {
+		m.noticeErr("backend: factory returned no transport")
+		m.backendTransitioning = false
+		if result.bypass {
+			return m.finishBypassLatch()
+		}
+		return nil
+	}
+	m.backend = result.backend
+	cleanup := m.currentBackend.replace(result.backend)
+	return tea.Batch(cleanup, func() tea.Msg { return backendReadyMsg{result: result} })
+}
+
+// completeBackendTransition performs the new backend's setup after the
+// generation flip. It is separately scheduled from cleanup: both run outside
+// the input handler, and the replacement is already visible to new sends.
+func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
+	if result.transition != m.backendTransitionID {
+		return nil
+	}
+	m.backendTransitioning = false
+	// Per-backend resume pin is loaded with the build command, so session disk
+	// I/O cannot park Update. "" deliberately means a fresh transport.
+	if ps, ok := result.backend.(primarySeamBackend); ok && result.resumeID != "" {
+		ps.PrimaryOverride(result.resumeID)
+	}
+	if result.bypass {
+		if bb, ok := result.backend.(bypassBackend); ok {
+			if err := bb.SetBypassPermissions(result.bypassValue); err != nil {
+				m.noticeErr("bypass: " + err.Error())
+			}
+		}
+	} else if m.cfg != nil {
+		m.cfg.Backend.Name = result.name
 	}
 	m.resetPager() // the older-history walk belonged to the old transport
-	if m.emitFn != nil && m.backend != nil {
-		emit, nb := m.emitFn, m.backend
+	started := false
+	if m.emitFn != nil {
+		emit, nb := m.emitFn, result.backend
 		go func() {
 			if err := nb.Start(emit); err != nil {
 				emit(state.Event{Kind: state.EvStatus, Text: backendFailedMarker + err.Error()})
 			}
 		}()
+		started = true
+	}
+	if result.bypass {
+		if !started {
+			return tea.Batch(m.applyEvent(state.Event{Kind: state.EvStatus,
+				Text: "[theboringoffice] backend restarting — bypass permissions " + map[bool]string{true: "on", false: "off"}[result.bypassValue]}), m.finishBypassLatch())
+		}
+		stateWord := "off"
+		if result.bypassValue {
+			stateWord = "on"
+		}
+		return m.applyEvent(state.Event{Kind: state.EvStatus,
+			Text: "[theboringoffice] backend restarting — bypass permissions " + stateWord})
 	}
 	turns := 0
 	for _, c := range m.st.Chat {
@@ -6159,14 +6337,14 @@ func (m *Model) swapBackend(name string) tea.Cmd {
 			turns++
 		}
 	}
-	msg := fmt.Sprintf("%s%s → %s (turn #%d archived)", backendStatusMarker, oldName, name, turns)
+	msg := fmt.Sprintf("%s%s → %s (turn #%d archived)", backendStatusMarker, result.oldName, result.name, turns)
 	cmd := m.applyEvent(state.Event{Kind: state.EvStatus, Text: msg})
+	var saveCfg tea.Cmd
 	if m.cfg != nil {
-		if save := m.persistCfg(); strings.HasPrefix(save, "brain.json save failed") {
-			m.noticeErr("backend swap: " + save + " — the swap holds for this session only")
-		}
+		cfg := m.cfg
+		saveCfg = func() tea.Msg { return backendConfigSaveMsg{err: config.Save(cfg)} }
 	}
-	return cmd
+	return tea.Batch(cmd, saveCfg)
 }
 
 // --- /bypass — the session-scoped bypass-permissions mode --------------------
@@ -6226,47 +6404,35 @@ func (m *Model) respawnForBypass() tea.Cmd {
 		m.bypassQueued = true
 		return nil
 	}
+	// Arm before returning the asynchronous persistence/factory command: a
+	// second toggle that lands while construction is blocked must queue rather
+	// than schedule another factory call.
+	m.bypassRestarting = true
+	m.backendTransitioning = true
+	m.backendTransitionID++
 	resumeID := ""
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		resumeID = ps.PrimaryID()
 	}
-	if old := m.backend; old != nil {
-		_ = old.Stop() // bounded internally (swapBackend precedent)
+	name, serverURL, sessDir, cfg := m.backendName(), m.serverURL, m.sessDir, m.cfg
+	bypassValue, transition := m.bypassPerms, m.backendTransitionID
+	return func() tea.Msg {
+		m.PersistSession() // outgoing archive; disk I/O stays off the UI loop
+		return backendBuildMsg{name: name, oldName: name, resumeID: resumeID, bypass: true, bypassValue: bypassValue, transition: transition,
+			backend: BackendFactory(name, serverURL, sessDir, cfg)}
 	}
-	m.PersistSession() // the archive is preserved (swapBackend ordering)
+}
 
-	m.backend = BackendFactory(m.backendName(), m.serverURL, m.sessDir, m.cfg)
-
-	if ps, ok := m.backend.(primarySeamBackend); ok && resumeID != "" {
-		ps.PrimaryOverride(resumeID) // pre-Start: the resumed session wins
+// finishBypassLatch clears one completed or failed respawn and schedules at
+// most one queued desired state. It is only called from Update/event handling,
+// never while a transport or factory call is running.
+func (m *Model) finishBypassLatch() tea.Cmd {
+	m.bypassRestarting = false
+	if !m.bypassQueued {
+		return nil
 	}
-	if bb, ok := m.backend.(bypassBackend); ok {
-		// the whole point of the respawn: the flag rides the FRESH
-		// instance ahead of its Start.
-		if err := bb.SetBypassPermissions(m.bypassPerms); err != nil {
-			m.noticeErr("bypass: " + err.Error())
-		}
-	}
-	m.resetPager() // the older-history walk belonged to the spent transport
-	started := false
-	if m.emitFn != nil && m.backend != nil {
-		emit, nb := m.emitFn, m.backend
-		go func() {
-			if err := nb.Start(emit); err != nil {
-				emit(state.Event{Kind: state.EvStatus, Text: backendFailedMarker + err.Error()})
-			}
-		}()
-		started = true
-	}
-	// the latch only arms when a boot line can actually land (harnesses
-	// without the sink never see one — the gate must not wedge).
-	m.bypassRestarting = started
-	stateWord := "off"
-	if m.bypassPerms {
-		stateWord = "on"
-	}
-	return m.applyEvent(state.Event{Kind: state.EvStatus,
-		Text: "[theboringoffice] backend restarting — bypass permissions " + stateWord})
+	m.bypassQueued = false
+	return m.respawnForBypass()
 }
 
 // notice appends a dim local notice (From "office") to the chat.

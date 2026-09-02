@@ -6,7 +6,9 @@ package backend
 
 import (
 	"bufio"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +16,41 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
+
+type claudeFailWriteCloser struct {
+	err    error
+	writes int
+	last   []byte
+}
+
+func (w *claudeFailWriteCloser) Write(p []byte) (int, error) {
+	w.writes++
+	w.last = append(w.last[:0], p...)
+	return 0, w.err
+}
+
+func (*claudeFailWriteCloser) Close() error { return nil }
+
+type claudeCaptureWriteCloser struct{ writes [][]byte }
+
+func (w *claudeCaptureWriteCloser) Write(p []byte) (int, error) {
+	w.writes = append(w.writes, append([]byte(nil), p...))
+	return len(p), nil
+}
+
+func (*claudeCaptureWriteCloser) Close() error { return nil }
+
+// claudeWriteReadyBackend supplies a deterministic stdin seam without
+// spawning a child. send's ready gate requires a non-nil command and writer;
+// the fake command is sufficient because no process lifecycle is exercised.
+func claudeWriteReadyBackend(writer *claudeFailWriteCloser) (*liveClaudeBackend, *claudeEventLog) {
+	b := newClaudeBackend("true", ".", nil)
+	log := &claudeEventLog{}
+	b.fl.setEmit(log.emit)
+	b.proc = &exec.Cmd{}
+	b.procStdin = writer
+	return b, log
+}
 
 // claudeCapture reads the stub's capture file (one stdin line per row,
 // the stub mirrors with >> appends). The office's initialize
@@ -152,5 +189,41 @@ done
 	lines := claudeCapture(t, capture)
 	if !strings.Contains(lines[1], "second prompt") {
 		t.Fatalf("queued stdin line drifted: %q", lines[1])
+	}
+}
+
+func TestClaudeSendWriteFailureReturnsActionableError(t *testing.T) {
+	writeErr := errors.New("forced stdin write failure")
+	writer := &claudeFailWriteCloser{err: writeErr}
+	b, log := claudeWriteReadyBackend(writer)
+
+	err := b.Send("retain this prompt")
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("Send error = %v, want wrapped %v", err, writeErr)
+	}
+	if !strings.Contains(err.Error(), "write claude prompt") {
+		t.Fatalf("Send error must name the failed operation, got %q", err)
+	}
+	if writer.writes != 1 {
+		t.Fatalf("failed Send wrote %d times, want exactly once", writer.writes)
+	}
+	if b.briefed {
+		t.Fatal("a failed first write must not spend the browser preamble")
+	}
+	b.mu.Lock()
+	pending := append([]string(nil), b.pendingBoss...)
+	b.mu.Unlock()
+	if len(pending) != 0 {
+		t.Fatalf("failed Send left pending placeholders behind: %v", pending)
+	}
+
+	var sawFailure bool
+	for _, e := range log.snapshot() {
+		if e.Kind == state.EvChatBoss && strings.Contains(e.Msg.Text, "prompt failed: forced stdin write failure") && !e.Msg.Pending {
+			sawFailure = true
+		}
+	}
+	if !sawFailure {
+		t.Fatalf("Send must emit the existing failed-prompt bubble before returning; events: %+v", log.snapshot())
 	}
 }

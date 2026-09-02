@@ -25,6 +25,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -480,6 +481,80 @@ func TestBypassRespawnLatchClearsOnBootFailure(t *testing.T) {
 	fresh2.waitStarted(t, "respawn #2")
 	if len(*calls) != 2 {
 		t.Fatalf("the post-failure toggle respawns normally, got %v", *calls)
+	}
+}
+
+func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
+	scratchHome(t)
+	log := &bypassLog{}
+	old := newBypassStub("old", "ses-live-1", log)
+	freshOn := newBypassStub("fresh-on", "", log)
+	freshOff := newBypassStub("fresh-off", "", log)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var mu sync.Mutex
+	builds := 0
+	oldFactory := BackendFactory
+	BackendFactory = func(string, string, string, *config.Config) state.Backend {
+		mu.Lock()
+		builds++
+		build := builds
+		mu.Unlock()
+		if build == 1 {
+			close(entered)
+			<-release
+			return freshOn
+		}
+		return freshOff
+	}
+	t.Cleanup(func() { BackendFactory = oldFactory })
+
+	m := newBypassModel(old, config.Default(), t.TempDir())
+	m.bypassPerms = true
+	first := m.respawnForBypass()
+	if !m.bypassRestarting {
+		t.Fatal("the bypass latch must arm before the factory command runs")
+	}
+	result := make(chan tea.Msg, 1)
+	go func() { result <- first() }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("first factory did not block")
+	}
+
+	// This is the second rapid /bypass toggle: it changes the desired value,
+	// but must not construct a competing backend while the first build runs.
+	m.bypassPerms = false
+	if cmd := m.respawnForBypass(); cmd != nil {
+		t.Fatal("second toggle must queue, not schedule another factory command")
+	}
+	if !m.bypassQueued {
+		t.Fatal("second toggle must record one queued desired state")
+	}
+	mu.Lock()
+	gotBuilds := builds
+	mu.Unlock()
+	if gotBuilds != 1 {
+		t.Fatalf("factory builds while first is blocked = %d, want 1", gotBuilds)
+	}
+
+	close(release)
+	m = runMsg(t, m, <-result)
+	mu.Lock()
+	gotBuilds = builds
+	mu.Unlock()
+	if gotBuilds != 2 {
+		t.Fatalf("queued final state must construct exactly once after the first build, got %d builds", gotBuilds)
+	}
+	if got := freshOn.bypasses(); len(got) != 1 || got[0] != true {
+		t.Fatalf("first construction must retain its captured ON value, got %v", got)
+	}
+	if got := freshOff.bypasses(); len(got) != 1 || got[0] != false {
+		t.Fatalf("queued construction must apply final OFF value once, got %v", got)
+	}
+	if m.backend != freshOff || m.bypassRestarting || m.bypassQueued {
+		t.Fatalf("final backend/latches = backend:%T restarting:%v queued:%v, want fresh-off/false/false", m.backend, m.bypassRestarting, m.bypassQueued)
 	}
 }
 

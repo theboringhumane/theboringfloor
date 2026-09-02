@@ -7,6 +7,104 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-02 · Final runtime routing signoff (@reviewer suba... — theboringcto-4 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788325711855-c6f0404f
+
+### 2026-09-02 · Finalize backend generation lifecycle (@devel... — tekton-8 (developer) · `issues`
+- summary: Implemented explicit backend-generation lifecycle: **accepting → draining → retired**.
+- files: `internal/app/model.go`, `internal/app/current_backend_test.go`, `internal/app/bypass_test.go`
+- verify: ```
+- proof: ### Backend admission/swap timeline
+- ledgerId: led-1788325543015-a2213d3e
+
+### 2026-09-02 · Recheck runtime attachment routing (@reviewer... — theboringcto-3 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788324150414-94ab5827
+
+### 2026-09-02 · Make backend replacement nonblocking (@develo... — tekton-7 (developer) · `issues`
+- summary: Reworked the current-backend holder to lease a backend generation under a short mutex, then perform `Send`/`SendWith` without holding a lock.
+- files: `internal/app/model.go`, `internal/app/current_backend_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788324040808-146edbc8
+
+### 2026-09-02 · Review runtime attachment routing (@reviewer... — theboringcto-2 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788323285559-6197cebd
+
+### 2026-09-02 · Independent cost regression review (@general... — theboringcto-1 (cto) · `issues`
+- summary: Performed a read-only audit of OpenCode and Claude Code usage parsing, reducer accumulation, and status-bar rendering.
+- files: `internal/backend/events.go`, `internal/backend/usage_test.go`, `internal/backend/claude_events.go`, `internal/backend/claude_usage_test.go`, `internal/app/model.go`, `internal/app/usage_test.go`, `internal/chrome/statusbar.go`, `internal/chrome/statusbar_test.go`, `internal/state/state.go`, `internal/state/state_test.go`
+- verify: ```
+- proof: | Scenario | Provider pricing semantics | Expected session result | Actual code result | Verdict |
+- ledgerId: led-1788322779833-c2a5f22a
+
+### 2026-09-02 · Trace session cost math (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: **Verdict: cache-token pricing adjustments are fully included in the repository’s displayed session cost, but only indirectly.** The repository does **not** cal
+- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/state/state.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/model.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/usage_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/usage_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude_events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude_usage_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/chrome/statusbar.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/chrome/statusbar_test.go`, No files were modified.
+- verify: ```
+- proof: ### Worked OpenCode token-count-to-dollar example
+- ledgerId: led-1788322730566-cb94eae6
+
+### 2026-09-02 · Audit cache token provenance (@explore subagent) — skopos-2 (scout) · `issues`
+- summary: Traced OpenCode `message.updated` and Claude `result` usage payloads into `state.EvUsage`.
+- files: None modified, Inspected:, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude_events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/usage_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude_usage_test.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/state/state.go`
+- verify: ```
+- proof: | Provider payload / field | Parse and normalization evidence | `EvUsage` accounting field | Cache-cost treatment / verdict |
+- ledgerId: led-1788322718999-e6820584
+
+### 2026-09-02 · Fix current backend routing (@developer subag... — tekton-4 (developer) · `issues`
+- summary: Replaced the constructor-captured backend chat callback with a shared, synchronized current-backend holder resolved when the `tea.Cmd` executes.
+- files: `internal/app/model.go`, `internal/app/current_backend_test.go`
+- verify: ```
+- proof: ### Ordinary Enter backend call ledger
+- ledgerId: led-1788322652683-7b1c830c
+
+### 2026-09-02 · Add app attachment wire tests (@developer sub... — tekton-6 (developer) · `issues`
+- summary: Added end-to-end app-to-wire regression tests for Markdown and Go attachments with paths containing spaces.
+- files: `internal/app/attachment_backend_integration_test.go`
+- verify: ```
+- proof: ### OpenCode immediate dispatch after `/backend opencode`
+- ledgerId: led-1788322504772-eec9c8fd
+
+### 2026-09-02 · Fix Claude send failure handling (@developer... — tekton-5 (developer) · `issues`
+- summary: Changed Claude’s prompt-write failure path to return a wrapped, actionable error after emitting the existing failed-prompt bubble, so callers can retain and ret
+- files: `internal/backend/claude.go`, `internal/backend/claude_send_test.go`, `internal/backend/claude_attachment_test.go`
+- verify: ```
+- proof: ### Failed attachment write → error and retryable queue item
+- ledgerId: led-1788322037838-8452ebf5
+
+### 2026-09-02 · Reproduce OpenCode attachment error (@general... — tekton-1 (developer) · `issues`
+- summary: Verified the repository `HEAD` is `8a0f963c`, exactly tag `v0.3.16`.
+- files: None modified., Read-only evidence reviewed:, `internal/backend/parts.go`, `internal/backend/opencode.go`, `internal/backend/parts_test.go`, `internal/app/model.go`, `internal/app/attach_queue_test.go`, `internal/app/plan_mode.go`, `internal/state/state.go`, `internal/panels/chat_attach.go`, `cmd/headless/main.go`
+- verify: ```
+- proof: ### Current OpenCode attachment wire
+- ledgerId: led-1788321743872-43360ec8
+
+### 2026-09-02 · Reproduce Claude attachment error (@general s... — tekton-2 (developer) · `issues`
+- summary: Traced attachment routing from `panels.Chat` through `app.New`, `sendChatMode`, `sendChat`, and the Claude stream-json writer.
+- files: None. Read-only investigation.
+- verify: ```
+- proof: ### Current Claude wire
+- ledgerId: led-1788321712259-a6a41335
+
+### 2026-09-02 · Audit installed release parity (@general suba... — tekton-3 (developer) · `issues`
+- summary: Confirmed `HEAD` is `8a0f963c320ad8649d1c4865c96a5eb9d4c038e3`, exactly `v0.3.16`; `origin/main` and the tag point to the same commit.
+- files: None. This was read-only; the release asset was downloaded only to a temporary audit directory outsi
+- verify: ```
+- proof: For an `.md`, source file, archive, or any non-image/PDF attachment, the current installed binary produces a text-only prompt part, not a me
+- ledgerId: led-1788321688312-2e9569eb
+
 ### 2026-09-01 · Harden attachment validation (@developer suba... — tekton-6 (developer) · `issues`
 - summary: Enforced content-validated upload eligibility: only sniffed PNG, JPEG, GIF, WebP, and `%PDF-` PDFs can produce OpenCode file parts.
 - files: `internal/backend/parts.go`, `internal/backend/claude.go`, `internal/backend/parts_test.go`, `internal/backend/claude_attachment_test.go`
@@ -258,102 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *The new preamble block, verbatim** (appended; everything above it byte-identical — strict-prefix test):
 - ledgerId: led-1787919294859-dcdc32a8
-
-### 2026-08-28 · Dev Q2: engine render cache (@developer subag... — tekton-2 (developer) · `issues`
-- summary: My hunks are intact and every gate is green. Assembling the return.
-- files: `internal/headless/cache.go`, `internal/headless/cache_test.go`, `internal/headless/headless.go`, `internal/app/browser_open.go`
-- verify: (all 20 test packages `ok`, incl. `internal/headless 2.171s`, `internal/app 71.222s`, `internal/backend 38.987s`, `internal/panels 13.764s`)
-- proof: *1. The singleflight test** (`TestScreenshotSingleflightShare`, through the PUBLIC `Screenshot` front, executor seam swapped): 3 goroutines
-- ledgerId: led-1787918541838-9f28997e
-
-### 2026-08-28 · Dev P2: tab screenshot display (@developer su... — tekton-2 (developer) · `issues`
-- summary: Everything is green and stable. Assembling the developer return.
-- files: `internal/panels/browser.go`, `internal/panels/zenbu_frame.go`, `internal/panels/browser_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/panels/browser_hint_test.go`, `internal/app/browser.go`, `internal/app/browser_test.go`, `internal/app/browser_frame_test.go`, `internal/app/browser_lane_test.go`, `cmd/uishot/main.go`
-- verify: ```
-- proof: *1. The shot-mode frame through the REAL app** (`go run ./cmd/uishot --browser --lane shot`, ANSI-stripped — the ` shot ` badge + strip in t
-- ledgerId: led-1787914456203-48a66ca2
-
-### 2026-08-28 · Dev P3: agent shot/snapshot tools (@developer... — tekton-3 (developer) · `issues`
-- summary: **Markers**: added `⟦browser-screenshot: URL⟧` (`MarkerShot`) and `⟦browser-snapshot: URL⟧` (`MarkerSnap`) to the marker protocol — whole-line rule, own regex p
-- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/browser_open_test.go`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`
-- verify: ```
-- proof: *The new PromptPreamble, verbatim (as it rides the first prompt on both backends):**
-- ledgerId: led-1787913705452-62a86d3a
-
-### 2026-08-28 · Dev P4: zenbu default-off + docs (@developer... — tekton-4 (developer) · `issues`
-- summary: All checks complete. Assembling the return.
-- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_kitty_test.go`, `install.sh`, `README.md`, `website/app/docs/browser-tab/page.tsx`, NOT touched
-- verify: ```
-- proof: *The new reason-matrix rows** (`TestBrowserLaneOptInGate`, verbatim env → `(lane, reason, var)`):
-- ledgerId: led-1787912379395-954f78bc
-
-### 2026-08-28 · Dev P1: headless engine pkg (@developer subag... — tekton-1 (developer) · `issues`
-- summary: Created `internal/headless` — the pure-Go CDP (chromedp) engine: `Available` (memoized discovery: `THEBORINGOFFICE_CHROME` → macOS `/Applications` Chrome/Chromi
-- files: `internal/headless/headless.go`, `internal/headless/euid_unix.go` / `euid_other.go`, `internal/headless/headless_test.go`, `internal/headless/live_test.go`, `internal/headless/testdata/fixture.html`, `go.mod`, `go.sum`
-- verify: $ `go test ./... -count=1 -p 4 2>&1 | grep -cE '^FAIL'` → **6, not 0** — all foreign (`internal/panels`, `internal/app`, one transient mid-e
-- proof: *Discovery on this machine** (from live test logs):
-- ledgerId: led-1787911901187-88662352
-
-### 2026-08-28 · Dev N: fix freeze chain-tail leak (@developer... — tekton-2 (developer) · `issues`
-- summary: All gates green, 5× stability run clean, final tree state confirmed. The `.opencode/office-ledger.md` modification is the office app's own recorder, not mine.
-- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`
-- verify: Stability: `go test ./internal/panels -count=5 -run 'TestBrowserLaneFreezeMidChainReal|TestBrowserLaneFrozenDeathMidChainReset'` → `ok … 12.
-- proof: *The mid-chain freeze → thaw cycle (real streaming fake, ~2fps, 684-char chains):**
-- ledgerId: led-1787909844914-65cad1e4
-
-### 2026-08-28 · Scout: ghostty kitty paint rules (@explore su... — skopos-2 (scout) · `issues`
-- summary: I have complete primary-source coverage of both the latest stable (v1.3.1) and main. Assembling the return.
-- files: No files touched
-- verify: Read-only task; no repo commands run. Evidence is quoted source + links below. Version provenance: `https://api.github.com/repos/ghostty-org
-- proof: ### 1. Support matrix: f=32 (RGBA raw) and o=z (zlib) — supported on both versions
-- ledgerId: led-1787909757974-d43f07e5
-
-### 2026-08-28 · Dev N: lane keep-alive suspend (@developer su... — tekton-2 (developer) · `issues`
-- summary: All green, no foreign leakage, no commits. The work is complete — assembling the return.
-- files: `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/app/browser.go`, `internal/app/browser_lane_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, `/tmp/drive_office_pty_keepalive.py` + rebuilt `/tmp/tb-office`, NOT touched
-- verify: ```
-- proof: *The flip cycle's byte trace (REAL office + REAL Electron terminal-browser, 160×48 PTY, ghostty env — run 2, pid 49126):**
-- ledgerId: led-1787906810427-c11441a2
-
-### 2026-08-28 · Dev A: attribution default-on core (@develope... — tekton-3 (developer) · `issues`
-- summary: All checks green. Assembling the final return.
-- files: `internal/config/config.go`, `internal/config/config_attribution_test.go`, `internal/app/attribution.go`, `internal/app/attribution_test.go`, `cmd/theboringoffice/main.go`
-- verify: ```
-- proof: *(a) The new brain.json skeleton** — verbatim head of `go run ./cmd/theboringoffice --print-default-config` (what a first boot writes):
-- ledgerId: led-1787906218308-ceabf988
-
-### 2026-08-28 · Dev B: attribution docs + scripts (@developer... — tekton-4 (developer) · `issues`
-- summary: All checks green. Assembling the final return.
-- files: `README.md`, `scripts/install-majdoor-hook.sh`, `scripts/majdoor-commit-msg-hook.sh`, `install.sh`, NOT touched: `scripts/majdoor-env.sh`
-- verify: ```
-- proof: *The rewritten README attribution section, verbatim as a reader will see it (README.md L434–479):**
-- ledgerId: led-1787905461465-2aa38b80
-
-### 2026-08-28 · Scout: majdoor default-on seams (@explore sub... — skopos-1 (scout) · `issues`
-- summary: All evidence gathered; the tree was never touched. Return per contract:
-- files: No files written or modified
-- verify: Grep `WithMajdoorAuthorEnv|MajdoorEnvMerge` repo-wide (`*.go`) → 13 matches across 6 files (callers: term.go:112, headless/main.go:1076, ope
-- proof: The recon itself is the artifact — see **Findings** (Q1–Q9 with verbatim snippets), **Seam recommendation** (main.go after L95; function in
-- ledgerId: led-1787905355035-7b614236
-
-### 2026-08-28 · Dev M: lane flicker/size/leak fixes (@develop... — tekton-1 (developer) · `issues`
-- summary: All 32 kitty/zenbu tests pass (25 pre-existing + 7 new). Every gate verified. Final return:
-- files: `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser_frame_test.go`, `cmd/uishot/main.go`, (`internal/panels/zenbu_frame.go`, `zenbu_frame_test.go`
-- verify: ```
-- proof: *Before → after, the drive's APC key lines** (the manager's wave-81 analysis of the same child: every frame a *new* content-hash id, `a=d` b
-- ledgerId: led-1787904770440-a1216f17
-
-### 2026-08-27 · Dev L: move splice to WithOutput (@developer... — tekton-2 (developer) · `issues`
-- summary: All gates green. Assembling the final return.
-- files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `internal/app/browser.go`, `internal/app/model.go`, `internal/app/browser_frame_test.go`, `cmd/theboringoffice/main.go`, `cmd/uishot/main.go`
-- verify: Pre-fix it printed `ESC_G sequences: 0` / `a=T present: False` (18,668 bytes). Now: **34 ESC_G, a=T True** — the REAL child's `f=32,o=z,s=12
-- proof: *The wrapper's emitted bytes for a known registry state** (TestZenbuFrameWriterSplice: origin (0,3), image pane-local (5,2), APC `\x1b_Ga=T,
-- ledgerId: led-1787858669896-648f7454
-
-### 2026-08-27 · Dev L: kitty passthrough lane (@developer sub... — tekton-1 (developer) · `issues`
-- summary: All gates green. Assembling the final return.
-- files: `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane.go`, `internal/panels/browser_lane_kitty_test.go`, `cmd/uishot/main.go`, `.opencode/office-ledger.md`
-- verify: New tests: `TestKittyStream{SplitCleanGrid,SplitBoundaries,BELTerminator,ChainFinalChunkOmitsM,ProbeIgnored,Malformed,APCBodyCap}`, `TestZen
-- proof: *1. The REAL stream (825KB captured from terminal-browser v0.6.0 on a PTY) — before → after:**
-- ledgerId: led-1787856360063-526c5f07
 

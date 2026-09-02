@@ -1109,7 +1109,10 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 			Text: "[theboringoffice] prompt failed: " + shortTitle(err.Error(), 120),
 			At:   nowMs(), Pending: false,
 		}})
-		return nil
+		// The caller owns attachment cleanup and retry policy. A local error
+		// bubble alone is not a successful send: surface the failed stdin write
+		// so callers can retain the queued prompt (and its attachments).
+		return fmt.Errorf("write claude prompt: %w", err)
 	}
 	b.mu.Lock()
 	b.busyTurns++

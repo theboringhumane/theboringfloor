@@ -3,6 +3,7 @@
 package backend
 
 import (
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -64,5 +65,91 @@ done
 	}
 	if !sawOriginalEcho || !sawStatus {
 		t.Fatalf("SendWith events: originalEcho=%v skippedStatus=%v", sawOriginalEcho, sawStatus)
+	}
+}
+
+func TestClaudeAttachmentSendWithWriteFailureReturnsErrorAndCanRetry(t *testing.T) {
+	dir := t.TempDir()
+	attachment := writeAttachment(t, dir, "retry.txt", "retain me")
+	writeErr := errors.New("forced stdin write failure")
+	failing := &claudeFailWriteCloser{err: writeErr}
+	b, log := claudeWriteReadyBackend(failing)
+
+	err := b.SendWith("retry this attachment", []state.Attachment{{
+		Name: "retry.txt", Mime: "text/plain", Path: attachment,
+	}})
+	if !errors.Is(err, writeErr) {
+		t.Fatalf("SendWith error = %v, want wrapped %v", err, writeErr)
+	}
+	if failing.writes != 1 {
+		t.Fatalf("failed SendWith wrote %d times, want exactly once", failing.writes)
+	}
+	if got := string(failing.last); !strings.Contains(got, attachment) {
+		t.Fatalf("failed SendWith wire omitted attachment reference: %q", got)
+	}
+	if b.briefed {
+		t.Fatal("failed SendWith must leave the first-send preamble available for retry")
+	}
+
+	var sawUser, sawFailure bool
+	for _, e := range log.snapshot() {
+		if e.Kind == state.EvChatUser && e.Msg.Text == "retry this attachment" && e.Msg.Meta == state.AttachMeta([]string{"retry.txt"}) {
+			sawUser = true
+		}
+		if e.Kind == state.EvChatBoss && strings.Contains(e.Msg.Text, "prompt failed: forced stdin write failure") && !e.Msg.Pending {
+			sawFailure = true
+		}
+	}
+	if !sawUser || !sawFailure {
+		t.Fatalf("failed SendWith must preserve the attachment echo and emit failure (user=%v failure=%v): %+v", sawUser, sawFailure, log.snapshot())
+	}
+
+	// The non-nil error lets the queue retain the attachment and retry it.
+	// Replacing only stdin models that retry without adding another prompt.
+	capture := &claudeCaptureWriteCloser{}
+	b.mu.Lock()
+	b.procStdin = capture
+	b.mu.Unlock()
+	if err := b.SendWith("retry this attachment", []state.Attachment{{
+		Name: "retry.txt", Mime: "text/plain", Path: attachment,
+	}}); err != nil {
+		t.Fatalf("retry SendWith: %v", err)
+	}
+	if len(capture.writes) != 1 {
+		t.Fatalf("retry wrote %d stdin lines, want exactly one", len(capture.writes))
+	}
+	if got := string(capture.writes[0]); !strings.Contains(got, attachment) {
+		t.Fatalf("retry wire omitted retained attachment reference: %q", got)
+	}
+}
+
+func TestClaudeAttachmentSendWithStoppedAndUnstartedKeepExistingNoWriteBehavior(t *testing.T) {
+	dir := t.TempDir()
+	attachment := writeAttachment(t, dir, "kept.txt", "kept")
+
+	stoppedWriter := &claudeFailWriteCloser{err: errors.New("must not write")}
+	stopped, stoppedLog := claudeWriteReadyBackend(stoppedWriter)
+	stopped.fl.stop()
+	if err := stopped.SendWith("ignored after stop", []state.Attachment{{Name: "kept.txt", Mime: "text/plain", Path: attachment}}); err != nil {
+		t.Fatalf("stopped SendWith error = %v, want nil no-op", err)
+	}
+	if stoppedWriter.writes != 0 || len(stoppedLog.snapshot()) != 0 {
+		t.Fatalf("stopped SendWith must not write or emit, writes=%d events=%+v", stoppedWriter.writes, stoppedLog.snapshot())
+	}
+
+	unstarted := newClaudeBackend("true", dir, nil)
+	unstartedLog := &claudeEventLog{}
+	unstarted.fl.setEmit(unstartedLog.emit)
+	if err := unstarted.SendWith("backend is absent", []state.Attachment{{Name: "kept.txt", Mime: "text/plain", Path: attachment}}); err != nil {
+		t.Fatalf("unstarted SendWith error = %v, want existing dead-backend signal behavior", err)
+	}
+	var sawDeadBackend bool
+	for _, e := range unstartedLog.snapshot() {
+		if e.Kind == state.EvChatBoss && strings.Contains(e.Msg.Text, "backend not started") {
+			sawDeadBackend = true
+		}
+	}
+	if !sawDeadBackend {
+		t.Fatalf("unstarted SendWith must retain its backend-not-started signal: %+v", unstartedLog.snapshot())
 	}
 }
