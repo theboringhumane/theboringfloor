@@ -7,6 +7,62 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-02 · Final bypass signoff (@reviewer subagent) — theboringcto-3 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788351738668-04574287
+
+### 2026-09-02 · Clean failed bypass candidate (@developer sub... — tekton-5 (developer) · `done`
+- summary: Added asynchronous, single-path teardown for discarded backend candidates through `stopDiscardedBackend`.
+- files: `internal/app/model.go`, `internal/app/bypass_test.go`, `internal/app/current_backend_test.go`
+- verify: ```
+- proof: ### Partially spawned bypass candidate fails
+- ledgerId: led-1788351629817-106d98c0
+
+### 2026-09-02 · Final bypass signoff (@reviewer subagent) — theboringcto-2 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788351092796-035740f4
+
+### 2026-09-02 · Harden OpenCode bypass process (@developer su... — tekton-4 (developer) · `issues`
+- summary: Made `spawnServe`’s reaper the sole `cmd.Wait` owner via a shared `serveExit` completion object.
+- files: `internal/backend/opencode.go`, `internal/backend/bypass_permissions_test.go`
+- verify: ```
+- proof: ### Sole Wait-owner lifecycle
+- ledgerId: led-1788350621832-afd8c3c2
+
+### 2026-09-02 · Review bypass end-to-end (@reviewer subagent) — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788350055458-01a3ea02
+
+### 2026-09-02 · Fix bypass transition state machine (@develop... — tekton-1 (developer) · `issues`
+- summary: Reworked `/bypass` lifecycle so the active-mode flag is separate from the requested mode:
+- files: `internal/app/model.go`, `internal/app/bypass_test.go`
+- verify: ```
+- proof: ### Bypass lifecycle timeline
+- ledgerId: led-1788349714135-f9cdb7a2
+
+### 2026-09-02 · Fix OpenCode bypass isolation (@developer sub... — tekton-2 (developer) · `issues`
+- summary: Replaced OpenCode’s persistent bypass config mutation with a process-scoped `OPENCODE_CONFIG_CONTENT={"permission":{"*":"allow"}}` child environment override.
+- files: `internal/backend/opencode.go`, `internal/backend/charter.go`, `internal/backend/bypass_permissions_test.go`
+- verify: ```
+- proof: ### Bypass ON — spawned OpenCode child
+- ledgerId: led-1788349304507-ebbb42f2
+
+### 2026-09-02 · Fix Claude bypass execution (@developer subag... — tekton-3 (developer) · `issues`
+- summary: Retained the bypass mode across **every Claude process spawn path**: initial `Start`, death-respawn, `NewOffice`, `SwapPrimary`, and `ReconnectMCP`’s deferred r
+- files: `internal/backend/claude.go`, `internal/backend/claude_bypass_test.go`
+- verify: ```
+- proof: ### Spawn argv inventory
+- ledgerId: led-1788349152823-5095aa6e
+
 ### 2026-09-02 · Final runtime routing signoff (@reviewer suba... — theboringcto-4 (cto) · `done`
 - summary: ## VERDICT
 - files: (none)
@@ -300,60 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: (21 packages `ok`, incl. `internal/backend 33.105s`, `internal/panels 13.710s`, `internal/app 79.979s`. A first full-suite run flaked `TestC
 - proof: *1. /session card mid-filter (typed `a`) — ANSI-stripped render** (cursor row reversed; rows 2–3 re-inked):
 - ledgerId: led-1787925672531-0028a687
-
-### 2026-08-28 · Dev S1: docs (site + README) (@developer suba... — tekton-8 (developer) · `issues`
-- summary: **browser-tab/page.tsx** — "Getting around" gains `e` (inline URL editor: prefilled, enter opens, esc cancels) and `O`/shift+o (current page → OS browser), in p
-- files: `website/app/docs/browser-tab/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`, `website/app/docs/getting-started/page.tsx`, `website/app/docs/terminal-and-git-tabs/page.tsx`, `website/app/docs/permissions-and-questions/page.tsx`, `README.md`
-- verify: ```
-- proof: *browser-tab → "Getting around" (rendered, tag-stripped from exported HTML):**
-- ledgerId: led-1787925326122-bad9612a
-
-### 2026-08-28 · Dev R3: model picker search (@developer subag... — tekton-7 (developer) · `issues`
-- summary: All verification complete. Final tree state: only my two scoped files changed. Composing the return.
-- files: `internal/panels/model_picker.go`, `internal/panels/model_picker_search_test.go` *(new)*, `/tmp/overlay_browser_fix/browser.go` + `/tmp/overlay_browser_fix/overlay.json` *(scratch only, NOT 
-- verify: ```
-- proof: *1) The card mid-filter** (typed `claude` — `3/5` badge, `filter:` row, narrowed list, cursor on the top match; ANSI-stripped real render):
-- ledgerId: led-1787923903697-3804747a
-
-### 2026-08-28 · Dev R2: paste everywhere + chat UX (@develope... — tekton-4 (developer) · `issues`
-- summary: All gates green on the final tree. Composing the return.
-- files: `internal/app/model.go`, `internal/app/model_paste_test.go` *(new)*, `internal/panels/chat.go`, `internal/panels/chat_paste.go` *(new)*, `internal/panels/chat_paste_test.go` *(new)*, `internal/panels/question_modal.go`, `internal/panels/terminal.go`, `internal/panels/terminal_paste_test.go` *(new)*, `cmd/uishot/main.go`, `cmd/uishot/terminal_panel_stub.go`, `/tmp/drive_paste.py`, `/tmp/tb-office`, NOT touched
-- verify: ```
-- proof: *The chip row in the frame** (uisot `--paste` leg B, ANSI-stripped — the 31-line paste is ONE row; the body never paints):
-- ledgerId: led-1787923232019-6d6dc6fa
-
-### 2026-08-28 · Dev R4: browser URL edit + OS-open (@develope... — tekton-6 (developer) · `issues`
-- summary: All gates green on the final tree. Composing the return.
-- files: `internal/panels/browser.go`, `internal/panels/browser_edit_test.go`, `internal/panels/browser_test.go`, `internal/app/browser.go`, `internal/app/browser_test.go`
-- verify: (Full sweep ran clean THREE consecutive times, 21 packages `ok`, on the settled final tree. One earlier mid-session run showed 3 foreign FAI
-- proof: *The editor row, mid-edit** (raw ANSI — caret = reversed `/` between `a.dev` and `x` after two lefts):
-- ledgerId: led-1787922335644-716eb920
-
-### 2026-08-28 · Dev R3: picker search (@developer subagent) — tekton-5 (developer) · `issues`
-- summary: Baseline green and the evidence is conclusive. This is a stop-early return: the brief's premise is wrong about two of the three pickers, and the third's impleme
-- files: (none
-- verify: (Full-suite run intentionally skipped: zero changes to verify — a `grep -cE '^FAIL'` → 0 would attest the baseline, not my work.)
-- proof: What the member already has today (rendered from the code I read — no new artifact exists to show):
-- ledgerId: led-1787921304934-534334d1
-
-### 2026-08-28 · Dev Q4: chat previews + bandwidth (@developer... — theboringcto-1 (cto) · `issues`
-- summary: Everything is verified. Composing the final return:
-- files: `internal/panels/zenbu_frame.go`, `internal/panels/zenbu_frame_test.go`, `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/kitty_lanes.go`, `internal/panels/kitty_lanes_test.go`, `internal/app/images.go`, `internal/app/model.go`, `internal/app/images_lane_test.go`, `internal/app/model_image_splice_test.go`, `cmd/uishot/main.go`, NOT touched: `internal/panels/chat_raster.go` (in scope; needed no change
-- verify: (the pre-fix capture DOES contain the chip text `paste-diagram` — the office ran and rendered; only the APC was eaten. Post-fix, `/tmp/tb-of
-- proof: *1. The wrapper's chat-media splice bytes for the pinned layout** (130×32, sidebar 80 → chat content origin (51,3), media col 51+9=60, slot
-- ledgerId: led-1787919903555-dfe6e47f
-
-### 2026-08-28 · Dev Q1: real cell metrics (@developer subagent) — tekton-1 (developer) · `issues`
-- summary: All verified. Assembling the return.
-- files: `internal/cellmetrics/cellmetrics.go`, `internal/cellmetrics/input.go`, `internal/cellmetrics/cellmetrics_test.go`, `internal/cellmetrics/input_test.go`, `cmd/theboringoffice/main.go`, `internal/panels/browser.go`, `internal/panels/browser_test.go`, `/tmp/drive_cellmetrics.py`, `/tmp/tb-office`
-- verify: ```
-- proof: *The office's query bytes, live on the PTY** (boot probe lands before bubbletea's own init queries; the re-arm probe lands mid-stream at the
-- ledgerId: led-1787919496400-8f1f0b35
-
-### 2026-08-28 · Dev Q3: browser action tools (@developer suba... — tekton-3 (developer) · `issues`
-- summary: The `uishot` binary is a foreign build artifact (wave-86's rebuilds — I never build into the repo). All my gates are green. Final return:
-- files: `internal/state/state.go`, `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/browsertools/action/action.go`, `internal/browsertools/action/euid_unix.go` / `euid_other.go`, `internal/browsertools/action/action_test.go`, `internal/browsertools/action/live_test.go`, `internal/browsertools/action/testdata/fixture.html`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`, `internal/app/model.go`, `internal/backend/opencode.go` / `claude.go`
-- verify: ```
-- proof: *The new preamble block, verbatim** (appended; everything above it byte-identical — strict-prefix test):
-- ledgerId: led-1787919294859-dcdc32a8
 

@@ -319,13 +319,17 @@ func TestStaleBackendBuildResultCannotReplaceLatestGeneration(t *testing.T) {
 	m.backendTransitioning = true
 	m.backendTransitionID = 2
 
-	if cmd := m.finishBackendTransition(backendBuildMsg{
+	cmd := m.finishBackendTransition(backendBuildMsg{
 		name:       "claudecode",
 		oldName:    "opencode",
 		backend:    stale,
 		transition: 1,
-	}); cmd != nil {
-		t.Fatal("a stale build result must not schedule a transition")
+	})
+	if cmd == nil {
+		t.Fatal("a stale build candidate must schedule asynchronous teardown")
+	}
+	if _, ok := cmd().(backendStopMsg); !ok {
+		t.Fatal("stale build teardown must report backendStopMsg")
 	}
 	if m.backend != old {
 		t.Fatalf("stale build replaced backend with %T, want original", m.backend)
@@ -335,6 +339,9 @@ func TestStaleBackendBuildResultCannotReplaceLatestGeneration(t *testing.T) {
 	}
 	requireCurrentCalls(t, old, "still old")
 	requireCurrentCalls(t, stale)
+	if got := stale.stopCount(); got != 1 {
+		t.Fatalf("stale build Stop calls = %d, want 1", got)
+	}
 }
 
 func TestStaleBypassBuildClearsLatch(t *testing.T) {

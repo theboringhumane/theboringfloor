@@ -355,12 +355,12 @@ export default function KeysAndSlashPage() {
               — including the office&apos;s own browser-action prompt — is
               auto-approved with a dim log row in the transcript. Toggling respawns
               the backend so the mode actually reaches the agent (claude resumes
-              your session context), and every boot starts with bypass OFF —
-              brain.json stays untouched. On opencode the allow-all is a real edit
-              to the project&apos;s <Code>.opencode/opencode.json</Code> — disabling
-              strips it automatically, and it only lingers when the office quits
-              with bypass still on (a per-tool <Code>deny</Code> still beats the{' '}
-              <Code>*</Code> wildcard); claude writes nothing at all. The full story
+              your session context), and every boot starts with bypass OFF. On
+              opencode the office-owned child receives an ephemeral{' '}
+              <Code>OPENCODE_CONFIG_CONTENT</Code> allow-all override; the member&apos;s{' '}
+              <Code>.opencode/opencode.json</Code>, parent environment, and{' '}
+              <Code>brain.json</Code> stay byte-identical. Claude writes nothing at
+              all. The full story
               lives with the{' '}
               <Link
                 href="/docs/permissions-and-questions"

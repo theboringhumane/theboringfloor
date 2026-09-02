@@ -97,7 +97,8 @@ type liveBackend struct {
 	client        *http.Client // bounded, for control calls
 	sseClient     *http.Client // no timeout; SSE ctx drives lifetime
 	sseCancel     context.CancelFunc
-	proc          *exec.Cmd // spawned server, if we spawned it
+	proc          *exec.Cmd  // spawned server, if we spawned it
+	procExit      *serveExit // completion owned by spawnServe's sole cmd.Wait reaper
 	chatSeq       int
 	pendingBoss   []string
 	bossCompleted map[string]bool
@@ -199,11 +200,10 @@ type liveBackend struct {
 	queueLedger map[string]queueLedgerSeed
 	ledgerWG    sync.WaitGroup
 	// bypassPermissions — the office's bypass-permissions toggle
-	// (SetBypassPermissions, pre-Start only). When on, Start merges
-	// {"permission": {"*": "allow"}} into <dir>/.opencode/opencode.json
-	// BEFORE the serve spawn (the charter.go config seam), so the
-	// booted serve auto-approves every permission-requiring tool and
-	// zero EvPermission events arrive — nothing is stripped office-side.
+	// (SetBypassPermissions, pre-Start only). When on, every serve spawn
+	// receives {"permission":{"*":"allow"}} through the ephemeral
+	// OPENCODE_CONFIG_CONTENT layer. Project config is never modified by
+	// this toggle, and a death-respawn retains the in-memory mode.
 	// started latches at the top of Start: the flag is frozen from then
 	// on (the app's toggle respawns a FRESH instance; a death-respawn
 	// reads the same on-disk config, so it keeps the mode for free).
@@ -246,9 +246,10 @@ func (b *liveBackend) Mode() state.Mode { return state.ModeLive }
 // ADDITIVE seam the app type-asserts, same convention as
 // ConciergeCapable/SessionAborter in internal/state: never folded into
 // state.Backend, harness stubs stay untouched). Pre-Start it latches the
-// flag (nil): Start then merges {"permission": {"*": "allow"}} into the
-// project's .opencode/opencode.json ahead of the serve spawn (verified
-// against opencode 1.18.21's published schema — see charter.go). Once
+// flag (nil): Start then passes {"permission":{"*":"allow"}} through
+// OPENCODE_CONFIG_CONTENT to each owned serve spawn. The override is
+// process-scoped and does not modify the project's .opencode/opencode.json.
+// Once
 // Start was called the boot's config is fixed, so the call fails with
 // "respawn required" — the app's toggle always builds a FRESH backend
 // instead of mutating a running (or spent) one.
@@ -278,18 +279,11 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// failures surface on the status line only.
 	charterNotes := emitCharterNotes(emit, b.directory)
 
-	// Bypass permissions ride the SAME config seam, right behind the
-	// charter: the {"permission": {"*": "allow"}} merge must be on disk
-	// before a spawned serve reads its project config, and its changed
-	// flag folds into the charter's restart condition below (opencode
-	// spoils its config at boot). Without the toggle this pass never
-	// runs and the config stays byte-identical to an unmanaged boot.
+	// Bypass permissions are an owned-process environment override. Unlike
+	// the charter pass above, this never writes the member's config: the
+	// override starts and dies with the serve process.
 	if bypass {
-		bypassChanged, bypassNotes := ensureBypassPermissions(b.directory)
-		for _, n := range bypassNotes {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: n})
-		}
-		charterNotes.changed = charterNotes.changed || bypassChanged
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] bypass permissions: on (ephemeral OPENCODE_CONFIG_CONTENT override)"})
 	}
 
 	u := b.optURL
@@ -297,7 +291,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 		u = os.Getenv("OPENCODE_SERVER")
 	}
 	if u == "" {
-		spawnedURL, proc, exitCh, err := spawnServe(b.directory)
+		spawnedURL, proc, exit, err := spawnServe(b.directory, bypass)
 		if err == nil && charterNotes.changed {
 			// opencode spoils its config at start: a serve whose boot
 			// raced/missed the freshly-written instructions entry keeps
@@ -309,20 +303,21 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 			// charter applies from the server's next boot.
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] manager charter: restarting serve so it picks up the config"})
 			_ = proc.Process.Kill()
-			<-exitCh // reap via the scan-era reaper (never a second cmd.Wait)
-			spawnedURL, proc, exitCh, err = spawnServe(b.directory)
+			<-exit.done // reap via the scan-era reaper (never a second cmd.Wait)
+			spawnedURL, proc, exit, err = spawnServe(b.directory, bypass)
 		}
 		if err != nil {
 			return err
 		}
 		b.mu.Lock()
 		b.proc = proc
+		b.procExit = exit
 		b.mu.Unlock()
 		// W4 — the serve-death watch: ONE row + the serveDied latch the
 		// next Send turns into a fresh serve. Started only for the FINAL
 		// live spawn (the charter restart above reaps its own proc first,
 		// so this goroutine can never fire for the killed one).
-		go b.watchServe(proc, exitCh)
+		go b.watchServeExit(proc, exit)
 		u = spawnedURL
 	}
 	b.mu.Lock()
@@ -832,7 +827,9 @@ func (b *liveBackend) Stop() error {
 	netCancel := b.netCancel
 	b.netCancel = nil
 	proc := b.proc
+	exit := b.procExit
 	b.proc = nil
+	b.procExit = nil
 	b.mu.Unlock()
 
 	if netCancel != nil {
@@ -842,19 +839,28 @@ func (b *liveBackend) Stop() error {
 		cancel()
 	}
 	if proc != nil && proc.Process != nil {
+		// spawnServe's reaper is the sole cmd.Wait owner. Ask the child to
+		// leave cleanly first, then escalate to SIGKILL if it ignores the
+		// bounded grace period; both waits observe that reaper's done channel.
+		_ = proc.Process.Signal(os.Interrupt)
+		if exit != nil {
+			select {
+			case <-exit.done:
+				return nil
+			case <-time.After(stopKillGrace):
+			}
+		}
 		_ = proc.Process.Kill()
-		// BOUNDED reap: never wait on the child beyond stopKillGrace. The
-		// spawn-era reaper goroutine (spawnServe's exitCh) usually owns
-		// cmd.Wait already (our Wait then errors out instantly); when it
-		// doesn't, a child wedged in uninterruptible sleep (dead FS,
-		// D-state) reaps NEVER — Stop must not commute with it. The grace
-		// expiring leaves one goroutine parked in Wait at worst; the
-		// killing process exit reaps everything.
-		reaped := make(chan struct{})
-		go func() { _ = proc.Wait(); close(reaped) }()
-		select {
-		case <-reaped:
-		case <-time.After(stopKillGrace):
+		if exit != nil {
+			select {
+			case <-exit.done:
+			case <-time.After(stopKillGrace):
+			}
+		} else {
+			// A test or foreign caller may have installed a process without the
+			// spawnServe reaper contract. Never Wait here: release our handle
+			// after the kill so Stop still cannot retain that foreign child.
+			_ = proc.Process.Release()
 		}
 	}
 	return nil
@@ -886,11 +892,19 @@ var (
 // idle office) and print ONE status row carrying the app's serve-died
 // marker (F5a-style escalation mints the red transcript row app-side).
 func (b *liveBackend) watchServe(proc *exec.Cmd, exit <-chan error) {
-	err := <-exit
+	b.handleServeExit(proc, <-exit)
+}
+
+func (b *liveBackend) watchServeExit(proc *exec.Cmd, exit *serveExit) {
+	b.handleServeExit(proc, exit.wait())
+}
+
+func (b *liveBackend) handleServeExit(proc *exec.Cmd, err error) {
 	b.mu.Lock()
 	current := b.proc == proc
 	if current {
 		b.proc = nil // a fresh serve (or none) takes over from here
+		b.procExit = nil
 	}
 	stopped := b.fl.isStopped()
 	if current && !stopped {
@@ -916,7 +930,10 @@ func (b *liveBackend) watchServe(proc *exec.Cmd, exit <-chan error) {
 // the latch set and blanks baseURL — the send falls into the plain
 // "backend not started" error path, no fake success.
 func (b *liveBackend) respawnServeForSend() {
-	spawnedURL, proc, exitCh, err := spawnServe(b.directory)
+	b.mu.Lock()
+	bypass := b.bypassPermissions
+	b.mu.Unlock()
+	spawnedURL, proc, exit, err := spawnServe(b.directory, bypass)
 	if err != nil {
 		b.mu.Lock()
 		b.baseURL = ""
@@ -927,6 +944,7 @@ func (b *liveBackend) respawnServeForSend() {
 	b.mu.Lock()
 	b.serveDied = false
 	b.proc = proc
+	b.procExit = exit
 	b.baseURL = spawnedURL
 	oldPrimary := b.primaryID
 	b.primaryID = ""
@@ -938,7 +956,7 @@ func (b *liveBackend) respawnServeForSend() {
 	if sseCancel != nil {
 		sseCancel() // dead stream: drop the live pass, the pump re-attaches now
 	}
-	go b.watchServe(proc, exitCh)
+	go b.watchServeExit(proc, exit)
 	if concID != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the serve respawn (" + concID + ") — recreates lazily"})
 	}
@@ -954,11 +972,26 @@ var debugSSE = envOrLegacy("THEBORINGOFFICE_DEBUG_SSE", "GRAFEIO_DEBUG_SSE") != 
 
 // spawnServe runs `opencode serve --port 0 --hostname 127.0.0.1` and
 // resolves with the listening URL scanned from stdout, or dies after 10s.
-// The returned channel carries the process's eventual Wait result (the
-// scan-era reaper goroutine keeps ownership of cmd.Wait — callers must
-// NEVER re-Wait the cmd) so the W4 death watch (watchServe) can listen on
-// a live serve without racing the reaper.
-func spawnServe(directory string) (string, *exec.Cmd, <-chan error, error) {
+// When bypass is on, the documented OPENCODE_CONFIG_CONTENT config layer
+// carries the wildcard allow rule for this child only. The OpenCode SDK uses
+// this same environment variable when it supplies a server config; keeping it
+// on the child env rather than the project file makes the mode reversible.
+// serveExit exposes one reaper-owned process completion to any number of
+// listeners. Its done channel is safe for both watchServe and Stop to await;
+// only spawnServe's goroutine calls cmd.Wait.
+type serveExit struct {
+	done chan struct{}
+	err  error
+}
+
+func (e *serveExit) wait() error {
+	<-e.done
+	return e.err
+}
+
+// The returned completion is fulfilled by spawnServe's sole cmd.Wait reaper;
+// callers must never re-Wait the command.
+func spawnServe(directory string, bypass bool) (string, *exec.Cmd, *serveExit, error) {
 	cmd := exec.Command("opencode", "serve", "--port", "0", "--hostname", "127.0.0.1")
 	if directory != "" {
 		cmd.Dir = directory
@@ -966,7 +999,11 @@ func spawnServe(directory string) (string, *exec.Cmd, <-chan error, error) {
 	// Explicit env so the majdoor GIT_* vars can merge in when the office
 	// auto-commit flag is on (agent-run `git commit`s land as the majdoor);
 	// identical to plain inheritance when the flag is off.
-	cmd.Env = gitx.WithMajdoorAuthorEnv(os.Environ())
+	cmd.Env = withoutEnv(os.Environ(), "OPENCODE_CONFIG_CONTENT")
+	cmd.Env = gitx.WithMajdoorAuthorEnv(cmd.Env)
+	if bypass {
+		cmd.Env = append(cmd.Env, "OPENCODE_CONFIG_CONTENT="+bypassConfigContent)
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return "", nil, nil, fmt.Errorf("opencode serve spawn failed: %w", err)
@@ -1013,22 +1050,36 @@ func spawnServe(directory string) (string, *exec.Cmd, <-chan error, error) {
 	go scan(stdout, true)
 	go scan(stderr, false)
 
-	exitCh := make(chan error, 1)
-	go func() { exitCh <- cmd.Wait() }()
+	exit := &serveExit{done: make(chan struct{})}
+	go func() {
+		exit.err = cmd.Wait()
+		close(exit.done)
+	}()
 
 	select {
 	case r := <-urlCh:
-		return r.url, cmd, exitCh, nil
-	case err := <-exitCh:
+		return r.url, cmd, exit, nil
+	case <-exit.done:
 		outMu.Lock()
 		snap := output.String()
 		outMu.Unlock()
-		return "", nil, nil, fmt.Errorf("opencode serve exited before printing a URL: %v: %s", err, trimTo(snap, 200))
+		return "", nil, nil, fmt.Errorf("opencode serve exited before printing a URL: %v: %s", exit.err, trimTo(snap, 200))
 	case <-time.After(10 * time.Second):
 		_ = cmd.Process.Kill()
-		<-exitCh
+		<-exit.done
 		return "", nil, nil, errors.New("opencode serve: no listening URL within 10s")
 	}
+}
+
+func withoutEnv(env []string, key string) []string {
+	prefix := key + "="
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		if !strings.HasPrefix(entry, prefix) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 func trimTo(s string, max int) string {

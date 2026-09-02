@@ -65,6 +65,7 @@ type liveClaudeBackend struct {
 	proc      *exec.Cmd
 	procStdin io.WriteCloser
 	procExit  <-chan error
+	procErr   *cappedErrBuf // stderr for the current child; makes launch-mode failures actionable
 	procWait  chan struct{} // closed when the current proc's watch drains
 	initDone  bool          // informational: system/init has landed (set by readLoop, never by Start)
 	stopping  bool          // Stop() engaged: the watch stays silent
@@ -225,7 +226,7 @@ func (b *liveClaudeBackend) NewOffice() (string, error) {
 	old := b.primaryID
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "", bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass)
 	if err != nil {
 		return "", err // the old session is still seated — the app restores the pre-btw surfaces
 	}
@@ -240,7 +241,7 @@ func (b *liveClaudeBackend) NewOffice() (string, error) {
 	b.interruptArm = false
 	b.briefed = false // fresh session: the preamble re-rides the first Send
 	b.mu.Unlock()
-	b.swapProc(proc, stdin, stdout, exitCh)
+	b.swapProc(proc, stdin, stdout, exitCh, errBuf)
 	if old != "" {
 		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
 	}
@@ -272,7 +273,7 @@ func (b *liveClaudeBackend) SwapPrimary(id string) error {
 	old := b.primaryID
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, id, bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, id, bypass)
 	if err != nil {
 		return err // the old session is still seated
 	}
@@ -285,7 +286,7 @@ func (b *liveClaudeBackend) SwapPrimary(id string) error {
 	b.pendingBoss = nil
 	b.interruptArm = false
 	b.mu.Unlock()
-	b.swapProc(proc, stdin, stdout, exitCh)
+	b.swapProc(proc, stdin, stdout, exitCh, errBuf)
 	if old != "" && old != id {
 		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
 	}
@@ -522,12 +523,12 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	// TestClaudeStartSeatsFloorBeforeInit pins that prefix's order.
 	_, claudeCharterNotes := EnsureClaudeCharter(b.directory)
 
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, "", bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass)
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
-	b.proc, b.procStdin, b.procExit = proc, stdin, exitCh
+	b.proc, b.procStdin, b.procExit, b.procErr = proc, stdin, exitCh, errBuf
 	wait := make(chan struct{})
 	b.procWait = wait
 	primaryID := b.primaryID // a pre-Start override pin; "" until init lands
@@ -813,9 +814,12 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	err := <-exitCh
 	b.mu.Lock()
 	current := b.proc == proc
+	errBuf := b.procErr
+	bypass := b.bypassPermissions
 	if current {
 		b.proc = nil
 		b.procStdin = nil
+		b.procErr = nil
 	}
 	stopping := b.stopping || b.fl.isStopped()
 	if current && !stopping {
@@ -824,6 +828,11 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	b.mu.Unlock()
 	close(wait)
 	if !current || stopping {
+		return
+	}
+	if stderr := strings.TrimSpace(errBuf.String()); bypass && strings.Contains(stderr, "dangerously-skip-permissions") {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
+			"[theboringoffice] claude bypass launch failed: CLI rejected --dangerously-skip-permissions (%s) — upgrade Claude Code or turn bypass off and respawn", trimTo(stderr, 300))})
 		return
 	}
 	if es := exitStatus(err); es == 130 || es == 143 {
@@ -871,12 +880,12 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	bin := b.bin
 	bypass := b.bypassPermissions // a death-respawn keeps the boot's mode
 	b.mu.Unlock()
-	proc, stdin, stdout, exitCh, _, err := spawnClaude(bin, b.directory, resume, bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, resume, bypass)
 	if err != nil {
 		return err
 	}
 	b.mu.Lock()
-	b.proc, b.procStdin, b.procExit = proc, stdin, exitCh
+	b.proc, b.procStdin, b.procExit, b.procErr = proc, stdin, exitCh, errBuf
 	b.died = false
 	b.stopping = false
 	wait := make(chan struct{})
@@ -908,6 +917,7 @@ func (b *liveClaudeBackend) teardownProc() {
 	wait := b.procWait
 	b.proc = nil
 	b.procStdin = nil
+	b.procErr = nil
 	b.mu.Unlock()
 
 	if stdin != nil {
@@ -947,9 +957,9 @@ func (b *liveClaudeBackend) teardownProc() {
 // process attach rides, and the watch + reader goroutines. Id-latch
 // policy (cleared vs pinned) is the caller's, taken under lock before
 // this runs.
-func (b *liveClaudeBackend) swapProc(proc *exec.Cmd, stdin io.WriteCloser, stdout io.Reader, exitCh <-chan error) {
+func (b *liveClaudeBackend) swapProc(proc *exec.Cmd, stdin io.WriteCloser, stdout io.Reader, exitCh <-chan error, errBuf *cappedErrBuf) {
 	b.mu.Lock()
-	b.proc, b.procStdin, b.procExit = proc, stdin, exitCh
+	b.proc, b.procStdin, b.procExit, b.procErr = proc, stdin, exitCh, errBuf
 	b.died = false
 	b.stopping = false
 	wait := make(chan struct{})

@@ -635,13 +635,16 @@ type Model struct {
 	// without the synthetic modal (browser_open.go). Every toggle
 	// respawns the transport: the backend freezes the flag into its spawn
 	// argv/boot config at Start, so SetBypassPermissions rides the FRESH
-	// instance pre-Start (respawnForBypass). bypassRestarting is the
-	// one-respawn-in-flight latch, armed before construction: a toggle
-	// landing mid-build or mid-boot queues ONE follow-up (bypassQueued)
-	// behind the fresh transport's boot line (applyEvent's bypassLatchKick).
+	// instance pre-Start (respawnForBypass). bypassPerms is deliberately the
+	// ACTIVE transport's mode, never the requested mode: the badge and the
+	// local auto-approve gates must keep describing the backend that can
+	// actually receive work. bypassDesired is the coalesced next mode while a
+	// replacement is building/starting. The lifecycle is idle -> building ->
+	// starting -> active|failed; bypassRestarting covers both in-flight steps.
 	bypassPerms      bool
+	bypassDesired    bool
 	bypassRestarting bool
-	bypassQueued     bool
+	bypassQueued     bool // compatibility/UI latch: desired differs from the in-flight build
 
 	// backendTransitioning admits exactly one asynchronous construction at a
 	// time. backendTransitionID makes a delayed result harmless if an older
@@ -1101,6 +1104,14 @@ type backendBuildMsg struct {
 }
 
 type backendReadyMsg struct{ result backendBuildMsg }
+
+// backendStartMsg lands only after a fresh bypass transport has completed
+// Start. Until then the current holder continues admitting work to the old
+// generation; a failed start therefore cannot black out the office.
+type backendStartMsg struct {
+	result backendBuildMsg
+	err    error
+}
 
 // backendStopMsg is the asynchronous teardown verdict for a retired backend.
 // A failed Stop is intentionally non-fatal: the replacement is already live.
@@ -1685,6 +1696,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.finishBackendTransition(msg))
 	case backendReadyMsg:
 		cmds = append(cmds, m.completeBackendTransition(msg.result))
+	case backendStartMsg:
+		cmds = append(cmds, m.completeBypassStart(msg))
 	case backendStopMsg:
 		if msg.err != nil {
 			m.noticeErr("backend stop: " + msg.err.Error())
@@ -1921,8 +1934,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.chat.SetQuestion(nil)
 				m.chat.SetPermission(m.permQ.view())
 				if len(msg.ans.Picks) == 1 && msg.ans.Picks[0] == "enable" {
-					m.bypassPerms = true
-					m.notice(bypassOnNotice)
+					m.bypassDesired = true
 					cmds = append(cmds, m.respawnForBypass())
 				}
 				break
@@ -3144,21 +3156,12 @@ func (m *Model) applyEvent(ev state.Event) tea.Cmd {
 	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.bypassLatchKick(ev))
 }
 
-// bypassLatchKick — the /bypass respawn latch's clear hook, batched into
-// applyEvent AFTER the core (the Go argument order is the ordering: the
-// boot line's own reduction/panel feed lands first): the fresh
-// transport's boot marker line (backendStatusMarker — both backends
-// emit it FIRST) or its Start-failure line (backendFailedMarker) drops
-// the one-respawn-in-flight latch, and a toggle that queued behind it
-// fires its follow-up respawn NOW with the CURRENT desired value.
+// bypassLatchKick remains in the event batch for compatibility with backends
+// that emit status during Start. Lifecycle completion is no longer inferred
+// from those lines: Start's explicit result is the only authority, so a
+// missing or reordered boot marker cannot wedge the restart latch.
 func (m *Model) bypassLatchKick(ev state.Event) tea.Cmd {
-	if ev.Kind != state.EvStatus || !m.bypassRestarting {
-		return nil
-	}
-	if !strings.HasPrefix(ev.Text, backendStatusMarker) && !strings.HasPrefix(ev.Text, backendFailedMarker) {
-		return nil
-	}
-	return m.finishBypassLatch()
+	return nil
 }
 
 func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
@@ -6278,18 +6281,45 @@ func (m *Model) swapBackend(name string) tea.Cmd {
 // returned Cmd, never on Bubble Tea's update goroutine.
 func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
 	if result.transition != m.backendTransitionID {
-		if result.bypass {
-			return m.finishBypassLatch()
+		if result.bypass && m.bypassRestarting {
+			// A superseded bypass build can never become active. Do not leave
+			// its lifecycle latch waiting for a status event that belongs to a
+			// discarded transport.
+			m.bypassRestarting = false
+			m.bypassQueued = false
+			m.backendTransitioning = false
 		}
-		return nil
+		return stopDiscardedBackend(result.backend)
 	}
 	if result.backend == nil {
+		if result.bypass {
+			return m.failBypassTransition(errors.New("factory returned no transport"))
+		}
 		m.noticeErr("backend: factory returned no transport")
 		m.backendTransitioning = false
-		if result.bypass {
-			return m.finishBypassLatch()
-		}
 		return nil
+	}
+	// A bypass replacement is prepared and started before it displaces the
+	// accepting generation. This is intentionally unlike /backend: toggling a
+	// permission flag must never turn a slow or failed spawn into a send
+	// blackout.
+	if result.bypass {
+		if ps, ok := result.backend.(primarySeamBackend); ok && result.resumeID != "" {
+			ps.PrimaryOverride(result.resumeID)
+		}
+		if bb, ok := result.backend.(bypassBackend); ok {
+			if err := bb.SetBypassPermissions(result.bypassValue); err != nil {
+				return tea.Batch(
+					stopDiscardedBackend(result.backend),
+					m.failBypassTransition(fmt.Errorf("set bypass permissions: %w", err)),
+				)
+			}
+		}
+		if m.emitFn == nil {
+			return m.completeBypassStart(backendStartMsg{result: result})
+		}
+		emit, nb := m.emitFn, result.backend
+		return func() tea.Msg { return backendStartMsg{result: result, err: nb.Start(emit)} }
 	}
 	m.backend = result.backend
 	cleanup := m.currentBackend.replace(result.backend)
@@ -6312,13 +6342,7 @@ func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 	if ps, ok := result.backend.(primarySeamBackend); ok && result.resumeID != "" {
 		ps.PrimaryOverride(result.resumeID)
 	}
-	if result.bypass {
-		if bb, ok := result.backend.(bypassBackend); ok {
-			if err := bb.SetBypassPermissions(result.bypassValue); err != nil {
-				m.noticeErr("bypass: " + err.Error())
-			}
-		}
-	} else if m.cfg != nil {
+	if !result.bypass && m.cfg != nil {
 		m.cfg.Backend.Name = result.name
 	}
 	m.resetPager() // the older-history walk belonged to the old transport
@@ -6332,18 +6356,7 @@ func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 		}()
 		started = true
 	}
-	if result.bypass {
-		if !started {
-			return tea.Batch(m.applyEvent(state.Event{Kind: state.EvStatus,
-				Text: "[theboringoffice] backend restarting — bypass permissions " + map[bool]string{true: "on", false: "off"}[result.bypassValue]}), m.finishBypassLatch())
-		}
-		stateWord := "off"
-		if result.bypassValue {
-			stateWord = "on"
-		}
-		return m.applyEvent(state.Event{Kind: state.EvStatus,
-			Text: "[theboringoffice] backend restarting — bypass permissions " + stateWord})
-	}
+	_ = started
 	turns := 0
 	for _, c := range m.st.Chat {
 		if c.From == "boss" && !c.Pending {
@@ -6370,9 +6383,10 @@ func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 // flag freezes into the backend's spawn argv/boot config at Start, so
 // only a fresh instance can carry it — respawnForBypass).
 func (m *Model) applyBypassSlash() tea.Cmd {
-	if m.bypassPerms {
-		m.bypassPerms = false
-		m.notice(bypassOffNotice)
+	// The active mode owns the badge, but an in-flight desired ON is also a
+	// real toggle target: cancel it immediately without a second build.
+	if m.bypassPerms || (m.bypassRestarting && m.bypassDesired) {
+		m.bypassDesired = false
 		return m.respawnForBypass()
 	}
 	if m.question != nil {
@@ -6411,9 +6425,16 @@ func (m *Model) applyBypassSlash() tea.Cmd {
 // auto-answer, the browser-action gate) hold regardless.
 func (m *Model) respawnForBypass() tea.Cmd {
 	if m.st.Mode != state.ModeLive {
+		if m.bypassPerms != m.bypassDesired {
+			m.bypassPerms = m.bypassDesired
+			m.notice(map[bool]string{true: bypassOnNotice, false: bypassOffNotice}[m.bypassPerms])
+		}
 		return nil
 	}
 	if m.bypassRestarting {
+		// Do not launch another construction. A completed build is committed
+		// only when it still matches this value; otherwise it is discarded and
+		// exactly one successor is built.
 		m.bypassQueued = true
 		return nil
 	}
@@ -6423,12 +6444,15 @@ func (m *Model) respawnForBypass() tea.Cmd {
 	m.bypassRestarting = true
 	m.backendTransitioning = true
 	m.backendTransitionID++
+	// This is transient operational status only. The indicator remains tied to
+	// bypassPerms (the active generation) until completeBypassStart commits.
+	m.st.StatusLine = "[theboringoffice] backend restarting — bypass permissions " + bypassStateWord(m.bypassDesired)
 	resumeID := ""
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		resumeID = ps.PrimaryID()
 	}
 	name, serverURL, sessDir, cfg := m.backendName(), m.serverURL, m.sessDir, m.cfg
-	bypassValue, transition := m.bypassPerms, m.backendTransitionID
+	bypassValue, transition := m.bypassDesired, m.backendTransitionID
 	return func() tea.Msg {
 		m.PersistSession() // outgoing archive; disk I/O stays off the UI loop
 		return backendBuildMsg{name: name, oldName: name, resumeID: resumeID, bypass: true, bypassValue: bypassValue, transition: transition,
@@ -6436,9 +6460,9 @@ func (m *Model) respawnForBypass() tea.Cmd {
 	}
 }
 
-// finishBypassLatch clears one completed or failed respawn and schedules at
-// most one queued desired state. It is only called from Update/event handling,
-// never while a transport or factory call is running.
+// finishBypassLatch clears one completed or failed respawn and schedules the
+// current desired state once. It is only called from Update handling, never
+// while factory/Start work is running.
 func (m *Model) finishBypassLatch() tea.Cmd {
 	m.bypassRestarting = false
 	if !m.bypassQueued {
@@ -6446,6 +6470,73 @@ func (m *Model) finishBypassLatch() tea.Cmd {
 	}
 	m.bypassQueued = false
 	return m.respawnForBypass()
+}
+
+func bypassStateWord(on bool) string {
+	if on {
+		return "on"
+	}
+	return "off"
+}
+
+// failBypassTransition leaves the accepting generation and active mode in
+// place. It is intentionally terminal for this request: retry is a later user
+// toggle, not a tight factory/Start loop.
+func (m *Model) failBypassTransition(err error) tea.Cmd {
+	m.backendTransitioning = false
+	m.bypassRestarting = false
+	m.bypassQueued = false
+	m.noticeErr("bypass restart failed: " + err.Error() + " — active backend unchanged")
+	return m.applyEvent(state.Event{Kind: state.EvStatus,
+		Text: "[theboringoffice] bypass restart failed — active permissions " + bypassStateWord(m.bypassPerms)})
+}
+
+// stopDiscardedBackend tears down a replacement that never became current.
+// It always runs outside Update, so a partially started child cannot orphan
+// while the accepting generation remains available to the UI.
+func stopDiscardedBackend(backend state.Backend) tea.Cmd {
+	if backend == nil {
+		return nil
+	}
+	return func() tea.Msg { return backendStopMsg{err: backend.Stop()} }
+}
+
+// completeBypassStart commits a fresh transport only after Start succeeds.
+// A now-stale successful build is stopped without ever becoming current, then
+// one latest-desired successor is constructed. This makes rapid toggles a
+// coalesced state machine rather than a chain of overlapping respawns.
+func (m *Model) completeBypassStart(msg backendStartMsg) tea.Cmd {
+	result := msg.result
+	if result.transition != m.backendTransitionID {
+		if result.bypass && m.bypassRestarting {
+			// A superseded Start cannot deliver the status event that would
+			// otherwise release this latch. Retire its candidate and leave the
+			// already-active generation/status untouched.
+			m.bypassRestarting = false
+			m.bypassQueued = false
+			m.backendTransitioning = false
+		}
+		return stopDiscardedBackend(result.backend)
+	}
+	if msg.err != nil {
+		return tea.Batch(stopDiscardedBackend(result.backend), m.failBypassTransition(msg.err))
+	}
+	if result.bypassValue != m.bypassDesired {
+		m.bypassRestarting = false
+		m.bypassQueued = false
+		m.backendTransitioning = false
+		return tea.Batch(stopDiscardedBackend(result.backend), m.respawnForBypass())
+	}
+	m.backend = result.backend
+	cleanup := m.currentBackend.replace(result.backend)
+	m.bypassPerms = result.bypassValue
+	m.bypassRestarting = false
+	m.bypassQueued = false
+	m.backendTransitioning = false
+	m.resetPager()
+	m.notice(map[bool]string{true: bypassOnNotice, false: bypassOffNotice}[m.bypassPerms])
+	return tea.Batch(cleanup, m.applyEvent(state.Event{Kind: state.EvStatus,
+		Text: backendStatusMarker + "bypass permissions " + bypassStateWord(m.bypassPerms)}))
 }
 
 // notice appends a dim local notice (From "office") to the chat.

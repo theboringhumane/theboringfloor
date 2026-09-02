@@ -58,7 +58,7 @@ const bypassProtections = [
   },
   {
     label: 'what lands on disk',
-    body: 'claude writes nothing at all. On opencode the allow-all is a real edit — "permission": {"*": "allow"} in the project’s .opencode/opencode.json — and disabling /bypass strips it again automatically (a hand-written "*": "allow" of your own would go with it). Quit with bypass still on and it stays on disk, allowing, until the next off or a manual remove. An explicit per-tool deny still beats the * wildcard.',
+    body: 'Nothing. Claude receives its command-line flag; the office-owned opencode child receives an ephemeral OPENCODE_CONFIG_CONTENT allow-all override. brain.json, .opencode/opencode.json, and the parent process environment remain byte-identical, and every boot starts OFF.',
   },
 ]
 
@@ -246,7 +246,9 @@ export default function PermissionsAndQuestionsPage() {
               <span className="font-mono text-foreground">
                 --dangerously-skip-permissions
               </span>
-              , and opencode&apos;s config gets a permission allow-all — and the
+               , and the office-owned opencode child gets an ephemeral{' '}
+              <span className="font-mono text-foreground">OPENCODE_CONFIG_CONTENT</span>{' '}
+              permission allow-all — and the
               office&apos;s own browser-action prompt (click, fill, eval) is skipped
               too. Anything that still slips an ask through is auto-approved, with a
               dim log row in the transcript so the record stays honest. Toggling
