@@ -6,7 +6,7 @@ project_name: theboringoffice
 builds:
   - id: theboringoffice
     main: ./cmd/theboringoffice
-    binary: theboringoffice
+    binary: theboringfloor
     # windows excluded: internal/term uses unix-only syscalls (syscall.Kill via PTY deps)
     goos:
       - darwin

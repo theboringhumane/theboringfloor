@@ -1,7 +1,8 @@
 #!/bin/sh
 # theboringoffice installer — curl-pipe friendly.
 #
-#   curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
+#   curl -fsSL https://boringfloor.com/install.sh | sh
+#   then: theboringfloor --demo
 #
 # Flags (no interactive prompts — everything is flag-driven):
 #   --dry-run            Print every action without executing it
@@ -22,7 +23,7 @@
 #                        Deprecated no-op guard: terminal-browser is opt-in
 #                        (--with-terminal-browser) since the default-off
 #                        pivot, so a plain run already skips it
-#   --uninstall          Remove the theboringoffice binary, the agentmemory
+#   --uninstall          Remove the theboringfloor binary, shims, the agentmemory
 #                        service, and the terminal-browser bundle + shim
 #
 # Consumes goreleaser assets from https://github.com/theboringhumane/theboringoffice/releases :
@@ -145,7 +146,7 @@ theboringoffice installer
 
 Usage:
   sh install.sh [--dry-run] [--prefix DIR] [--skip-agentmemory] [--uninstall]
-  curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
+  curl -fsSL https://boringfloor.com/install.sh | sh
 
 Flags:
   --dry-run            Print every action without executing anything
@@ -165,8 +166,8 @@ Flags:
                        hook into the repo at DIR — meant for repos the office
                        never boots in (it auto-installs into its boot repo
                        when attribution is on, the default)
-  --uninstall          Remove the theboringoffice binary, the agentmemory
-                       service, and the terminal-browser bundle + shim
+  --uninstall          Remove the theboringoffice binary, the tbo shim, the
+                       agentmemory service, and the terminal-browser bundle + shim
 USAGE
 }
 
@@ -373,30 +374,46 @@ install_binary() {
     stage "Install binary"
     run mkdir -p "$PREFIX"
     if [ "$DRY_RUN" -eq 1 ]; then
-        info "  [dry-run] tar -xzf workdir/${TARBALL} -C workdir theboringoffice   (extract ONLY the theboringoffice member)"
-        info "  [dry-run] cp workdir/theboringoffice ${PREFIX}/.theboringoffice.tmp.\$PID && chmod 755 <tmp> && mv -f <tmp> ${PREFIX}/theboringoffice   (atomic rename — never an in-place overwrite)"
+        info "  [dry-run] tar extract theboringfloor (or theboringoffice) → ${PREFIX}/theboringfloor"
+        info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/tbo"
+        info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/theboringoffice"
         return 0
     fi
-    tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringoffice 2>/dev/null \
+    tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringfloor 2>/dev/null \
+        || tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringoffice 2>/dev/null \
         || tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK"
-    [ -f "${TMPWORK}/theboringoffice" ] || die "tarball did not contain a 'theboringoffice' binary"
-    if [ -e "${PREFIX}/theboringoffice" ] && [ ! -w "${PREFIX}/theboringoffice" ]; then
-        die "${PREFIX}/theboringoffice is not writable — re-run with --prefix ~/.local/bin"
+    src=""
+    if [ -f "${TMPWORK}/theboringfloor" ]; then
+        src="${TMPWORK}/theboringfloor"
+    elif [ -f "${TMPWORK}/theboringoffice" ]; then
+        src="${TMPWORK}/theboringoffice"
+    else
+        die "tarball did not contain a 'theboringfloor' or 'theboringoffice' binary"
     fi
-    # Install via ATOMIC RENAME, never an in-place overwrite: a cp that
-    # truncates+rewrites an executable that any process is still running gets
-    # that process SIGKILLed by macOS ("Code Signature Invalid", namespace
-    # CODESIGNING), and fresh execs of the poisoned vnode die the same way
-    # until it is reclaimed. rename(2) swaps the vnode atomically: running
-    # instances keep their old inode untouched, new execs always see a
-    # complete, intact file — no kill window, no torn binary.
-    tmp_dest="${PREFIX}/.theboringoffice.tmp.$$"
+    if [ -e "${PREFIX}/theboringfloor" ] && [ ! -w "${PREFIX}/theboringfloor" ]; then
+        die "${PREFIX}/theboringfloor is not writable — re-run with --prefix ~/.local/bin"
+    fi
+    tmp_dest="${PREFIX}/.theboringfloor.tmp.$$"
     trap 'rm -f "$tmp_dest" 2>/dev/null; cleanup' EXIT
-    cp "${TMPWORK}/theboringoffice" "$tmp_dest"
+    cp "$src" "$tmp_dest"
     chmod 755 "$tmp_dest"
-    mv -f "$tmp_dest" "${PREFIX}/theboringoffice"
+    mv -f "$tmp_dest" "${PREFIX}/theboringfloor"
     trap cleanup EXIT
-    info "    installed: ${PREFIX}/theboringoffice"
+    info "    installed: ${PREFIX}/theboringfloor"
+    install_cli_shims
+}
+
+# tbo + theboringoffice — same binary. Leave a real (non-symlink) name untouched.
+install_cli_shims() {
+    for name in tbo theboringoffice; do
+        dest="${PREFIX}/${name}"
+        if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+            warn "${dest} exists and is not a symlink — not overwriting"
+            continue
+        fi
+        ln -sfn theboringfloor "$dest"
+        info "    shim:      ${dest} -> theboringfloor"
+    done
 }
 
 # ---------------------------------------------------------------- agentmemory
@@ -771,12 +788,29 @@ do_uninstall() {
     else
         PREFIX="${HOME}/.local/bin"
     fi
-    if [ -f "${PREFIX}/theboringoffice" ] || [ "$DRY_RUN" -eq 1 ]; then
-        run rm -f "${PREFIX}/theboringoffice"
-        info "    removed: ${PREFIX}/theboringoffice"
+    if [ -f "${PREFIX}/theboringfloor" ] || [ -f "${PREFIX}/theboringoffice" ] || [ "$DRY_RUN" -eq 1 ]; then
+        run rm -f "${PREFIX}/theboringfloor"
+        info "    removed: ${PREFIX}/theboringfloor"
     else
-        info "    no binary at ${PREFIX}/theboringoffice — nothing to do"
+        info "    no binary at ${PREFIX}/theboringfloor — nothing to do"
     fi
+    for name in tbo theboringoffice; do
+        if [ -L "${PREFIX}/${name}" ] || [ "$DRY_RUN" -eq 1 ]; then
+            tgt=""
+            if [ "$DRY_RUN" -eq 0 ] && [ -L "${PREFIX}/${name}" ]; then
+                tgt=$(readlink "${PREFIX}/${name}")
+            fi
+            case "$tgt" in
+                ""|theboringfloor|*/theboringfloor|theboringoffice|*/theboringoffice)
+                    run rm -f "${PREFIX}/${name}"
+                    info "    removed: ${PREFIX}/${name}"
+                    ;;
+                *)
+                    info "    left ${PREFIX}/${name} (symlink target ${tgt} is not theboringfloor)"
+                    ;;
+            esac
+        fi
+    done
 
     stage "Remove agentmemory service"
     found_service=0
@@ -864,7 +898,7 @@ brain_path() {
 # swaps' persisted state legible). An EXISTING backend.name key always wins:
 # the installer never silently re-selects a member's transport. Toolchain
 # ladder (zero-jq landscape): jq → python3 (append only when the key is
-# missing) → plain JSON overwrite from `theboringoffice --print-default-config`
+# missing) → plain JSON overwrite from `theboringfloor --print-default-config`
 # + sed insert — and every step narrates in dry-run, mutates nothing.
 seed_brain_backend() {
     brain="$(brain_path)"
@@ -911,7 +945,7 @@ PYEOF
     # No brain.json yet: write the stock default with the name injected.
     cfg="$("${PREFIX}/theboringoffice" --print-default-config 2>/dev/null || true)"
     if [ -z "$cfg" ]; then
-        warn "could not read the default brain.json (theboringoffice --print-default-config failed) — first boot writes one; /backend ${BACKEND} switches then"
+        warn "could not read the default brain.json (theboringfloor --print-default-config failed) — first boot writes one; /backend ${BACKEND} switches then"
         return 0
     fi
     if command -v python3 >/dev/null 2>&1; then
@@ -1009,11 +1043,11 @@ print_install_summary() {
     if [ "$DRY_RUN" -eq 1 ]; then
         box_row 'dry-run summary — NOTHING was actually changed'
     else
-        box_row "theboringoffice installed"
+        box_row "theboringfloor installed"
     fi
     box_hr
-    box_row "  binary  : ${PREFIX}/theboringoffice"
-    box_row "  run it  : theboringoffice"
+    box_row "  binary  : ${PREFIX}/theboringfloor"
+    box_row "  run it  : theboringfloor   (shims: tbo, theboringoffice)"
     if [ -n "$VERSION" ]; then
         box_row "  release : v${VERSION}"
     else
@@ -1045,6 +1079,7 @@ print_uninstall_summary() {
     fi
     box_hr
     box_row "  binary  : ${PREFIX}/theboringoffice removed"
+    box_row "  shim    : ${PREFIX}/tbo removed (if it pointed at theboringoffice)"
     box_row "  service : ${PLIST_LABEL} / agentmemory.service removed"
     box_row "  terminal-browser: shim + bundle removed (only files this script wrote)"
     box_row "  kept    : ~/.agentmemory data, and the agentmemory npm package"

@@ -4,7 +4,7 @@
 #
 # Normally unnecessary: the office auto-installs this hook into the repo it
 # boots in whenever attribution is on (the default — opt out with
-# "attribution": "off" in ~/.theboringoffice/configs/brain.json). This script
+# "attribution": "off" in ~/.theboringfloor/configs/brain.json). This script
 # is for repos the office never boots in.
 #
 #   scripts/install-majdoor-hook.sh [path-to-repo]          (default: .)

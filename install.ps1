@@ -1,12 +1,13 @@
 [CmdletBinding()]
 param(
-    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'theboringoffice\bin')
+    [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'theboringfloor\bin')
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$App = 'theboringoffice'
+$App = 'theboringfloor'
+$AssetApp = 'theboringoffice'
 $Repo = 'theboringhumane/theboringoffice'
 $ApiLatest = "https://api.github.com/repos/$Repo/releases/latest"
 
@@ -75,8 +76,8 @@ try {
         Stop-Install 'the latest GitHub release did not provide a version tag.'
     }
 
-    $archiveName = "${App}_${version}_windows_${architecture}.zip"
-    $checksumsName = "${App}_${version}_checksums.txt"
+    $archiveName = "${AssetApp}_${version}_windows_${architecture}.zip"
+    $checksumsName = "${AssetApp}_${version}_checksums.txt"
     $archive = Get-ReleaseAsset $release $archiveName
     $checksums = Get-ReleaseAsset $release $checksumsName
 
@@ -105,7 +106,10 @@ try {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
     $binaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${App}.exe")
     if ($binaries.Count -ne 1) {
-        Stop-Install "expected one $App.exe in $archiveName, found $($binaries.Count)."
+        $binaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${AssetApp}.exe")
+    }
+    if ($binaries.Count -ne 1) {
+        Stop-Install "expected one $App.exe or $AssetApp.exe in $archiveName, found $($binaries.Count)."
     }
 
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
@@ -113,6 +117,7 @@ try {
     Write-Stage "Installing ${App}.exe to $InstallDir"
     try {
         Copy-Item -LiteralPath $binaries[0].FullName -Destination $destination -Force
+        Copy-Item -LiteralPath $destination -Destination (Join-Path $InstallDir 'tbo.exe') -Force
     }
     catch {
         Stop-Install "could not replace $destination. Close a running theboringoffice process and try again. $($_.Exception.Message)"
@@ -131,8 +136,8 @@ try {
     }
 
     Write-Host ''
-    Write-Host 'theboringoffice installed successfully.'
-    Write-Host 'Run: theboringoffice --demo'
+    Write-Host 'theboringfloor installed successfully.'
+    Write-Host 'Run: theboringfloor --demo   (or tbo --demo)'
 }
 finally {
     if (Test-Path -LiteralPath $tempDir) {
