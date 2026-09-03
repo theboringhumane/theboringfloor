@@ -125,6 +125,12 @@ func sessionsBase() string {
 	return filepath.Join(sessionsHome(), brand.DotDir, "projects")
 }
 
+// floorSessionsBase is sessions/ under the current DotDir — after
+// MigrateHome, a pre-projects ~/.theboringoffice/sessions tree lives here.
+func floorSessionsBase() string {
+	return filepath.Join(sessionsHome(), brand.DotDir, "sessions")
+}
+
 // officeProjectsBase — theboringoffice-era projects root. Read fallback.
 func officeProjectsBase() string {
 	return filepath.Join(sessionsHome(), brand.OfficeDotDir, "projects")
@@ -166,11 +172,14 @@ func LoadSession(dir string) (*SessionFile, bool) {
 	if err != nil {
 		b, err = os.ReadFile(filepath.Join(officeProjectsBase(), hash, "session.json"))
 		if err != nil {
-			b, err = os.ReadFile(filepath.Join(legacySessionsBase(), hash, "session.json"))
+			b, err = os.ReadFile(filepath.Join(floorSessionsBase(), hash, "session.json"))
 			if err != nil {
-				b, err = os.ReadFile(filepath.Join(grafeioSessionsBase(), hash, "session.json"))
+				b, err = os.ReadFile(filepath.Join(legacySessionsBase(), hash, "session.json"))
 				if err != nil {
-					return nil, false
+					b, err = os.ReadFile(filepath.Join(grafeioSessionsBase(), hash, "session.json"))
+					if err != nil {
+						return nil, false
+					}
 				}
 			}
 		}

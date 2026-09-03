@@ -65,6 +65,56 @@ func TestHomeOverride(t *testing.T) {
 	}
 }
 
+func TestMigrateHome_RenamesOfficeDir(t *testing.T) {
+	home := useHome(t)
+	src := filepath.Join(home, ".theboringoffice", "configs")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldBrain := filepath.Join(src, "brain.json")
+	if err := os.WriteFile(oldBrain, []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Theme != "nord" {
+		t.Fatalf("Load after migrate: theme=%q", cfg.UI.Theme)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".theboringoffice")); !os.IsNotExist(err) {
+		t.Fatalf("old dir must be gone after rename, stat err=%v", err)
+	}
+	if _, err := os.Stat(Path()); err != nil {
+		t.Fatalf("brain.json must live at new path: %v", err)
+	}
+}
+
+func TestMigrateHome_ReplacesNewDirWithOffice(t *testing.T) {
+	home := useHome(t)
+	writeBrain(t, home, `{"ui": {"theme": "mono"}}`)
+	old := filepath.Join(home, ".theboringoffice", "configs")
+	if err := os.MkdirAll(old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "brain.json"), []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Theme != "nord" {
+		t.Fatalf("office dir must replace new dir: theme=%q", cfg.UI.Theme)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".theboringoffice")); !os.IsNotExist(err) {
+		t.Fatalf("old dir must be gone, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".theboringfloor.bak")); err != nil {
+		t.Fatalf("displaced new dir must be .bak: %v", err)
+	}
+}
+
 // TestLoad_LegacyPathFallback pins the rename-era read contract: with no
 // file at the new path, brain.json under the pre-rename ~/.grafeio is READ
 // (never written); the next Save still lands on the new path only.
