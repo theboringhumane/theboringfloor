@@ -341,29 +341,6 @@ func (c *currentBackend) replace(b state.Backend) tea.Cmd {
 	}
 }
 
-// drain moves the accepting generation to draining and returns a channel that
-// closes when all in-flight sends complete. After drain(), c.current is nil —
-// new sends hit errBackendUnavailable. The caller then stops the old backend
-// and builds a replacement.
-func (c *currentBackend) drain() <-chan struct{} {
-	c.mu.Lock()
-	g := c.current
-	c.current = nil
-	if g != nil {
-		g.state = backendDraining
-		if g.inFlight == 0 {
-			close(g.drained)
-		}
-	}
-	c.mu.Unlock()
-	if g == nil {
-		ch := make(chan struct{})
-		close(ch)
-		return ch
-	}
-	return g.drained
-}
-
 // currentBackendSend is the chat panel's ordinary-Enter callback. Its backend
 // lookup deliberately happens inside the returned tea.Cmd, at SEND time.
 func currentBackendSend(current *currentBackend, plan *panels.PlanEditor, text string, atts []state.Attachment) tea.Cmd {
@@ -667,8 +644,11 @@ type Model struct {
 
 	// btw — the /btw subchat save slot: non-nil while in a btw side session.
 	// /done restores and nils it. /btw while non-nil is rejected (no nesting).
-	// /new while in btw discards the save (you abandoned it).
-	btwSaved *btwSnapshot
+	// /new while in btw discards the save (you abandoned it). btwHiddenSnap
+	// retains a side session that Esc hid behind its pinned main-chat bubble.
+	btwSaved       *btwSnapshot
+	btwHiddenSnap  *btwSnapshot
+	btwPinMsgID    string
 
 	// Batch dispatch bookkeeping (set by dispatchQueued, consumed by the
 	// pending→non-pending completion transition):
@@ -2237,6 +2217,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			qdebugf("/done: SwapPrimary failed: %v", msg.err)
 			m.noticeErr("/done: " + msg.err.Error())
+		} else if m.btwSaved != nil {
+			// resumed INTO a btw session — the entry notice is already up
+			m.notice("btw session — esc or /done to return")
 		} else {
 			m.notice("back from btw")
 		}
@@ -2505,6 +2488,9 @@ func (m Model) hintLine() string {
 		// under the quit arm (quit-out-everything outranks approve).
 		return chrome.OnBarBold(chrome.Warn, " "+approveArmToast+" ")
 	}
+	if m.btwHidden() {
+		return chrome.OnBar(chrome.Dim, " btw hidden — click bubble or /btw to resume ")
+	}
 	if m.btwSaved != nil {
 		return chrome.OnBarBold(chrome.OK, " btw — esc or /done to return ")
 	}
@@ -2692,11 +2678,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.focusKey(msg)
 	}
 
-	// ESC while in a /btw side session exits back to the main session,
-	// same as /done. Claimed after thread-focus (its esc wins while open)
+	// ESC while in a /btw side session hides it behind a pinned bubble.
+	// Claimed after thread-focus (its esc wins while open)
 	// and after model-picker, but before tab switches.
 	if key == "esc" && m.btwSaved != nil && m.permQ.front() == nil && m.question == nil {
-		return m.exitBtw()
+		return m.hideBtw()
 	}
 
 	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
@@ -3175,6 +3161,9 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			if cmd := m.chat.PermClick(cx, cy); cmd != nil {
 				return cmd
 			}
+			if m.btwHidden() && m.chat.BtwPinRowAt(cx, cy) {
+				return m.resumeBtw()
+			}
 			// a thread's frame rows open the nested thread-focus pane for
 			// THAT agent (the clicked thread, not ctrl+f's resolved winner)
 			if name, ok := m.chat.ThreadRowAt(cx, cy); ok {
@@ -3207,6 +3196,9 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 		// answer seam); outside it returns nil and thread rows take over
 		if cmd := m.chat.PermClick(cx, cy); cmd != nil {
 			return cmd
+		}
+		if m.btwHidden() && m.chat.BtwPinRowAt(cx, cy) {
+			return m.resumeBtw()
 		}
 		// a thread's frame rows open the nested thread-focus pane for
 		// THAT agent (the clicked thread, not ctrl+f's resolved winner)
@@ -5965,6 +5957,8 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.chat.SetQuestion(m.questionView(m.question))
 	case "/new":
 		m.btwSaved = nil // /new abandons any btw session
+		m.btwHiddenSnap = nil
+		m.btwPinMsgID = ""
 		m.newOffice()    // sessions.go — clear surfaces + fresh "theboringoffice office"
 	case "/backend":
 		// install-seeded brain.json backend.name's in-app twin: show the
@@ -6007,6 +6001,9 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		if m.btwSaved != nil {
 			m.noticeErr("already in a btw session — esc or /done to return first")
 			return nil
+		}
+		if m.btwHidden() {
+			return m.resumeBtw()
 		}
 		if hasPendingBoss(m.st) {
 			m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
@@ -6075,6 +6072,8 @@ func (m *Model) exitBtw() tea.Cmd {
 	}
 	saved := m.btwSaved
 	m.btwSaved = nil
+	m.btwHiddenSnap = nil
+	m.btwPinMsgID = ""
 	m.st.Chat = saved.chat
 	m.st.Tasks = saved.tasks
 	m.st.Mails = saved.mails
@@ -6096,6 +6095,121 @@ func (m *Model) exitBtw() tea.Cmd {
 		}
 	}
 	m.notice("back from btw")
+	return nil
+}
+
+// btwHidden reports whether Esc has hidden a side session behind its pinned
+// main-chat bubble. It keeps the hidden-state check at the call sites readable.
+func (m *Model) btwHidden() bool {
+	return m.btwHiddenSnap != nil
+}
+
+func (m *Model) hideBtw() tea.Cmd {
+	if m.btwSaved == nil {
+		m.noticeErr("not in a btw session (/btw starts one)")
+		return nil
+	}
+	if hasPendingBoss(m.st) {
+		m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+		return nil
+	}
+
+	var hiddenPrimary string
+	if pb, ok := m.backend.(primarySeamBackend); ok {
+		hiddenPrimary = pb.PrimaryID()
+	}
+	m.btwHiddenSnap = &btwSnapshot{
+		chat:      append([]state.ChatMsg(nil), m.st.Chat...),
+		tasks:     append([]state.BoardTask(nil), m.st.Tasks...),
+		mails:     append([]state.MailItem(nil), m.st.Mails...),
+		primaryID: hiddenPrimary,
+	}
+
+	saved := m.btwSaved
+	m.btwSaved = nil
+	m.st.Chat = saved.chat
+	m.st.Tasks = saved.tasks
+	m.st.Mails = saved.mails
+	m.st.Bubbles = nil
+	m.st.BossThinking = false
+	m.st.BossDelegating = false
+	m.resetPager()
+	if m.chat != nil {
+		m.chat.ClearAttachments()
+	}
+	m.btwPinMsgID = nextMsgID()
+	m.st.Chat = append(m.st.Chat, state.ChatMsg{
+		ID:   m.btwPinMsgID,
+		From: "office",
+		Meta: "btw-pin",
+		Text: "btw session hidden — click to reopen",
+	})
+	m.tabs.SetState(m.st)
+	if saved.primaryID != "" {
+		if sb, ok := m.backend.(btwSwapBackend); ok {
+			return func() tea.Msg {
+				err := sb.SwapPrimary(saved.primaryID)
+				return doneOfficeMsg{err: err}
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model) resumeBtw() tea.Cmd {
+	if m.btwHiddenSnap == nil {
+		m.noticeErr("no hidden btw session (/btw starts one)")
+		return nil
+	}
+	if hasPendingBoss(m.st) {
+		m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+		return nil
+	}
+
+	var savedPrimary string
+	if pb, ok := m.backend.(primarySeamBackend); ok {
+		savedPrimary = pb.PrimaryID()
+	}
+	m.btwSaved = &btwSnapshot{
+		chat:      append([]state.ChatMsg(nil), m.st.Chat...),
+		tasks:     append([]state.BoardTask(nil), m.st.Tasks...),
+		mails:     append([]state.MailItem(nil), m.st.Mails...),
+		primaryID: savedPrimary,
+	}
+	if m.btwPinMsgID != "" {
+		chat := m.btwSaved.chat[:0]
+		for _, msg := range m.btwSaved.chat {
+			if msg.ID != m.btwPinMsgID {
+				chat = append(chat, msg)
+			}
+		}
+		m.btwSaved.chat = chat
+	}
+
+	hidden := m.btwHiddenSnap
+	m.btwHiddenSnap = nil
+	m.btwPinMsgID = ""
+	m.st.Chat = hidden.chat
+	m.st.Tasks = hidden.tasks
+	m.st.Mails = hidden.mails
+	m.st.Bubbles = nil
+	m.st.BossThinking = false
+	m.st.BossDelegating = false
+	m.resetPager()
+	if m.chat != nil {
+		m.chat.ClearAttachments()
+	}
+	m.tabs.SetState(m.st)
+	if hidden.primaryID != "" {
+		if sb, ok := m.backend.(btwSwapBackend); ok {
+			m.notice("resuming btw…")
+			return func() tea.Msg {
+				err := sb.SwapPrimary(hidden.primaryID)
+				return doneOfficeMsg{err: err}
+			}
+		}
+	}
+	m.notice("btw session — esc or /done to return")
 	return nil
 }
 
@@ -6751,15 +6865,12 @@ func (m *Model) applyBypassSlash() tea.Cmd {
 	return nil
 }
 
-// respawnForBypass — the toggle's transport hop: drain-first, then clean
-// stop, then build a fresh backend. The member's context survives: the fresh
-// transport re-pins the CURRENT primary id. SetBypassPermissions lands BEFORE
-// Start (the backend contract). Demo/harness offices skip the hop entirely.
-//
-// The drain() call moves the accepting generation to nil immediately — sends
-// during the restart window hit errBackendUnavailable (suppressed by the
-// sendErrMsg transitioning guard). The old backend is stopped only after all
-// in-flight sends complete, then the factory builds the replacement.
+// respawnForBypass builds a fresh backend while the old one keeps accepting
+// sends. The member's context survives: the fresh transport re-pins the
+// CURRENT primary id. SetBypassPermissions lands BEFORE Start (the backend
+// contract). Demo/harness offices skip the hop entirely. The old backend is
+// drained and stopped by replace() in completeBypassStart, never up front —
+// toggling a permission flag must never turn a slow spawn into a send blackout.
 func (m *Model) respawnForBypass() tea.Cmd {
 	if m.st.Mode != state.ModeLive {
 		// demo/harness: no transport hop, just flip the flag
@@ -6779,39 +6890,24 @@ func (m *Model) respawnForBypass() tea.Cmd {
 	m.backendTransitionID++
 	m.st.StatusLine = "[theboringfloor] backend restarting — bypass permissions " + bypassStateWord(m.bypassDesired)
 
-	// Drain the current generation immediately — sends get errBackendUnavailable
-	// during the restart window (intentional: clean stop before clean start)
-	drained := m.currentBackend.drain()
-
 	resumeID := ""
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		resumeID = ps.PrimaryID()
 	}
 	name, serverURL, sessDir, cfg := m.backendName(), m.serverURL, m.sessDir, m.cfg
 	bypassValue, transition := m.bypassDesired, m.backendTransitionID
-	oldBackend := m.backend
 
 	return func() tea.Msg {
-		// Persist bypass to project settings
 		if sessDir != "" {
 			config.SaveProjectSettings(sessDir, config.ProjectSettings{BypassPermissions: bypassValue})
 		}
-		// Wait for in-flight sends to complete
-		<-drained
-		// Clean stop old backend
-		if oldBackend != nil {
-			oldBackend.Stop()
-		}
-		m.PersistSession()
-		// Build new backend
 		return backendBuildMsg{name: name, oldName: name, resumeID: resumeID,
 			bypass: true, bypassValue: bypassValue, transition: transition,
 			backend: BackendFactory(name, serverURL, sessDir, cfg)}
 	}
 }
 
-// finishBypassLatch clears the respawn lifecycle latch. The drain-first flow
-// no longer queues follow-ups, so this just resets the flag.
+// finishBypassLatch clears the respawn lifecycle latch.
 func (m *Model) finishBypassLatch() tea.Cmd {
 	m.bypassRestarting = false
 	m.bypassQueued = false // TODO: remove after test update

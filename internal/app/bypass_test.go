@@ -310,8 +310,8 @@ func TestBypassEnableAcceptRespawnsWithFlag(t *testing.T) {
 	if got := fresh.bypasses(); len(got) != 1 || got[0] != true {
 		t.Fatalf("the FRESH instance got SetBypassPermissions(true), got %v", got)
 	}
-	// Clean restart: old stops BEFORE fresh builds and starts.
-	want := []string{"old:stop", "fresh:override:ses-live-1", "fresh:bypass:true", "fresh:start"}
+	// Old backend stays accepting during rebuild; replace() stops it after fresh starts.
+	want := []string{"fresh:override:ses-live-1", "fresh:bypass:true", "fresh:start", "old:stop"}
 	if got := log.get(); strings.Join(got, ";") != strings.Join(want, ";") {
 		t.Fatalf("respawn ordering:\n got %v\nwant %v", got, want)
 	}
@@ -347,8 +347,8 @@ func TestBypassDisableInstantNoConfirm(t *testing.T) {
 	if got := fresh.bypasses(); len(got) != 1 || got[0] != false {
 		t.Fatalf("the fresh instance got SetBypassPermissions(false), got %v", got)
 	}
-	// Clean restart: old stops BEFORE fresh builds and starts.
-	want := []string{"old:stop", "fresh:override:ses-live-1", "fresh:bypass:false", "fresh:start"}
+	// Old backend stays accepting during rebuild; replace() stops it after fresh starts.
+	want := []string{"fresh:override:ses-live-1", "fresh:bypass:false", "fresh:start", "old:stop"}
 	if got := log.get(); strings.Join(got, ";") != strings.Join(want, ";") {
 		t.Fatalf("disable respawn ordering:\n got %v\nwant %v", got, want)
 	}
@@ -664,7 +664,7 @@ func TestBypassCommitRoutesSendsToFreshBackend(t *testing.T) {
 		t.Fatalf("commit = backend:%T on:%v restarting:%v, want fresh/true/false", m.backend, m.bypassPerms, m.bypassRestarting)
 	}
 
-	// Old was stopped during the clean restart (before fresh started).
+	// Old was stopped by replace() cleanup after fresh became accepting.
 	if got := old.stopCount(); got != 1 {
 		t.Fatalf("old backend Stop calls = %d, want 1", got)
 	}
@@ -772,8 +772,7 @@ func TestBypassStaleStartedCandidateStopsExactlyOnce(t *testing.T) {
 	if m.bypassRestarting || m.backendTransitioning {
 		t.Fatalf("stale result must clear latches: restarting=%v transitioning=%v", m.bypassRestarting, m.backendTransitioning)
 	}
-	// With clean restart, the old backend was drained before this transition
-	// started. The stale handler must leave the model in a recoverable state
+	// The stale handler must leave the model in a recoverable state
 	// (not wedged) — a subsequent toggle can attempt a fresh respawn.
 }
 
