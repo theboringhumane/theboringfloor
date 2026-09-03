@@ -85,15 +85,42 @@ export function Hero() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-(--band-bg) via-(--band-bg)/85 to-transparent" />
 
       <div className="relative px-6 pb-20 pt-16 md:px-10 md:pb-24 md:pt-20 lg:px-14">
+        <a
+          href="https://synehq.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-8 flex max-w-xl overflow-hidden border border-(--band-fg)/15 transition-colors hover:bg-(--band-fg)/4"
+        >
+          <div className="flex min-w-0 flex-1 flex-col justify-between p-2">
+            <p className="font-sans text-lg font-medium tracking-tight md:text-xl">
+              Talk to your data like a human.
+            </p>
+            <div className="flex items-center gap-2 text-(--band-fg)/45">
+              <Database className="size-3.5 shrink-0" aria-hidden />
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                Query data with AI agents
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end border-l border-(--band-fg)/15 p-2">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-(--band-fg)/40">
+              Sponsored
+            </span>
+            <img
+              className="h-7 w-auto"
+              src="https://framerusercontent.com/images/DpVtRdL2gGDwSRNF4GSIdB6Ajkg.svg?scale-down-to=512&width=840&height=299"
+              alt="Syne HQ"
+            />
+          </div>
+        </a>
+
         <h1 className="mt-10 max-w-[14ch] font-sans text-[clamp(3.25rem,11vw,8rem)] font-medium leading-[0.9] tracking-[-0.05em]">
           <span className="">Work with agents</span>
           <br />
           that feel like{" "}
           <span className="text-(--band-accent) italic">coworkers.</span>
         </h1>
-        
-
-        <p className="mt-10 max-w-lg text-pretty font-sans text-base leading-relaxed text-(--band-fg)/50 md:text-lg">
+        <p className="mt-8 max-w-lg text-pretty font-sans text-base leading-relaxed text-(--band-fg)/50 md:text-lg">
           A terminal app where your opencode or Claude Code boss and sub-agents
           clock in as coworkers on a living floor. See the work move, talk to
           the boss like a person, and come back tomorrow to an office that
@@ -102,13 +129,11 @@ export function Hero() {
 
         <div className="mt-12 flex max-w-xl flex-col">
           <div className="flex border border-b-0 border-(--band-fg)/15">
-            {(
-              [
-                { id: "mac" as const, label: "macOS", Icon: AppleMark },
-                { id: "linux" as const, label: "Linux", Icon: LinuxMark },
-                { id: "windows" as const, label: "Windows", Icon: WindowsMark },
-              ]
-            ).map(({ id, label, Icon }) => {
+            {[
+              { id: "mac" as const, label: "macOS", Icon: AppleMark },
+              { id: "linux" as const, label: "Linux", Icon: LinuxMark },
+              { id: "windows" as const, label: "Windows", Icon: WindowsMark },
+            ].map(({ id, label, Icon }) => {
               const on = os === id;
               return (
                 <button
