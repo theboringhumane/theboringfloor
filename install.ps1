@@ -43,7 +43,7 @@ function Get-ReleaseAsset($Release, [string]$Name) {
 
 function Get-Checksum([string]$Path, [string]$AssetName) {
     $line = @(Get-Content -LiteralPath $Path | Where-Object {
-        $_ -match ('^[a-fA-F0-9]{64}\s+\*?{0}$' -f [regex]::Escape($AssetName))
+        $_ -match ('^[a-fA-F0-9]{64}\s+\*?' + [regex]::Escape($AssetName) + '$')
     })
     if ($line.Count -ne 1) {
         Stop-Install "could not find one SHA-256 checksum for $AssetName."

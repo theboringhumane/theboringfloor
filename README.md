@@ -114,6 +114,38 @@ Whichever backend you pick, the office primes it with the same manager charter b
 
 One line per key — the full table lives at [keys & slash commands](https://boringfloor.com/docs/keys-and-slash).
 
+### Agent plan tools
+
+In plan mode, the boss can present or refresh the plan pane with explicit markers. These are agent-only protocol lines, not commands for members to type:
+
+```text
+⟦plan-present⟧
+# Goal
+Add the requested capability.
+
+# Steps
+1. Inspect the current flow.
+2. Make the focused change.
+⟦/plan-present⟧
+```
+
+```text
+⟦plan-update⟧
+# Goal
+Add the requested capability with the clarified edge case.
+⟦/plan-update⟧
+```
+
+`plan-present` and `plan-update` are multiline blocks. They fill the existing plan pane as a **draft**; they do not run work and they never bypass your approval. Review or edit the draft, then press `ctrl+x` twice to approve it. Only that second confirmation sends the plan to the build agent.
+
+Once you have approved a plan, the office keeps that approved version across sessions (up to 20,000 runes). Later drafts and updates stay drafts: they do not replace the approved plan until you review and approve them. When the boss needs the current decision, it places this marker on its own line:
+
+```text
+⟦plan-get-approved⟧
+```
+
+The office sends the latest approved plan back to the boss. If there is no approved plan yet, it does not substitute a draft.
+
 | Key | Does |
 |---|---|
 | `tab` / `shift+tab` / `1..7` | switch the right panel: chat · terminal · agents · board · mail · activity · git |
@@ -128,6 +160,7 @@ One line per key — the full table lives at [keys & slash commands](https://bor
 | click a tool row | expand what the tool returned (all kinds — capped, tail-kept; `no output as such` when there's none) |
 | `⟦recent-messages⟧` / `⟦recent-messages: N⟧` | agent-only context recovery marker — on its own line once per reply; sends the boss the latest 20 messages by default, or `N` clamped to 1..50 |
 | `/bypass` | toggle bypass-permissions mode — session-only, confirm-on-enable, ` ⚠ BYPASS ` rides the topbar while on |
+| `ctrl+x` twice | plan mode: confirm and approve the current draft for the build agent |
 | `ctrl+q` | arm quit — works everywhere |
 
 `/bypass` is the deliberate escape hatch. Enabling asks for an explicit confirm — agents will run tools and browser actions WITHOUT asking, this office session only — disabling is instant. While on, every tab's topbar carries a loud ` ⚠ BYPASS ` segment, backend permission asks stop (claude spawns with `--dangerously-skip-permissions`; the office-owned opencode process gets an ephemeral `OPENCODE_CONFIG_CONTENT={"permission":{"*":"allow"}}` override), any stray ask is auto-approved with a dim log row, and the office's own browser-action prompt is skipped the same way. Toggling builds and starts a fresh backend before switching; the current backend stays usable until the replacement is live, and claude resumes your session context. Every boot starts with bypass OFF. `brain.json`, `.opencode/opencode.json`, and the parent process environment stay untouched.

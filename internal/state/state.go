@@ -526,6 +526,13 @@ const (
 	// already clamped by internal/chatcontext to 1..50; the reducer passes
 	// this additive event to the app, which owns collecting and sending it.
 	EvRecentMessages EventKind = "recent-messages"
+	// EvPlanPresent and EvPlanUpdate carry a boss-authored markdown plan to
+	// the existing plan pane. They present plan state only; they never execute
+	// work or ask for a permission. EvPlanGetApproved reads the member's
+	// approval state for the current plan and is likewise read-only.
+	EvPlanPresent     EventKind = "plan-present"
+	EvPlanUpdate      EventKind = "plan-update"
+	EvPlanGetApproved EventKind = "plan-get-approved"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -635,6 +642,9 @@ type Event struct {
 	// RecentMessagesCount is the requested transcript-message count for
 	// EvRecentMessages. It is meaningful only for that event kind.
 	RecentMessagesCount int `json:"recentMessagesCount,omitempty"`
+	// PlanToolText carries trimmed, head-capped markdown for EvPlanPresent and
+	// EvPlanUpdate. It is empty for EvPlanGetApproved.
+	PlanToolText string `json:"planToolText,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

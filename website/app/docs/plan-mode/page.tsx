@@ -8,14 +8,14 @@ import { SITE_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'Plan mode',
   description:
-    'ctrl+p flips the office into a read-only planning pass: chatter stays in chat, only plan-shaped replies present into the floor-slot pane, your edits latch, and ctrl+x approves the plan into build mode.',
+    'ctrl+p flips the office into a read-only planning pass: agent plan markers fill the pane as drafts, you review or edit them, and ctrl+x twice approves a plan for the build agent.',
   alternates: {
     canonical: '/docs/plan-mode',
   },
   openGraph: {
     title: 'Plan mode · theboringfloor',
     description:
-      'ctrl+p flips the office into a read-only planning pass: chatter stays in chat, only plan-shaped replies present into the floor-slot pane, your edits latch, and ctrl+x approves the plan into build mode.',
+      'ctrl+p flips the office into a read-only planning pass: agent plan markers fill the pane as drafts, you review or edit them, and ctrl+x twice approves a plan for the build agent.',
     url: `${SITE_URL}/docs/plan-mode`,
     type: 'website',
   },
@@ -34,7 +34,7 @@ const presentKeys = [
 ]
 
 const approveKeys = [
-  { combo: 'ctrl+x', action: 'approve → build agent' },
+  { combo: 'ctrl+x twice', action: 'confirm approval → build agent' },
   { combo: 'ctrl+p', action: 'exit to build, send nothing' },
 ]
 
@@ -49,7 +49,7 @@ const limits = [
   },
   {
     label: 'what persists',
-    body: 'What survives a reboot is the plan buffer — and only when it is non-empty, edited past the starter, and plan-shaped. Treat the mode as a working state, not a setting.',
+    body: 'The latest approved plan survives across sessions, bounded to 20,000 runes. Drafts and updates remain drafts; they cannot overwrite that approved version until you approve them.',
   },
   {
     label: 'approval is not exemption',
@@ -133,9 +133,9 @@ export default function PlanModePage() {
               Plan first. Then let the crew build.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              One key flips the office from building to planning. The boss plans read-only, only
-              real plans earn the floor-slot pane, your edits survive the next reply, and one more
-              key hands the approved plan back to the build crew.
+              One key flips the office from building to planning. The boss plans read-only, explicit
+              agent markers fill the floor-slot pane as drafts, your edits survive the next reply,
+              and a two-step approval hands your plan to the build crew.
             </p>
           </div>
         </section>
@@ -158,7 +158,7 @@ export default function PlanModePage() {
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The status line keeps the mode honest:{' '}
               <span className="font-mono text-foreground">
-                plan · boss plans read-only · ctrl+p exits · ctrl+x approves a presented plan
+              plan · boss plans read-only · ctrl+p exits · ctrl+x twice approves a draft
               </span>
               . Read-only means the planning pass cannot run tools against your tree — it thinks,
               it drafts, it waits.
@@ -169,24 +169,29 @@ export default function PlanModePage() {
 
         <section className="border-b border-border">
           <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>The gate</SectionTag>
+            <SectionTag>Agent markers</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              Chatter never presents as a plan.
+              The boss names the plan it wants you to review.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              A completed boss reply mirrors into the floor-slot pane passively — you keep typing
-              while it lands — but only when it looks like a plan. Plan-shaped replies present;
-              status chatter doesn&apos;t. When a reply is just noise, the pane keeps its last
-              plan and one dim note explains why nothing changed.
+              The boss uses a multiline <span className="font-mono text-foreground">plan-present</span>{' '}
+              block to fill the existing plan pane, and a multiline{' '}
+              <span className="font-mono text-foreground">plan-update</span> block to refresh its
+              draft. Ordinary chat stays in chat. These are agent-only protocol markers: they make a
+              draft visible for your review; they do not execute work and they do not approve it.
             </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Want to draft instead of waiting? Click the pane region to scratch a fresh plan from
-              the starter template — a{' '}
-              <span className="font-mono text-foreground">mermaid</span> block comes with it,
-              rendered read-only under a{' '}
-              <span className="font-mono text-foreground">╭─ mermaid diagram ─╮</span> caption in
-              the presentation view.
-            </p>
+            <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
+# Goal
+Add the requested capability.
+
+# Steps
+1. Inspect the current flow.
+2. Make the focused change.
+⟦/plan-present⟧`}</code></pre>
+            <pre className="mt-4 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-update⟧
+# Goal
+Add the requested capability with the clarified edge case.
+⟦/plan-update⟧`}</code></pre>
             <KeyChips keys={gateKeys} />
             <Shot
               src="/shots/docs/plan-gated.png"
@@ -200,16 +205,16 @@ export default function PlanModePage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Presented</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              Once it presents, the plan is yours to edit.
+              Once it presents, the draft is yours to edit.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              When a plan-shaped reply lands, the hint swaps to{' '}
+              When an agent plan block lands, the hint swaps to{' '}
               <span className="font-mono text-foreground">
-                plan · click to edit · ctrl+x approve → build · ctrl+p exits
+                plan · click to edit · ctrl+x twice approves → build · ctrl+p exits
               </span>
-              . Click in and edit until it reads like your plan, not the office&apos;s guess —
-              edits latch the pane as yours, and a fresh boss reply leaves your version untouched
-              (one dim note:{' '}
+              . Click in and edit until it reads like your plan, not the office&apos;s guess. The pane
+              remains a draft until you approve it; edits latch the pane as yours, and a fresh boss
+              reply leaves your version untouched (one dim note:{' '}
               <span className="font-mono text-foreground">
                 boss replied — your edited plan kept
               </span>
@@ -220,7 +225,7 @@ export default function PlanModePage() {
             <Shot
               src="/shots/docs/plan-presented.png"
               alt="theboringfloor plan mode with a presented plan: markdown plan in the floor-slot pane, a rendered mermaid diagram, and the click-to-edit hint"
-              caption="after — presented: markdown + mermaid, click to edit, ctrl+x approves"
+              caption="after — presented: markdown + mermaid, click to edit, ctrl+x twice approves"
             />
           </div>
         </section>
@@ -229,16 +234,19 @@ export default function PlanModePage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Approve</SectionTag>
             <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              ctrl+x hands the plan to the build agent.
+              ctrl+x twice hands the plan to the build agent.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              <span className="font-mono text-foreground">ctrl+x</span> approves: the office sends{' '}
+              The first <span className="font-mono text-foreground">ctrl+x</span> asks you to
+              confirm. Press <span className="font-mono text-foreground">ctrl+x</span> again to
+              approve: the office sends{' '}
               <span className="font-mono text-foreground">
                 Approved plan — implement it exactly as specified:
               </span>{' '}
               plus your plan body to the build agent and flips the mode back to build, badge off.
-              An empty buffer — or the untouched starter template — is refused with a notice, not
-              sent as hollow instructions.
+              The approved plan is retained across sessions, up to 20,000 runes. An empty buffer —
+              or the untouched starter template — is refused with a notice, not sent as hollow
+              instructions.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Approval changes who gets the prompt — nothing else. Every permission ask the build
@@ -258,6 +266,14 @@ export default function PlanModePage() {
               </Link>
               .
             </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              A later <span className="font-mono text-foreground">plan-present</span> or{' '}
+              <span className="font-mono text-foreground">plan-update</span> is only a new draft:
+              it never replaces your retained approved plan by itself. When the boss needs that
+              decision again, it sends this own-line marker; the office returns the latest approved
+              plan, not an unapproved draft.
+            </p>
+            <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-get-approved⟧`}</code></pre>
             <KeyChips keys={approveKeys} />
           </div>
         </section>

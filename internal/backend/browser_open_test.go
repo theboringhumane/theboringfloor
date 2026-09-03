@@ -24,6 +24,7 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
 	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -73,6 +74,12 @@ func TestBrowserPreambleRidesFirstBossPrompt(t *testing.T) {
 	}
 	if !strings.Contains(posts[0], wireBrowserPolicy) {
 		t.Fatalf("the FIRST prompt must carry the exact browser policy paragraph, got %s", posts[0])
+	}
+	browserAt := strings.Index(posts[0], "[theboringoffice harness — browser tool]")
+	recentAt := strings.Index(posts[0], "[theboringoffice harness — recent messages]")
+	planAt := strings.Index(posts[0], "[theboringoffice harness — plan tools]")
+	if browserAt < 0 || recentAt < 0 || planAt < 0 || browserAt > recentAt || recentAt > planAt {
+		t.Fatalf("the FIRST prompt must order browser, recent-message, then plan preambles, got %s", posts[0])
 	}
 	if strings.Contains(posts[1], browsertools.MarkerOpen) {
 		t.Fatalf("the SECOND prompt ships raw (no re-brief), got %s", posts[1])
@@ -450,7 +457,7 @@ done
 	if len(lines) != 2 {
 		t.Fatalf("want 2 stdin lines, got %d", len(lines))
 	}
-	wantFirst := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\nopen the docs please"))
+	wantFirst := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\nopen the docs please"))
 	if lines[0] != wantFirst {
 		t.Fatalf("the first line must be preamble + prompt:\n got %q\nwant %q", lines[0], wantFirst)
 	}

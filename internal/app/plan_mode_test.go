@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -615,10 +616,11 @@ func TestPlanPersistenceRoundTrip(t *testing.T) {
 	// a presented plan persists and hydrates into the next boot's pane
 	plan := gatedPlan("Relaunch checklist", "still-drafting")
 	m.plan.SetValue(plan)
+	m.setApprovedPlanText("# Approved baseline\n\n- Keep the approved implementation intact.")
 	m.persistOfficeSession(true)
 	sf, ok = LoadSession(dir)
-	if !ok || sf.PlanText != plan {
-		t.Fatalf("planText round trip: ok=%v planText=%q", ok, sf.PlanText)
+	if !ok || sf.PlanText != plan || sf.ApprovedPlanText == "" {
+		t.Fatalf("plan round trip: ok=%v planText=%q approvedPlanText=%q", ok, sf.PlanText, sf.ApprovedPlanText)
 	}
 	m2 := New(b, nil)
 	m2.hydrateSession(sf)
@@ -627,6 +629,9 @@ func TestPlanPersistenceRoundTrip(t *testing.T) {
 	}
 	if m2.planText() != plan {
 		t.Fatalf("a hydrated plan keeps persisting, got %q", m2.planText())
+	}
+	if got := m2.approvedPlanText(); got != sf.ApprovedPlanText {
+		t.Fatalf("hydrate restores the separate approved plan: got %q want %q", got, sf.ApprovedPlanText)
 	}
 	// the boot rests in build; a ctrl+p re-entry shows the restored plan
 	if m2.planPaneVisible() {
@@ -645,6 +650,18 @@ func TestPlanPersistenceRoundTrip(t *testing.T) {
 	if strings.TrimSpace(m2.plan.Value()) != "" {
 		t.Fatalf("/new clears to EMPTY (the conversation-first rest state), got %q", m2.plan.Value())
 	}
+	if got := m2.approvedPlanText(); got != sf.ApprovedPlanText {
+		t.Fatalf("/new must retain the approved plan, got %q want %q", got, sf.ApprovedPlanText)
+	}
+
+	// A legacy session only has planText: it restores as a draft, never as
+	// a fabricated approval.
+	mLegacy := New(b, nil)
+	mLegacy.setApprovedPlanText("must be cleared by legacy restore")
+	mLegacy.hydrateSession(&SessionFile{PlanText: plan})
+	if got := mLegacy.approvedPlanText(); got != "" {
+		t.Fatalf("legacy planText must not restore an approval, got %q", got)
+	}
 
 	// a successful approve RETAINS the buffer — persistence keeps it for
 	// the restore-on-re-entry story
@@ -654,6 +671,115 @@ func TestPlanPersistenceRoundTrip(t *testing.T) {
 	m3.approvePlan()
 	if m3.planText() != plan {
 		t.Fatalf("an approved plan keeps persisting for restore, got %q", m3.planText())
+	}
+}
+
+// TestApprovedPlanCapCoversManualApprovalAndSessionHydration pins the durable
+// approval boundary: a large multibyte draft remains a draft verbatim, while
+// every approved-storage ingress keeps only the first 20,000 runes and one
+// visible marker.
+func TestApprovedPlanCapCoversManualApprovalAndSessionHydration(t *testing.T) {
+	b := &agentRecBackend{}
+	body := "# Large plan\n\n" + strings.Repeat("界", approvedPlanMaxRunes)
+	m := New(b, nil)
+	m.plan.SetValue(body)
+	m.setAgentMode(agentModePlan)
+	m = approveDoublePress(t, m)
+
+	stored := m.approvedPlanText()
+	if got := utf8.RuneCountInString(stored); got != approvedPlanMaxRunes {
+		t.Fatalf("manual approval stored %d runes, want %d", got, approvedPlanMaxRunes)
+	}
+	if !strings.HasPrefix(stored, "# Large plan\n\n") || strings.Count(stored, approvedPlanTruncatedMark) != 1 {
+		t.Fatalf("manual approval must retain the beginning and one marker, got marker count %d", strings.Count(stored, approvedPlanTruncatedMark))
+	}
+	if len(b.agentCalls) != 1 || b.agentCalls[0].text != approvePrefix+stored {
+		t.Fatalf("manual approval wire must use the exact capped stored plan: calls=%d wire=%q stored=%q", len(b.agentCalls), b.agentCalls[0].text, stored)
+	}
+	if m.plan.Value() != body || m.planText() != body {
+		t.Fatal("approved-plan cap must not alter the draft PlanText")
+	}
+
+	// An old oversized session file is normalized on hydrate, then remains
+	// normalized through repeated set/get calls.
+	m2 := New(b, nil)
+	m2.hydrateSession(&SessionFile{ApprovedPlanText: body})
+	hydrated := m2.approvedPlanText()
+	if got := utf8.RuneCountInString(hydrated); got != approvedPlanMaxRunes {
+		t.Fatalf("hydrated approval stored %d runes, want %d", got, approvedPlanMaxRunes)
+	}
+	if strings.Count(hydrated, approvedPlanTruncatedMark) != 1 {
+		t.Fatalf("hydrated approval marker count = %d, want 1", strings.Count(hydrated, approvedPlanTruncatedMark))
+	}
+	m2.setApprovedPlanText(hydrated)
+	if got := m2.approvedPlanText(); got != hydrated || strings.Count(got, approvedPlanTruncatedMark) != 1 {
+		t.Fatalf("repeated hydrate storage must preserve one marker, got marker count %d", strings.Count(got, approvedPlanTruncatedMark))
+	}
+
+	// Persisting the hydrated approval writes the same normalized value.
+	scratchHome(t)
+	m2.st.Mode = state.ModeLive
+	m2.sessDir = t.TempDir()
+	m2.persistOfficeSession(true)
+	sf, ok := LoadSession(m2.sessDir)
+	if !ok || sf.ApprovedPlanText != hydrated {
+		t.Fatalf("persisted approval must be capped hydrate value: ok=%v got=%q", ok, sf.ApprovedPlanText)
+	}
+
+	// The SaveSession migration boundary protects direct SessionFile writers
+	// too, rather than relying on callers to route through Model.
+	directDir := t.TempDir()
+	if err := SaveSession(directDir, SessionFile{Dir: directDir, ApprovedPlanText: body}); err != nil {
+		t.Fatalf("SaveSession oversized approval: %v", err)
+	}
+	direct, ok := LoadSession(directDir)
+	if !ok {
+		t.Fatal("LoadSession must read the direct SaveSession result")
+	}
+	if direct.ApprovedPlanText != hydrated {
+		t.Fatalf("SaveSession must cap direct approved text: got marker count %d", strings.Count(direct.ApprovedPlanText, approvedPlanTruncatedMark))
+	}
+}
+
+// TestApprovePlanUsesCapturedSnapshot pins the approval's asynchronous
+// boundary: the wire, approval record, and notice all use one capped snapshot,
+// even when the draft changes between command creation and completion.
+func TestApprovePlanUsesCapturedSnapshot(t *testing.T) {
+	b := &agentRecBackend{}
+	old := "# Original plan\n\n" + strings.Repeat("界", approvedPlanMaxRunes)
+	newer := gatedPlan("Edited while approval was in flight", "new draft")
+	m := New(b, nil)
+	m.plan.SetValue(old)
+	m.setAgentMode(agentModePlan)
+
+	cmd := m.approvePlan()
+	if cmd == nil {
+		t.Fatal("approvable plan must create an approval command")
+	}
+	captured := capApprovedPlanText(old)
+	m.plan.SetValue(newer)
+	msg := cmd()
+	sent, ok := msg.(approveSentMsg)
+	if !ok {
+		t.Fatalf("approval command result = %#v, want approveSentMsg", msg)
+	}
+	if sent.plan != captured {
+		t.Fatalf("approval result must carry the capped captured plan:\n got %q\nwant %q", sent.plan, captured)
+	}
+	if len(b.agentCalls) != 1 || b.agentCalls[0].text != approvePrefix+captured {
+		t.Fatalf("approval wire must use captured plan: calls=%d wire=%q", len(b.agentCalls), b.agentCalls[0].text)
+	}
+
+	m = runMsg(t, m, msg)
+	if got := m.approvedPlanText(); got != captured {
+		t.Fatalf("stored approved plan must remain captured snapshot:\n got %q\nwant %q", got, captured)
+	}
+	if m.plan.Value() != newer {
+		t.Fatalf("completion must not overwrite the newer draft: got %q want %q", m.plan.Value(), newer)
+	}
+	wantNotice := fmt.Sprintf("[office] plan approved — sent to build (%d chars)", len(captured))
+	if got := lastOfficeMsg(m); got != wantNotice {
+		t.Fatalf("approval notice must use captured length: got %q want %q", got, wantNotice)
 	}
 }
 

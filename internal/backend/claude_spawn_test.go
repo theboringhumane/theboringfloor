@@ -17,6 +17,7 @@ import (
 
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -356,7 +357,7 @@ done
 	// member text (browser_open_test.go owns that contract) — assert the
 	// exact placement via the production encoder plus the literal marker
 	// intro, so a wire-shape drift still fails here.
-	wantUser := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\nhello there"))
+	wantUser := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\nhello there"))
 	claudeWait(t, "the user line in the stub capture", 2*time.Second, func() bool {
 		return len(claudeCapture(t, capture)) == 1
 	})

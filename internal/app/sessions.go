@@ -104,7 +104,11 @@ type SessionFile struct {
 	// (omitempty), and /new + successful approvals clear the field by
 	// resetting the buffer itself.
 	PlanText string `json:"planText,omitempty"`
-	SavedAt  int64  `json:"savedAt"` // unix millis
+	// ApprovedPlanText is the last plan whose build dispatch was accepted.
+	// It is separate from PlanText so a restored legacy draft is never
+	// misrepresented to agent tools as member-approved.
+	ApprovedPlanText string `json:"approvedPlanText,omitempty"`
+	SavedAt          int64  `json:"savedAt"` // unix millis
 }
 
 // sessionsHome — the scratch-root override first (THEBORINGOFFICE_HOME,
@@ -294,6 +298,9 @@ func SaveSession(dir string, sf SessionFile) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
+	// Keep direct SessionFile writers (including migrations) inside the same
+	// durable approved-plan contract as Model persistence.
+	sf.ApprovedPlanText = capApprovedPlanText(sf.ApprovedPlanText)
 	sf.SavedAt = time.Now().UnixMilli() // always-latest-wins stamp
 	b, err := json.MarshalIndent(sf, "", "  ")
 	if err != nil {
@@ -427,6 +434,10 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 		m.plan.SetValue(sf.PlanText)
 		m.restoredPlan = true
 	}
+	// Always apply this field, including its empty legacy value: old
+	// planText-only sessions restore as drafts and never inherit or imply a
+	// member approval.
+	m.setApprovedPlanText(sf.ApprovedPlanText)
 	m.tabs.SetState(m.st)
 	// the restore line is BOOT-SCOPED (Meta bootNoticeMeta): it renders
 	// now but Snapshot strips it on every persist — exactly one restore
@@ -459,6 +470,7 @@ func (m *Model) persistOfficeSession(force bool) {
 	dir := m.sessDir
 	sf := Snapshot(dir, primaryID, m.st)
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	sf.ApprovedPlanText = m.approvedPlanText()
 	// Per-backend pins: the active transport's session stamps
 	// PrimaryIDs[name]; the OTHER transports' pins ride back from disk so
 	// a /backend swap + quit never clobbers them (schema note on
@@ -491,6 +503,7 @@ func (m *Model) persistOfficePin(primaryID string) {
 	m.sessLast = time.Now()
 	sf := Snapshot(m.sessDir, primaryID, m.st)
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
+	sf.ApprovedPlanText = m.approvedPlanText()
 	mergeBackendPins(&sf, m.sessDir, m.backendName(), primaryID)
 	_ = SaveSession(m.sessDir, sf) // quit path — best effort, bounded + sync
 }

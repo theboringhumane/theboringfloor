@@ -78,6 +78,7 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/gitx"
 	"github.com/theboringhumane/theboringfloor/internal/netwatch"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -606,7 +607,7 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 	briefed := b.browserBriefedFor == primaryID
 	b.mu.Unlock()
 	if !briefed {
-		prompt = browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + trimmed
+		prompt = browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\n" + trimmed
 	}
 	err := b.postPrompt(primaryID, prompt, atts, agent)
 	if err == nil && !briefed {
@@ -2928,6 +2929,7 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 	text = chatcontext.Scrub(text, func(count int) {
 		b.fl.emit(state.Event{Kind: state.EvRecentMessages, RecentMessagesCount: count})
 	})
+	text = plantools.Scrub(text, b.planToolBridge)
 	text = browsertools.Scrub(text, b.browserBridge)
 	// Boss edits surface as diff events on message completion.
 	b.fetchDiffAndEmit(primaryID)
@@ -2942,6 +2944,17 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 		ID: "bossmsg-" + info.ID, From: "boss", Kind: "boss", Text: text, At: nowMs(),
 		Pending: false, Meta: state.MediaMeta(media),
 	}, Media: media})
+}
+
+func (b *liveBackend) planToolBridge(d plantools.Directive) {
+	kind := state.EvPlanGetApproved
+	switch d.Kind {
+	case plantools.Present:
+		kind = state.EvPlanPresent
+	case plantools.Update:
+		kind = state.EvPlanUpdate
+	}
+	b.fl.emit(state.Event{Kind: kind, PlanToolText: d.Text})
 }
 
 // maybeOfficeCompleted: the concierge replied — emit an EvChatOffice bubble

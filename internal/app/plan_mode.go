@@ -86,6 +86,14 @@ type agentBackend interface {
 // Frozen copy — pinned by plan_mode_test.go.
 const approvePrefix = "Approved plan — implement it exactly as specified:\n\n"
 
+// approvedPlanMaxRunes is the durable approved-plan ceiling. Draft PlanText
+// intentionally has no matching cap: only the member-approved record feeds
+// the agent plan tools and persists as an approval across sessions.
+const (
+	approvedPlanMaxRunes      = 20000
+	approvedPlanTruncatedMark = "… [approved plan truncated]"
+)
+
 // Statusline hint swaps for plan mode (hintLine picks per pane
 // visibility): boss-idle-empty means the pane is hidden and the member
 // just talks; pane-visible means a presented/edited plan sits in the
@@ -156,8 +164,10 @@ const approveArmWindow = 1500 * time.Millisecond
 // approveSentMsg / approveErrMsg — the approved-plan send's async
 // resolutions (the F3 tagged twins of chatSentMsg/sendErrMsg: a failed
 // approve must NEVER be mistaken for an ordinary failed send — the
-// rollback is exact). The flip to build rides approveSentMsg ONLY.
-type approveSentMsg struct{ planLen int }
+// rollback is exact). The flip to build rides approveSentMsg ONLY. plan is
+// the capped snapshot captured before dispatch; success must never reread a
+// draft the member may have edited while the send was in flight.
+type approveSentMsg struct{ plan string }
 type approveErrMsg struct{ err error }
 
 // approveArmClearMsg — the approve arm's own expiry tick landed
@@ -464,7 +474,7 @@ func (m *Model) approveRefusal() string {
 
 // approvePlan is the ctrl+x FIRE (the double-press's second strike —
 // model.go's claim arms first): the composed prompt (approvePrefix + the
-// plan body) leaves through the agent seam with agent="build". F3: the
+// capped plan snapshot) leaves through the agent seam with agent="build". F3: the
 // mode flip rides SEND ACCEPTANCE — the closure returns the tagged
 // approveSentMsg (Update's case flips to build, blurs the editor, resets
 // the dirty/restore latches, posts the approval notice) or the tagged
@@ -476,8 +486,8 @@ func (m *Model) approvePlan() tea.Cmd {
 		m.notice(refused)
 		return nil
 	}
-	v := m.plan.Value()
-	text := approvePrefix + v
+	approved := capApprovedPlanText(m.plan.Value())
+	text := approvePrefix + approved
 	current := m.currentBackend
 	return func() tea.Msg {
 		if current == nil {
@@ -488,7 +498,7 @@ func (m *Model) approvePlan() tea.Cmd {
 			// send (sendErrMsg keeps its own generic transcript row).
 			return approveErrMsg{err: err}
 		}
-		return approveSentMsg{planLen: len(v)}
+		return approveSentMsg{plan: approved}
 	}
 }
 
@@ -508,6 +518,49 @@ func (m *Model) planText() string {
 		return ""
 	}
 	return v
+}
+
+// approvedPlanTexts holds the plan the member most recently approved. It is
+// deliberately pane-keyed, like planGateLatches: the PlanEditor pointer is
+// shared across Bubble Tea value copies, whereas the Model itself is not.
+// Draft text remains in planText; this is the distinct durable approval
+// record consumed by the agent plan tools.
+var approvedPlanTexts sync.Map // *panels.PlanEditor → string
+
+func (m *Model) approvedPlanText() string {
+	if m.plan == nil {
+		return ""
+	}
+	v, ok := approvedPlanTexts.Load(m.plan)
+	if !ok {
+		return ""
+	}
+	return v.(string)
+}
+
+// capApprovedPlanText retains a plan's beginning (where its title and steps
+// live) while reserving room for the visible truncation marker. Runes, rather
+// than bytes, keep multibyte text valid UTF-8. A previously capped value is
+// returned unchanged, so repeated storage and restore cycles never stack the
+// marker.
+func capApprovedPlanText(text string) string {
+	runes := []rune(text)
+	if len(runes) <= approvedPlanMaxRunes {
+		return text
+	}
+	marker := []rune(approvedPlanTruncatedMark)
+	return string(runes[:approvedPlanMaxRunes-len(marker)]) + approvedPlanTruncatedMark
+}
+
+func (m *Model) setApprovedPlanText(text string) {
+	if m.plan == nil {
+		return
+	}
+	if text == "" {
+		approvedPlanTexts.Delete(m.plan)
+		return
+	}
+	approvedPlanTexts.Store(m.plan, capApprovedPlanText(text))
 }
 
 // agentDegradeSeam — the additive backend seam (F5b): the live backend's

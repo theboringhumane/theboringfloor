@@ -12,6 +12,7 @@ import (
 
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -45,7 +46,7 @@ done
 	}
 	claudeWait(t, "SendWith user line", 2*time.Second, func() bool { return len(claudeCapture(t, capture)) == 1 })
 	got := claudeCapture(t, capture)[0]
-	wireText := browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\nplease inspect\n\n" + strings.Join([]string{
+	wireText := browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\nplease inspect\n\n" + strings.Join([]string{
 		"[attached file: " + strconv.Quote(txt) + "] Read it with your file tools.",
 		"[attached file: " + strconv.Quote(png) + "] Read it with your file tools.",
 		"[attached file: " + strconv.Quote(pdf) + "] Read it with your file tools.",

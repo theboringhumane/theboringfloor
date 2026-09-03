@@ -127,7 +127,7 @@ const composerKeys: Key[] = [
   { combo: 'backspace', action: 'on an empty input: drop the newest attachment chip' },
   { combo: 'y a n esc', action: 'answer a permission prompt — allow once / always / reject / defer' },
   { combo: 'ctrl+p', action: 'toggle plan/build mode — the plan pane opens once a plan has content' },
-  { combo: 'ctrl+x', action: 'plan mode: approve the presented or edited plan → sent to the build agent' },
+  { combo: 'ctrl+x twice', action: 'plan mode: confirm and approve the current draft → sent to the build agent' },
 ]
 
 const threadKeys: Key[] = [
@@ -323,6 +323,42 @@ export default function KeysAndSlashPage() {
                 },
               ]}
             />
+
+            <SlashGroup
+              title="Agent plan tools"
+              commands={[
+                {
+                  cmd: '⟦plan-present⟧ … ⟦/plan-present⟧',
+                  does: 'agent-only multiline block — fills the plan pane as a draft for member review or editing; it does not run work or approve the plan',
+                },
+                {
+                  cmd: '⟦plan-update⟧ … ⟦/plan-update⟧',
+                  does: 'agent-only multiline block — refreshes the plan pane with a new draft; an update never replaces the latest approved plan on its own',
+                },
+                {
+                  cmd: '⟦plan-get-approved⟧',
+                  does: 'agent-only marker on its own line — sends the latest approved plan back to the agent; it never substitutes a draft',
+                },
+              ]}
+            />
+            <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
+              Plan drafts and updates are only review material. In plan mode, review or edit the
+              pane, then press <Code>ctrl+x</Code> twice to approve it for the build agent. The
+              approved plan persists across sessions, bounded to 20,000 runes; drafts do not replace
+              it until you approve them. See <Link href="/docs/plan-mode" className="text-foreground/90 underline underline-offset-4 transition-colors hover:text-accent">plan mode</Link>{' '}
+              for the full workflow.
+            </p>
+            <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
+# Goal
+Describe the work to review.
+⟦/plan-present⟧
+
+⟦plan-update⟧
+# Goal
+Describe the revised draft.
+⟦/plan-update⟧
+
+⟦plan-get-approved⟧`}</code></pre>
 
             <SlashGroup
               title="The queue"

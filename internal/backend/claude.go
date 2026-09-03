@@ -52,6 +52,7 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
 	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -694,9 +695,21 @@ func (b *liveClaudeBackend) emitMapped(e state.Event) {
 		e.Msg.Text = chatcontext.Scrub(e.Msg.Text, func(count int) {
 			b.fl.emit(state.Event{Kind: state.EvRecentMessages, RecentMessagesCount: count})
 		})
+		e.Msg.Text = plantools.Scrub(e.Msg.Text, b.planToolBridge)
 		e.Msg.Text = browsertools.Scrub(e.Msg.Text, b.browserBridge)
 	}
 	b.fl.emit(e)
+}
+
+func (b *liveClaudeBackend) planToolBridge(d plantools.Directive) {
+	kind := state.EvPlanGetApproved
+	switch d.Kind {
+	case plantools.Present:
+		kind = state.EvPlanPresent
+	case plantools.Update:
+		kind = state.EvPlanUpdate
+	}
+	b.fl.emit(state.Event{Kind: kind, PlanToolText: d.Text})
 }
 
 // emitThought / emitChatStream — the per-id 150ms coalescing gate, the
@@ -1120,7 +1133,7 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 	b.mu.Unlock()
 	line := claudeUserLineFor(trimmed)
 	if !briefed {
-		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + trimmed)
+		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\n" + trimmed)
 	}
 	if err := b.writeLine(line); err != nil {
 		b.mu.Lock()

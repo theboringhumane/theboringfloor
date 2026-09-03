@@ -20,6 +20,7 @@ import (
 
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -179,7 +180,7 @@ func TestClaudeNewOfficeFreshRespawn(t *testing.T) {
 		return len(claudeCapture(t, capture)) == 2
 	})
 	lines := claudeCapture(t, capture)
-	wantSecond := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\nsecond"))
+	wantSecond := string(claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\nsecond"))
 	if len(lines) != 2 || lines[1] != wantSecond || !strings.Contains(lines[1], "⟦open-browser:") {
 		t.Fatalf("the preamble must re-ride the fresh session's first Send:\n got %v\nwant %q", lines, wantSecond)
 	}

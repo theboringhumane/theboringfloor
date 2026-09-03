@@ -1817,6 +1817,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// plan's wire POST landed; NOW the office flips back (the pane
 		// hides with the mode flip), the buffer persists for restore, the
 		// dirty/restore latches reset, and the approval notice posts.
+		if m.plan != nil {
+			// approvePlan caps this snapshot before it crosses the wire;
+			// preserve that accepted value exactly rather than rereading the
+			// editable draft or transforming the completion payload again.
+			approvedPlanTexts.Store(m.plan, msg.plan)
+		}
 		m.setAgentMode(agentModeBuild)
 		m.restoredPlan = false
 		if m.plan != nil {
@@ -1824,7 +1830,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.plan.Blur()
 		}
 		m.playSound("send")
-		m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", msg.planLen))
+		m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", len(msg.plan)))
 	case approveErrMsg:
 		// F3 rollback — the tag-flip never happened: plan mode KEPT, the
 		// plan buffer untouched, the red row explains it in the transcript
@@ -1835,6 +1841,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Text: fmt.Sprintf("[theboringfloor] approve failed: %v", msg.err),
 		}))
 		m.noticeErr(fmt.Sprintf("approve failed — still in plan: %v", msg.err))
+	case approvedPlanResult:
+		if msg.err != nil {
+			m.playSound("error")
+			m.noticeErr(fmt.Sprintf("approved plan follow-up failed: %v", msg.err))
+		}
 	case queueSendErrMsg:
 		// FAILURE RESPAWN — one per flush call: the boss session died at
 		// Send; reset the primary and resend the SAME composed batch on the
@@ -3276,7 +3287,7 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // inbound boss-turn image payloads and fires the lazy rasterize cmd —
 // model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.applyRecentMessages(ev), m.bypassLatchKick(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.applyRecentMessages(ev), m.applyPlanTools(ev), m.bypassLatchKick(ev))
 }
 
 // bypassLatchKick remains in the event batch for compatibility with backends

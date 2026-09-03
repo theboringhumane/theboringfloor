@@ -7,6 +7,83 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-03 · Pin approved plan value (@developer subagent) — tekton-8 (developer) · `done`
+- summary: Captured a rune-capped approved-plan snapshot once at approval command creation.
+- files: `internal/app/plan_mode.go`, `internal/app/model.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools_test.go`
+- verify: ```
+- proof: *Worked oversized multibyte approval**
+- ledgerId: led-1788435150629-b1136ea0
+
+### 2026-09-03 · Final plan tools signoff (@reviewer subagent) — theboringcto-2 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788434756483-097a2700
+
+### 2026-09-03 · Add install.ps1 checksum tests (@developer su... — tekton-7 (developer) · `issues`
+- summary: Added a repository-root Go regression test for `install.ps1`’s `Get-Checksum` match expression.
+- files: `install_ps1_test.go`
+- verify: ```
+- proof: | Input line | Expected match |
+- ledgerId: led-1788434233704-a1ba9673
+
+### 2026-09-03 · Fix install.ps1 checksum (@developer subagent) — tekton-6 (developer) · `issues`
+- summary: Replaced `Get-Checksum`’s composite-format (`-f`) regex construction with string concatenation.
+- files: `install.ps1`
+- verify: ```
+- proof: ```powershell
+- ledgerId: led-1788433994550-eaa676c7
+
+### 2026-09-03 · Scout install.ps1 checksum (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Confirmed the reported failure is caused by the format operator (`-f`) in `Get-Checksum`, not by parsing the downloaded checksum file.
+- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.ps1`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/README.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/docs/getting-started/page.tsx`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/README.md`, No dedicated installer/checksum test file exists in the repository.
+- verify: ```
+- proof: ### Broken function — `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.ps1`
+- ledgerId: led-1788433807440-4622233e
+
+### 2026-09-03 · Cap approved plan persistence (@developer sub... — tekton-5 (developer) · `done`
+- summary: Added a central rune-safe approved-plan cap of 20,000 runes with the exact visible suffix `… [approved plan truncated]`.
+- files: `internal/app/plan_mode.go`, `internal/app/plan_tools.go`, `internal/app/sessions.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools_test.go`
+- verify: ```
+- proof: *Worked oversized multibyte approval**
+- ledgerId: led-1788433458614-21f2223a
+
+### 2026-09-03 · Harden plan marker overlaps (@developer subag... — tekton-4 (developer) · `issues`
+- summary: Made valid `plan-present` and `plan-update` blocks opaque during extraction: an own-line `⟦plan-get-approved⟧` inside either block is retained as plan body text
+- files: `internal/plantools/plantools.go`, `internal/plantools/plantools_test.go`
+- verify: ```
+- proof: ### Valid present block containing an approval marker
+- ledgerId: led-1788433367856-2182a00f
+
+### 2026-09-03 · Review plan tools end-to-end (@reviewer subag... — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788432981454-b93fae9a
+
+### 2026-09-03 · Build plan tool protocol (@developer subagent) — tekton-1 (developer) · `issues`
+- summary: Added backend-neutral `internal/plantools` parsing and scrubbing for strict plan-present, plan-update, and own-line plan-get-approved directives.
+- files: `internal/plantools/plantools.go`, `internal/plantools/plantools_test.go`, `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/plan_tools_test.go`, `internal/backend/browser_open_test.go`, `internal/backend/claude_spawn_test.go`, `internal/backend/claude_office_swap_test.go`, `internal/backend/claude_attachment_test.go`
+- verify: ```
+- proof: ### Agent first-prompt harness preamble
+- ledgerId: led-1788429772606-0c38e556
+
+### 2026-09-03 · Implement plan tool app state (@developer sub... — tekton-2 (developer) · `issues`
+- summary: Added a separate pane-keyed approved-plan store, independent from the existing draft `PlanText`.
+- files: `internal/app/plan_mode.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools.go`, `internal/app/plan_tools_test.go`, `internal/app/sessions.go`
+- verify: ```
+- proof: ### Agent-presented plan
+- ledgerId: led-1788429541066-88774d32
+
+### 2026-09-03 · Document plan tools (@developer subagent) — tekton-3 (developer) · `issues`
+- summary: Documented the agent-only plan-tool protocol in the README with exact multiline `plan-present` / `plan-update` blocks and the own-line `plan-get-approved` marke
+- files: `README.md`, `website/app/docs/plan-mode/page.tsx`, `website/app/docs/keys-and-slash/page.tsx`
+- verify: ```
+- proof: ### Agent plan tools
+- ledgerId: led-1788429274819-4f3306c4
+
 ### 2026-09-02 · Review browser policy prompt (@reviewer subag... — theboringcto-3 (cto) · `done`
 - summary: ## VERDICT
 - files: (none)
@@ -279,81 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: For an `.md`, source file, archive, or any non-image/PDF attachment, the current installed binary produces a text-only prompt part, not a me
 - ledgerId: led-1788321688312-2e9569eb
-
-### 2026-09-01 · Harden attachment validation (@developer suba... — tekton-6 (developer) · `issues`
-- summary: Enforced content-validated upload eligibility: only sniffed PNG, JPEG, GIF, WebP, and `%PDF-` PDFs can produce OpenCode file parts.
-- files: `internal/backend/parts.go`, `internal/backend/claude.go`, `internal/backend/parts_test.go`, `internal/backend/claude_attachment_test.go`
-- verify: ```
-- proof: ### Spoofed or mismatched content — one text/path-reference part, zero file parts
-- ledgerId: led-1788278696126-92c03363
-
-### 2026-09-01 · Add Windows installer docs (@developer subagent) — tekton-7 (developer) · `issues`
-- summary: Added `install.ps1`, a Windows PowerShell installer that:
-- files: `install.ps1`, `README.md`, `website/app/docs/getting-started/page.tsx`
-- verify: ```
-- proof: ### Windows installation instructions
-- ledgerId: led-1788278470142-008c64bc
-
-### 2026-09-01 · Audit Windows support (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: Mapped the current release mechanism: a tag-triggered GitHub Actions workflow invokes GoReleaser, which currently builds only `darwin` and `linux` archives.
-- files: ### Repository conventions inspected, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/CLAUDE.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.opencode/oikonomos.md`, ### Release pipeline and artifacts, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/go.mod`, ### Installer and installation documentation, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.sh`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/README.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/docs/getting-started/page.tsx`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/get-started/page.tsx`
-- verify: ```
-- proof: ### Intended Windows install and release flow
-- ledgerId: led-1788278367901-b193f8c1
-
-### 2026-09-01 · Review attachment + theme fixes (@reviewer su... — theboringcto-2 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788277949403-fd4aa6ca
-
-### 2026-09-01 · Fix theme cache and frame proof (@developer s... — tekton-5 (developer) · `done`
-- summary: Added active theme identity (`chrome.CurrentTheme().Name`) to `frameDigest`, so chrome’s package-global palette changes invalidate cached frame bytes without co
-- files: `internal/app/digest.go`, `internal/app/theme_frame_test.go`, `cmd/uishot/main.go`
-- verify: ```
-- proof: ### Cache identity and reuse
-- ledgerId: led-1788273016116-0f6a6c2a
-
-### 2026-09-01 · Unify panel background styling (@developer su... — tekton-4 (developer) · `issues`
-- summary: Made `Panel*` and `OnPanel*` semantic text styles foreground-only; sidebar wrappers and `PanelBox` remain the sole continuous panel-background owners.
-- files: `internal/chrome/styles.go`, `internal/chrome/styles_test.go`, `internal/panels/chat.go`, `internal/panels/threads_opencode.go`, `internal/panels/agents.go`, `internal/panels/board.go`, `internal/panels/question_modal.go`, `internal/panels/links.go`, `internal/panels/model_picker.go`, `internal/panels/session_picker.go`, `internal/panels/session_picker_search_test.go`, `internal/panels/theme_surface_test.go`
-- verify: ```
-- proof: *Paper — ANSI-stripped populated chat and expanded tool output**
-- ledgerId: led-1788272544629-537b4e8d
-
-### 2026-09-01 · Fix attachment transport policy (@developer s... — tekton-3 (developer) · `issues`
-- summary: Added a shared attachment preparation path that accepts only readable regular files, resolves missing MIME types, converts paths to absolute paths, and safely q
-- files: `internal/backend/parts.go`, `internal/backend/parts_test.go`, `internal/backend/claude.go`, `internal/backend/claude_attachment_test.go`
-- verify: ```
-- proof: *OpenCode mixed attachment payload** — text/source/archive become path references; PNG, PDF, and JPEG remain real file parts:
-- ledgerId: led-1788272376527-e1ff52b3
-
-### 2026-09-01 · Audit theme background clash (@general subagent) — tekton-2 (developer) · `issues`
-- summary: Audited the in-flight `PanelBg` path and all requested sidebar surfaces without changing files.
-- files: None. Read-only audit.
-- verify: None. Read-only task; no test or mutation commands run.
-- proof: ### Theme initialization and propagation
-- ledgerId: led-1788271986249-b7c64a1b
-
-### 2026-09-01 · Review current dirty regression (@general sub... — theboringcto-1 (cto) · `issues`
-- summary: Performed a read-only regression review of attachment transport and `PanelBg` rendering seams.
-- files: None modified., Relevant reviewed files:, `internal/app/model.go:139-196`, `internal/app/model.go:1363-1370`, `internal/app/digest.go:31-77`, `internal/backend/parts.go:23-52`, `internal/backend/opencode.go:437-450`, `internal/backend/claude.go:996-1096`, `internal/panels/chat_attach.go:249-335, 418-432`, `internal/chrome/styles.go:477-514`, `internal/panels/chat.go:609-612, 3045-3104`, `internal/app/model.go:4323-4370`
-- verify: ```
-- proof: ### Attachment ownership and regression proof
-- ledgerId: led-1788271942905-0329b4d8
-
-### 2026-09-01 · Map attachment send pipeline (@general subagent) — tekton-1 (developer) · `issues`
-- summary: Traced the attachment path from picker/paste staging through `state.Attachment`, app dispatch, and both live backends.
-- files: None. Read-only recon.
-- verify: None. Read-only task; no test or mutation commands run.
-- proof: ### Attachment model and MIME detection
-- ledgerId: led-1788271926463-19c48cee
-
-### 2026-08-31 · Dev W2: tool output expand UI (@developer sub... — tekton-4 (developer) · `issues`
-- summary: All green. Assembling the return contract:
-- files: `cmd/uishot/main.go`, `internal/panels/threads_opencode_test.go`, `internal/app/model.go`
-- verify: ```
-- proof: *1. Expanded row WITH output** (unit test log, verbatim — `TestToolRowExpandShowsOutput`, 44 cols, ANSI-stripped):
-- ledgerId: led-1788153137253-e58a3047
 
