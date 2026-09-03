@@ -5,9 +5,9 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Keys & slash commands | theboringoffice',
+  title: 'Keys & slash commands | theboringfloor',
   description:
-    'Every key and slash command in theboringoffice, grouped by where your hands are — plus the popover that means you never memorize the list.',
+    'Every key and slash command in theboringfloor, grouped by where your hands are — plus the popover that means you never memorize the list.',
 }
 
 function Code({ children }: { children: React.ReactNode }) {
@@ -205,7 +205,7 @@ export default function KeysAndSlashPage() {
             </p>
             <Shot
               src="/shots/docs/slash-popover.png"
-              alt="theboringoffice slash command popover: typing /th filters the command list to theme and thinking commands"
+              alt="theboringfloor slash command popover: typing /th filters the command list to theme and thinking commands"
               caption="slash popover — /th narrows the list; arrows move, enter accepts"
             />
           </div>
@@ -297,7 +297,7 @@ export default function KeysAndSlashPage() {
             </p>
             <Shot
               src="/shots/docs/model-picker.png"
-              alt="theboringoffice /model command: picking the boss model as provider/model"
+              alt="theboringfloor /model command: picking the boss model as provider/model"
               caption="/model — the boss model rides every prompt and persists"
             />
           </div>
@@ -413,7 +413,7 @@ export default function KeysAndSlashPage() {
               title="Meta"
               commands={[
                 { cmd: '/help', does: 'the command list, in-app' },
-                { cmd: '/quit', does: 'exit theboringoffice' },
+                { cmd: '/quit', does: 'exit theboringfloor' },
               ]}
             />
           </div>
@@ -430,7 +430,7 @@ export default function KeysAndSlashPage() {
               vocabulary of synthesized chimes — queued, send, reply, done, dispatch,
               alert, error. <Code>ui.sounds</Code> in brain.json takes{' '}
               <Code>on</Code>, <Code>bell</Code> or <Code>off</Code>, and{' '}
-              <Code>THEBORINGOFFICE_MUTE=1</Code> silences it from the environment. The{' '}
+              <Code>THEBORINGFLOOR_MUTE=1</Code> silences it from the environment. The{' '}
               <Link href="/sounds" className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent">
                 sounds library
               </Link>{' '}

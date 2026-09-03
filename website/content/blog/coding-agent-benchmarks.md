@@ -2,7 +2,7 @@
 title: "How to read coding agent benchmarks without getting played"
 description: "Every lab's chart says its own model is the best coding agent. What SWE-bench, Terminal-Bench, and the arenas actually measure, why the same model swings twenty points between harnesses, and how to pick with a test you run yourself."
 date: "2026-08-25"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: true
 ---
@@ -108,7 +108,7 @@ And the reverse: benchmarks mislead least when the harness is held constant (bas
 
 We run a lot of coding agents, so we stopped reading leaderboards as verdicts and started treating them as nominations.
 
-theboringoffice is a terminal app for running several coding agents like an office floor — and the workflow above is what it makes cheap: hand the same ticket to two agents in isolated worktrees, let them run side by side, then compare diffs and test results instead of screenshots of someone else's benchmark. The model that wins your fifteen tasks is your model, whatever the arena says this week.
+theboringfloor is a terminal app for running several coding agents like an office floor — and the workflow above is what it makes cheap: hand the same ticket to two agents in isolated worktrees, let them run side by side, then compare diffs and test results instead of screenshots of someone else's benchmark. The model that wins your fifteen tasks is your model, whatever the arena says this week.
 
 ## Further reading
 

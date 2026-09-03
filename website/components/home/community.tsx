@@ -52,7 +52,7 @@ export function Community() {
           The office is open. Build this together.
         </h2>
         <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          theboringoffice grows in public waves, and the whole crew — the maintainer, the
+          theboringfloor grows in public waves, and the whole crew — the maintainer, the
           regulars, and whoever walked in five minutes ago — argues about the next one in
           the Discord. Come watch the waves land, tell us which part is boring in the wrong
           way, or pick up an issue and ship a wave yourself. Contributors welcome; the

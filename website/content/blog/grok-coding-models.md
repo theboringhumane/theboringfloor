@@ -2,7 +2,7 @@
 title: "Grok coding is real now. Here's where it fits and where it doesn't."
 description: "xAI ships a new Grok every few weeks and the names stopped helping months ago — here's the current coding lineup, what it costs, what it's genuinely good at, and the jobs to give to someone else."
 date: "2026-08-27"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: false
 ---
@@ -126,7 +126,7 @@ And do not hand Grok Bot the keys to anything you would not hand a new hire on d
 
 Multi-model is the default state of our floor, so Grok 4.6 arrived as one more worker with a particular shape: fast generator, strong first pass, cheap enough to keep warm.
 
-In theboringoffice it shows up as another pane next to the Claude Code and Codex sessions. The habits from [our multi-agent post](/blog/running-multiple-coding-agents) all still apply: worktrees isolate the writes, the board tracks who owns what, and permission asks queue instead of hijacking the screen. The only thing a new Grok model changes is the routing table — greenfield tickets and scaffold work drift toward the Grok panes now — and the reconstruction bill for "which session made this mess" does not move at all.
+In theboringfloor it shows up as another pane next to the Claude Code and Codex sessions. The habits from [our multi-agent post](/blog/running-multiple-coding-agents) all still apply: worktrees isolate the writes, the board tracks who owns what, and permission asks queue instead of hijacking the screen. The only thing a new Grok model changes is the routing table — greenfield tickets and scaffold work drift toward the Grok panes now — and the reconstruction bill for "which session made this mess" does not move at all.
 
 That is the real lesson of xAI's release cadence. Models will keep arriving faster than you can re-tune for them. The floor, the board, and the worktrees are what make a new model a Tuesday instead of a quarter.
 

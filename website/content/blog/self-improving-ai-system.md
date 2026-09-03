@@ -2,7 +2,7 @@
 title: "Memory is whether tomorrow inherits today"
 description: "A capable agent without a record is a contractor who forgets the meeting. Continuity is inspectable state — notes, boards, session IDs — not a model that 'improves itself' in secret."
 date: "2026-08-19"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["Engineering", "AI Agents"]
 featured: true
 ---
@@ -48,7 +48,7 @@ Default: last chat comes back. This is unglamorous and it is the difference betw
 When you need a particular room, not the latest one:
 
 ```bash
-theboringoffice --session <your-session-id>
+theboringfloor --session <your-session-id>
 ```
 
 If `ctrl+q` means a blank prompt, you paid for yesterday twice. If the product sells "memory" and still greets you with an empty composer, the marketing ate the feature.
@@ -73,7 +73,7 @@ Do not persist on behalf of a customer without a story for export and delete. Me
 
 ## How we encode this
 
-theboringoffice uses agentmemory for the layer under the floor: sessions restore, the board is actions, mail is signals, recall and lessons are optional inheritance for the next shift. The office shows the work. Memory keeps what a future session should be able to find. We would rather be boring and inspectable than magical and wrong.
+theboringfloor uses agentmemory for the layer under the floor: sessions restore, the board is actions, mail is signals, recall and lessons are optional inheritance for the next shift. The office shows the work. Memory keeps what a future session should be able to find. We would rather be boring and inspectable than magical and wrong.
 
 If a lesson is bad, delete it. If a session is done, you should still be able to open it. That is the whole product bet, under the sprites.
 

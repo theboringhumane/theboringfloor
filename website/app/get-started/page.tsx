@@ -5,8 +5,8 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Get Started | theboringoffice',
-  description: 'Install theboringoffice, tour the office in demo mode, and connect your coding agents in minutes.',
+  title: 'Get Started | theboringfloor',
+  description: 'Install theboringfloor, tour the office in demo mode, and connect your coding agents in minutes.',
 }
 
 export default function GetStartedPage() {
@@ -27,17 +27,15 @@ export default function GetStartedPage() {
 
             <div className="mx-auto mt-10 max-w-md border border-border bg-card p-6 text-left font-mono text-xs leading-relaxed">
               <p className="text-muted-foreground"># install the latest binary</p>
-              <p>curl -fsSL \</p>
-              <p className="pl-4">https://raw.githubusercontent.com/theboringhumane/</p>
-              <p className="pl-4">theboringoffice/main/install.sh | sh</p>
+              <p>curl -fsSL https://boringfloor.com/install.sh | sh</p>
               <p className="mt-3 text-muted-foreground"># tour the office</p>
-              <p>theboringoffice --demo</p>
+              <p>theboringfloor --demo</p>
               <p className="mt-3 text-muted-foreground"># start a live office (opencode is the default transport)</p>
-              <p>theboringoffice</p>
+              <p>theboringfloor</p>
               <p className="mt-3 text-muted-foreground"># same office, on your Claude Code CLI</p>
-              <p>theboringoffice --backend claudecode</p>
+              <p>theboringfloor --backend claudecode</p>
               <p className="mt-3 text-muted-foreground"># or attach to an existing opencode server</p>
-              <p>theboringoffice --server http://127.0.0.1:4096</p>
+              <p>theboringfloor --server http://127.0.0.1:4096</p>
             </div>
 
             <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
@@ -72,10 +70,10 @@ export default function GetStartedPage() {
           </div>
 
           <p className="mx-auto mt-8 max-w-2xl text-center font-mono text-xs leading-relaxed text-muted-foreground">
-            Config lives at <span className="text-foreground">~/.theboringoffice/configs/brain.json</span>.
+            Config lives at <span className="text-foreground">~/.theboringfloor/configs/brain.json</span>.
             Pin the default transport with <span className="text-foreground">{`"backend": { "name": "claudecode" }`}</span> —
             opencode stays the default otherwise; <span className="text-foreground">/backend</span> swaps mid-flight and persists.
-            Inspect the defaults with <span className="text-foreground">theboringoffice --print-default-config</span>.
+            Inspect the defaults with <span className="text-foreground">theboringfloor --print-default-config</span>.
           </p>
         </section>
       </main>

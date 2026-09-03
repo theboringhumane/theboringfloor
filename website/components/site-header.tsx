@@ -62,10 +62,10 @@ export function SiteHeader({
         )}
       >
         <div className="flex items-center gap-2 lg:gap-4">
-          <img src="/imgs/logo.jpg" alt="theboringoffice" className="h-8 w-8" />
+          <img src="/imgs/logo.jpg" alt="theboringfloor" className="h-8 w-8" />
           <Link href="/" className="flex items-center gap-2">
             <span className="font-mono text-sm font-bold uppercase tracking-wider text-foreground">
-              The Boring Office
+              theboringfloor
             </span>
           </Link>
         </div>

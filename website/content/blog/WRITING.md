@@ -1,6 +1,6 @@
 # Blog writing style guide
 
-For `content/blog/*.md`. Distilled from Anthropic Engineering, Cursor research posts, OpenAI Developer Blog, and Google DeepMind — then bent toward theboringoffice voice.
+For `content/blog/*.md`. Distilled from Anthropic Engineering, Cursor research posts, OpenAI Developer Blog, and Google DeepMind — then bent toward theboringfloor voice.
 
 `WRITING.md` in this folder is the guide, not a post. `lib/blog.ts` skips it.
 
@@ -38,14 +38,14 @@ Common patterns across all four:
 
 ---
 
-## Our voice (theboringoffice)
+## Our voice (theboringfloor)
 
 We write like someone who ran the agents all afternoon and is warning a friend.
 
 - **First person plural (“we”).** Floor talk, not press release.
 - **Concrete over clever.** Commands, panes, diffs, queues — not “seamless orchestration.”
 - **Problem first.** Scene the reader already lived (three terminals, one stuck on `chmod`).
-- **Product last.** theboringoffice appears after the advice stands alone. If you delete our name, the post should still help.
+- **Product last.** theboringfloor appears after the advice stands alone. If you delete our name, the post should still help.
 - **No SEO slop.** No “In today’s rapidly evolving AI landscape.” No keyword stuffing. Titles are sentences a human would say.
 - **Short sentences where the claim is sharp.** Longer ones only when unpacking a mechanism.
 - **Honest ceilings.** “When this is the wrong move” sections are mandatory for how-tos.
@@ -165,7 +165,7 @@ Like Cursor swarm economics.
 
 Allowed:
 
-- Closing section: “This is the ops model we built into theboringoffice…” with 2–4 bullets of behavior, not feature list.
+- Closing section: “This is the ops model we built into theboringfloor…” with 2–4 bullets of behavior, not feature list.
 - Inline: one sentence if a concrete UI matches the advice (“a work thread — diffs attached to one task”).
 
 Forbidden:

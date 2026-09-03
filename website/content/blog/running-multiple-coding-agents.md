@@ -2,7 +2,7 @@
 title: "Running more than one coding agent at a time"
 description: "A second terminal feels like speed. Then you have three sessions, two waiting on you, and no idea who owns auth. What actually breaks — and the few habits that keep the afternoon intact."
 date: "2026-08-24"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Office"]
 featured: true
 ---
@@ -107,10 +107,10 @@ Do not parallelize because the demo looks like a company. [Start with a workflow
 
 We kept hitting the same afternoon: real `opencode` sessions, real sub-agents, a human reconstructing the shift from scrollback.
 
-theboringoffice is a native terminal app for that shift. Floor, roster, board, mail, and work threads are views of the same work. Permission asks stack instead of hijacking the screen. Isolation still belongs in git worktrees. The office replaces air-traffic control across untitled panes. It does not replace git.
+theboringfloor is a native terminal app for that shift. Floor, roster, board, mail, and work threads are views of the same work. Permission asks stack instead of hijacking the screen. Isolation still belongs in git worktrees. The office replaces air-traffic control across untitled panes. It does not replace git.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 Demo is a tour. Live attaches to a server you already have. The goal is not more agents. It is still being able to say, at 4pm, who is doing what.

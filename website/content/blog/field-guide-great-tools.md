@@ -2,7 +2,7 @@
 title: "A small team's operating system for coding agents"
 description: "Attention is the scarce resource, not tokens. Four conditions that let a solo developer get more attempts from agents without becoming their full-time supervisor — and when the OS is overhead."
 date: "2026-08-21"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Office"]
 featured: true
 ---
@@ -71,10 +71,10 @@ If you wanted an autonomous company: we do not have one, and we do not think you
 
 ## How we encode this
 
-theboringoffice is that OS in a terminal: live opencode events as a floor, a permission queue, agentmemory under board and mail, `--demo` before you trust live mode.
+theboringfloor is that OS in a terminal: live opencode events as a floor, a permission queue, agentmemory under board and mail, `--demo` before you trust live mode.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 The best setup is not the one with the most moving parts. It is the one that gives you more attempts while preserving the ability to see, decide, and remember. If we add a moving part that does not serve those three verbs, it is decoration. Delete it.

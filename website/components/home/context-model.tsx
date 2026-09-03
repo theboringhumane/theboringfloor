@@ -21,7 +21,7 @@ export function ContextModel() {
             <pre className="overflow-x-auto px-4 py-4 font-mono text-xs leading-relaxed">
               <code>
                 <span className="text-muted-foreground">1</span>{'  '}office
-                <span className="text-accent">=</span>theboringoffice.
+                <span className="text-accent">=</span>theboringfloor.
                 <span className="text-chart-2">attach</span>(server
                 <span className="text-accent">=</span>
                 <span className="text-chart-3">&quot;127.0.0.1:4096&quot;</span>)

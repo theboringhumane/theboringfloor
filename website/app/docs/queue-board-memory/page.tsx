@@ -5,7 +5,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Queue, board & memory | theboringoffice',
+  title: 'Queue, board & memory | theboringfloor',
   description:
     'Free-send while the boss works, the [BATCH DISPATCH] flush, board sync on completion, the office memory ledger, and what /stop unwinds.',
 }
@@ -97,7 +97,7 @@ export default function QueueBoardMemoryPage() {
             </div>
             <Shot
               src="/shots/docs/batch-dispatch.png"
-              alt="theboringoffice chat tab: three queued prompts flushing out as one [BATCH DISPATCH] message"
+              alt="theboringfloor chat tab: three queued prompts flushing out as one [BATCH DISPATCH] message"
               caption="chat — a three-item backlog flushing as one [BATCH DISPATCH]"
             />
           </div>
@@ -132,7 +132,7 @@ export default function QueueBoardMemoryPage() {
             </p>
             <Shot
               src="/shots/docs/board-sync.png"
-              alt="theboringoffice board tab: DOING rows flipping to DONE behind a worker return, with the dim board sync note"
+              alt="theboringfloor board tab: DOING rows flipping to DONE behind a worker return, with the dim board sync note"
               caption="board — two stranded DOING rows flipping to DONE"
             />
           </div>
@@ -197,13 +197,20 @@ export default function QueueBoardMemoryPage() {
               keys, panels, scrolling and <Code>/stop</Code> all still work while the
               note is up, so a silent turn never takes the floor down with it.
             </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              The inverse is an idle floor. After workers finish and the last real chat was
+              yours — not the boss, not the office concierge — two quiet minutes asks the boss
+              to write a recap in chat. The fallback office note only appears if that send
+              misses the wire. A late boss or concierge wrap cancels the recap.
+            </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Chip combo="/stop" action="abort boss + workers" />
               <Chip combo="2min" action="of silence = wedged, noted once" />
+              <Chip combo="2min idle" action="boss writes a recap" />
             </div>
             <Shot
               src="/shots/docs/stop-unwind.png"
-              alt="theboringoffice: /stop aborting in-flight work with the wedge watchdog note on the status bar"
+              alt="theboringfloor: /stop aborting in-flight work with the wedge watchdog note on the status bar"
               caption="chat — /stop unwinds the turn; the wedge note rides the status bar"
             />
           </div>

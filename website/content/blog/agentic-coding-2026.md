@@ -2,7 +2,7 @@
 title: "The code got cheap this year. The supervision didn't."
 description: "Coding agents went from autocomplete to async workers you hand tickets to, and the bottleneck moved from model quality to supervision — what actually changed in 2026, and how to stay oriented when several run at once."
 date: "2026-08-29"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering", "Office"]
 featured: true
 ---
@@ -111,10 +111,10 @@ And do not confuse motion with progress. Four green PRs nobody has read are not 
 
 We kept living this exact afternoon — real sessions, real sub-agents, a human reconstructing the shift from scrollback — so we built the floor we wanted to stand on.
 
-theboringoffice is a native terminal app for running several coding agents at once. The roster shows who is working and who is waiting on you. Permission asks stack in one queue instead of hijacking four windows. Work threads keep the diff attached to the task, so review starts at the diff instead of the transcript. Isolation still belongs to git worktrees — the office replaces air-traffic control across untitled panes, not git.
+theboringfloor is a native terminal app for running several coding agents at once. The roster shows who is working and who is waiting on you. Permission asks stack in one queue instead of hijacking four windows. Work threads keep the diff attached to the task, so review starts at the diff instead of the transcript. Isolation still belongs to git worktrees — the office replaces air-traffic control across untitled panes, not git.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 The goal was never more agents. It is still being able to say, at 4pm, who did what.

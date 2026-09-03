@@ -43,7 +43,7 @@ export function OpenSource() {
           Read the waves. Watch us work.
         </h2>
         <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          theboringoffice is built in the open because an office should be inspectable
+          theboringfloor is built in the open because an office should be inspectable
           end-to-end. The code, the commits, the releases — even this website — all live in one
           public repository.
         </p>
@@ -63,7 +63,7 @@ export function OpenSource() {
             </p>
             <div className="mt-2 border border-border bg-card px-4 py-3 font-mono text-xs leading-relaxed">
               <p>
-                <span className="text-muted-foreground">$ </span>theboringoffice --demo
+                <span className="text-muted-foreground">$ </span>theboringfloor --demo
               </p>
             </div>
             <div className="mt-2 flex flex-wrap gap-3">

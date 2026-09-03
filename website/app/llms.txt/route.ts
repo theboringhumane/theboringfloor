@@ -28,8 +28,9 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 
 - Native Go CLI (single binary). Not Electron.
 - Boss = real \`opencode\` session; employees = opencode sub-agents.
-- Demo: \`theboringoffice --demo\`
-- Install: \`curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh\`
+- Demo: \`theboringfloor --demo\`
+- Install: \`curl -fsSL ${SITE_URL}/install.sh | sh\`
+- Windows: \`irm ${SITE_URL}/install.ps1 | iex\`
 - Source: ${GITHUB_REPO}
 
 ## Optional

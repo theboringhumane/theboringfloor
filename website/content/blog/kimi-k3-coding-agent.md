@@ -2,7 +2,7 @@
 title: "What Kimi K3 actually changes when you run coding agents all day"
 description: "Moonshot's Kimi K3 puts a 2.8T open-weights coding model with a 1M-token window behind an Anthropic-compatible endpoint, so swapping it into your terminal is an env var — the real questions are the bill, the thinking tax, and which jobs you stop giving your most expensive model."
 date: "2026-08-26"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: false
 ---
@@ -130,7 +130,7 @@ And the standing rule, unchanged by any checkpoint: do not add any model to the 
 
 ## How we encode this
 
-We built theboringoffice on a bet that the model layer would keep churning and the ops layer would not: the permissions queue, the worktrees, the review-in-a-fresh-context habit survive every release week. K3 is the fourth time this year a "this changes everything" launch changed the roster and nothing else.
+We built theboringfloor on a bet that the model layer would keep churning and the ops layer would not: the permissions queue, the worktrees, the review-in-a-fresh-context habit survive every release week. K3 is the fourth time this year a "this changes everything" launch changed the roster and nothing else.
 
 So the office treats it as a roster edit:
 
@@ -139,7 +139,7 @@ So the office treats it as a roster edit:
 - The roster shows which model is on which ticket, because at $15 versus $4 per million output, "who is running what" is now a cost question, not trivia.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 The goal was never the newest model. It is still being able to say, at 4pm, who is doing what — and what it costs.

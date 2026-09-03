@@ -6,16 +6,16 @@ import { SectionTag } from '@/components/section-tag'
 import { SITE_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: 'Getting Started | theboringoffice',
+  title: 'Getting Started | theboringfloor',
   description:
-    'Install theboringoffice with one curl, tour it in demo mode or boot a live office, and resume any past session.',
+    'Install theboringfloor with one curl, tour it in demo mode or boot a live office, and resume any past session.',
   alternates: {
     canonical: '/docs/getting-started',
   },
   openGraph: {
-    title: 'Getting Started · theboringoffice',
+    title: 'Getting Started · theboringfloor',
     description:
-      'Install theboringoffice with one curl, tour it in demo mode or boot a live office, and resume any past session.',
+      'Install theboringfloor with one curl, tour it in demo mode or boot a live office, and resume any past session.',
     url: `${SITE_URL}/docs/getting-started`,
     type: 'website',
   },
@@ -90,7 +90,8 @@ export default function GettingStartedPage() {
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The installer drops the{' '}
-              <code className="font-mono text-xs text-foreground">theboringoffice</code> binary on
+              <code className="font-mono text-xs text-foreground">theboringfloor</code> binary
+              (and a <code className="font-mono text-xs text-foreground">tbo</code> shim) on
               your PATH and wires{' '}
               <code className="font-mono text-xs text-foreground">agentmemory</code> as a
               reboot-safe service. That memory layer is what makes the task board and mail room
@@ -100,30 +101,30 @@ export default function GettingStartedPage() {
               <CmdBlock
                 lines={[
                   { t: '# binary + agentmemory service, one line', dim: true },
-                  { t: 'curl -fsSL \\' },
-                  { t: '  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh' },
+                  { t: 'curl -fsSL https://boringfloor.com/install.sh | sh' },
                 ]}
               />
             </div>
             <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               On Windows, open PowerShell and run this one-liner. It selects the matching Windows
               release, verifies its SHA-256 checksum, installs{' '}
-              <code className="font-mono text-xs text-foreground">theboringoffice.exe</code> in{' '}
+              <code className="font-mono text-xs text-foreground">theboringfloor.exe</code> and{' '}
+              <code className="font-mono text-xs text-foreground">tbo.exe</code> in{' '}
               <code className="font-mono text-xs text-foreground">
-                %LOCALAPPDATA%\theboringoffice\bin
+                %LOCALAPPDATA%\theboringfloor\bin
               </code>, and adds that directory to your user PATH.
             </p>
             <div className="mt-8 max-w-2xl">
               <CmdBlock
                 lines={[
                   { t: '# PowerShell — Windows amd64 or arm64', dim: true },
-                  { t: 'irm https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 | iex' },
+                  { t: 'irm https://boringfloor.com/install.ps1 | iex' },
                 ]}
               />
             </div>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Open a new PowerShell window after it finishes, then run{' '}
-              <code className="font-mono text-xs text-foreground">theboringoffice --demo</code>.
+              <code className="font-mono text-xs text-foreground">theboringfloor --demo</code>.
               Prefer a manual install? Download the matching Windows <code className="font-mono text-xs text-foreground">.zip</code>{' '}
               and checksums file from{' '}
               <a
@@ -133,7 +134,7 @@ export default function GettingStartedPage() {
                 Releases
               </a>
               , verify the SHA-256 checksum, and place{' '}
-              <code className="font-mono text-xs text-foreground">theboringoffice.exe</code> in a
+              <code className="font-mono text-xs text-foreground">theboringfloor.exe</code> in a
               directory on your PATH.
             </p>
             <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -149,11 +150,10 @@ export default function GettingStartedPage() {
               <CmdBlock
                 lines={[
                   { t: '# same one-liner, transport pinned at install time', dim: true },
-                  { t: 'curl -fsSL \\' },
-                  { t: '  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh -s -- --backend claudecode' },
+                  { t: 'curl -fsSL https://boringfloor.com/install.sh | sh -s -- --backend claudecode' },
                   { t: '', dim: true },
                   { t: '# or pin one boot from the shell (flag > env > brain.json > opencode)', dim: true },
-                  { t: 'THEBORINGOFFICE_BACKEND=claudecode theboringoffice' },
+                  { t: 'THEBORINGFLOOR_BACKEND=claudecode theboringfloor' },
                 ]}
               />
             </div>
@@ -199,20 +199,20 @@ export default function GettingStartedPage() {
               <CmdBlock
                 lines={[
                   { t: '# tour: simulated events, labeled DEMO', dim: true },
-                  { t: 'theboringoffice --demo' },
+                  { t: 'theboringfloor --demo' },
                   { t: '', dim: true },
                   { t: '# live: spawns `opencode serve`, real boss (oikonomos)', dim: true },
-                  { t: 'theboringoffice' },
+                  { t: 'theboringfloor' },
                   { t: '', dim: true },
                   { t: '# attach to an existing server instead of spawning one', dim: true },
-                  { t: 'theboringoffice --server http://127.0.0.1:4096' },
+                  { t: 'theboringfloor --server http://127.0.0.1:4096' },
                 ]}
               />
             </div>
             <div className="mt-12">
               <Shot
                 src="/shots/docs/first-run-chat.png"
-                alt="First live run of theboringoffice: chat tab in focus, boss reply streaming"
+                alt="First live run of theboringfloor: chat tab in focus, boss reply streaming"
                 caption="first live boot — chat tab in focus"
               />
             </div>
@@ -248,7 +248,7 @@ export default function GettingStartedPage() {
               <CmdBlock
                 lines={[
                   { t: '# resume a specific past session (short form: -s)', dim: true },
-                  { t: 'theboringoffice --session <your-session-id>' },
+                  { t: 'theboringfloor --session <your-session-id>' },
                 ]}
               />
             </div>
@@ -283,22 +283,22 @@ export default function GettingStartedPage() {
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The whole office is run by{' '}
               <code className="font-mono text-xs text-foreground">
-                ~/.theboringoffice/configs/brain.json
+                ~/.theboringfloor/configs/brain.json
               </code>{' '}
               — created with defaults on first run, inspectable anytime with{' '}
               <code className="font-mono text-xs text-foreground">
-                theboringoffice --print-default-config
+                theboringfloor --print-default-config
               </code>
               . Session state lives per working directory at{' '}
               <code className="font-mono text-xs text-foreground">
-                ~/.theboringoffice/projects/&lt;dirhash&gt;/session.json
+                ~/.theboringfloor/projects/&lt;dirhash&gt;/session.json
               </code>
               , so two projects never share a floor.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Upgrading from an older build? Nothing to migrate by hand: old{' '}
               <code className="font-mono text-xs text-foreground">
-                ~/.theboringoffice/sessions/&lt;dirhash&gt;
+                ~/.theboringfloor/sessions/&lt;dirhash&gt;
               </code>{' '}
               session files and the pre-rename{' '}
               <code className="font-mono text-xs text-foreground">~/.grafeio</code> config, theme

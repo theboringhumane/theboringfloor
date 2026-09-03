@@ -2,7 +2,7 @@
 title: "Put the workspace where the agents already are"
 description: "Coding agents live in the terminal. A dashboard that 'manages' them is another tab to lose. Attach to the session you have — restore yesterday — don't kidnap the runtime."
 date: "2026-08-20"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["Release", "Updates"]
 featured: false
 ---
@@ -47,13 +47,13 @@ Spawning "our" agent runtime is how vendors lock the afternoon. Attaching is how
 If you already have a server:
 
 ```bash
-theboringoffice --server http://127.0.0.1:4096
+theboringfloor --server http://127.0.0.1:4096
 ```
 
 If you need yesterday's room, not a new one:
 
 ```bash
-theboringoffice --session <your-session-id>
+theboringfloor --session <your-session-id>
 ```
 
 A workspace that cannot attach will eventually fight your toolchain. It will want its own keys. It will not see your worktree. It will offer a "migration." Migrations are how Tuesdays die.
@@ -65,7 +65,7 @@ Spawn is not evil. Demo mode spawns a fake stream so you can learn the keys. Liv
 Quitting the TUI should not erase the room. Restore the last chat by default. Keep a path to a named session. Put config in a file you can `cat`:
 
 ```bash
-theboringoffice --print-default-config
+theboringfloor --print-default-config
 ```
 
 If "memory" is a slogan and the next launch is a blank prompt, you paid for yesterday twice. [We wrote about that](/blog/self-improving-ai-system). Native CLI is not sufficient for memory — a Go binary can still greet you empty — but a CLI that hides config in a keychain you cannot dump is how "it forgot" becomes un-reproducible.
@@ -84,13 +84,12 @@ You need Windows-first, click-first, no-shell: we are the wrong tool. That is a 
 
 ## How we encode this
 
-theboringoffice is a Go binary, not Electron. Boss = real `opencode` session. Employees = opencode task sub-agents. Board and mail sit on agentmemory. Try the labeled tour first:
+theboringfloor is a Go binary, not Electron. Boss = real `opencode` session. Employees = opencode task sub-agents. Board and mail sit on agentmemory. Try the labeled tour first:
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
+curl -fsSL https://boringfloor.com/install.sh | sh
 
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 Then attach. If attach feels worse than the demo, the demo was the liar. Believe attach.

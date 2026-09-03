@@ -26,7 +26,7 @@ const cards = [
 
 const hatches = [
   { combo: '/notify on|off', action: 'toggle it in chat' },
-  { combo: 'THEBORINGOFFICE_NO_NOTIFY=1', action: 'env kill switch' },
+  { combo: 'THEBORINGFLOOR_NO_NOTIFY=1', action: 'env kill switch' },
   { combo: 'ui.notifications', action: 'brain.json setting' },
 ]
 

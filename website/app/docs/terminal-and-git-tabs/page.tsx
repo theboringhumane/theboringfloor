@@ -5,7 +5,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Terminal & git tabs | theboringoffice',
+  title: 'Terminal & git tabs | theboringfloor',
   description:
     'A real PTY in the sidebar with opt-in key capture and mouse copy, and a git tab with live status counts and a colored diff viewer.',
 }
@@ -85,7 +85,7 @@ export default function TerminalAndGitTabsPage() {
             </p>
             <Shot
               src="/shots/docs/terminal-tab.png"
-              alt="theboringoffice terminal tab: a live PTY running a shell in the sidebar"
+              alt="theboringfloor terminal tab: a live PTY running a shell in the sidebar"
               caption="terminal — a live PTY in the sidebar, office keys still working"
             />
           </div>
@@ -177,7 +177,7 @@ export default function TerminalAndGitTabsPage() {
             </div>
             <Shot
               src="/shots/docs/git-tab.png"
-              alt="theboringoffice git tab: status counts, file list with status glyphs, and a colored unified diff"
+              alt="theboringfloor git tab: status counts, file list with status glyphs, and a colored unified diff"
               caption="git — status counts, the file list, and a colored diff on enter"
             />
           </div>

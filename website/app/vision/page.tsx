@@ -6,7 +6,7 @@ import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
 
 export const metadata: Metadata = {
-  title: 'Vision | theboringoffice',
+  title: 'Vision | theboringfloor',
   description:
     'Why we believe agents need a floor, a roster, and memory — because a prompt box shows you a spinner, not the work.',
 }
@@ -83,7 +83,7 @@ export default function VisionPage() {
               were away.
             </p>
             <p className="mt-4 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              theboringoffice is our answer: a terminal app where your agents clock in as
+              theboringfloor is our answer: a terminal app where your agents clock in as
               coworkers on a living ASCII floor, and the work stays where you can see it.
             </p>
           </div>

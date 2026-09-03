@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     canonical: '/docs/permissions-and-questions',
   },
   openGraph: {
-    title: 'Permissions and questions · theboringoffice',
+    title: 'Permissions and questions · theboringfloor',
     description:
       'The office asks before it acts: a stacked 1 of N permission queue with y/a/n/esc, a question wizard with four answer kinds, and a concierge that picks up when the boss is mid-turn.',
     url: `${SITE_URL}/docs/permissions-and-questions`,
@@ -93,6 +93,10 @@ const limits = [
   {
     label: 'a wedged turn',
     body: 'Two silent minutes on a busy turn earns one wedge note — status bar and activity log, never the transcript. It is a note, not a rescue: /stop is the lever that actually aborts boss and workers.',
+  },
+  {
+    label: 'an idle floor',
+    body: 'Two quiet minutes after the floor empties, if the last real chat was yours, the office asks the boss to recap the shift in a few lines. It does not start new work. A late boss or concierge wrap skips the recap.',
   },
   {
     label: 'the click path',
@@ -219,7 +223,7 @@ export default function PermissionsAndQuestionsPage() {
             <KeyChips keys={permKeys} />
             <Shot
               src="/shots/docs/permission-modal.png"
-              alt="theboringoffice permission queue: the front ask with a 1 of N counter and the allow once / always / reject menu open"
+              alt="theboringfloor permission queue: the front ask with a 1 of N counter and the allow once / always / reject menu open"
               caption="permission queue — 1 of N; y once · a always · n reject · esc park"
             />
           </div>
@@ -297,7 +301,7 @@ export default function PermissionsAndQuestionsPage() {
             <KeyChips keys={questionKeys} />
             <Shot
               src="/shots/docs/question-modal.png"
-              alt="theboringoffice question wizard: a boss question open as a popover page with classified answer options"
+              alt="theboringfloor question wizard: a boss question open as a popover page with classified answer options"
               caption="question wizard — one page per ask, classified automatically"
             />
           </div>
@@ -338,7 +342,7 @@ export default function PermissionsAndQuestionsPage() {
             <KeyChips keys={conciergeKeys} />
             <Shot
               src="/shots/docs/concierge.png"
-              alt="theboringoffice concierge: a message sent while the boss is mid-turn answered by the office concierge, noted in chat as boss busy, routed to concierge"
+              alt="theboringfloor concierge: a message sent while the boss is mid-turn answered by the office concierge, noted in chat as boss busy, routed to concierge"
               caption="concierge — mid-turn send answered, routing noted in chat"
             />
           </div>

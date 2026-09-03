@@ -6,11 +6,11 @@ import { SITE_URL, GITHUB_REPO } from '@/lib/site'
 
 export const metadata: Metadata = {
   title: 'Changelog',
-  description: 'Release history for theboringoffice — every version, what changed, and why.',
+  description: 'Release history for theboringfloor — every version, what changed, and why.',
   alternates: { canonical: '/changelog' },
   openGraph: {
-    title: 'Changelog · theboringoffice',
-    description: 'Release history for theboringoffice.',
+    title: 'Changelog · theboringfloor',
+    description: 'Release history for theboringfloor.',
     url: `${SITE_URL}/changelog`,
     type: 'website',
   },

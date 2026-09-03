@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # docs-shots.sh — regenerate every documentation screenshot used by the
-# theboringoffice website docs pages. Re-runnable and idempotent: every PNG in
+# theboringfloor website docs pages. Re-runnable and idempotent: every PNG in
 # website/public/shots/docs/ is overwritten from a fresh deterministic capture.
 #
 # Pipeline per shot:

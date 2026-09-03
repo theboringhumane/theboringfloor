@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     canonical: '/docs/plan-mode',
   },
   openGraph: {
-    title: 'Plan mode · theboringoffice',
+    title: 'Plan mode · theboringfloor',
     description:
       'ctrl+p flips the office into a read-only planning pass: chatter stays in chat, only plan-shaped replies present into the floor-slot pane, your edits latch, and ctrl+x approves the plan into build mode.',
     url: `${SITE_URL}/docs/plan-mode`,
@@ -190,7 +190,7 @@ export default function PlanModePage() {
             <KeyChips keys={gateKeys} />
             <Shot
               src="/shots/docs/plan-gated.png"
-              alt="theboringoffice plan mode with a non-plan-shaped boss reply: the chatter stays in chat and the plan pane keeps its last plan with a dim note"
+              alt="theboringfloor plan mode with a non-plan-shaped boss reply: the chatter stays in chat and the plan pane keeps its last plan with a dim note"
               caption="before — gated: chatter in chat, the pane holds its last plan"
             />
           </div>
@@ -219,7 +219,7 @@ export default function PlanModePage() {
             <KeyChips keys={presentKeys} />
             <Shot
               src="/shots/docs/plan-presented.png"
-              alt="theboringoffice plan mode with a presented plan: markdown plan in the floor-slot pane, a rendered mermaid diagram, and the click-to-edit hint"
+              alt="theboringfloor plan mode with a presented plan: markdown plan in the floor-slot pane, a rendered mermaid diagram, and the click-to-edit hint"
               caption="after — presented: markdown + mermaid, click to edit, ctrl+x approves"
             />
           </div>

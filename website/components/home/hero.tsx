@@ -5,8 +5,9 @@ import { useState } from "react";
 import { Database } from "lucide-react";
 import { ShaderBackground } from "@/components/ui/light-blue-plasma-shader-w-grain-interactive";
 
-const INSTALL =
-  "curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh";
+import { INSTALL_SH } from "@/lib/site";
+
+const INSTALL = `curl -fsSL ${INSTALL_SH} | sh`;
 
 export function Hero() {
   const [copied, setCopied] = useState(false);
@@ -30,18 +31,13 @@ export function Hero() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-(--band-bg) via-(--band-bg)/85 to-transparent" />
 
       <div className="relative px-6 pb-20 pt-16 md:px-10 md:pb-24 md:pt-20 lg:px-14">
-        <p className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-(--band-fg)/45">
-          <span className="h-px w-6 bg-(--band-fg)/35" aria-hidden />
-          The virtual office
-        </p>
-
         <a
           href="https://synehq.com/"
           target="_blank"
           rel="noreferrer"
           className="mt-8 flex max-w-xl overflow-hidden border border-(--band-fg)/15 transition-colors hover:bg-(--band-fg)/4"
         >
-          <div className="flex min-w-0 flex-1 flex-col justify-between gap-4 p-4">
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-4 p-2">
             <p className="font-sans text-lg font-medium tracking-tight md:text-xl">
               Talk to your data like a human.
             </p>
@@ -82,7 +78,7 @@ export function Hero() {
         <div className="mt-12 flex max-w-xl items-stretch border border-(--band-fg)/15 bg-(--band-well) font-mono text-sm">
           <code className="min-w-0 flex-1 overflow-x-auto px-4 py-3.5 text-(--band-fg)/75">
             <span className="text-(--band-fg)/35">$ </span>
-            curl -fsSL …/install.sh | sh
+            {INSTALL}
           </code>
           <button
             type="button"

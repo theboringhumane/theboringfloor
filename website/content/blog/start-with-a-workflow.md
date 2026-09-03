@@ -2,7 +2,7 @@
 title: "Start with a workflow. Agents come later."
 description: "Most 'multi-agent' coding setups are a scripted path with extra avatars. Here is the ladder we use — and the afternoon that taught us to stop at step one."
 date: "2026-08-24"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: true
 ---
@@ -108,10 +108,10 @@ A manager you cannot fire. If the product spawns workers you did not ask for and
 
 ## How we encode this
 
-theboringoffice assumes a boss session — the workflow you are already in — and employees as *task* sub-agents you can see. The floor is for the moment you have actually forked work, not for making a one-line fix look like a company. It will not stop you from spawning too many. The ladder will.
+theboringfloor assumes a boss session — the workflow you are already in — and employees as *task* sub-agents you can see. The floor is for the moment you have actually forked work, not for making a one-line fix look like a company. It will not stop you from spawning too many. The ladder will.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 Demo is labeled. When you are done touring, attach the server you already run. The product is a place to supervise a shift. It is not a reason to hire a shift.

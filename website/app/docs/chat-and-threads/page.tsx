@@ -13,7 +13,7 @@ export const metadata: Metadata = {
     canonical: '/docs/chat-and-threads',
   },
   openGraph: {
-    title: 'Chat and work threads · theboringoffice',
+    title: 'Chat and work threads · theboringfloor',
     description:
       'How the boss chat reads: streaming markdown replies, thinking blocks that unfold and collapse, tool-call rows, sub-agent work threads with inline diffs, and the ctrl+f fullscreen thread focus.',
     url: `${SITE_URL}/docs/chat-and-threads`,
@@ -164,7 +164,7 @@ export default function ChatAndThreadsPage() {
             <KeyChips keys={replyKeys} />
             <Shot
               src="/shots/docs/chat-thinking.png"
-              alt="theboringoffice boss chat: a reply streaming in as markdown, an expanded thinking block above it, and tool-call rows between turns"
+              alt="theboringfloor boss chat: a reply streaming in as markdown, an expanded thinking block above it, and tool-call rows between turns"
               caption="boss chat — markdown reply streaming, thinking expanded (ctrl+t)"
             />
           </div>
@@ -237,7 +237,7 @@ export default function ChatAndThreadsPage() {
             <KeyChips keys={threadKeys} />
             <Shot
               src="/shots/docs/work-threads.png"
-              alt="theboringoffice chat with collapsed sub-agent work threads: braille spinner, tool-call count, a ↳ sneak row, and a per-call inline diff"
+              alt="theboringfloor chat with collapsed sub-agent work threads: braille spinner, tool-call count, a ↳ sneak row, and a per-call inline diff"
               caption="work threads — live rows, ↳ sneaks, per-call diffs"
             />
           </div>
@@ -266,7 +266,7 @@ export default function ChatAndThreadsPage() {
             <KeyChips keys={focusKeys} />
             <Shot
               src="/shots/docs/thread-focus.png"
-              alt="theboringoffice thread focus: one worker's full transcript fullscreen — tool calls, thinking bodies, and clickable per-call diffs"
+              alt="theboringfloor thread focus: one worker's full transcript fullscreen — tool calls, thinking bodies, and clickable per-call diffs"
               caption="thread focus — one worker, fullscreen, live; esc back"
             />
           </div>

@@ -6,14 +6,14 @@ import { SectionTag } from '@/components/section-tag'
 import { SITE_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: 'Docs | theboringoffice',
+  title: 'Docs | theboringfloor',
   description:
     'The office manual — install, backends, chat, plan mode, the queue and board, panels, themes, and every key and slash command.',
   alternates: {
     canonical: '/docs',
   },
   openGraph: {
-    title: 'Docs · theboringoffice',
+    title: 'Docs · theboringfloor',
     description:
       'The office manual — install, backends, chat, plan mode, the queue and board, panels, themes, and every key and slash command.',
     url: `${SITE_URL}/docs`,
@@ -136,8 +136,8 @@ export default function DocsPage() {
             <div className="mt-12">
               <Shot
                 src="/shots/docs/office-overview.png"
-                alt="theboringoffice overview: the office floor, chat work thread, and panel sidebar"
-                caption="theboringoffice — floor, chat, and panels"
+                alt="theboringfloor overview: the office floor, chat work thread, and panel sidebar"
+                caption="theboringfloor — floor, chat, and panels"
               />
             </div>
           </div>

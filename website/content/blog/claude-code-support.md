@@ -2,7 +2,7 @@
 title: "The office doesn't care which brain the boss has"
 description: "Claude Code is now a supported LLM transport next to opencode. Same floor, same roster, same board, same ledger — you pick which CLI the boss thinks with at boot."
 date: "2026-08-26"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["Release", "Updates"]
 featured: false
 ---
@@ -20,10 +20,10 @@ This is the same argument we make about [attaching to the session you already ha
 For one run:
 
 ```bash
-theboringoffice --backend claudecode
+theboringfloor --backend claudecode
 ```
 
-To make it stick, edit `~/.theboringoffice/configs/brain.json`:
+To make it stick, edit `~/.theboringfloor/configs/brain.json`:
 
 ```json
 {
@@ -74,14 +74,14 @@ You want one global claude daemon multiplexing every session. We did not build t
 
 ## How we encode this
 
-In theboringoffice, the transport is a detail behind the event model:
+In theboringfloor, the transport is a detail behind the event model:
 
 - Two transports — `opencode serve` over SSE, and the Claude Code CLI over stream-json — normalize into one stream the whole office renders.
 - One child process per session, pinned to a uuid; a respawn resumes the shift instead of restarting it.
 - Control requests become the same cards, modals, and `/stop` you already use.
 
 ```bash
-theboringoffice --backend claudecode
+theboringfloor --backend claudecode
 ```
 
 Then watch the floor, not the transport. If you can tell which brain the boss has from anywhere but the boot line, that is a bug — the office is supposed to be the boring part.

@@ -2,7 +2,7 @@
 title: "Claude Code vs Codex vs opencode vs Antigravity is the wrong fight"
 description: "Everyone argues about the best AI coding CLI of 2026; the afternoons that actually ship give Claude Code, Codex, opencode, and Google Antigravity different jobs and never let them share a checkout."
 date: "2026-08-28"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: false
 ---
@@ -117,7 +117,7 @@ You want the demo, not the shift. Four tools running at once looks like a compan
 
 ## How we encode this
 
-We run this rotation ourselves, and theboringoffice exists because the coordination hurt more than the models did. It is a terminal app that treats coding agents like an office floor:
+We run this rotation ourselves, and theboringfloor exists because the coordination hurt more than the models did. It is a terminal app that treats coding agents like an office floor:
 
 - opencode and Claude Code sessions share one floor and one event model — pick the boss's brain at boot (`--backend claudecode`), and the rest of the shift is identical.
 - Permission asks stack in a queue instead of hijacking the screen, so four sessions do not turn you into a single-threaded approval router.
@@ -126,7 +126,7 @@ We run this rotation ourselves, and theboringoffice exists because the coordinat
 Isolation still belongs to git worktrees. The office replaces the alt-tab archaeology, not git.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 The goal was never more agents. It is still being able to say, at 4pm, who is doing what — whichever brain they brought.

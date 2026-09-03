@@ -5,7 +5,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Browser tab | theboringoffice',
+  title: 'Browser tab | theboringfloor',
   description:
     'A text-mode HTML page viewer on the left pane — headings, indexed links, history, /open — with rendered headless screenshots on kitty-capable terminals and an opt-in zenbu terminal-browser embedded lane.',
 }
@@ -142,7 +142,7 @@ export default function BrowserTabPage() {
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The boss&apos;s reach goes past opening. It can take a screenshot of a
               page for you — rendered in the tab on kitty-capable terminals, the PNG
-              saved under <Code>~/.theboringoffice/shots/</Code> with the path posted
+              saved under <Code>~/.theboringfloor/shots/</Code> with the path posted
               to the transcript — or snapshot a page for itself, the text and links
               riding back to it as a follow-up message so it can read what it sent you
               to. And when reading is not enough it can ask to <strong className="text-foreground">act</strong>{' '}
@@ -203,7 +203,7 @@ export default function BrowserTabPage() {
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Every shot also lands on disk —{' '}
-              <Code>~/.theboringoffice/shots/&lt;ts&gt;-&lt;hash&gt;.png</Code>, or the
+              <Code>~/.theboringfloor/shots/&lt;ts&gt;-&lt;hash&gt;.png</Code>, or the
               temp dir when the office home is overridden — with the path posted to
               the transcript, so your <Code>o</Code>-to-open habit works on the file
               too. On a terminal without kitty graphics the text lane carries a dim{' '}

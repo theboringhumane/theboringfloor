@@ -6,14 +6,14 @@ import { SectionTag } from '@/components/section-tag'
 import { SITE_URL } from '@/lib/site'
 
 export const metadata: Metadata = {
-  title: 'Backends | theboringoffice',
+  title: 'Backends | theboringfloor',
   description:
     'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
   alternates: {
     canonical: '/docs/backends',
   },
   openGraph: {
-    title: 'Backends · theboringoffice',
+    title: 'Backends · theboringfloor',
     description:
       'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
     url: `${SITE_URL}/docs/backends`,
@@ -124,12 +124,12 @@ export default function BackendsPage() {
             <div className="grid gap-10 md:grid-cols-2">
               <Shot
                 src="/shots/docs/office-overview.png"
-                alt="theboringoffice on the opencode backend: floor, chat thread, and panels"
+                alt="theboringfloor on the opencode backend: floor, chat thread, and panels"
                 caption="opencode (default)"
               />
               <Shot
                 src="/shots/docs/backend-claude.png"
-                alt="theboringoffice on the claudecode backend: claude CLI child streaming a boss reply"
+                alt="theboringfloor on the claudecode backend: claude CLI child streaming a boss reply"
                 caption="claudecode — stream-json child"
               />
             </div>
@@ -151,7 +151,7 @@ export default function BackendsPage() {
               The precedence chain is short and total:{' '}
               <code className="font-mono text-xs text-foreground">--backend</code> flag on the
               binary overrides{' '}
-              <code className="font-mono text-xs text-foreground">THEBORINGOFFICE_BACKEND</code>{' '}
+              <code className="font-mono text-xs text-foreground">THEBORINGFLOOR_BACKEND</code>{' '}
               (with <code className="font-mono text-xs text-foreground">GRAFEIO_BACKEND</code> as
               the upgrade-era fallback), which overrides{' '}
               <code className="font-mono text-xs text-foreground">brain.json</code>&apos;s{' '}
@@ -166,11 +166,11 @@ export default function BackendsPage() {
                   { t: '# 1 · seed it at install time', dim: true },
                   { t: '... | sh -s -- --backend claudecode' },
                   { t: '', dim: true },
-                  { t: '# 2 · pin it in ~/.theboringoffice/configs/brain.json', dim: true },
+                  { t: '# 2 · pin it in ~/.theboringfloor/configs/brain.json', dim: true },
                   { t: '"backend": { "name": "claudecode" }' },
                   { t: '', dim: true },
                   { t: '# 3 · pin one boot from the shell', dim: true },
-                  { t: 'THEBORINGOFFICE_BACKEND=claudecode theboringoffice' },
+                  { t: 'THEBORINGFLOOR_BACKEND=claudecode theboringfloor' },
                 ]}
               />
             </div>
@@ -213,9 +213,9 @@ export default function BackendsPage() {
                   { t: '# your CLAUDE.md, after one office boot', dim: true },
                   { t: '...everything you wrote, untouched...', dim: true },
                   { t: '', dim: true },
-                  { t: '<!-- theboringoffice charter -->' },
+                  { t: '<!-- theboringfloor charter -->' },
                   { t: '@.opencode/oikonomos.md' },
-                  { t: '<!-- /theboringoffice charter -->' },
+                  { t: '<!-- /theboringfloor charter -->' },
                 ]}
               />
             </div>
@@ -242,7 +242,7 @@ export default function BackendsPage() {
               <Key>/backend claudecode</Key> — it swaps mid-flight, archives the current turn,
               persists the name to brain.json, and lands one status line:{' '}
               <code className="font-mono text-xs text-foreground">
-                [theboringoffice] backend: opencode → claudecode
+                [theboringfloor] backend: opencode → claudecode
               </code>
               . The topbar shows the active name between mode and agents at all times.
             </p>

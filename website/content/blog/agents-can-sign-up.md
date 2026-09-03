@@ -2,7 +2,7 @@
 title: "If the UI can lie, you will believe it"
 description: "Agent workspaces fail when the picture is prettier than the log. A test: every animation should map to an event you could write to JSONL — and a labeled demo is the only honest fake."
 date: "2026-08-23"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Updates"]
 featured: false
 ---
@@ -65,16 +65,16 @@ Skip it if you need to screenshare a non-technical stakeholder through a fantasy
 
 ## How we encode this
 
-theboringoffice is in development on purpose. The floor is playful. The contract is not: a real `opencode` boss, real task sub-agents, real permission asks, real diffs. Demo mode uses the same event shape, marked `DEMO`.
+theboringfloor is in development on purpose. The floor is playful. The contract is not: a real `opencode` boss, real task sub-agents, real permission asks, real diffs. Demo mode uses the same event shape, marked `DEMO`.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 When that feels like a workplace instead of a trailer, attach a live server you already run:
 
 ```bash
-theboringoffice --server http://127.0.0.1:4096
+theboringfloor --server http://127.0.0.1:4096
 ```
 
 If you ever catch our floor moving without an event, file it like a metrics bug. It is a metrics bug. We would rather look quiet than look employed.

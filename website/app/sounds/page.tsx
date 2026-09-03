@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     canonical: '/sounds',
   },
   openGraph: {
-    title: 'Sounds · theboringoffice',
+    title: 'Sounds · theboringfloor',
     description:
       'Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.',
     url: `${SITE_URL}/sounds`,

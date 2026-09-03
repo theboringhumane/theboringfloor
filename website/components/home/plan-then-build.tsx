@@ -52,7 +52,7 @@ export function PlanThenBuild() {
           </div>
           <img
             src="/shots/plan-mode.png"
-            alt="theboringoffice plan mode: markdown plan editor with mermaid diagram, plan board"
+            alt="theboringfloor plan mode: markdown plan editor with mermaid diagram, plan board"
             width={5086}
             height={2896}
             loading="lazy"

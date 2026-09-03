@@ -5,7 +5,7 @@ import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 
 export const metadata: Metadata = {
-  title: 'Layouts, themes & power | theboringoffice',
+  title: 'Layouts, themes & power | theboringfloor',
   description:
     '/compact, /mode, /wide and /zen for the layout; five themes with live preview; and the /power governor that decides how hard the office renders.',
 }
@@ -94,7 +94,7 @@ export default function LayoutThemesPowerPage() {
             </p>
             <Shot
               src="/shots/docs/layout-normal.png"
-              alt="theboringoffice normal layout: full sidebar with spelled-out tab names next to the floor"
+              alt="theboringfloor normal layout: full sidebar with spelled-out tab names next to the floor"
               caption="normal — the default layout, full sidebar, full composer"
             />
             <p className="mt-14 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -106,7 +106,7 @@ export default function LayoutThemesPowerPage() {
             </p>
             <Shot
               src="/shots/docs/layout-compact.png"
-              alt="theboringoffice compact layout: 30-column sidebar, short tab letters, two-row input"
+              alt="theboringfloor compact layout: 30-column sidebar, short tab letters, two-row input"
               caption="compact — 30-column sidebar, short tab letters, two-row input"
             />
             <p className="mt-14 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -117,7 +117,7 @@ export default function LayoutThemesPowerPage() {
             </p>
             <Shot
               src="/shots/docs/layout-wide.png"
-              alt="theboringoffice wide layout: sidebar widened beyond the 80-column default"
+              alt="theboringfloor wide layout: sidebar widened beyond the 80-column default"
               caption="/wide 100 — the sidebar stretched past its 80-column default"
             />
           </div>
@@ -133,7 +133,7 @@ export default function LayoutThemesPowerPage() {
               The office ships five themes. Pick one at launch with{' '}
               <Code>--theme noir|paper|mono|dracula|solarized</Code>, or in-app with{' '}
               <Code>/theme &lt;name&gt;</Code> — either way the choice persists to{' '}
-              <Code>~/.config/theboringoffice/theme</Code>. <Code>/themes</Code> lists
+              <Code>~/.config/theboringfloor/theme</Code>. <Code>/themes</Code> lists
               them without leaving the chat.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -149,7 +149,7 @@ export default function LayoutThemesPowerPage() {
             </div>
             <Shot
               src="/shots/docs/theme-dracula.png"
-              alt="theboringoffice dracula theme applied to the floor and sidebar"
+              alt="theboringfloor dracula theme applied to the floor and sidebar"
               caption="theme dracula — the whole office, repainted live"
             />
           </div>

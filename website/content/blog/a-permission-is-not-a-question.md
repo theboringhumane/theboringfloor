@@ -2,7 +2,7 @@
 title: "A permission is not a question"
 description: "Shell allow, product decision, and status are three interrupts. One popup trains you to rubber-stamp a breaking change like it was git status. Here is how the mix-up happens, and how to unmix it."
 date: "2026-08-24"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["Office", "Engineering"]
 featured: true
 ---
@@ -91,7 +91,7 @@ If you cannot write down what "allow always" matches, do not press it. That rule
 
 ## How we encode this
 
-theboringoffice splits them on purpose. Permission queue: `1 of N`, `y` / `a` / `n` / `esc`, `/perm` to return. Questions: their own popover, `/question` to reopen. Activity and the board carry status so "done" is not a dialog.
+theboringfloor splits them on purpose. Permission queue: `1 of N`, `y` / `a` / `n` / `esc`, `/perm` to return. Questions: their own popover, `/question` to reopen. Activity and the board carry status so "done" is not a dialog.
 
 The split is the feature. The floor is how we draw who is waiting. If we ever put a product question in the permission chrome, we will have failed the taxonomy we are telling you to demand of every tool, including ours.
 

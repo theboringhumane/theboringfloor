@@ -2,7 +2,7 @@
 title: "You launched the subagents. Now you have to watch them."
 description: "Spawning specialists is easy. The job that remains is supervision: diffs you can find, asks that wait instead of freeze, and a handoff you would accept from a coworker."
 date: "2026-08-24"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: true
 ---
@@ -88,10 +88,10 @@ That is a small team. It is also enough for most days.
 
 We wanted a shift we could understand at a glance: who is walking, who is waiting, what changed.
 
-In theboringoffice, boss chat is a real `opencode` session. Sub-agents show up as employees. Work threads keep the diff with the worker. The permission queue is 1 of N and does not kidnap the rest of the office. agentmemory keeps the board, the mail, and the last session across restarts.
+In theboringfloor, boss chat is a real `opencode` session. Sub-agents show up as employees. Work threads keep the diff with the worker. The permission queue is 1 of N and does not kidnap the rest of the office. agentmemory keeps the board, the mail, and the last session across restarts.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 Subagents are a good idea. They are also how you accidentally hire a team you cannot manage. Build the watching on purpose.

@@ -38,7 +38,7 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 ### 2026-08-28 · Blog: state of agentic coding (@developer sub... — tekton-4 (developer) · `issues`
 - summary: Both VERIFY commands pass. Composing the return.
 - files: `website/content/blog/agentic-coding-2026.md`
-- verify: (Repo root is the parent `theboringoffice/` dir, so the path shows with the `website/` prefix; `??` = the single new untracked file, nothing
+- verify: (Repo root is the parent `theboringfloor/` dir, so the path shows with the `website/` prefix; `??` = the single new untracked file, nothing
 - proof: *Title:** The code got cheap this year. The supervision didn't.
 - ledgerId: led-1787945279882-35f841f1
 

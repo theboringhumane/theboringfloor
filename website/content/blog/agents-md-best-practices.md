@@ -2,7 +2,7 @@
 title: "AGENTS.md best practices: the agent reads it before your code"
 description: "AGENTS.md, CLAUDE.md, and their cousins decide what your coding agent knows before it touches a file — the landscape, the numbers, and the practices that keep the repo's second README from lying."
 date: "2026-08-30"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["AI Agents", "Engineering"]
 featured: true
 ---
@@ -182,7 +182,7 @@ Honest ceilings, because this file is easy to overbuild.
 
 ## How we encode this
 
-We run on this advice literally: theboringoffice's own agents get their instructions from a charter file — [`.opencode/oikonomos.md`](https://github.com/theboringhumane/theboringoffice/blob/main/.opencode/oikonomos.md) — committed to the repo, reviewed like code, and read by every session before it touches a file. Same physics as everything above, applied to ourselves.
+We run on this advice literally: theboringfloor's own agents get their instructions from a charter file — [`.opencode/oikonomos.md`](https://github.com/theboringhumane/theboringoffice/blob/main/.opencode/oikonomos.md) — committed to the repo, reviewed like code, and read by every session before it touches a file. Same physics as everything above, applied to ourselves.
 
 ## Sources
 

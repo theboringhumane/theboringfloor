@@ -100,7 +100,7 @@ export function UnderTheHood() {
           <div className="flex flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
             <p className="overflow-x-auto font-mono text-xs leading-relaxed text-foreground">
               <span className="text-muted-foreground">$ </span>
-              curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
+              curl -fsSL https://boringfloor.com/install.sh | sh
             </p>
             <p className="shrink-0 font-mono text-xs uppercase tracking-wider text-muted-foreground">
               macOS · Linux · amd64 · arm64

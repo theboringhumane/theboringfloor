@@ -111,11 +111,11 @@ export function SiteFooter() {
             <div className="flex items-center gap-2">
               <img
                 src="/imgs/logo.jpg"
-                alt="theboringoffice"
+                alt="theboringfloor"
                 className="h-8 w-8"
               />
               <span className="font-mono text-xs text-muted-foreground">
-                © theboringoffice 2026
+                © theboringfloor 2026
               </span>
             </div>
             <div className="flex items-center gap-4 text-muted-foreground">

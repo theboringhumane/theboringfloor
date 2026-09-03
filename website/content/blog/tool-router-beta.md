@@ -2,7 +2,7 @@
 title: "Don't let approvals steal the screen"
 description: "Four agents, four 'allow this?', you are a clicker. Here is why modal prompts serialize a parallel shift — and the queue habits that give attention back without going full yes-to-all."
 date: "2026-08-22"
-author: "theboringoffice team"
+author: "theboringfloor team"
 categories: ["Office", "Engineering"]
 featured: true
 ---
@@ -88,10 +88,10 @@ If the tool will not show you the command in full, do not allow it. Truncated `r
 
 ## How we encode this
 
-In theboringoffice, permission asks stack. The front of the queue shows `1 of N`. `y` / `a` / `n` / `esc`. Come back with `/perm`. Questions are a different popover — [because they are not permissions](/blog/a-permission-is-not-a-question). The office stays legible while something waits.
+In theboringfloor, permission asks stack. The front of the queue shows `1 of N`. `y` / `a` / `n` / `esc`. Come back with `/perm`. Questions are a different popover — [because they are not permissions](/blog/a-permission-is-not-a-question). The office stays legible while something waits.
 
 ```bash
-theboringoffice --demo
+theboringfloor --demo
 ```
 
 Watch whether a second agent's work continues while an ask sits. If it does not, the demo is showing you a screensaver. Demand the queue of your tools, including ours.

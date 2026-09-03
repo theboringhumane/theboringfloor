@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     },
   },
   openGraph: {
-    title: 'Blog · theboringoffice',
+    title: 'Blog · theboringfloor',
     description:
       'Product updates and engineering notes on AI coding agents, opencode subagents, and running a virtual office in the terminal.',
     url: `${SITE_URL}/blog`,

@@ -36,7 +36,7 @@ export function ProductPlatform() {
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-6 py-16 lg:grid-cols-2">
           <ScrollReveal direction="left" className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <h3 className="text-2xl font-semibold tracking-tight">theboringoffice</h3>
+              <h3 className="text-2xl font-semibold tracking-tight">theboringfloor</h3>
               <span className="border border-accent px-2 py-0.5 font-mono text-xs uppercase tracking-wider text-accent">
                 For You
               </span>
@@ -78,7 +78,7 @@ export function ProductPlatform() {
         <div className="mx-auto grid max-w-7xl grid-cols-1 gap-10 px-6 py-16 lg:grid-cols-[1fr_1.3fr]">
           <ScrollReveal direction="left" className="flex flex-col gap-4">
             <div className="flex items-center gap-2">
-              <h3 className="text-2xl font-semibold tracking-tight">theboringoffice</h3>
+              <h3 className="text-2xl font-semibold tracking-tight">theboringfloor</h3>
               <span className="border border-accent px-2 py-0.5 font-mono text-xs uppercase tracking-wider text-accent">
                 Your workflow
               </span>
@@ -88,10 +88,10 @@ export function ProductPlatform() {
               live, or attach the floor to an opencode server you already run.
             </p>
             <div className="mt-2 border border-(--band-fg)/10 bg-(--band-fg)/5 px-4 py-4 font-mono text-xs leading-relaxed">
-              <p>theboringoffice --demo</p>
-              <p className="mt-2">theboringoffice</p>
-              <p className="mt-2">theboringoffice --backend claudecode</p>
-              <p className="mt-2">theboringoffice --server</p>
+              <p>theboringfloor --demo</p>
+              <p className="mt-2">theboringfloor</p>
+              <p className="mt-2">theboringfloor --backend claudecode</p>
+              <p className="mt-2">theboringfloor --server</p>
               <p className="pl-4">http://127.0.0.1:4096</p>
             </div>
             <Link
