@@ -488,6 +488,7 @@ type Chat struct {
 	// rows never register), each mapping its content row → the fold key.
 	userExpanded map[string]bool
 	userFoldRows map[int]string
+	btwPinRows   map[int]string
 
 	// toolExpanded / toolRows / toolOutputs — the per-call tool-output
 	// triple, twins of userExpanded/userFoldRows (chat_toolrow.go):
@@ -873,6 +874,18 @@ func (c *Chat) ThreadRowAt(x, y int) (string, bool) {
 	return name, ok
 }
 
+// BtwPinRowAt reports whether the chat-content point's row is a hidden-BTW
+// pin bubble. The app uses this read-only lookup to resume the hidden session
+// before ClickRow claims the pin row from transcript selection.
+func (c *Chat) BtwPinRowAt(x, y int) bool {
+	if y < 0 || y >= c.vp.Height() {
+		return false
+	}
+	line := y + c.vp.YOffset()
+	_, ok := c.btwPinRows[line]
+	return ok
+}
+
 // ClickRow handles a mouse click at (x, y) IN CHAT CONTENT COORDS
 // (viewport row 0 at the top of the chat panel; the app translated the
 // screen coords over the tab/border chrome). While a QUESTION popover is
@@ -926,6 +939,9 @@ func (c *Chat) ClickRow(x, y int) bool {
 	if id, ok := c.userFoldRows[line]; ok {
 		c.ToggleUserFold(id)
 		return true
+	}
+	if _, ok := c.btwPinRows[line]; ok {
+		return true // claimed — the app routes btw-pin clicks
 	}
 	return false
 }
@@ -2238,6 +2254,7 @@ func (c *Chat) mergeBlockHits() {
 	c.userFoldRows = map[int]string{} // user-bubble fold hit-map, same rebuild
 	c.toolDiffRows = map[int]string{} // ↳ diff sub-row hit-map, same rebuild
 	c.toolRows = map[int]string{}     // tool-output one-liner hit-map, same rebuild
+	c.btwPinRows = map[int]string{}   // hidden-BTW pin bubble hit-map, same rebuild
 	row := 0                          // absolute start row of the CURRENT block
 	for i, blk := range c.blocks {
 		if i > 0 {
@@ -2247,6 +2264,7 @@ func (c *Chat) mergeBlockHits() {
 		mergeSpanInto(c.toolDiffRows, blk.hits.toolDiff, row)
 		mergeSpanInto(c.userFoldRows, blk.hits.userFold, row)
 		mergeSpanInto(c.toolRows, blk.hits.toolOut, row)
+		mergeSpanInto(c.btwPinRows, blk.hits.btwPin, row)
 		row += blk.rows
 	}
 }
@@ -2381,6 +2399,11 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// concierge (EvChatOffice) — a real turn, not a notice: the
 		// INFO "office ›" case above renderNotice's dim-office line
 		c.renderOffice(&b, m)
+	case m.From == officeFrom && m.Meta == "btw-pin":
+		prefix := chrome.OnPanel(chrome.Accent, "↩ ")
+		textW := c.contentW() - cellWidth("↩ ")
+		b.WriteString(prefix + chrome.OnPanelBold(chrome.White, clipPlain(m.Text, textW)))
+		hits.btwPin = map[int]string{0: m.ID}
 	case m.From == officeFrom:
 		c.renderNotice(&b, m)
 	case m.From == "user":

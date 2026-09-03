@@ -7,6 +7,41 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-03 · Write BTW hide/resume tests (@developer subag... — tekton-3 (developer) · `done`
+- summary: Added regression coverage for BTW hide, resume, permanent exit, `/new` cleanup, invalid-state notices, and the complete `/btw → Esc → /btw → /done` lifecycle.
+- files: `internal/app/btw_hide_test.go`
+- verify: ```
+- proof: `TestBtwHidePreservesSessionAndPinsMainChat`
+- ledgerId: led-1788454375559-c1810436
+
+### 2026-09-03 · Review BTW hide/resume diff (@reviewer subagent) — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788454280607-280b2bb9
+
+### 2026-09-03 · Panel: BTW pin bubble render (@developer suba... — tekton-2 (developer) · `issues`
+- summary: Added block-local `btwPin` hit maps and transcript-level `btwPinRows` aggregation.
+- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`
+- verify: ```
+- proof: Rendered transcript bubble:
+- ledgerId: led-1788453886770-e624a327
+
+### 2026-09-03 · App state: BTW hide/resume (@developer subagent) — tekton-1 (developer) · `issues`
+- summary: Added hidden BTW-session state (`btwHiddenSnap`) and pinned-bubble ID tracking (`btwPinMsgID`) to `Model`.
+- files: `internal/app/model.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788453828341-4cc750ba
+
+### 2026-09-03 · Scout /btw UI code (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: ## `/btw` recon report
+- files: (none)
+- verify: Read-only reconnaissance only. No commands or files were modified.
+- proof: ```text
+- ledgerId: led-1788453452610-e3c67fb7
+
 ### 2026-09-03 · Pin approved plan value (@developer subagent) — tekton-8 (developer) · `done`
 - summary: Captured a rune-capped approved-plan snapshot once at approval command creation.
 - files: `internal/app/plan_mode.go`, `internal/app/model.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools_test.go`
@@ -321,39 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ### Ordinary Enter backend call ledger
 - ledgerId: led-1788322652683-7b1c830c
-
-### 2026-09-02 · Add app attachment wire tests (@developer sub... — tekton-6 (developer) · `issues`
-- summary: Added end-to-end app-to-wire regression tests for Markdown and Go attachments with paths containing spaces.
-- files: `internal/app/attachment_backend_integration_test.go`
-- verify: ```
-- proof: ### OpenCode immediate dispatch after `/backend opencode`
-- ledgerId: led-1788322504772-eec9c8fd
-
-### 2026-09-02 · Fix Claude send failure handling (@developer... — tekton-5 (developer) · `issues`
-- summary: Changed Claude’s prompt-write failure path to return a wrapped, actionable error after emitting the existing failed-prompt bubble, so callers can retain and ret
-- files: `internal/backend/claude.go`, `internal/backend/claude_send_test.go`, `internal/backend/claude_attachment_test.go`
-- verify: ```
-- proof: ### Failed attachment write → error and retryable queue item
-- ledgerId: led-1788322037838-8452ebf5
-
-### 2026-09-02 · Reproduce OpenCode attachment error (@general... — tekton-1 (developer) · `issues`
-- summary: Verified the repository `HEAD` is `8a0f963c`, exactly tag `v0.3.16`.
-- files: None modified., Read-only evidence reviewed:, `internal/backend/parts.go`, `internal/backend/opencode.go`, `internal/backend/parts_test.go`, `internal/app/model.go`, `internal/app/attach_queue_test.go`, `internal/app/plan_mode.go`, `internal/state/state.go`, `internal/panels/chat_attach.go`, `cmd/headless/main.go`
-- verify: ```
-- proof: ### Current OpenCode attachment wire
-- ledgerId: led-1788321743872-43360ec8
-
-### 2026-09-02 · Reproduce Claude attachment error (@general s... — tekton-2 (developer) · `issues`
-- summary: Traced attachment routing from `panels.Chat` through `app.New`, `sendChatMode`, `sendChat`, and the Claude stream-json writer.
-- files: None. Read-only investigation.
-- verify: ```
-- proof: ### Current Claude wire
-- ledgerId: led-1788321712259-a6a41335
-
-### 2026-09-02 · Audit installed release parity (@general suba... — tekton-3 (developer) · `issues`
-- summary: Confirmed `HEAD` is `8a0f963c320ad8649d1c4865c96a5eb9d4c038e3`, exactly `v0.3.16`; `origin/main` and the tag point to the same commit.
-- files: None. This was read-only; the release asset was downloaded only to a temporary audit directory outsi
-- verify: ```
-- proof: For an `.md`, source file, archive, or any non-image/PDF attachment, the current installed binary produces a text-only prompt part, not a me
-- ledgerId: led-1788321688312-2e9569eb
 

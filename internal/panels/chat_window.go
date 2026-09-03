@@ -111,6 +111,7 @@ type blockHits struct {
 	toolDiff map[int]string
 	userFold map[int]string
 	toolOut  map[int]string // tool-output one-liner rows → tool entry ID (chat_toolrow.go)
+	btwPin   map[int]string // hidden-BTW pin bubble rows → message ID
 }
 
 // chatBlock — one timeline ITEM's cached render: the exact text the old
