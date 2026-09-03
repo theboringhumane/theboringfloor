@@ -215,7 +215,7 @@ func (c *SocialClock) socialStep(st state.OfficeState, modalOpen, thinkActive bo
 	if len(crew) == 0 {
 		return nil
 	}
-	r := c.rng(st.Tick) // value: shared across the plan calls via &r
+	r := c.rng(st.Tick)    // value: shared across the plan calls via &r
 	solo := len(crew) <= 1 // boss+hr only (or less): water-cooler, half as often
 
 	// gate (2): firing spacing.

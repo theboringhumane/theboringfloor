@@ -55,7 +55,7 @@ func tfSetup(t *testing.T) (Model, *selBackend) {
 	m = runMsg(t, m, state.Event{Kind: state.EvTool, EmployeeID: "dev-1", EmployeeName: "tekton-1",
 		ToolName: "edit", ToolSummary: "internal/room/handler.go", ToolState: "done", CallID: "call-t2"})
 	m = runMsg(t, m, state.Event{Kind: state.EvFileDiff, EmployeeName: "tekton-1", SessionID: "ses-kid",
-		CallID:   "call-t2", DiffPath: "internal/room/handler.go", DiffAdd: 3, DiffDel: 1,
+		CallID: "call-t2", DiffPath: "internal/room/handler.go", DiffAdd: 3, DiffDel: 1,
 		DiffBody: "--- a/internal/room/handler.go\n+++ b/internal/room/handler.go\n@@ -1 +1,2 @@\n-a\n+wireMarker\n"})
 	return m, b
 }

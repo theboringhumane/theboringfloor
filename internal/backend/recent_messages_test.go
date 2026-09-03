@@ -63,7 +63,7 @@ func TestClaudeRecentMessagesMarkerEmitsBeforeCleanPin(t *testing.T) {
 	}})
 	assertRecentMessagesPin(t, log.snapshot(), chatcontext.DefaultCount)
 	for _, e := range log.snapshot() {
-		if e.Kind == state.EvChatBoss && e.Msg.ID == "bossmsg-msg-1" && e.Msg.Text != "[theboringoffice] recent messages requested: 20" {
+		if e.Kind == state.EvChatBoss && e.Msg.ID == "bossmsg-msg-1" && e.Msg.Text != "[theboringfloor] recent messages requested: 20" {
 			t.Fatalf("marker-only pin must settle to a useful fallback: %+v", e.Msg)
 		}
 	}

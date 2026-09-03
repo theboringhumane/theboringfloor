@@ -653,7 +653,7 @@ func TestClaudeInterruptedStreamFlush(t *testing.T) {
 	ctx := newClaudeNormCtx(nil)
 	ctx.primaryID = "s"
 	ctx.claudeTextDelta("msg-1", "half an answer", 100)
-	evs := claudeInterruptedStreamEvents(ctx, "[theboringoffice] stream interrupted", 400)
+	evs := claudeInterruptedStreamEvents(ctx, "[theboringfloor] stream interrupted", 400)
 	if len(evs) != 1 || evs[0].Msg.Pending || !strings.Contains(evs[0].Msg.Text, "half an answer") ||
 		!strings.Contains(evs[0].Msg.Text, "stream interrupted") || evs[0].Msg.ID != "bossmsg-msg-1" {
 		t.Fatalf("interrupted flush drifted: %+v", evs)

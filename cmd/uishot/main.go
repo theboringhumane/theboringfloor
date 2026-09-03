@@ -449,7 +449,7 @@ func (b *stubBackend) script() {
 		return
 	}
 
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stub backend online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — stub backend online"})
 	at(100, state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	at(250, state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -575,7 +575,7 @@ func (b *stubBackend) scriptThink(at func(ms int, ev state.Event)) {
 		"backlog: per-team leaderboards.\n" +
 		"keep the ghost rule — nice touch."
 
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — think-stream stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — think-stream stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"sketch the leaderboard flow", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -601,7 +601,7 @@ func (b *stubBackend) scriptThink(at func(ms int, ev state.Event)) {
 // a completed boss reply (scriptAsk's server-resume leg lives in
 // AnswerQuestion, like the real opencode round trip).
 func (b *stubBackend) scriptAsk(at func(ms int, ev state.Event)) {
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — question-hold stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — question-hold stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"summarize the flagged rows", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -653,7 +653,7 @@ func (b *stubBackend) scriptStream(at func(ms int, ev state.Event)) {
 			b.trace(line)
 		}
 	}
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — chat-stream stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — chat-stream stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"tell me about honey", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -677,7 +677,7 @@ func (b *stubBackend) scriptStream(at func(ms int, ev state.Event)) {
 // ONE composed [BATCH DISPATCH] send — the batch-dispatch contract is
 // unchanged, only the roadblock fills the queue now.
 func (b *stubBackend) scriptBatch(at func(ms int, ev state.Event)) {
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — backlog-batch stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — backlog-batch stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"start the standup notes", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -701,7 +701,7 @@ func (b *stubBackend) scriptFree(at func(ms int, ev state.Event)) {
 			b.trace(line)
 		}
 	}
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — free-queuing stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — free-queuing stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"start the standup notes", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -1444,7 +1444,7 @@ func runStopProof() error {
 		}
 	}
 
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stop stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — stop stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	// the ROADBLOCK, staged FIRST: the boss parks the turn on a question
@@ -1591,7 +1591,7 @@ func runBypassProof() error {
 				}
 			}
 		}
-		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — bypass stub online"})
+		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — bypass stub online"})
 		d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 			ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 
@@ -1746,7 +1746,7 @@ func runStuckProof() error {
 		return n
 	}
 
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — stuck stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — stuck stub online"})
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "ship the report", false)})
 	// 200ms: the boss goes busy… and never completes (silence from here).
 	// The send-side placeholder is client staging — it never arms the W1
@@ -1931,7 +1931,7 @@ func runConciergeProof() error {
 	}
 
 	// setup: the boss is BUSY mid-turn (send + pending placeholder staged)
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — concierge stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — concierge stub online"})
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "plan the api", false)})
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
 
@@ -2134,7 +2134,7 @@ func runManualLoop(cfg *config.Config, b *stubBackend, tab string, dur time.Dura
 // window, so the busy placeholder ("jorge is typing…") and the slash
 // notices share the final frame.
 func (b *stubBackend) scriptPowerDemo(at func(ms int, ev state.Event)) {
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — power-governor stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — power-governor stub online"})
 	at(150, state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"ship the power governor", false)})
 	at(200, state.Event{Kind: state.EvChatBoss, Msg: chatMsg("boss-1", "boss", "", true)})
@@ -2706,7 +2706,7 @@ func runLayoutProof() error {
 // unique marker word ("azimuth") that appears nowhere else in the frame,
 // so the contains-asserts pin the pane's adopted content.
 func (b *stubBackend) scriptPlanDemo(at func(ms int, ev state.Event)) {
-	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — plan-mode stub online"})
+	at(50, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — plan-mode stub online"})
 	at(100, state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	at(250, state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -3571,7 +3571,7 @@ func assertTypingRowBelowDivider(tag, frame, needle string) error {
 func runFocusProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — focus stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — focus stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -3959,7 +3959,7 @@ func runSlashPopProof() error {
 func runThreadsThinkProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — threads-think stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — threads-think stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
@@ -4072,7 +4072,7 @@ func runThreadsThinkProof() error {
 func runThreadsProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — threads stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — threads stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -4163,7 +4163,7 @@ func focusDiff(ownerID, ownerName, callID, path, body string, add, del int) stat
 func runWdiffProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — wdiff stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — wdiff stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
@@ -4308,7 +4308,7 @@ func runWdiffProof() error {
 func runThreadFocusProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — threadfocus stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — threadfocus stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -4470,7 +4470,7 @@ func boardSyncDrive(rep int) (frameA, frameB string, err error) {
 			Subject: subject, Body: "done.", Kind: state.MailReturn}
 	}
 
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — boardsync stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — boardsync stub online"})
 	hire("dev-1", "tekton-1", state.RoleDeveloper)
 	hire("dev-2", "tekton-2", state.RoleDeveloper)
 	hire("sco-1", "skopos-1", state.RoleScout)
@@ -4695,7 +4695,7 @@ func imagesDrive(off bool, env [][2]string) (string, error) {
 		}
 	}
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — image-preview stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — image-preview stub online"})
 	runExec(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
@@ -4974,7 +4974,7 @@ func runImagesPTY() error {
 		// the event sequence mirrors imagesDrive's synchronous drive (the
 		// first event also readies the boot splash → the cascade lifts).
 		time.Sleep(300 * time.Millisecond)
-		send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — image-preview stub online"})
+		send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — image-preview stub online"})
 		send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 			ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 		send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
@@ -5087,7 +5087,7 @@ func linksDrive() (linksFrameOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — open-in-browser stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — open-in-browser stub online"})
 	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user",
 		"what did the doc + diagram say?", false)})
 	// The completed boss bubble: URL in the body + the media item named at
@@ -5378,7 +5378,7 @@ func openURLDrive(tbExit string) (openURLFrameOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — terminal-browser lane fixture online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — terminal-browser lane fixture online"})
 	runExec(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "where is the spec?", false)})
 	// a completed boss bubble carrying exactly ONE URL → the straight-
 	// through open (the multi-target card is --links' contract).
@@ -6414,7 +6414,7 @@ func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — live browser lane stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — live browser lane stub online"})
 
 	// /open through the REAL chat input: the bracketed-paste path (cmd+v's
 	// own msg — pasteFilePaths refuses the spaced composite, the slash
@@ -6774,7 +6774,7 @@ func browserKeepaliveDrive() (browserKeepaliveOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — keep-alive lane stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — keep-alive lane stub online"})
 	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
 	if err != nil {
 		return out, fmt.Errorf("browser-keepalive fixture path: %w", err)
@@ -7023,7 +7023,7 @@ func browserHintDrive() (browserHintFrameOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — browser hint stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — browser hint stub online"})
 
 	// leg E — ctrl+b to the browser slot: the idle starter card wears the
 	// dim hint row under the location bar (the resolve pinned binary-missing
@@ -7293,7 +7293,7 @@ func browserShotDrive(flavor string) (browserShotOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — headless engine stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — headless engine stub online"})
 	fixtureAbs, err := filepath.Abs(browserTabFixtureRel)
 	if err != nil {
 		return out, fmt.Errorf("browser-shot fixture path: %w", err)
@@ -7618,7 +7618,7 @@ func browserTabDrive() (browserTabFrameOut, error) {
 	}
 
 	runExec(tea.WindowSizeMsg{Width: shotCols, Height: shotRows})
-	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — browser tab stub online"})
+	runExec(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — browser tab stub online"})
 
 	// /open through the REAL chat input + popover (the --slashpop idiom).
 	url := "http://" + browserTabStubAddr + "/fixture.html"
@@ -7748,7 +7748,7 @@ func clickAt(d *focusDriver, x, y int) {
 func runClickProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 	d := newFocusDriver()
-	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — click stub online"})
+	d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — click stub online"})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteAtDesk}})
 	d.send(state.Event{Kind: state.EvHire, Employee: state.Employee{
@@ -7907,7 +7907,7 @@ func runToolOutputProof() error {
 	}
 	drive := func() ([]shot, error) {
 		d := newFocusDriver()
-		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] demo — tooloutput stub online"})
+		d.send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] demo — tooloutput stub online"})
 		d.send(state.Event{Kind: state.EvChatUser, Msg: chatMsg("u1", "user", "build it, then read x.go", false)})
 		d.send(focusTool("", "", "c-1", "bash", "go build ./...", "running"))
 		d.send(focusTool("", "", "c-2", "read", "x.go", "done"))

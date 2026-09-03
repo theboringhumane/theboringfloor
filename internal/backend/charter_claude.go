@@ -117,17 +117,17 @@ func renderClaudeCharterBlock() []byte {
 // as a fallback.
 func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	if envOrLegacy("THEBORINGOFFICE_NO_AUTOCHARTER", "GRAFEIO_NO_AUTOCHARTER") == "1" {
-		return false, []string{"[theboringoffice] claude charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)"}
+		return false, []string{"[theboringfloor] claude charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)"}
 	}
 
 	// The served project root must already exist — the office never
 	// creates a member's project directory implicitly.
 	st, err := os.Stat(dir)
 	if err != nil {
-		return false, []string{"[theboringoffice] claude charter: failed (dir missing: " + dir + ": " + err.Error() + ")"}
+		return false, []string{"[theboringfloor] claude charter: failed (dir missing: " + dir + ": " + err.Error() + ")"}
 	}
 	if !st.IsDir() {
-		return false, []string{"[theboringoffice] claude charter: failed (not a directory: " + dir + ")"}
+		return false, []string{"[theboringfloor] claude charter: failed (not a directory: " + dir + ")"}
 	}
 
 	// 1. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
@@ -144,19 +144,19 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	case statErr == nil && string(existing) == charter.Text:
 		// fresh — nothing to do
 	case statErr != nil && !os.IsNotExist(statErr):
-		return changed, append(notes, "[theboringoffice] claude charter: failed (read "+payloadPath+": "+statErr.Error()+")")
+		return changed, append(notes, "[theboringfloor] claude charter: failed (read "+payloadPath+": "+statErr.Error()+")")
 	default:
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
-			return changed, append(notes, "[theboringoffice] claude charter: failed (mkdir "+ocDir+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] claude charter: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
 		if err := os.WriteFile(payloadPath, []byte(charter.Text), 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] claude charter: failed (write "+payloadPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+payloadPath+": "+err.Error()+")")
 		}
 		changed = true
 		if os.IsNotExist(statErr) {
-			notes = append(notes, "[theboringoffice] claude charter: seeded .opencode/oikonomos.md (the import target)")
+			notes = append(notes, "[theboringfloor] claude charter: seeded .opencode/oikonomos.md (the import target)")
 		} else {
-			notes = append(notes, "[theboringoffice] claude charter: refreshed .opencode/oikonomos.md (drifted from the embedded charter)")
+			notes = append(notes, "[theboringfloor] claude charter: refreshed .opencode/oikonomos.md (drifted from the embedded charter)")
 		}
 	}
 
@@ -166,17 +166,17 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	switch {
 	case os.IsNotExist(err):
 		if err := os.WriteFile(mdPath, renderClaudeCharterFile(), 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] claude charter: failed (write "+mdPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
 		}
 		changed = true
-		notes = append(notes, "[theboringoffice] claude charter: wired (CLAUDE.md created, "+claudeCharterImportLine+")")
+		notes = append(notes, "[theboringfloor] claude charter: wired (CLAUDE.md created, "+claudeCharterImportLine+")")
 	case err != nil:
-		return changed, append(notes, "[theboringoffice] claude charter: failed (read "+mdPath+": "+err.Error()+")")
+		return changed, append(notes, "[theboringfloor] claude charter: failed (read "+mdPath+": "+err.Error()+")")
 	default:
 		if strings.Contains(string(raw), claudeCharterRefNeedle) {
 			// Any-form reference — hand-written or office-written — is
 			// wired. No bytes move.
-			notes = append(notes, "[theboringoffice] claude charter: already wired (CLAUDE.md)")
+			notes = append(notes, "[theboringfloor] claude charter: already wired (CLAUDE.md)")
 			break
 		}
 		// Member content stays byte-identical: append only. Normalize
@@ -191,10 +191,10 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		}
 		out = append(out, renderClaudeCharterBlock()...)
 		if err := os.WriteFile(mdPath, out, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] claude charter: failed (write "+mdPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
 		}
 		changed = true
-		notes = append(notes, "[theboringoffice] claude charter: wired (import block appended to CLAUDE.md)")
+		notes = append(notes, "[theboringfloor] claude charter: wired (import block appended to CLAUDE.md)")
 	}
 
 	return changed, notes

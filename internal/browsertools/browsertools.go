@@ -356,7 +356,7 @@ func (br *Bridge) RequestAll(reqs []Request) []Decision {
 // return the transcript text (markers gone). A marker-ONLY reply
 // degrades to a one-line office note — the pinned bubble never goes
 // blank (the send-side typing placeholder needs real text to settle).
-// The note names each directive kind ("[theboringoffice] open-browser:
+// The note names each directive kind ("[theboringfloor] open-browser:
 // u · browser-snapshot: u"); a refusal-only note names the kind when
 // every refusal rode one ("… browser-screenshot refused: r"), else the
 // generic "browser refused". A MALFORMED browser-action marker matches
@@ -390,7 +390,7 @@ func Scrub(text string, br *Bridge) string {
 	}
 	switch {
 	case len(refused) == 0:
-		return "[theboringoffice] " + strings.Join(allowed, " · ")
+		return "[theboringfloor] " + strings.Join(allowed, " · ")
 	case len(allowed) == 0:
 		label := "browser"
 		if len(refusedKinds) == 1 {
@@ -398,9 +398,9 @@ func Scrub(text string, br *Bridge) string {
 				label = string(k)
 			}
 		}
-		return "[theboringoffice] " + label + " refused: " + strings.Join(refused, "; ")
+		return "[theboringfloor] " + label + " refused: " + strings.Join(refused, "; ")
 	default:
-		return "[theboringoffice] " + strings.Join(allowed, " · ") +
+		return "[theboringfloor] " + strings.Join(allowed, " · ") +
 			" · refused: " + strings.Join(refused, "; ")
 	}
 }

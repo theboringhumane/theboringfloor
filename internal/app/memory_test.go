@@ -228,14 +228,14 @@ func TestMemoryProbeState(t *testing.T) {
 	// boot line with a hot probe — the string contract of opencode.go's
 	// Start status (same marker pattern as agentFieldStatusMarker).
 	m = runMsg(t, m, state.Event{Kind: state.EvStatus,
-		Text: "[theboringoffice] live - http://127.0.0.1:9999 | board: agentmemory (GET /agentmemory/actions)"})
+		Text: "[theboringfloor] live - http://127.0.0.1:9999 | board: agentmemory (GET /agentmemory/actions)"})
 	if !strings.Contains(m.memoryBody(""), "(agentmemory OK)") {
 		t.Fatalf("the hot-probe boot line must flip the header state:\n%s", m.memoryBody(""))
 	}
 
 	// the offline marker flips it back.
 	m = runMsg(t, m, state.Event{Kind: state.EvStatus,
-		Text: "[theboringoffice] live - http://127.0.0.1:9999 | board: in-memory | agentmemory: offline (in-memory board)"})
+		Text: "[theboringfloor] live - http://127.0.0.1:9999 | board: in-memory | agentmemory: offline (in-memory board)"})
 	if !strings.Contains(m.memoryBody(""), "(file-only)") {
 		t.Fatalf("the offline boot line must report file-only:\n%s", m.memoryBody(""))
 	}
@@ -243,7 +243,7 @@ func TestMemoryProbeState(t *testing.T) {
 	// the ADDITIVE MemoryLane seam overrules the latch, both ways (the
 	// ledger-core's liveBackend contract: "OK" | "file-only").
 	m = runMsg(t, m, state.Event{Kind: state.EvStatus,
-		Text: "[theboringoffice] live - http://127.0.0.1:9999 | board: agentmemory (GET /agentmemory/actions)"})
+		Text: "[theboringfloor] live - http://127.0.0.1:9999 | board: agentmemory (GET /agentmemory/actions)"})
 	m.backend = &memorySeamBackend{lane: "file-only"}
 	if !strings.Contains(m.memoryBody(""), "(file-only)") {
 		t.Fatalf("an implemented seam answering file-only must overrule a hot latch:\n%s", m.memoryBody(""))

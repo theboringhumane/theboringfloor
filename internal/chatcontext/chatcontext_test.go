@@ -39,7 +39,7 @@ func TestExtractCapsOneRequestAndStripsAllValidMarkers(t *testing.T) {
 
 func TestScrubFallbackAndPreamble(t *testing.T) {
 	var emitted []int
-	if got := Scrub("⟦recent-messages⟧", func(n int) { emitted = append(emitted, n) }); got != "[theboringoffice] recent messages requested: 20" {
+	if got := Scrub("⟦recent-messages⟧", func(n int) { emitted = append(emitted, n) }); got != "[theboringfloor] recent messages requested: 20" {
 		t.Fatalf("marker-only fallback = %q", got)
 	}
 	if len(emitted) != 1 || emitted[0] != 20 {
@@ -54,17 +54,17 @@ func TestScrubFallbackAndPreamble(t *testing.T) {
 
 func TestIsControlText(t *testing.T) {
 	for _, text := range []string{
-		"[theboringoffice] recent messages requested: 20",
-		"[theboringoffice] recent chat context (last 20 messages, oldest first)\nuser: hello",
-		"[theboringoffice] no recent chat context available",
+		"[theboringfloor] recent messages requested: 20",
+		"[theboringfloor] recent chat context (last 20 messages, oldest first)\nuser: hello",
+		"[theboringfloor] no recent chat context available",
 	} {
 		if !IsControlText(text) {
 			t.Fatalf("IsControlText(%q) = false, want true", text)
 		}
 	}
 	for _, text := range []string{
-		"[theboringoffice] unrelated notice",
-		"boss: [theboringoffice] recent messages requested: 20",
+		"[theboringfloor] unrelated notice",
+		"boss: [theboringfloor] recent messages requested: 20",
 		"normal answer",
 	} {
 		if IsControlText(text) {

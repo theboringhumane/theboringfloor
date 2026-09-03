@@ -341,12 +341,12 @@ func TestScrubFallbackBubbles(t *testing.T) {
 	}
 	// marker-only (allowed) → the open note.
 	if got := Scrub("⟦open-browser: https://theboring.name⟧", br); got !=
-		"[theboringoffice] open-browser: https://theboring.name" {
+		"[theboringfloor] open-browser: https://theboring.name" {
 		t.Fatalf("marker-only fallback = %q", got)
 	}
 	// marker-only (refused) → the refusal note.
 	if got := Scrub("⟦open-browser: http://theboring.name⟧", br); got !=
-		"[theboringoffice] open-browser refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] open-browser refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused marker-only fallback = %q", got)
 	}
 	// no markers → identity, and NO bridge traffic.
@@ -369,27 +369,27 @@ func TestScrubFallbackNamesNewKinds(t *testing.T) {
 
 	// screenshot-only (allowed) → the kind-named note.
 	if got := Scrub("⟦browser-screenshot: https://theboring.name⟧", br); got !=
-		"[theboringoffice] browser-screenshot: https://theboring.name" {
+		"[theboringfloor] browser-screenshot: https://theboring.name" {
 		t.Fatalf("screenshot marker-only fallback = %q", got)
 	}
 	// snapshot-only (allowed) → the kind-named note.
 	if got := Scrub("⟦browser-snapshot: https://theboring.name⟧", br); got !=
-		"[theboringoffice] browser-snapshot: https://theboring.name" {
+		"[theboringfloor] browser-snapshot: https://theboring.name" {
 		t.Fatalf("snapshot marker-only fallback = %q", got)
 	}
 	// one of each kind, all allowed → kinds join with " · ".
 	if got := Scrub("⟦open-browser: https://a.example⟧\n⟦browser-snapshot: https://b.example⟧\n⟦browser-screenshot: https://c.example⟧", br); got !=
-		"[theboringoffice] open-browser: https://a.example · browser-screenshot: https://c.example · browser-snapshot: https://b.example" {
+		"[theboringfloor] open-browser: https://a.example · browser-screenshot: https://c.example · browser-snapshot: https://b.example" {
 		t.Fatalf("mixed-kind marker-only fallback = %q", got)
 	}
 	// a refused screenshot rides its own kind label.
 	if got := Scrub("⟦browser-screenshot: http://theboring.name⟧", br); got !=
-		"[theboringoffice] browser-screenshot refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] browser-screenshot refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused screenshot fallback = %q", got)
 	}
 	// allowed + refused mix → the " · refused: " tail (open-kind contract).
 	if got := Scrub("⟦open-browser: https://a.example⟧\n⟦browser-snapshot: http://theboring.name⟧", br); got !=
-		"[theboringoffice] open-browser: https://a.example · refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] open-browser: https://a.example · refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("mixed allowed/refused fallback = %q", got)
 	}
 	// every scrub above stripped its markers (the notes are the WHOLE
@@ -726,11 +726,11 @@ func TestScrubFallbackNamesAction(t *testing.T) {
 	br := &Bridge{Emit: sink.emit, Getenv: flagEnv(false)}
 
 	if got := Scrub("⟦browser-action: https://theboring.name | click: #buy⟧", br); got !=
-		"[theboringoffice] browser-action: https://theboring.name" {
+		"[theboringfloor] browser-action: https://theboring.name" {
 		t.Fatalf("action-only fallback = %q", got)
 	}
 	if got := Scrub("⟦browser-action: http://theboring.name | click: #buy⟧", br); got !=
-		"[theboringoffice] browser-action refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] browser-action refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused action-only fallback = %q", got)
 	}
 	// prose + action marker → the prose stays, no fallback note.

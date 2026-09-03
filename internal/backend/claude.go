@@ -249,7 +249,7 @@ func (b *liveClaudeBackend) NewOffice() (string, error) {
 	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: "", Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
 	}})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] new office session fresh — claude session id pins when the next system/init lands"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] new office session fresh — claude session id pins when the next system/init lands"})
 	return "", nil
 }
 
@@ -294,7 +294,7 @@ func (b *liveClaudeBackend) SwapPrimary(id string) error {
 	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: id, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
 	}})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary session swapped to " + id})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] primary session swapped to " + id})
 	return nil
 }
 
@@ -553,18 +553,18 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 		ID: "hr", Name: "hr", Role: state.RoleHR, Seat: "hr", Sprite: state.SpriteAtDesk,
 	}})
 	// Backend-name hint FIRST (the topbar/reducer latch reads this marker
-	// "[theboringoffice] backend: <name>" — same contract as opencode.go's
+	// "[theboringfloor] backend: <name>" — same contract as opencode.go's
 	// boot and the /backend swap line): it precedes the capability line so
 	// every later status can own the line without losing the name. Both
 	// land BEFORE the reader starts, so the boot event order is
 	// deterministic (hires, hints, then whatever the wire delivers).
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: claudecode"})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live (claude) — " + bin2 + " | board: in-memory"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: claudecode"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] live (claude) — " + bin2 + " | board: in-memory"})
 	if bypass {
 		// Same transparency convention as the majdoor/concierge-off boot
 		// lines: a mode that silences every permission prompt is named
 		// on the record, once, at boot.
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] bypass permissions: on (--dangerously-skip-permissions) — claude never asks"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] bypass permissions: on (--dangerously-skip-permissions) — claude never asks"})
 	}
 	// The charter pass's notes ride right behind the fixed boot prefix,
 	// still synchronously BEFORE the reader starts — deterministic boot
@@ -836,7 +836,7 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	}
 	if stderr := strings.TrimSpace(errBuf.String()); bypass && strings.Contains(stderr, "dangerously-skip-permissions") {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-			"[theboringoffice] claude bypass launch failed: CLI rejected --dangerously-skip-permissions (%s) — upgrade Claude Code or turn bypass off and respawn", trimTo(stderr, 300))})
+			"[theboringfloor] claude bypass launch failed: CLI rejected --dangerously-skip-permissions (%s) — upgrade Claude Code or turn bypass off and respawn", trimTo(stderr, 300))})
 		return
 	}
 	if es := exitStatus(err); es == 130 || es == 143 {
@@ -846,13 +846,13 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	}
 	if resume := b.resumeIDOrEmpty(); resume != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-			"[theboringoffice] claude process died (exited: %v) — your next send respawns it with --resume %s", err, shortTitle(resume, 24))})
+			"[theboringfloor] claude process died (exited: %v) — your next send respawns it with --resume %s", err, shortTitle(resume, 24))})
 		return
 	}
 	// No init pin yet (init arrives after the first Send) — there is no
 	// session to resume; the death is reported plainly instead.
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] claude process died before system/init (exited: %v) — check `claude auth status` (CLAUDE_CONFIG_DIR defaults to ~/.claude so your login carries over)", err)})
+		"[theboringfloor] claude process died before system/init (exited: %v) — check `claude auth status` (CLAUDE_CONFIG_DIR defaults to ~/.claude so your login carries over)", err)})
 }
 
 func (b *liveClaudeBackend) resumeIDOrEmpty() string {
@@ -1036,7 +1036,7 @@ func (b *liveClaudeBackend) Send(text string) error {
 func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error {
 	prepared, skipped := prepareAttachments(atts)
 	if len(skipped) > 0 {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] could not attach " +
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] could not attach " +
 			strings.Join(skipped, ", ") + " (file unreadable) — sent without it"})
 	}
 	noUpload := func(string) bool { return false }
@@ -1095,7 +1095,7 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 		deadID := "boss-" + itoa(b.chatSeq)
 		b.mu.Unlock()
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
-			ID: deadID, From: "boss", Text: "[theboringoffice] backend not started", At: nowMs(), Pending: false,
+			ID: deadID, From: "boss", Text: "[theboringfloor] backend not started", At: nowMs(), Pending: false,
 		}})
 		return nil
 	}
@@ -1133,7 +1133,7 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 		b.mu.Unlock()
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
 			ID: pendingID, From: "boss",
-			Text: "[theboringoffice] prompt failed: " + shortTitle(err.Error(), 120),
+			Text: "[theboringfloor] prompt failed: " + shortTitle(err.Error(), 120),
 			At:   nowMs(), Pending: false,
 		}})
 		// The caller owns attachment cleanup and retry policy. A local error
@@ -1615,7 +1615,7 @@ var _ state.SessionAborter = (*liveClaudeBackend)(nil)
 // AbortSessions is the live /stop contract for the claude backend:
 //  1. send ONE interrupt control_request (first-class teardown — the turn
 //     stops cleanly with a result recorded);
-//  2. flush open boss streams as "[theboringoffice] stream interrupted" and
+//  2. flush open boss streams as "[theboringfloor] stream interrupted" and
 //     close the FIFO-head placeholder with the stopped marker;
 //  3. if the turn is STILL live after claudeAbortSigIntAfter, SIGINT the
 //     process; if still live after claudeAbortSigTermAfter, SIGTERM —
@@ -1644,14 +1644,14 @@ func (b *liveClaudeBackend) AbortSessions() error {
 		if err := b.writeLine(claudeInterruptLine(seq)); err != nil {
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[claude] interrupt write failed: " + shortTitle(err.Error(), 100)})
 		} else {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] turn abort: interrupt sent to claude"})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] turn abort: interrupt sent to claude"})
 		}
 	}
 
 	// Post-abort tidy (opencode parity): flush open streams, close the
 	// FIFO head placeholder with the stopped marker.
 	b.mu.Lock()
-	streamEvs := claudeInterruptedStreamEvents(b.ctx, "[theboringoffice] stream interrupted", nowMs())
+	streamEvs := claudeInterruptedStreamEvents(b.ctx, "[theboringfloor] stream interrupted", nowMs())
 	for id := range b.chatSlots {
 		delete(b.chatSlots, id)
 	}
@@ -1668,7 +1668,7 @@ func (b *liveClaudeBackend) AbortSessions() error {
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
 			ID:      headID,
 			From:    "boss",
-			Text:    "[theboringoffice] stopped (turn aborted)",
+			Text:    "[theboringfloor] stopped (turn aborted)",
 			At:      nowMs(),
 			Pending: false,
 		}})
@@ -1739,7 +1739,7 @@ func (b *liveClaudeBackend) Stop() error {
 		return nil
 	}
 	b.mu.Lock()
-	streamEvs := claudeInterruptedStreamEvents(b.ctx, "[theboringoffice] stream interrupted", nowMs())
+	streamEvs := claudeInterruptedStreamEvents(b.ctx, "[theboringfloor] stream interrupted", nowMs())
 	for id := range b.chatSlots {
 		delete(b.chatSlots, id)
 	}

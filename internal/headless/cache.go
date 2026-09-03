@@ -38,6 +38,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 )
 
 const (
@@ -286,7 +288,7 @@ func snapKey(rawurl string, maxText int) string {
 // shotsDir — the PNG landing zone: <THEBORINGOFFICE_HOME>/shots when the
 // member/harness overrides home, else <os.TempDir>/shots.
 func shotsDir() string {
-	if home := os.Getenv("THEBORINGOFFICE_HOME"); home != "" {
+	if home := brand.Get("HOME"); home != "" {
 		return filepath.Join(home, "shots")
 	}
 	return filepath.Join(os.TempDir(), "shots")

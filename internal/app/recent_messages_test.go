@@ -23,7 +23,7 @@ func TestRecentMessagesFormatsLastTwentyAndPostsNotice(t *testing.T) {
 	if len(rb.sentTexts) != 1 {
 		t.Fatalf("one synthetic follow-up = %v", rb.sentTexts)
 	}
-	want := "[theboringoffice] recent chat context (last 20 messages, oldest first)\n" +
+	want := "[theboringfloor] recent chat context (last 20 messages, oldest first)\n" +
 		"user: message 2\n" + strings.Join(recentUserLines(3, 20), "\n") + "\n" +
 		"tool bash (done): go test ./...\n  output: all green"
 	if rb.sentTexts[0] != want {
@@ -49,10 +49,10 @@ func TestRecentMessagesDefensivelyClampsAndSkipsPendingAndControls(t *testing.T)
 		{From: "user", Text: "\x1b[31mred\x1b[0m\x00\nsecond"},
 		{From: "boss", Text: "answer\r\x07"},
 		{From: "office", Kind: "office", Text: "noise"},
-		{From: "user", Text: "[theboringoffice] recent chat context (last 2 messages, oldest first)"},
+		{From: "user", Text: "[theboringfloor] recent chat context (last 2 messages, oldest first)"},
 	}
 	got, sent := m.buildRecentMessagesFollowup(999)
-	want := "[theboringoffice] recent chat context (last 50 messages, oldest first)\nuser: red\nsecond\nboss: answer"
+	want := "[theboringfloor] recent chat context (last 50 messages, oldest first)\nuser: red\nsecond\nboss: answer"
 	if got != want || sent != 2 {
 		t.Fatalf("clamped/sanitized context = (%q, %d), want (%q, 2)", got, sent, want)
 	}
@@ -64,13 +64,13 @@ func TestRecentMessagesDefensivelyClampsAndSkipsPendingAndControls(t *testing.T)
 func TestRecentMessagesRecoveryControlRowsNeverReenterTranscript(t *testing.T) {
 	m := New(&recBackend{}, config.Default())
 	m.st.Chat = []state.ChatMsg{
-		{From: "boss", Text: "[theboringoffice] recent messages requested: 20"},
+		{From: "boss", Text: "[theboringfloor] recent messages requested: 20"},
 		{From: "user", Text: "please continue"},
 		{From: "boss", Text: "normal answer"},
 	}
 
 	first, sent := m.buildRecentMessagesFollowup(20)
-	want := "[theboringoffice] recent chat context (last 20 messages, oldest first)\n" +
+	want := "[theboringfloor] recent chat context (last 20 messages, oldest first)\n" +
 		"user: please continue\n" +
 		"boss: normal answer"
 	if first != want || sent != 2 {
@@ -120,7 +120,7 @@ func TestRecentMessagesNoContextAndCurrentBackendSwap(t *testing.T) {
 	m.currentBackend.replace(latest) // replacement happens before tea executes cmd
 	m = runMsg(t, m, cmd())
 	requireCurrentCalls(t, old)
-	requireCurrentCalls(t, latest, "[theboringoffice] no recent chat context available")
+	requireCurrentCalls(t, latest, "[theboringfloor] no recent chat context available")
 	if !lastOfficeNoticeHas(m, "context: sent 0 recent messages to the boss") {
 		t.Fatalf("no-context delivery must still be visible: %+v", officeRows(m))
 	}

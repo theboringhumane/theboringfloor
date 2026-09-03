@@ -408,11 +408,11 @@ func runClaudePlanProof() error {
 	fmt.Println(d1.frame2)
 	fmt.Println("===== UI SHOT =====")
 	if err := assertFrameContains("claude B", d1.frame2,
-		"PLAN · markdown",      // pane header in the floor slot
-		"azimuth",              // the boss's plan text, mirrored into the pane (unique marker)
-		"[plan]",               // statusbar agent badge
-		"click to edit",        // pane footer hint — the pane is UNFOCUSED
-		"Goal",                 // the plan body's adopted heading
+		"PLAN · markdown", // pane header in the floor slot
+		"azimuth",         // the boss's plan text, mirrored into the pane (unique marker)
+		"[plan]",          // statusbar agent badge
+		"click to edit",   // pane footer hint — the pane is UNFOCUSED
+		"Goal",            // the plan body's adopted heading
 		"A gallery lobby wall that feels calm, not", // the plan body itself
 	); err != nil {
 		return err

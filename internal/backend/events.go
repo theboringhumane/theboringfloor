@@ -1740,14 +1740,14 @@ func mapOCEvent(raw ocSSEEvent, ctx *normCtx, primaryID string, now int64) []sta
 			if p.Error != nil && p.Error.Data.Message != "" {
 				message = p.Error.Data.Message
 			}
-			evs := interruptedStreamEvents(ctx, "[theboringoffice] stream interrupted")
+			evs := interruptedStreamEvents(ctx, "[theboringfloor] stream interrupted")
 			return append(evs, state.Event{
 				Kind: state.EvChatOffice,
 				Msg: state.ChatMsg{
 					ID:      "office-error-" + itoa64(now),
 					From:    "office",
 					Kind:    "office",
-					Text:    "[theboringoffice] office error: " + shortTitle(message, 120),
+					Text:    "[theboringfloor] office error: " + shortTitle(message, 120),
 					At:      now,
 					Pending: false,
 				},
@@ -1760,13 +1760,13 @@ func mapOCEvent(raw ocSSEEvent, ctx *normCtx, primaryID string, now int64) []sta
 		// Any boss text still streaming dies with the run: flush whatever
 		// accumulated as a final Pending=false bubble (update-in-place on
 		// the same ID), then the error line.
-		evs := interruptedStreamEvents(ctx, "[theboringoffice] stream interrupted")
+		evs := interruptedStreamEvents(ctx, "[theboringfloor] stream interrupted")
 		return append(evs, state.Event{
 			Kind: state.EvChatBoss,
 			Msg: state.ChatMsg{
 				ID:      "boss-error-" + itoa64(now),
 				From:    "boss",
-				Text:    "[theboringoffice] boss error: " + shortTitle(message, 120),
+				Text:    "[theboringfloor] boss error: " + shortTitle(message, 120),
 				At:      now,
 				Pending: false,
 			},

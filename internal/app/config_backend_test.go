@@ -4,7 +4,7 @@
 //     "claudecode" to the claude transport and everything else to the
 //     opencode transport ("" is opencode — the config backfill contract).
 //   - backendNameFromStatus: the EvStatus marker grammar
-//     ("[theboringoffice] backend: <name>" boot hint; "… <old> → <new>
+//     ("[theboringfloor] backend: <name>" boot hint; "… <old> → <new>
 //     (turn #N archived)" swap line) with a strict two-name whitelist —
 //     a refusal copy is NOT a latch.
 //   - the reducer latch: those lines ride applyEvent into
@@ -62,17 +62,17 @@ func TestBackendNameFromStatus(t *testing.T) {
 		line, want string
 		ok         bool
 	}{
-		{"[theboringoffice] backend: opencode", "opencode", true},
-		{"[theboringoffice] backend: claudecode", "claudecode", true},
+		{"[theboringfloor] backend: opencode", "opencode", true},
+		{"[theboringfloor] backend: claudecode", "claudecode", true},
 		// the swap grammar: the arrow's RIGHT side latches.
-		{"[theboringoffice] backend: opencode → claudecode (turn #3 archived)", "claudecode", true},
-		{"[theboringoffice] backend: claudecode → opencode (turn #0 archived)", "opencode", true},
+		{"[theboringfloor] backend: opencode → claudecode (turn #3 archived)", "claudecode", true},
+		{"[theboringfloor] backend: claudecode → opencode (turn #0 archived)", "opencode", true},
 		// not a latch: other status lines, refusals, junk names, the
 		// booting placeholder.
 		{"backend swap opencode → claudecode refused — office busy: boss turn in flight", "", false},
-		{"[theboringoffice] live - http://127.0.0.1:1 | board: in-memory", "", false},
-		{"[theboringoffice] backend: zephyr", "", false},
-		{"[theboringoffice] live - booting...", "", false},
+		{"[theboringfloor] live - http://127.0.0.1:1 | board: in-memory", "", false},
+		{"[theboringfloor] backend: zephyr", "", false},
+		{"[theboringfloor] live - booting...", "", false},
 		{"", "", false},
 	} {
 		name, ok := backendNameFromStatus(tc.line)
@@ -93,15 +93,15 @@ func TestBackendNameLatchReducer(t *testing.T) {
 	if m.st.BackendName != "" {
 		t.Fatalf("unrelated statuses must not latch, got %q", m.st.BackendName)
 	}
-	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: opencode"})
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: opencode"})
 	if m.st.BackendName != "opencode" {
 		t.Fatalf("the boot hint must latch opencode, got %q", m.st.BackendName)
 	}
-	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory: agentmemory OK"})
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory: agentmemory OK"})
 	if m.st.BackendName != "opencode" {
 		t.Fatalf("an unrelated EvStatus must never UN-latch, got %q", m.st.BackendName)
 	}
-	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: opencode → claudecode (turn #5 archived)"})
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: opencode → claudecode (turn #5 archived)"})
 	if m.st.BackendName != "claudecode" {
 		t.Fatalf("the swap line must re-latch to the NEW name, got %q", m.st.BackendName)
 	}
@@ -117,7 +117,7 @@ func TestBackendNameFallback(t *testing.T) {
 		t.Fatalf("pre-hint the name must resolve from brain.json, got %q", got)
 	}
 	m.st.BackendName = "" // latch stays empty: the hint always wins once it lands
-	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: claudecode"})
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: claudecode"})
 	if got := m.backendName(); got != "claudecode" {
 		t.Fatalf("post-hint the latch wins, got %q", got)
 	}

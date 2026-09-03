@@ -209,9 +209,9 @@ func TestStartBootNoteMemoryLane(t *testing.T) {
 	b, log := startLiveForTest(t) // agentmemory pointed at a refused port
 	_ = b
 	log.waitFor(t, 2*time.Second, func() bool {
-		return log.textCount("[theboringoffice] memory: memory lane file-only") == 1
+		return log.textCount("[theboringfloor] memory: memory lane file-only") == 1
 	}, "the file-only memory boot note")
-	if n := log.textCount("[theboringoffice] memory:"); n != 1 {
+	if n := log.textCount("[theboringfloor] memory:"); n != 1 {
 		t.Fatalf("exactly one memory boot note, got %d", n)
 	}
 }

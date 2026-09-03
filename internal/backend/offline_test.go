@@ -225,7 +225,7 @@ func TestOfflineGateParksAndResumes(t *testing.T) {
 	if n := log.count(state.EvOffline); n != 1 {
 		t.Fatalf("EvOffline must fire once per outage, got %d", n)
 	}
-	if n := log.textCount("[theboringoffice] offline — office waiting for internet…"); n != 1 {
+	if n := log.textCount("[theboringfloor] offline — office waiting for internet…"); n != 1 {
 		t.Fatalf("offline status note must fire once, got %d", n)
 	}
 
@@ -244,7 +244,7 @@ func TestOfflineGateParksAndResumes(t *testing.T) {
 	if !reattached {
 		t.Fatalf("recovery must re-attach promptly (still %d attempts after 500ms)", attempts.Load())
 	}
-	if n := log.textCount("[theboringoffice] back online — resumed"); n != 2 {
+	if n := log.textCount("[theboringfloor] back online — resumed"); n != 2 {
 		t.Fatalf("resume note: want boot+recovery = 2, got %d", n)
 	}
 
@@ -273,7 +273,7 @@ func TestDemoOfflineFlow(t *testing.T) {
 	if len(ks) != 2 || ks[0] != state.EvOffline || ks[1] != state.EvStatus {
 		t.Fatalf("offline flip must emit [EvOffline EvStatus], got %v", ks)
 	}
-	if n := log.textCount("[theboringoffice] offline — office waiting for internet…"); n != 1 {
+	if n := log.textCount("[theboringfloor] offline — office waiting for internet…"); n != 1 {
 		t.Fatalf("waiting note missing (%d)", n)
 	}
 
@@ -287,7 +287,7 @@ func TestDemoOfflineFlow(t *testing.T) {
 	if len(ks) != 4 || ks[2] != state.EvOnline || ks[3] != state.EvStatus {
 		t.Fatalf("online flip must emit [EvOnline EvStatus] after the pair, got %v", ks)
 	}
-	if n := log.textCount("[theboringoffice] back online — resumed"); n != 1 {
+	if n := log.textCount("[theboringfloor] back online — resumed"); n != 1 {
 		t.Fatalf("resumed note missing (%d)", n)
 	}
 }

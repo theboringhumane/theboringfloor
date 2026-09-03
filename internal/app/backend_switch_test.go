@@ -6,7 +6,7 @@
 //     row) and the statusline (EvStatus twin) — and tears down NOTHING.
 //   - esc-esc//stop unwinds the turn → the retry swaps: old transport
 //     stopped, new one factory-built + Started on the boot sink, ONE
-//     "[theboringoffice] backend: <old> → <new> (turn #N archived)"
+//     "[theboringfloor] backend: <old> → <new> (turn #N archived)"
 //     EvStatus lands (activity + statusline + the topbar latch), and the
 //     choice persists to brain.json.
 //   - session.json pins sessions PER BACKEND: sequential persists under
@@ -262,7 +262,7 @@ func TestBackendSwapForceEscThenSwaps(t *testing.T) {
 	if *calls != nil && len(*calls) != 1 || len(*calls) == 1 && (*calls)[0] != "claudecode" {
 		t.Fatalf("the swap must factory-build exactly claudecode, calls=%v", *calls)
 	}
-	wantLine := "[theboringoffice] backend: opencode → claudecode (turn #0 archived)"
+	wantLine := "[theboringfloor] backend: opencode → claudecode (turn #0 archived)"
 	if m.st.StatusLine != wantLine {
 		t.Fatalf("swap statusline:\n got %q\nwant %q", m.st.StatusLine, wantLine)
 	}
@@ -275,7 +275,7 @@ func TestBackendSwapForceEscThenSwaps(t *testing.T) {
 	if stubB.pinnedOverrides() != nil {
 		t.Fatalf("a transport with no archived pin must boot FRESH, overrides=%v", stubB.pinnedOverrides())
 	}
-	raw, err := os.ReadFile(filepath.Join(home, ".theboringoffice", "configs", "brain.json"))
+	raw, err := os.ReadFile(filepath.Join(home, ".theboringfloor", "configs", "brain.json"))
 	if err != nil {
 		t.Fatalf("brain.json was not persisted: %v", err)
 	}
@@ -318,7 +318,7 @@ func TestBackendSwapDrainFlushThenSwaps(t *testing.T) {
 	}
 	m = runMsg(t, m, slashMsg{text: "/backend claudecode"})
 	stubB.waitStarted(t, "claudecode")
-	wantLine := "[theboringoffice] backend: opencode → claudecode (turn #1 archived)"
+	wantLine := "[theboringfloor] backend: opencode → claudecode (turn #1 archived)"
 	if m.st.StatusLine != wantLine {
 		t.Fatalf("swap after drain must count the archived turn:\n got %q\nwant %q", m.st.StatusLine, wantLine)
 	}

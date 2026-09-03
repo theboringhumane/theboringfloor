@@ -111,7 +111,7 @@ func TestInterruptedConciergeStreamFlushesOfficeLane(t *testing.T) {
 	mapTextPart(ocPart{ID: "prt-2", SessionID: "ses-primary", MessageID: "msg-2", Type: "text"}, ctx, 60)
 	mapTextDelta(ocPartDelta{SessionID: "ses-primary", MessageID: "msg-2", PartID: "prt-2", Field: "text", Delta: "essay"}, ctx)
 
-	evs := interruptedStreamEvents(ctx, "[theboringoffice] stream interrupted")
+	evs := interruptedStreamEvents(ctx, "[theboringfloor] stream interrupted")
 	if len(evs) != 2 {
 		t.Fatalf("both open streams must flush, got %v", evs)
 	}

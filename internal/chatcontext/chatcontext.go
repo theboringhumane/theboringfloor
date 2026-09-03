@@ -16,7 +16,7 @@ const (
 	// ControlPrefix identifies synthetic recent-message protocol text. It is
 	// intentionally shared so transcript consumers do not need to duplicate
 	// protocol strings when excluding recovery control rows.
-	ControlPrefix = "[theboringoffice] "
+	ControlPrefix = "[theboringfloor] "
 	// RecentMessagesRequestedPrefix is the settled bubble for a marker-only
 	// request.
 	RecentMessagesRequestedPrefix = ControlPrefix + "recent messages requested: "

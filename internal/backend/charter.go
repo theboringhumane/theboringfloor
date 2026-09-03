@@ -72,7 +72,7 @@ var charterAcceptedPaths = []string{
 // GRAFEIO_NO_AUTOCHARTER=1 is honored as a fallback.
 func EnsureCharter(dir string) (changed bool, notes []string) {
 	if envOrLegacy("THEBORINGOFFICE_NO_AUTOCHARTER", "GRAFEIO_NO_AUTOCHARTER") == "1" {
-		return false, []string{"[theboringoffice] manager charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)"}
+		return false, []string{"[theboringfloor] manager charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)"}
 	}
 
 	ocDir := filepath.Join(dir, ".opencode")
@@ -83,10 +83,10 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 	want := []byte(charter.Text)
 	if got, err := os.ReadFile(chartPath); err != nil || !bytes.Equal(got, want) {
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
-			return changed, append(notes, "[theboringoffice] manager charter: failed (mkdir "+ocDir+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] manager charter: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
 		if err := os.WriteFile(chartPath, want, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] manager charter: failed (write "+chartPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] manager charter: failed (write "+chartPath+": "+err.Error()+")")
 		}
 		changed = true
 	}
@@ -99,22 +99,22 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 	if err == nil {
 		merged, mergeChanged, mergeErr := mergeInstruction(cfgRaw, charterRelPath, charterAcceptedPaths)
 		if mergeErr != nil {
-			return changed, append(notes, "[theboringoffice] manager charter: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
+			return changed, append(notes, "[theboringfloor] manager charter: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
 		}
 		if mergeChanged {
 			if err := os.WriteFile(cfgPath, merged, 0o644); err != nil {
-				return changed, append(notes, "[theboringoffice] manager charter: failed (write "+cfgPath+": "+err.Error()+")")
+				return changed, append(notes, "[theboringfloor] manager charter: failed (write "+cfgPath+": "+err.Error()+")")
 			}
 			changed = true
 		}
 	} else if os.IsNotExist(err) {
 		fresh := []byte("{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"instructions\": [\n    \"" + charterRelPath + "\"\n  ]\n}\n")
 		if err := os.WriteFile(cfgPath, fresh, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] manager charter: failed (write "+cfgPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] manager charter: failed (write "+cfgPath+": "+err.Error()+")")
 		}
 		changed = true
 	} else {
-		return changed, append(notes, "[theboringoffice] manager charter: failed (read "+cfgPath+": "+err.Error()+")")
+		return changed, append(notes, "[theboringfloor] manager charter: failed (read "+cfgPath+": "+err.Error()+")")
 	}
 
 	// 	3. The MCP prompt attachment (charter_mcp.go): list the serve's
@@ -139,9 +139,9 @@ func EnsureCharter(dir string) (changed bool, notes []string) {
 	}
 
 	if changed {
-		return true, append(notes, "[theboringoffice] manager charter: wired (.opencode/oikonomos.md)")
+		return true, append(notes, "[theboringfloor] manager charter: wired (.opencode/oikonomos.md)")
 	}
-	return false, append(notes, "[theboringoffice] manager charter: already wired (.opencode/oikonomos.md)")
+	return false, append(notes, "[theboringfloor] manager charter: already wired (.opencode/oikonomos.md)")
 }
 
 // charterOutcome is the two things Start needs out of a charter pass.
@@ -288,14 +288,14 @@ func ensureLedgerAttachment(dir string) (changed bool, notes []string) {
 	//    file (member edits and app-recorded entries are sacred).
 	if _, err := os.Stat(ledgerPath); os.IsNotExist(err) {
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
-			return changed, append(notes, "[theboringoffice] office ledger: failed (mkdir "+ocDir+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] office ledger: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
 		if err := os.WriteFile(ledgerPath, renderLedgerSeed(), 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] office ledger: failed (write "+ledgerPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] office ledger: failed (write "+ledgerPath+": "+err.Error()+")")
 		}
 		changed = true
 	} else if err != nil {
-		return changed, append(notes, "[theboringoffice] office ledger: failed (stat "+ledgerPath+": "+err.Error()+")")
+		return changed, append(notes, "[theboringfloor] office ledger: failed (stat "+ledgerPath+": "+err.Error()+")")
 	}
 
 	// 2. The instructions entry rides beside the charter's and the MCP
@@ -306,28 +306,28 @@ func ensureLedgerAttachment(dir string) (changed bool, notes []string) {
 	if err == nil {
 		merged, mergeChanged, mergeErr := mergeInstruction(cfgRaw, ledgerRelPath, ledgerAcceptedPaths)
 		if mergeErr != nil {
-			return changed, append(notes, "[theboringoffice] office ledger: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
+			return changed, append(notes, "[theboringfloor] office ledger: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
 		}
 		if mergeChanged {
 			if err := os.WriteFile(cfgPath, merged, 0o644); err != nil {
-				return changed, append(notes, "[theboringoffice] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
+				return changed, append(notes, "[theboringfloor] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
 			}
 			changed = true
 		}
 	} else if os.IsNotExist(err) {
 		fresh := []byte("{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"instructions\": [\n    \"" + ledgerRelPath + "\"\n  ]\n}\n")
 		if err := os.WriteFile(cfgPath, fresh, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] office ledger: failed (write "+cfgPath+": "+err.Error()+")")
 		}
 		changed = true
 	} else {
-		return changed, append(notes, "[theboringoffice] office ledger: failed (read "+cfgPath+": "+err.Error()+")")
+		return changed, append(notes, "[theboringfloor] office ledger: failed (read "+cfgPath+": "+err.Error()+")")
 	}
 
 	if changed {
-		return true, append(notes, "[theboringoffice] office ledger: wired (.opencode/office-ledger.md)")
+		return true, append(notes, "[theboringfloor] office ledger: wired (.opencode/office-ledger.md)")
 	}
-	return false, append(notes, "[theboringoffice] office ledger: already wired (.opencode/office-ledger.md)")
+	return false, append(notes, "[theboringfloor] office ledger: already wired (.opencode/office-ledger.md)")
 }
 
 // bypassConfigContent is passed to an owned OpenCode process only. OpenCode's

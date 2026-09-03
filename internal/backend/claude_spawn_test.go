@@ -172,7 +172,7 @@ func TestClaudeStartSeatsFloorBeforeInit(t *testing.T) {
 	if evs[1].Kind != state.EvHire || evs[1].Employee.Name != "hr" {
 		t.Fatalf("event 1 must be the hr hire, got %+v", evs[1])
 	}
-	if evs[2].Kind != state.EvStatus || evs[2].Text != "[theboringoffice] backend: claudecode" {
+	if evs[2].Kind != state.EvStatus || evs[2].Text != "[theboringfloor] backend: claudecode" {
 		t.Fatalf("event 2 must be the backend-name hint, got %+v", evs[2])
 	}
 	if evs[3].Kind != state.EvStatus || !strings.Contains(evs[3].Text, "live (claude)") {
@@ -222,7 +222,7 @@ func TestClaudeStartNeverWaitsForInit(t *testing.T) {
 	if got := b.PrimaryID(); got != "" {
 		t.Fatalf("PrimaryID = %q, want empty until init arrives", got)
 	}
-	if !log.hasStatusContaining("[theboringoffice] backend: claudecode") {
+	if !log.hasStatusContaining("[theboringfloor] backend: claudecode") {
 		t.Fatalf("the backend-name hint must fire without init; events: %v", log.snapshot())
 	}
 	if log.hasStatusContaining("no system/init") {
@@ -295,7 +295,7 @@ exit 2
 	claudeWait(t, "the pre-init death status line", 2*time.Second, func() bool {
 		return log.hasStatusContaining("claude process died before system/init")
 	})
-	if !log.hasStatusContaining("[theboringoffice] backend: claudecode") {
+	if !log.hasStatusContaining("[theboringfloor] backend: claudecode") {
 		t.Fatalf("the floor must seat even when the child is already gone")
 	}
 	if err := b.Send("hello?"); err != nil {

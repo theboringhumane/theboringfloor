@@ -68,7 +68,7 @@ func TestNotifyPermissionCohortExactlyOnce(t *testing.T) {
 	// generic body (agent + tool NAME; the ToolSummary path must NOT leak)
 	*m = runMsg(t, *m, tea.BlurMsg{})
 	*m = runMsg(t, *m, permEvent("perm-1", "boss", "write", "pending"))
-	want := "permission|theboringoffice|permission needed — boss needs write"
+	want := "permission|theboringfloor|permission needed — boss needs write"
 	if len(bus.taps) != 1 || bus.taps[0] != want {
 		t.Fatalf("cohort-opening ask must ping once with generic copy:\ngot  %v\nwant [%q]", bus.taps, want)
 	}
@@ -91,7 +91,7 @@ func TestNotifyPermissionCohortExactlyOnce(t *testing.T) {
 	*m = runMsg(t, *m, permEvent("perm-2", "tekton-1", "", "resolved"))
 	*m = runMsg(t, *m, permEvent("perm-3", "skopos-1", "", "resolved"))
 	*m = runMsg(t, *m, permEvent("perm-4", "boss", "bash", "pending"))
-	if len(bus.taps) != 2 || bus.taps[1] != "permission|theboringoffice|permission needed — boss needs bash" {
+	if len(bus.taps) != 2 || bus.taps[1] != "permission|theboringfloor|permission needed — boss needs bash" {
 		t.Fatalf("a fresh cohort after emptying must re-arm exactly once, got %v", bus.taps)
 	}
 }
@@ -103,7 +103,7 @@ func TestNotifyDoneExactlyOnce(t *testing.T) {
 	// send → completion fires ONE done ping, body clipped to one line
 	*m = runMsg(t, *m, chatSentMsg{text: "wire the notifier"})
 	*m = runMsg(t, *m, bossDoneEvent("bossmsg-1", "done — the fleet is wired.\nTests are green too."))
-	want := "done|theboringoffice|the boss is done — done — the fleet is wired. Tests are green too."
+	want := "done|theboringfloor|the boss is done — done — the fleet is wired. Tests are green too."
 	if len(bus.taps) != 1 || bus.taps[0] != want {
 		t.Fatalf("armed completion must ping once with the clipped reply:\ngot  %v\nwant [%q]", bus.taps, want)
 	}
@@ -155,7 +155,7 @@ func TestNotifyBlurFiresLiveCohortImmediately(t *testing.T) {
 		t.Fatalf("focused asks mint no pings, got %v", bus.taps)
 	}
 	*m = runMsg(t, *m, tea.BlurMsg{})
-	want := "permission|theboringoffice|permission needed — boss needs write"
+	want := "permission|theboringfloor|permission needed — boss needs write"
 	if len(bus.taps) != 1 || bus.taps[0] != want {
 		t.Fatalf("blur during a live cohort must fire the front's ping:\ngot  %v\nwant [%q]", bus.taps, want)
 	}
@@ -168,7 +168,7 @@ func TestNotifyBlurFiresLiveCohortImmediately(t *testing.T) {
 	}
 
 	// cohort emptied (both answered user-side) → later blurs fall silent
-	*m = runMsg(t, *m, permAnswerMsg{response: "once"})  // front: boss ask
+	*m = runMsg(t, *m, permAnswerMsg{response: "once"})   // front: boss ask
 	*m = runMsg(t, *m, permAnswerMsg{response: "always"}) // front now: child ask
 	*m = runMsg(t, *m, tea.FocusMsg{})
 	*m = runMsg(t, *m, tea.BlurMsg{})

@@ -299,38 +299,38 @@ func ensureMCPAttachment(dir string) (changed bool, notes []string) {
 		retired := false
 		if _, err := os.Stat(attPath); err == nil {
 			if err := os.Remove(attPath); err != nil {
-				return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (remove "+attPath+": "+err.Error()+")")
+				return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (remove "+attPath+": "+err.Error()+")")
 			}
 			retired = true
 		}
 		if cfgRaw, err := os.ReadFile(cfgPath); err == nil {
 			unmerged, cut, unmergeErr := unmergeInstruction(cfgRaw, mcpAttachmentAcceptedPaths)
 			if unmergeErr != nil {
-				return retired, append(notes, "[theboringoffice] mcp prompt attachment: failed (unmerge "+cfgPath+": "+unmergeErr.Error()+")")
+				return retired, append(notes, "[theboringfloor] mcp prompt attachment: failed (unmerge "+cfgPath+": "+unmergeErr.Error()+")")
 			}
 			if cut {
 				if err := os.WriteFile(cfgPath, unmerged, 0o644); err != nil {
-					return retired, append(notes, "[theboringoffice] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
+					return retired, append(notes, "[theboringfloor] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
 				}
 				retired = true
 			}
 		} else if !os.IsNotExist(err) {
-			return retired, append(notes, "[theboringoffice] mcp prompt attachment: failed (read "+cfgPath+": "+err.Error()+")")
+			return retired, append(notes, "[theboringfloor] mcp prompt attachment: failed (read "+cfgPath+": "+err.Error()+")")
 		}
 		if retired {
-			return true, append(notes, "[theboringoffice] mcp prompt attachment: removed (no MCP servers configured — retired stale .opencode/mcp-servers.md)")
+			return true, append(notes, "[theboringfloor] mcp prompt attachment: removed (no MCP servers configured — retired stale .opencode/mcp-servers.md)")
 		}
-		return false, append(notes, "[theboringoffice] mcp prompt attachment: no MCP servers configured")
+		return false, append(notes, "[theboringfloor] mcp prompt attachment: no MCP servers configured")
 	}
 
 	// 1. The attachment markdown: write byte-exact, skip when identical.
 	want := renderMCPAttachment(servers)
 	if got, err := os.ReadFile(attPath); err != nil || !bytes.Equal(got, want) {
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
-			return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (mkdir "+ocDir+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
 		if err := os.WriteFile(attPath, want, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (write "+attPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (write "+attPath+": "+err.Error()+")")
 		}
 		changed = true
 	}
@@ -342,22 +342,22 @@ func ensureMCPAttachment(dir string) (changed bool, notes []string) {
 	if err == nil {
 		merged, mergeChanged, mergeErr := mergeInstruction(cfgRaw, mcpAttachmentRelPath, mcpAttachmentAcceptedPaths)
 		if mergeErr != nil {
-			return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
+			return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (merge "+cfgPath+": "+mergeErr.Error()+")")
 		}
 		if mergeChanged {
 			if err := os.WriteFile(cfgPath, merged, 0o644); err != nil {
-				return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
+				return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
 			}
 			changed = true
 		}
 	} else if os.IsNotExist(err) {
 		fresh := []byte("{\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"instructions\": [\n    \"" + mcpAttachmentRelPath + "\"\n  ]\n}\n")
 		if err := os.WriteFile(cfgPath, fresh, 0o644); err != nil {
-			return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
+			return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (write "+cfgPath+": "+err.Error()+")")
 		}
 		changed = true
 	} else {
-		return changed, append(notes, "[theboringoffice] mcp prompt attachment: failed (read "+cfgPath+": "+err.Error()+")")
+		return changed, append(notes, "[theboringfloor] mcp prompt attachment: failed (read "+cfgPath+": "+err.Error()+")")
 	}
 
 	if changed {
@@ -365,9 +365,9 @@ func ensureMCPAttachment(dir string) (changed bool, notes []string) {
 		if len(servers) == 1 {
 			word = "server"
 		}
-		return true, append(notes, fmt.Sprintf("[theboringoffice] mcp prompt attachment: wired (.opencode/mcp-servers.md — %d %s)", len(servers), word))
+		return true, append(notes, fmt.Sprintf("[theboringfloor] mcp prompt attachment: wired (.opencode/mcp-servers.md — %d %s)", len(servers), word))
 	}
-	return false, append(notes, "[theboringoffice] mcp prompt attachment: already wired (.opencode/mcp-servers.md)")
+	return false, append(notes, "[theboringfloor] mcp prompt attachment: already wired (.opencode/mcp-servers.md)")
 }
 
 // unmergeInstruction is mergeInstruction's mirror for the retirement

@@ -19,10 +19,11 @@
 package backend
 
 import (
-	"github.com/theboringhumane/theboringoffice/internal/state"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
 // TestClaudeControlRequestRoundTrip drives one shell stub that asks for

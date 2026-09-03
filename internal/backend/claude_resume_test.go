@@ -6,12 +6,13 @@ package backend
 
 import (
 	"bufio"
-	"github.com/theboringhumane/theboringoffice/internal/state"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/theboringhumane/theboringoffice/internal/state"
 )
 
 func TestClaudeResumePinAfterMidTurnKill(t *testing.T) {

@@ -113,7 +113,7 @@ func TestAgentFieldRidesPromptAsync(t *testing.T) {
 
 // TestAgentFieldDegradeLatchesAndRetriesOnce: a 400 on the agent field
 // (a) retries the SAME prompt once without it, (b) emits the status note
-// exactly once (with the "[theboringoffice] agent-field:" marker the app
+// exactly once (with the "[theboringfloor] agent-field:" marker the app
 // escalades into the transcript), (c) never sends the field again —
 // degrade open, and both prompts still land (SendAgent returns nil), and
 // (d) AgentDegraded() (the app's badge/warning seam) follows the latch.
@@ -141,7 +141,7 @@ func TestAgentFieldDegradeLatchesAndRetriesOnce(t *testing.T) {
 	if n := log.textCount("agent field"); n != 1 {
 		t.Fatalf("status note must fire exactly once, got %d", n)
 	}
-	if n := log.textCount("[theboringoffice] agent-field:"); n != 1 {
+	if n := log.textCount("[theboringfloor] agent-field:"); n != 1 {
 		t.Fatalf("the marker the app escalades to the transcript rides the note, got %d", n)
 	}
 	if !b.AgentDegraded() {

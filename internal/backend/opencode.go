@@ -40,7 +40,7 @@
 // gate. The message.updated completion pin emits the pinned full text on
 // the SAME ID with Pending:false (it stops the stream first). Stop() and
 // session.error flush any still-open stream as Pending:false with a
-// "[theboringoffice] stream interrupted" note.
+// "[theboringfloor] stream interrupted" note.
 //
 // Office concierge: cfg.Boss.Concierge (default on) adds a second,
 // lightweight root session ("theboringoffice concierge") so the member never talks
@@ -284,7 +284,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// the charter pass above, this never writes the member's config: the
 	// override starts and dies with the serve process.
 	if bypass {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] bypass permissions: on (ephemeral OPENCODE_CONFIG_CONTENT override)"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] bypass permissions: on (ephemeral OPENCODE_CONFIG_CONTENT override)"})
 	}
 
 	u := b.optURL
@@ -302,7 +302,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 			// with the merge already on disk. Behind an explicit URL (cfg/OPENCODE_SERVER)
 			// the server is not ours to restart — the note stands and the
 			// charter applies from the server's next boot.
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] manager charter: restarting serve so it picks up the config"})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] manager charter: restarting serve so it picks up the config"})
 			_ = proc.Process.Kill()
 			<-exit.done // reap via the scan-era reaper (never a second cmd.Wait)
 			spawnedURL, proc, exit, err = spawnServe(b.directory, bypass)
@@ -379,8 +379,8 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// lines below so a later status can own the line without losing the
 	// name, and the /backend swap grammar can re-latch on the very next
 	// "… → <name>" line.
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend: opencode"})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live - " + u + " | board: " + board})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: opencode"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] live - " + u + " | board: " + board})
 
 	// The memory lane's probe verdict, surfaced — never the silent degrade
 	// of old: when agentmemory is unreachable the office's completed-work
@@ -390,17 +390,17 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	if b.am.kind == "actions" {
 		memory = "agentmemory OK"
 	}
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory: " + memory})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory: " + memory})
 
 	if m := b.bossModelRef(); m != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] boss model override: " + m})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override: " + m})
 	}
 	if b.cfg.Backend.CTOModel != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] cto model override: " + b.cfg.Backend.CTOModel})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] cto model override: " + b.cfg.Backend.CTOModel})
 	}
 
 	if !b.cfg.Boss.Concierge {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge: off (boss.concierge=false) — busy-boss chat routes to the boss queue"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge: off (boss.concierge=false) — busy-boss chat routes to the boss queue"})
 	}
 
 	if b.am.kind == "actions" {
@@ -550,13 +550,13 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 		if forceFresh {
 			primary, perr = b.createPrimary(b.bossNameShort() + " · respawn")
 			if perr == nil {
-				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary session respawned fresh (" + primary.ID + ")"})
+				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] primary session respawned fresh (" + primary.ID + ")"})
 			}
 		} else {
 			primary, perr = b.ensurePrimary()
 		}
 		if perr != nil {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary respawn failed: " + shortTitle(perr.Error(), 100)})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] primary respawn failed: " + shortTitle(perr.Error(), 100)})
 		} else {
 			b.mu.Lock()
 			b.primaryID = primary.ID
@@ -580,7 +580,7 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 		deadID := "boss-" + itoa(b.chatSeq)
 		b.mu.Unlock()
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
-			ID: deadID, From: "boss", Text: "[theboringoffice] backend not started", At: nowMs(), Pending: false,
+			ID: deadID, From: "boss", Text: "[theboringfloor] backend not started", At: nowMs(), Pending: false,
 		}})
 		return nil
 	}
@@ -626,7 +626,7 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
 			ID:      pendingID,
 			From:    "boss",
-			Text:    "[theboringoffice] prompt failed: " + shortTitle(err.Error(), 120),
+			Text:    "[theboringfloor] prompt failed: " + shortTitle(err.Error(), 120),
 			At:      nowMs(),
 			Pending: false,
 		}})
@@ -703,21 +703,21 @@ func (b *liveBackend) SendConcierge(text string) error {
 		deadID := "office-pend-" + itoa(b.chatSeq)
 		b.mu.Unlock()
 		b.fl.emit(state.Event{Kind: state.EvChatOffice, Msg: state.ChatMsg{
-			ID: deadID, From: "office", Kind: "office", Text: "[theboringoffice] backend not started", At: nowMs(), Pending: false,
+			ID: deadID, From: "office", Kind: "office", Text: "[theboringfloor] backend not started", At: nowMs(), Pending: false,
 		}})
 		return nil
 	}
 	if conciergeID == "" {
 		sesh, err := b.createPrimary("theboringoffice concierge")
 		if err != nil {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] concierge session create failed: " + shortTitle(err.Error(), 100)})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] concierge session create failed: " + shortTitle(err.Error(), 100)})
 			b.mu.Lock()
 			b.chatSeq++
 			deadID := "office-pend-" + itoa(b.chatSeq)
 			b.mu.Unlock()
 			b.fl.emit(state.Event{Kind: state.EvChatOffice, Msg: state.ChatMsg{
 				ID: deadID, From: "office", Kind: "office",
-				Text: "[theboringoffice] office concierge unavailable: " + shortTitle(err.Error(), 100), At: nowMs(), Pending: false,
+				Text: "[theboringfloor] office concierge unavailable: " + shortTitle(err.Error(), 100), At: nowMs(), Pending: false,
 			}})
 			return nil // degrade: do not hard-fail the message
 		}
@@ -726,7 +726,7 @@ func (b *liveBackend) SendConcierge(text string) error {
 		b.ctx.registerConcierge(sesh.ID)
 		conciergeID = sesh.ID
 		b.mu.Unlock()
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge session ready (" + sesh.ID + ")"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge session ready (" + sesh.ID + ")"})
 	}
 	b.mu.Lock()
 	b.chatSeq++
@@ -760,7 +760,7 @@ func (b *liveBackend) SendConcierge(text string) error {
 			ID:      pendingID,
 			From:    "office",
 			Kind:    "office",
-			Text:    "[theboringoffice] concierge prompt failed: " + shortTitle(err.Error(), 120),
+			Text:    "[theboringfloor] concierge prompt failed: " + shortTitle(err.Error(), 120),
 			At:      nowMs(),
 			Pending: false,
 		}})
@@ -804,7 +804,7 @@ func (b *liveBackend) Stop() error {
 	// bubble (update-in-place on the same ID) with an interruption note.
 	// Must run BEFORE fl.stop() seals the emit callback.
 	b.mu.Lock()
-	streamEvs := interruptedStreamEvents(b.ctx, "[theboringoffice] stream interrupted")
+	streamEvs := interruptedStreamEvents(b.ctx, "[theboringfloor] stream interrupted")
 	for id := range b.chatSlots {
 		delete(b.chatSlots, id)
 	}
@@ -916,7 +916,7 @@ func (b *liveBackend) handleServeExit(proc *exec.Cmd, err error) {
 		return // Stop()-initiated, or superseded before the exit landed
 	}
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] opencode serve died (exited: %v) — your next send will spawn a fresh one", err)})
+		"[theboringfloor] opencode serve died (exited: %v) — your next send will spawn a fresh one", err)})
 }
 
 // respawnServeForSend is the W4 send-side half: the serve died, this Send
@@ -939,7 +939,7 @@ func (b *liveBackend) respawnServeForSend() {
 		b.mu.Lock()
 		b.baseURL = ""
 		b.mu.Unlock()
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] opencode serve respawn failed: " + shortTitle(err.Error(), 100)})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] opencode serve respawn failed: " + shortTitle(err.Error(), 100)})
 		return
 	}
 	b.mu.Lock()
@@ -959,9 +959,9 @@ func (b *liveBackend) respawnServeForSend() {
 	}
 	go b.watchServeExit(proc, exit)
 	if concID != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the serve respawn (" + concID + ") — recreates lazily"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge dismissed with the serve respawn (" + concID + ") — recreates lazily"})
 	}
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] opencode serve respawned fresh (" + spawnedURL + ") — re-establishing the boss session"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] opencode serve respawned fresh (" + spawnedURL + ") — re-establishing the boss session"})
 }
 
 var urlRe = regexp.MustCompile(`https?://\S+`)
@@ -1191,11 +1191,11 @@ func (b *liveBackend) ensurePrimary() (ocSession, error) {
 			count := b.sessionMessageCount(newest.ID)
 			if count > STALE_SESSION_MSG_LIMIT {
 				b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-					"[theboringoffice] primary session %s has %d msgs (> %d, stale) — creating fresh", newest.ID, count, STALE_SESSION_MSG_LIMIT)})
+					"[theboringfloor] primary session %s has %d msgs (> %d, stale) — creating fresh", newest.ID, count, STALE_SESSION_MSG_LIMIT)})
 				return b.createPrimary(b.bossName())
 			}
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-				"[theboringoffice] primary session: reuse %s (%d msgs)", newest.ID, count)})
+				"[theboringfloor] primary session: reuse %s (%d msgs)", newest.ID, count)})
 			return *newest, nil
 		}
 	}
@@ -1217,11 +1217,11 @@ func (b *liveBackend) resolvePrimary() (ocSession, error) {
 		var s ocSession
 		if err := b.doJSON(http.MethodGet, "/session/"+override, nil, &s); err == nil && s.ID != "" {
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-				"[theboringoffice] primary session: resume %s (pinned)", s.ID)})
+				"[theboringfloor] primary session: resume %s (pinned)", s.ID)})
 			return s, nil
 		}
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-			"[theboringoffice] pinned session %s not found server-side — starting normal find-or-create instead", override)})
+			"[theboringfloor] pinned session %s not found server-side — starting normal find-or-create instead", override)})
 	}
 	return b.ensurePrimary()
 }
@@ -1284,7 +1284,7 @@ func (b *liveBackend) QueueItemStart(index int, title string) string {
 	}
 	boardID, err := b.am.CreateAction(fmt.Sprintf("QUE-%d: %s", index, title), fmt.Sprintf("que-%d", index))
 	if err != nil {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] board action create failed: " + shortTitle(err.Error(), 100)})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] board action create failed: " + shortTitle(err.Error(), 100)})
 		return ""
 	}
 	b.mu.Lock()
@@ -1319,7 +1319,7 @@ func (b *liveBackend) QueueItemDone(boardID string) {
 	}
 	if !strings.HasPrefix(boardID, "local-que-") && b.am != nil && b.am.kind == "actions" {
 		if err := b.am.MarkAction(boardID, "done"); err != nil {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] board action mark done failed: " + shortTitle(err.Error(), 100)})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] board action mark done failed: " + shortTitle(err.Error(), 100)})
 		}
 	}
 	e := LedgerEntry{
@@ -1409,11 +1409,11 @@ func (b *liveBackend) saveLedgerLanes(e LedgerEntry) {
 		defer b.ledgerWG.Done()
 		if am != nil {
 			if err := am.SaveWork(e); err != nil {
-				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory lane: agentmemory observe failed (" + shortTitle(err.Error(), 80) + ") — the file ledger still records it"})
+				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory lane: agentmemory observe failed (" + shortTitle(err.Error(), 80) + ") — the file ledger still records it"})
 			}
 		}
 		if err := NewLedger(dir).Append(e); err != nil {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] memory lane: office ledger append failed (" + shortTitle(err.Error(), 80) + ")"})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory lane: office ledger append failed (" + shortTitle(err.Error(), 80) + ")"})
 		}
 	}()
 }
@@ -1479,10 +1479,10 @@ func (b *liveBackend) ResetPrimary(forceNew bool) error {
 	concID := b.forgetConciergeLocked() // respawn semantics: concierge goes with the office
 	b.mu.Unlock()
 	if concID != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the respawn (" + concID + ") — next busy-boss message recreates it lazily"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge dismissed with the respawn (" + concID + ") — next busy-boss message recreates it lazily"})
 	}
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] primary session reset (forceNew=%v) — next send respawns", forceNew)})
+		"[theboringfloor] primary session reset (forceNew=%v) — next send respawns", forceNew)})
 	return nil
 }
 
@@ -1498,7 +1498,7 @@ func (b *liveBackend) SwapPrimary(id string) error {
 	concID := b.forgetConciergeLocked()
 	b.mu.Unlock()
 	if concID != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with primary swap (" + concID + ")"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge dismissed with primary swap (" + concID + ")"})
 	}
 	if old != "" && old != id {
 		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
@@ -1506,7 +1506,7 @@ func (b *liveBackend) SwapPrimary(id string) error {
 	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: id, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
 	}})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] primary session swapped to " + id})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] primary session swapped to " + id})
 	return nil
 }
 
@@ -1560,7 +1560,7 @@ func (b *liveBackend) NewOffice() (string, error) {
 	concID := b.forgetConciergeLocked() // a fresh office starts fresh-concierge too
 	b.mu.Unlock()
 	if concID != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the new office (" + concID + ") — next busy-boss message recreates it lazily"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge dismissed with the new office (" + concID + ") — next busy-boss message recreates it lazily"})
 	}
 	if old != "" && old != primary.ID {
 		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
@@ -1568,7 +1568,7 @@ func (b *liveBackend) NewOffice() (string, error) {
 	b.fl.emit(state.Event{Kind: state.EvHire, Employee: state.Employee{
 		ID: primary.ID, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
 	}})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] new office session fresh (" + primary.ID + ")"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] new office session fresh (" + primary.ID + ")"})
 	return primary.ID, nil
 }
 
@@ -1634,7 +1634,7 @@ func (b *liveBackend) ResumeOffice(id string) error {
 	var s ocSession
 	if err := b.doJSON(http.MethodGet, "/session/"+id, nil, &s); err != nil || s.ID == "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-			"[theboringoffice] pinned session %s not found server-side — staying on the current office session", id)})
+			"[theboringfloor] pinned session %s not found server-side — staying on the current office session", id)})
 		if err == nil {
 			err = errors.New("session " + id + " not found server-side")
 		}
@@ -1649,7 +1649,7 @@ func (b *liveBackend) ResumeOffice(id string) error {
 	concID := b.forgetConciergeLocked() // the concierge goes with the office it served
 	b.mu.Unlock()
 	if concID != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] office concierge dismissed with the session swap (" + concID + ") — next busy-boss message recreates it lazily"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] office concierge dismissed with the session swap (" + concID + ") — next busy-boss message recreates it lazily"})
 	}
 	if old != "" && old != s.ID {
 		b.fl.emit(state.Event{Kind: state.EvFire, EmployeeID: old})
@@ -1658,7 +1658,7 @@ func (b *liveBackend) ResumeOffice(id string) error {
 		ID: s.ID, Name: "manager", Role: state.RoleManager, Seat: "manager", Sprite: state.SpriteAtDesk,
 	}})
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] primary session: resume %s (pinned)", s.ID)})
+		"[theboringfloor] primary session: resume %s (pinned)", s.ID)})
 	return nil
 }
 
@@ -1695,7 +1695,7 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 	if len(skipped) > 0 {
 		// The prompt still goes out with whatever parts survived — the
 		// member sees exactly which attachment didn't make it.
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] could not attach " +
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] could not attach " +
 			strings.Join(skipped, ", ") + " (file unreadable) — sent without it"})
 	}
 	payload := map[string]any{"parts": parts}
@@ -1723,7 +1723,7 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 		// "agent-field:" marker is the contract with the app — it
 		// escalades this statusline note into a red transcript row (the
 		// next status event would otherwise hide it, F5a).
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"})
 		delete(payload, "agent")
 		body, _ = json.Marshal(payload)
 		err = b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
@@ -1732,8 +1732,8 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 		b.mu.Lock()
 		b.promptModelRejected = true
 		b.mu.Unlock()
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] boss model override unavailable on this serve (400 rejected the model field) — continuing without it"})
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] boss model override unavailable in serve (see /doc session.prompt_async): retrying bare prompt"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override unavailable on this serve (400 rejected the model field) — continuing without it"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override unavailable in serve (see /doc session.prompt_async): retrying bare prompt"})
 		// Retry bare exactly once: the member-visible cost of the failed
 		// POST was zero (rejected before the turn started).
 		payload = map[string]any{"parts": parts}
@@ -1909,9 +1909,9 @@ func (b *liveBackend) RejectQuestion(requestID string) error {
 // the collected errors.Join is the return value.
 //
 // Post-abort tidy: any boss text stream still mid-delta is flushed as a
-// final "[theboringoffice] stream interrupted" bubble (same shape as Stop's
+// final "[theboringfloor] stream interrupted" bubble (same shape as Stop's
 // graceful shutdown), and the OLDEST outstanding pending placeholder (the
-// FIFO head — the RUNNING turn's bubble) closes with a "[theboringoffice] stopped"
+// FIFO head — the RUNNING turn's bubble) closes with a "[theboringfloor] stopped"
 // note so the UI never shows a frozen typing bubble for a dead turn when
 // the serve drops the aborted turn without a completion pin. Placeholders
 // BEHIND the head belong to queued prompts the serve still owns and will
@@ -1955,20 +1955,20 @@ func (b *liveBackend) AbortSessions() error {
 	for _, id := range ids {
 		if err := b.abortSession(id); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", id, err))
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] abort failed for session " + id + ": " + shortTitle(err.Error(), 100)})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] abort failed for session " + id + ": " + shortTitle(err.Error(), 100)})
 			continue
 		}
 		aborted++
 	}
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringoffice] turn aborted (%d/%d session(s))", aborted, len(ids))})
+		"[theboringfloor] turn aborted (%d/%d session(s))", aborted, len(ids))})
 
 	// Flush what the aborted turn leaves behind, then close the running
 	// turn's placeholder: text streams flush interrupted (boss lane and
 	// office lane alike — per-stream session routing), the FIFO heads get
 	// the stopped marker.
 	b.mu.Lock()
-	streamEvs := interruptedStreamEvents(b.ctx, "[theboringoffice] stream interrupted")
+	streamEvs := interruptedStreamEvents(b.ctx, "[theboringfloor] stream interrupted")
 	for id := range b.chatSlots {
 		delete(b.chatSlots, id)
 	}
@@ -1990,7 +1990,7 @@ func (b *liveBackend) AbortSessions() error {
 		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
 			ID:      headID,
 			From:    "boss",
-			Text:    "[theboringoffice] stopped (turn aborted)",
+			Text:    "[theboringfloor] stopped (turn aborted)",
 			At:      nowMs(),
 			Pending: false,
 		}})
@@ -2000,7 +2000,7 @@ func (b *liveBackend) AbortSessions() error {
 			ID:      officeHeadID,
 			From:    "office",
 			Kind:    "office",
-			Text:    "[theboringoffice] stopped (turn aborted)",
+			Text:    "[theboringfloor] stopped (turn aborted)",
 			At:      nowMs(),
 			Pending: false,
 		}})
@@ -2217,11 +2217,11 @@ func (b *liveBackend) onNetTransition(online bool) {
 	cancel := b.netGateFlip(online)
 	if !online {
 		b.fl.emit(state.Event{Kind: state.EvOffline})
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] offline — office waiting for internet…"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] offline — office waiting for internet…"})
 		return
 	}
 	b.fl.emit(state.Event{Kind: state.EvOnline})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] back online — resumed"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] back online — resumed"})
 	if cancel != nil {
 		cancel()
 	}
@@ -2244,7 +2244,7 @@ var sseBackoffSteps = []time.Duration{
 // Status notes are deduped per failure class (sseNote): an outage reports
 // ONCE when it starts, once more only if the failure CLASS changes (e.g.
 // clean close -> HTTP 500), stays silent through every ladder retry, and
-// reports recovery with exactly one "[theboringoffice] event stream: reconnected"
+// reports recovery with exactly one "[theboringfloor] event stream: reconnected"
 // line (sseRecovered, fired by streamOnce's first frame). Never one status
 // line per second while the server is down.
 func (b *liveBackend) pump() {
@@ -2282,9 +2282,9 @@ func (b *liveBackend) pump() {
 		}
 		wait := sseBackoffSteps[step]
 		if err == nil {
-			b.sseNote("closed", "[theboringoffice] event stream closed (board/mail continue; re-attaching in "+shortDur(wait)+")")
+			b.sseNote("closed", "[theboringfloor] event stream closed (board/mail continue; re-attaching in "+shortDur(wait)+")")
 		} else {
-			b.sseNote(sseErrClass(err), "[theboringoffice] event stream error: "+shortTitle(err.Error(), 100)+
+			b.sseNote(sseErrClass(err), "[theboringfloor] event stream error: "+shortTitle(err.Error(), 100)+
 				" (re-attaching in "+shortDur(wait)+")")
 		}
 		select {
@@ -2327,7 +2327,7 @@ func (b *liveBackend) sseRecovered() {
 	b.sseNoteSig = ""
 	b.mu.Unlock()
 	if had != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] event stream: reconnected"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] event stream: reconnected"})
 	}
 	b.reconcileBossCompletion()
 }
@@ -2481,7 +2481,7 @@ func (b *liveBackend) streamOnce() (bool, error) {
 			fmt.Fprintf(os.Stderr, "[sse-raw] %s | %s\n", note, trimTo(payload, 400))
 		}
 		if err := b.onEvent(raw); err != nil {
-			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] event handling failed (" + raw.Type + "): " + shortTitle(err.Error(), 100)})
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] event handling failed (" + raw.Type + "): " + shortTitle(err.Error(), 100)})
 		}
 	}
 	return progressed, sc.Err()
@@ -2630,7 +2630,7 @@ func (b *liveBackend) onEvent(raw ocSSEEvent) error {
 	// Abort window: the serve reports a member-initiated /stop as
 	// session.error "Aborted" on the primary (and concierge — AbortSessions
 	// aborts the whole family) — protocol noise, since AbortSessions already
-	// emitted the intentional "[theboringoffice] stopped" marker. Swallow those
+	// emitted the intentional "[theboringfloor] stopped" marker. Swallow those
 	// while the quiet window is open; every other error (or any error
 	// outside the window) maps normally.
 	if raw.Type == "session.error" && b.lastAbortAt != 0 && nowMs()-b.lastAbortAt < abortQuietMs {
@@ -2894,13 +2894,13 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 
 	text, finish, media, err := b.messageText(primaryID, info.ID)
 	if err != nil {
-		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
+		text = "[theboringfloor] could not read reply (msg " + info.ID + ")"
 	} else if text == "" {
 		if finish == "tool-calls" {
 			return // mid-turn message; the text rides the continuation message
 		}
 		// Abort window: an EMPTY completion right after AbortSessions is the
-		// aborted turn's death rattle — the user already got the "[theboringoffice]
+		// aborted turn's death rattle — the user already got the "[theboringfloor]
 		// stopped" marker, so swallow it (one completion only; the aborted
 		// placeholder was already popped by AbortSessions, hence the extra
 		// pendingBoss pop below keeps the FIFO balanced). A completion
@@ -2916,7 +2916,7 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 		if aborted {
 			return
 		}
-		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
+		text = "[theboringfloor] could not read reply (msg " + info.ID + ")"
 	}
 	// Browser-tool markers (⟦open-browser: URL⟧, the
 	// ⟦browser-screenshot: URL⟧/⟦browser-snapshot: URL⟧ read-only
@@ -2972,7 +2972,7 @@ func (b *liveBackend) maybeOfficeCompleted(info ocMessage) {
 
 	text, finish, _, err := b.messageText(conciergeID, info.ID)
 	if err != nil {
-		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
+		text = "[theboringfloor] could not read reply (msg " + info.ID + ")"
 	} else if text == "" {
 		if finish == "tool-calls" {
 			return // mid-turn message; the text rides the continuation message
@@ -2990,7 +2990,7 @@ func (b *liveBackend) maybeOfficeCompleted(info ocMessage) {
 		if aborted {
 			return
 		}
-		text = "[theboringoffice] could not read reply (msg " + info.ID + ")"
+		text = "[theboringfloor] could not read reply (msg " + info.ID + ")"
 	}
 	// Concierge edits (it can dispatch AND touch files directly) surface as
 	// diff events on completion, same as the boss lane.
@@ -3074,7 +3074,7 @@ func (b *liveBackend) pollLoop(base time.Duration) {
 		if changed {
 			if noChange > 0 && interval != base {
 				b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-					"[theboringoffice] board poll: change observed — cadence back to %s", shortDur(base))})
+					"[theboringfloor] board poll: change observed — cadence back to %s", shortDur(base))})
 			}
 			noChange = 0
 			interval = base
@@ -3083,7 +3083,7 @@ func (b *liveBackend) pollLoop(base time.Duration) {
 			if next := BackoffInterval(base, interval, noChange); next != interval {
 				interval = next
 				b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-					"[theboringoffice] board poll backoff: %s after %d unchanged syncs (cap %s)",
+					"[theboringfloor] board poll backoff: %s after %d unchanged syncs (cap %s)",
 					shortDur(interval), noChange, shortDur(backoffMaxFactor*base))})
 			}
 		}

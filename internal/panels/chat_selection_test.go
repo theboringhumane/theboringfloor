@@ -219,7 +219,7 @@ func TestChatSelectionUpwardDragNormalized(t *testing.T) {
 func TestChatSelectionRuneCount(t *testing.T) {
 	c := selChat(t)
 	c.SelectionBegin(chatPadL, 0)
-	text, n := c.SelectionFinish(43, 0) // c.w−1: span [2, 44) clamps to the line end
+	text, n := c.SelectionFinish(43, 0)   // c.w−1: span [2, 44) clamps to the line end
 	if text != "you › alpha" || n != 11 { // 3+1+1+1+5 runes, NO newline
 		t.Fatalf("single full row must extract 11 runes newline-free: %q n=%d", text, n)
 	}

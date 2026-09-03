@@ -213,7 +213,7 @@ func TestBrowserMarkerBlockedNotice(t *testing.T) {
 	if len(pins) != 1 {
 		t.Fatalf("want ONE boss pin, got %d", len(pins))
 	}
-	if pins[0].Msg.Text != "[theboringoffice] open-browser refused: "+reason {
+	if pins[0].Msg.Text != "[theboringfloor] open-browser refused: "+reason {
 		t.Fatalf("the marker-only bubble must degrade to the refusal note, got %q", pins[0].Msg.Text)
 	}
 	opens := browserOpens(log)
@@ -244,7 +244,7 @@ func TestBrowserMarkerFlagOnAllows(t *testing.T) {
 		t.Fatalf("the member's flag must allow plain http, got %+v", opens)
 	}
 	pins := bossPins(log)
-	if len(pins) != 1 || pins[0].Msg.Text != "[theboringoffice] open-browser: http://theboring.name" {
+	if len(pins) != 1 || pins[0].Msg.Text != "[theboringfloor] open-browser: http://theboring.name" {
 		t.Fatalf("the marker-only bubble degrades to the open note, got %+v", pins)
 	}
 }
@@ -312,7 +312,7 @@ func TestBrowserShotMarkerOnlyFallback(t *testing.T) {
 	b.sseRecovered()
 
 	pins := bossPins(log)
-	if len(pins) != 1 || pins[0].Msg.Text != "[theboringoffice] browser-screenshot: https://theboring.name" {
+	if len(pins) != 1 || pins[0].Msg.Text != "[theboringfloor] browser-screenshot: https://theboring.name" {
 		t.Fatalf("the screenshot-only bubble degrades to the kind-named note, got %+v", pins)
 	}
 	shots := eventsMatching(log, func(e state.Event) bool { return e.Kind == state.EvBrowserScreenshot })
@@ -372,7 +372,7 @@ func TestBrowserActionMarkerScrubbedAtPin(t *testing.T) {
 
 	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	pins2 := bossPins(log2)
-	if len(pins2) != 1 || pins2[0].Msg.Text != "[theboringoffice] browser-action refused: "+reason {
+	if len(pins2) != 1 || pins2[0].Msg.Text != "[theboringfloor] browser-action refused: "+reason {
 		t.Fatalf("the refused action-only bubble degrades to the kind-named note, got %+v", pins2)
 	}
 	acts2 := eventsMatching(log2, func(e state.Event) bool { return e.Kind == state.EvBrowserAction })
@@ -511,7 +511,7 @@ func TestClaudeBrowserMarkerScrubbedAtPin(t *testing.T) {
 		evs[2].BrowserOpenReason != reason {
 		t.Fatalf("the refused event carries the exact reason, got %+v", evs[2])
 	}
-	if evs[3].Msg.Text != "[theboringoffice] open-browser refused: "+reason {
+	if evs[3].Msg.Text != "[theboringfloor] open-browser refused: "+reason {
 		t.Fatalf("the refused marker-only pin degrades to the note, got %q", evs[3].Msg.Text)
 	}
 
@@ -571,7 +571,7 @@ func TestClaudeBrowserShotSnapScrubbedAtPin(t *testing.T) {
 		evs[3].BrowserOpenReason != reason {
 		t.Fatalf("the refused screenshot event carries the exact reason, got %+v", evs[3])
 	}
-	if evs[4].Msg.Text != "[theboringoffice] browser-screenshot refused: "+reason {
+	if evs[4].Msg.Text != "[theboringfloor] browser-screenshot refused: "+reason {
 		t.Fatalf("the refused screenshot-only pin degrades to the kind-named note, got %q", evs[4].Msg.Text)
 	}
 }

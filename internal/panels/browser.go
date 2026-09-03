@@ -111,6 +111,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/headless"
@@ -522,7 +523,7 @@ func shotKittyFrame(officeID uint32, png []byte) string {
 // hash8 = sha1(png)[:4] hex, KittyIDHash8's exact shape). A save failure
 // never kills the shot mode ("" path back).
 func saveShotPNG(png []byte) (string, error) {
-	base := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_HOME"))
+	base := strings.TrimSpace(brand.Get("HOME"))
 	if base == "" {
 		base = os.TempDir()
 	}
