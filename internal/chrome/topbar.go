@@ -64,7 +64,7 @@ func cwdBase() string {
 			cwdValue = filepath.Base(d)
 			return
 		}
-		cwdValue = "theboringoffice"
+		cwdValue = "theboringfloor"
 	})
 	return cwdValue
 }
@@ -104,7 +104,7 @@ func TopBar(st state.OfficeState, width int, infos ...projinfo.Info) string {
 	agents := fmt.Sprintf("%d", len(st.Employees))
 	clock := OfficeClock(st.Tick)
 
-	left := OnBarBold(White, " theboringoffice "+AppVersion) +
+	left := OnBarBold(White, " theboringfloor "+AppVersion) +
 		OnBar(White, " | ") +
 		OnBar(ModeColor(st.Mode), mode)
 	if st.BackendName != "" {
@@ -133,7 +133,7 @@ func TopBarCompact(st state.OfficeState, width int, infos ...projinfo.Info) stri
 	agents := fmt.Sprintf("%d", len(st.Employees))
 	clock := OfficeClock(st.Tick)
 
-	line := OnBarBold(White, " theboringoffice "+AppVersion) +
+	line := OnBarBold(White, " theboringfloor "+AppVersion) +
 		OnBar(White, " | agents ") +
 		OnBar(Info, agents) +
 		OnBar(White, " | ") +

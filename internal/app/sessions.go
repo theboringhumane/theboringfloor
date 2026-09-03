@@ -44,6 +44,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -80,8 +81,8 @@ const (
 
 // SessionFile — the on-disk office session for ONE working directory.
 type SessionFile struct {
-	Dir       string            `json:"dir"`
-	PrimaryID string            `json:"primaryID"`
+	Dir       string `json:"dir"`
+	PrimaryID string `json:"primaryID"`
 	// Backend names the transport the CURRENT PrimaryID belongs to
 	// ("opencode"|"claudecode") — informational; always-latest-wins like
 	// every other field. PrimaryIDs is the per-backend pin map the
@@ -121,24 +122,20 @@ func sessionsHome() string {
 // canonical per-project session root: one dir-hash folder per working
 // directory). Writes land ONLY here; the two bases below are read fallbacks.
 func sessionsBase() string {
-	return filepath.Join(sessionsHome(), ".theboringoffice", "projects")
+	return filepath.Join(sessionsHome(), brand.DotDir, "projects")
 }
 
-// legacySessionsBase — the pre-migration sessions root under the same home
-// (<home>/.theboringoffice/sessions, before session state moved under
-// projects/<hash>). Read fallback ONLY: LoadSession consults it when the
-// projects path has no file, so an upgrade restores the old office
-// transcript instead of silently starting over. Writes always go to
-// sessionsBase().
+// officeProjectsBase — theboringoffice-era projects root. Read fallback.
+func officeProjectsBase() string {
+	return filepath.Join(sessionsHome(), brand.OfficeDotDir, "projects")
+}
+
 func legacySessionsBase() string {
-	return filepath.Join(sessionsHome(), ".theboringoffice", "sessions")
+	return filepath.Join(sessionsHome(), brand.OfficeDotDir, "sessions")
 }
 
-// grafeioSessionsBase — the pre-RENAME ("grafeio") sessions root
-// (<home>/.grafeio/sessions). The second read fallback, consulted last;
-// never written to (same contract as config.legacyPath for brain.json).
 func grafeioSessionsBase() string {
-	return filepath.Join(sessionsHome(), ".grafeio", "sessions")
+	return filepath.Join(sessionsHome(), brand.GrafeioDotDir, "sessions")
 }
 
 // SessionDirHash — sha1 of the canonical directory path (EvalSymlinks
@@ -167,17 +164,14 @@ func LoadSession(dir string) (*SessionFile, bool) {
 	hash := SessionDirHash(dir)
 	b, err := os.ReadFile(SessionPath(dir))
 	if err != nil {
-		// migration-era read fallback (a): the session may live under the
-		// pre-projects same-home root (see legacySessionsBase — never
-		// written to).
-		b, err = os.ReadFile(filepath.Join(legacySessionsBase(), hash, "session.json"))
+		b, err = os.ReadFile(filepath.Join(officeProjectsBase(), hash, "session.json"))
 		if err != nil {
-			// rename-era read fallback (b): the session may live under the
-			// old ~/.grafeio root (see grafeioSessionsBase — never written
-			// to).
-			b, err = os.ReadFile(filepath.Join(grafeioSessionsBase(), hash, "session.json"))
+			b, err = os.ReadFile(filepath.Join(legacySessionsBase(), hash, "session.json"))
 			if err != nil {
-				return nil, false
+				b, err = os.ReadFile(filepath.Join(grafeioSessionsBase(), hash, "session.json"))
+				if err != nil {
+					return nil, false
+				}
 			}
 		}
 	}
@@ -390,7 +384,7 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 		}
 		// legacy wedge self-clean: prefixes committed before the wedge row
 		// became boot-scoped (boot-warn) would otherwise print forever.
-		if c.From == "office" && strings.HasPrefix(c.Text, "[theboringoffice] boss turn wedged") {
+		if c.From == "office" && strings.HasPrefix(c.Text, "[theboringfloor] boss turn wedged") {
 			continue
 		}
 		chat = append(chat, c)

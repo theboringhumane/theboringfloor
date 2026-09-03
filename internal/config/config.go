@@ -1,12 +1,10 @@
-// Package config — one file to run the office: ~/.theboringoffice/configs/brain.json
+// Package config — one file to run the office: ~/.theboringfloor/configs/brain.json
 //
 // The file is created with defaults on first run. Precedence:
-// CLI flag > brain.json > persisted UI prefs (~/.config/theboringoffice/theme) > defaults.
+// CLI flag > brain.json > persisted UI prefs (~/.config/theboringfloor/theme) > defaults.
 //
-// Rename-era compatibility: the product was "grafeio" (dirs ~/.grafeio and
-// env vars GRAFEIO_*). Reads fall back to the old locations; writes ONLY
-// land on the new paths — a user's brain.json/session/theme is never
-// silently lost, and the old dir is never mutated.
+// Rename-era compatibility: grafeio → theboringoffice → theboringfloor.
+// Reads fall back through prior dirs; writes ONLY land on ~/.theboringfloor.
 package config
 
 import (
@@ -15,36 +13,36 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 )
 
 // HomeOverride returns the test/harness scratch-root override:
-// THEBORINGOFFICE_HOME, falling back to the pre-rename GRAFEIO_HOME so
-// existing scripts and CI keep working. "" means "use $HOME".
-func HomeOverride() string {
-	if home := os.Getenv("THEBORINGOFFICE_HOME"); home != "" {
-		return home
+// THEBORINGFLOOR_HOME, then THEBORINGOFFICE_HOME, then GRAFEIO_HOME.
+// "" means "use $HOME".
+func HomeOverride() string { return brand.Get("HOME") }
+
+func homeRoot() string {
+	home := HomeOverride()
+	if home == "" {
+		home = os.Getenv("HOME")
 	}
-	return os.Getenv("GRAFEIO_HOME")
+	return home
 }
 
 // Path returns the brain.json location, honoring HomeOverride() (tests).
 func Path() string {
-	home := HomeOverride()
-	if home == "" {
-		home = os.Getenv("HOME")
-	}
-	return filepath.Join(home, ".theboringoffice", "configs", "brain.json")
+	return filepath.Join(homeRoot(), brand.DotDir, "configs", "brain.json")
 }
 
-// legacyPath is the pre-rename brain.json location (~/.grafeio/...). Read
-// fallback only — Load consults it when the new path is absent; writes
-// always go to Path().
+// officePath is the theboringoffice-era brain.json. Read fallback only.
+func officePath() string {
+	return filepath.Join(homeRoot(), brand.OfficeDotDir, "configs", "brain.json")
+}
+
+// legacyPath is the grafeio-era brain.json. Read fallback only.
 func legacyPath() string {
-	home := HomeOverride()
-	if home == "" {
-		home = os.Getenv("HOME")
-	}
-	return filepath.Join(home, ".grafeio", "configs", "brain.json")
+	return filepath.Join(homeRoot(), brand.GrafeioDotDir, "configs", "brain.json")
 }
 
 // PowerMode — battery posture of the whole app.
@@ -211,7 +209,9 @@ func Load() (*Config, error) {
 	readFrom := p
 	b, err := os.ReadFile(p)
 	if errors.Is(err, os.ErrNotExist) {
-		if lb, lerr := os.ReadFile(legacyPath()); lerr == nil {
+		if ob, oerr := os.ReadFile(officePath()); oerr == nil {
+			b, err, readFrom = ob, nil, officePath()
+		} else if lb, lerr := os.ReadFile(legacyPath()); lerr == nil {
 			b, err, readFrom = lb, nil, legacyPath()
 		}
 	}

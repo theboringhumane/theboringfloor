@@ -313,6 +313,10 @@ func SetThemeAuto(dark bool) string {
 // ThemeConfigPath is the persisted theme file
 // ($XDG_CONFIG_HOME/theboringoffice/theme, falling back to ~/.config/theboringoffice/theme).
 func ThemeConfigPath() string {
+	return filepath.Join(themeConfigDir(), "theboringfloor", "theme")
+}
+
+func officeThemeConfigPath() string {
 	return filepath.Join(themeConfigDir(), "theboringoffice", "theme")
 }
 
@@ -343,9 +347,12 @@ func themeConfigDir() string {
 func LoadPersistedTheme() string {
 	b, err := os.ReadFile(ThemeConfigPath())
 	if err != nil {
-		b, err = os.ReadFile(legacyThemeConfigPath())
+		b, err = os.ReadFile(officeThemeConfigPath())
 		if err != nil {
-			return ""
+			b, err = os.ReadFile(legacyThemeConfigPath())
+			if err != nil {
+				return ""
+			}
 		}
 	}
 	return strings.TrimSpace(string(b))

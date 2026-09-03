@@ -291,7 +291,7 @@ type ChatMsg struct {
 	// of the SAME Msg.ID grow the one bubble. The completion pin re-emits the
 	// same ID with Pending:false and the pinned full text; the UI replaces
 	// the streaming bubble with it. A stream that dies before completion
-	// (abort/error/stop) ends Pending:false with a "[theboringoffice] stream
+	// (abort/error/stop) ends Pending:false with a "[theboringfloor] stream
 	// interrupted" note appended. UI: update-in-place by Msg.ID, never
 	// append a streaming update as a new bubble.
 	Kind string `json:"kind,omitempty"`
@@ -418,7 +418,7 @@ type OfficeState struct {
 	Models []ModelInfo `json:"models,omitempty"`
 	// BackendName — the selected LLM transport ("opencode"|"claudecode"),
 	// latched reducer-side off the backend's boot EvStatus name hint
-	// ("[theboringoffice] backend: <name>") and the /backend swap line —
+	// ("[theboringfloor] backend: <name>") and the /backend swap line —
 	// the same string-marker contract pattern as the agentmemory boot
 	// latch. The topbar renders it between mode and agents (the compact
 	// bar drops it with mode). "" pre-hint: nothing renders. Additive

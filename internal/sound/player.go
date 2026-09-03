@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 )
 
 // throttleGap — the same sound played within this window is suppressed, so a
@@ -57,17 +59,6 @@ func ResolvePlayer() string {
 	return ""
 }
 
-// envOrLegacy reads the THEBORINGOFFICE_* env var, falling back to the
-// pre-rename GRAFEIO_* name (whole-product rename: grafeio ->
-// theboringoffice; old dotfiles and CI exports keep working). Same dup-on-
-// purpose as cmd's envOr — sound imports no sibling packages.
-func envOrLegacy(key, legacyKey string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return os.Getenv(legacyKey)
-}
-
 // NewBus builds a Bus for the given config mode ("on"|"bell"|""|"off") and
 // home dir ("" = THEBORINGOFFICE_HOME, then GRAFEIO_HOME, then $HOME). Wav
 // paths live at <home>/.theboringoffice/sounds/<name>.wav. The player lookup
@@ -82,11 +73,11 @@ func NewBus(cfgSound, home string) *Bus {
 	default:
 		mode = "off"
 	}
-	if envOrLegacy("THEBORINGOFFICE_MUTE", "GRAFEIO_MUTE") == "1" {
+	if brand.Get("MUTE") == "1" {
 		mode = "off"
 	}
 	if home == "" {
-		if h := envOrLegacy("THEBORINGOFFICE_HOME", "GRAFEIO_HOME"); h != "" {
+		if h := brand.Get("HOME"); h != "" {
 			home = h
 		} else {
 			home = os.Getenv("HOME")
@@ -94,7 +85,7 @@ func NewBus(cfgSound, home string) *Bus {
 	}
 	return &Bus{
 		mode:   mode,
-		dir:    filepath.Join(home, ".theboringoffice", "sounds"),
+		dir:    filepath.Join(home, brand.DotDir, "sounds"),
 		player: ResolvePlayer(),
 		last:   make(map[string]time.Time),
 		now:    time.Now,

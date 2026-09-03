@@ -21,13 +21,14 @@ package notify
 
 import (
 	"fmt"
-	"os"
 	osexec "os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 )
 
 // minGap — the same kind re-pinged within this window is suppressed, so a
@@ -96,17 +97,6 @@ func ResolveNotifier() string {
 	return ""
 }
 
-// envOrLegacy reads the THEBORINGOFFICE_* env var, falling back to the
-// pre-rename GRAFEIO_* name (whole-product rename: grafeio ->
-// theboringoffice; old dotfiles and CI exports keep working). Same
-// dup-on-purpose as sound's helper — notify imports no sibling packages.
-func envOrLegacy(key, legacyKey string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return os.Getenv(legacyKey)
-}
-
 // NewBus builds a Bus for the config mode ("on"|"off"|""). "" defaults to
 // "on"; anything unrecognized turns OFF — a brain.json typo must never
 // spam the desk. The notifier lookup happens once here; an empty
@@ -121,7 +111,7 @@ func NewBus(cfgNotifications string) *Bus {
 	default:
 		mode = "off"
 	}
-	if envOrLegacy("THEBORINGOFFICE_NO_NOTIFY", "GRAFEIO_NO_NOTIFY") == "1" {
+	if brand.Get("NO_NOTIFY") == "1" {
 		mode = "off"
 	}
 	b := &Bus{

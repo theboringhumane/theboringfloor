@@ -223,7 +223,7 @@ func TestBusPlayWithoutPlayerDegradesSilent(t *testing.T) {
 func TestDefaultDirShape(t *testing.T) {
 	home := t.TempDir()
 	b := NewBus("on", home)
-	want := filepath.Join(home, ".theboringoffice", "sounds")
+	want := filepath.Join(home, ".theboringfloor", "sounds")
 	if b.Dir() != want {
 		t.Fatalf("Dir() = %q, want %q", b.Dir(), want)
 	}

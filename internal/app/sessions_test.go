@@ -59,9 +59,9 @@ func TestSessionRoundTrip(t *testing.T) {
 func TestSessionPathProjectsLayout(t *testing.T) {
 	home := scratchHome(t)
 	dir := t.TempDir()
-	want := filepath.Join(home, ".theboringoffice", "projects", SessionDirHash(dir), "session.json")
+	want := filepath.Join(home, ".theboringfloor", "projects", SessionDirHash(dir), "session.json")
 	if got := SessionPath(dir); got != want {
-		t.Fatalf("SessionPath must live under .theboringoffice/projects/<hash>: got %q, want %q", got, want)
+		t.Fatalf("SessionPath must live under .theboringfloor/projects/<hash>: got %q, want %q", got, want)
 	}
 }
 
@@ -75,7 +75,7 @@ func TestSaveSessionWritesProjectsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	hash := SessionDirHash(dir)
-	want := filepath.Join(home, ".theboringoffice", "projects", hash, "session.json")
+	want := filepath.Join(home, ".theboringfloor", "projects", hash, "session.json")
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("session.json must land at the projects path: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestSaveLatestWins(t *testing.T) {
 	if got.PrimaryID != "ses-new" {
 		t.Fatalf("latest write did not win (primary=%q)", got.PrimaryID)
 	}
-	if want := filepath.Join(".theboringoffice", "projects", SessionDirHash(dir), "session.json"); !strings.HasSuffix(SessionPath(dir), want) {
+	if want := filepath.Join(".theboringfloor", "projects", SessionDirHash(dir), "session.json"); !strings.HasSuffix(SessionPath(dir), want) {
 		t.Fatalf("session path shape drifted: %q, want suffix %q", SessionPath(dir), want)
 	}
 	_ = first

@@ -1443,7 +1443,7 @@ func runDocAbortExcerpt(dir string) {
 // outlives the watch window, wait 2s for the turn to engage, call
 // AbortSessions via the additive state.SessionAborter seam, then watch 6s.
 // PASS requires: the seam exists, the abort round-trip returned nil, a
-// stopped marker landed (the "[theboringoffice] stopped (turn aborted)" placeholder
+// stopped marker landed (the "[theboringfloor] stopped (turn aborted)" placeholder
 // close or an interrupted-stream flush — the serve does NOT forward
 // primary session.idle as a state.Event, so the marker is the
 // app-observable abort proof), and no boss-bubble stream growth past a
@@ -1488,7 +1488,7 @@ func runAbortProbe(cfg *config.Config) int {
 				growthAfter = append(growthAfter, time.Since(abortAt).Seconds())
 			}
 		case e.Kind == state.EvChatBoss && !e.Msg.Pending && !abortAt.IsZero():
-			if strings.Contains(e.Msg.Text, "[theboringoffice] stopped") || strings.Contains(e.Msg.Text, "[theboringoffice] stream interrupted") {
+			if strings.Contains(e.Msg.Text, "[theboringfloor] stopped") || strings.Contains(e.Msg.Text, "[theboringfloor] stream interrupted") {
 				if marker == "" {
 					marker = e.Msg.Text
 				}
@@ -1578,7 +1578,7 @@ func runAbortProbe(cfg *config.Config) int {
 	if ok {
 		check(abortErr == nil, "AbortSessions round-trip returned nil (all sessions aborted)")
 	}
-	check(mk != "", "stopped marker within the watch window ([theboringoffice] stopped / stream interrupted)")
+	check(mk != "", "stopped marker within the watch window ([theboringfloor] stopped / stream interrupted)")
 	late := 0
 	for _, g := range growth {
 		if g > 1.5 { // in-flight delta grace: a delta already on the wire may land
@@ -2054,7 +2054,7 @@ func (s *sseSimServer) evaluate(streamNotes []string) int {
 			break
 		}
 	}
-	check(recIdx >= 0, "recovery note '[theboringoffice] event stream: reconnected' emitted")
+	check(recIdx >= 0, "recovery note '[theboringfloor] event stream: reconnected' emitted")
 	if recIdx >= 0 {
 		before := streamNotes[:recIdx]
 		check(len(before) == 2,

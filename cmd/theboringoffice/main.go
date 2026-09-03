@@ -32,6 +32,7 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/app"
 	"github.com/theboringhumane/theboringoffice/internal/backend"
+	"github.com/theboringhumane/theboringoffice/internal/brand"
 	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
 	"github.com/theboringhumane/theboringoffice/internal/chrome"
 	"github.com/theboringhumane/theboringoffice/internal/config"
@@ -55,18 +56,10 @@ type notifyBus struct{ *notify.Bus }
 
 func (n notifyBus) Notify(kind, title, body string) { n.Bus.Send(kind, title, body) }
 
-// envOr reads the THEBORINGOFFICE_* env var, falling back to the pre-rename
-// GRAFEIO_* name (whole-product rename: grafeio -> theboringoffice; old
-// dotfiles, shell aliases and CI exports keep working).
-func envOr(key, legacyKey string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return os.Getenv(legacyKey)
-}
+func env(suffix string) string { return brand.Get(suffix) }
 
 func main() {
-	demo := flag.Bool("demo", envOr("THEBORINGOFFICE_DEMO", "GRAFEIO_DEMO") == "1", "run with simulated events")
+	demo := flag.Bool("demo", env("DEMO") == "1", "run with simulated events")
 	server := flag.String("server", "", "opencode serve URL (attach, don't spawn)")
 	session := flag.String("session", "", "resume this opencode chat session id (explicit pin; beats the saved-session restore)")
 	sessionShort := flag.String("s", "", "shorthand for -session")
@@ -91,7 +84,7 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[theboringoffice] brain.json: %v (using defaults)\n", err)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] brain.json: %v (using defaults)\n", err)
 		cfg = config.Default()
 	}
 	// Majdoor attribution (brain.json top-level "attribution", default
@@ -101,11 +94,11 @@ func main() {
 	// boot (EnsureMajdoorHook's contract); the status is one short line.
 	hookStatus, hookErr := app.EnsureMajdoorHook(mustGetwd(), cfg.Attribution == config.AttributionDefault)
 	if hookErr != nil {
-		fmt.Fprintf(os.Stderr, "[theboringoffice] attribution hook: %v\n", hookErr)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] attribution hook: %v\n", hookErr)
 	} else {
-		fmt.Fprintf(os.Stderr, "[theboringoffice] attribution hook: %s\n", hookStatus)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] attribution hook: %s\n", hookStatus)
 	}
-	if v := envOr("THEBORINGOFFICE_SERVER", "GRAFEIO_SERVER"); v != "" && *server == "" {
+	if v := env("SERVER"); v != "" && *server == "" {
 		*server = v
 	}
 	// session-pin precedence: --session > -s > THEBORINGOFFICE_SESSION
@@ -113,24 +106,24 @@ func main() {
 	if *session == "" {
 		*session = *sessionShort
 	}
-	if v := envOr("THEBORINGOFFICE_SESSION", "GRAFEIO_SESSION"); v != "" && *session == "" {
+	if v := env("SESSION"); v != "" && *session == "" {
 		*session = v
 	}
 	// theme precedence: --theme flag > THEBORINGOFFICE_THEME (GRAFEIO_THEME fallback) > brain.json ui.theme > persisted > default
-	if v := envOr("THEBORINGOFFICE_THEME", "GRAFEIO_THEME"); v != "" && *theme == "" {
+	if v := env("THEME"); v != "" && *theme == "" {
 		*theme = v
 	}
 	// backend precedence (same overlay shape as server/theme above):
 	// --backend flag > THEBORINGOFFICE_BACKEND (GRAFEIO_BACKEND fallback) >
 	// brain.json backend.name (install.sh --backend's seed) > "opencode".
-	if v := envOr("THEBORINGOFFICE_BACKEND", "GRAFEIO_BACKEND"); v != "" && *backendName == "" {
+	if v := env("BACKEND"); v != "" && *backendName == "" {
 		*backendName = v
 	}
 	if *backendName == "" {
 		*backendName = cfg.Backend.ResolvedName()
 	}
 	if !config.ValidBackendName(*backendName) {
-		fmt.Fprintf(os.Stderr, "[theboringoffice] --backend must be opencode|claudecode (got %q) — using opencode\n", *backendName)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] --backend must be opencode|claudecode (got %q) — using opencode\n", *backendName)
 		*backendName = config.BackendNameDefault
 	}
 	if *theme == "" {
@@ -222,7 +215,7 @@ func main() {
 	model.SetEventSink(sink)
 	go func() {
 		if err := b.Start(sink); err != nil {
-			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] backend failed: " + err.Error()})
+			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend failed: " + err.Error()})
 		}
 	}()
 
@@ -253,7 +246,7 @@ func main() {
 		fm.CloseTerminal() // external p.Quit() bypasses Update — reap the PTY
 		fm.PersistSession()
 		stopBounded(b) // the serve child dies with us — never leaked on fatal
-		fmt.Fprintf(os.Stderr, "[theboringoffice] fatal: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] fatal: %v\n", err)
 		os.Exit(1)
 	}
 	// Clean-exit order is BINDING: terminal reaped → session persisted →
@@ -328,7 +321,7 @@ func stopBounded(b state.Backend) {
 	select {
 	case <-done:
 	case <-time.After(stopDeadline):
-		fmt.Fprintf(os.Stderr, "[theboringoffice] backend stop exceeded %s — exiting anyway\n", stopDeadline)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] backend stop exceeded %s — exiting anyway\n", stopDeadline)
 	}
 }
 

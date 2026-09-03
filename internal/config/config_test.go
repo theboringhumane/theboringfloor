@@ -20,7 +20,7 @@ func useHome(t *testing.T) string {
 // writeBrain plants a brain.json fixture under the given THEBORINGOFFICE_HOME.
 func writeBrain(t *testing.T, home, content string) string {
 	t.Helper()
-	p := filepath.Join(home, ".theboringoffice", "configs", "brain.json")
+	p := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatalf("mkdir fixture: %v", err)
 	}
@@ -33,7 +33,7 @@ func writeBrain(t *testing.T, home, content string) string {
 func TestPath(t *testing.T) {
 	t.Run("honors THEBORINGOFFICE_HOME", func(t *testing.T) {
 		home := useHome(t)
-		want := filepath.Join(home, ".theboringoffice", "configs", "brain.json")
+		want := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
 		if got := Path(); got != want {
 			t.Errorf("Path() = %q, want %q", got, want)
 		}
@@ -43,7 +43,7 @@ func TestPath(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("THEBORINGOFFICE_HOME", "")
 		t.Setenv("HOME", home)
-		want := filepath.Join(home, ".theboringoffice", "configs", "brain.json")
+		want := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
 		if got := Path(); got != want {
 			t.Errorf("Path() = %q, want %q", got, want)
 		}

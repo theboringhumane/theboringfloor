@@ -23,7 +23,7 @@ var testInfo = projinfo.Info{Project: "myproj", Branch: "main"}
 func TestTopBarProjectBranch(t *testing.T) {
 	st := state.OfficeState{Mode: state.ModeLive}
 	out := ansi.Strip(TopBar(st, 80, testInfo))
-	for _, want := range []string{"theboringoffice " + AppVersion, "LIVE", "agents 0", "09:00", "myproj", "(main)"} {
+	for _, want := range []string{"theboringfloor " + AppVersion, "LIVE", "agents 0", "09:00", "myproj", "(main)"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("top bar missing %q:\n%s", want, out)
 		}
@@ -34,7 +34,7 @@ func TestTopBarProjectBranch(t *testing.T) {
 func TestTopBarZeroInfoMatchesLegacyLayout(t *testing.T) {
 	st := state.OfficeState{Mode: state.ModeLive}
 	out := ansi.Strip(TopBar(st, 80))
-	for _, want := range []string{"theboringoffice " + AppVersion, "LIVE", "agents 0", "09:00", cwdBase()} {
+	for _, want := range []string{"theboringfloor " + AppVersion, "LIVE", "agents 0", "09:00", cwdBase()} {
 		if !strings.Contains(out, want) {
 			t.Errorf("zero-arg top bar missing %q:\n%s", want, out)
 		}
