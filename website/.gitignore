@@ -17,3 +17,5 @@ node_modules
 # Cloudflare
 out/
 .wrangler/
+public/install.sh
+public/install.ps1
