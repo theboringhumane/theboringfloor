@@ -4,9 +4,7 @@
 // CLI flag > brain.json > persisted UI prefs (~/.config/theboringfloor/theme) > defaults.
 //
 // Rename-era compatibility: grafeio → theboringoffice → theboringfloor.
-// On Load, ~/.theboringoffice is renamed to ~/.theboringfloor (an
-// existing new dir is stashed as ~/.theboringfloor.bak). Reads still
-// fall back through leftover prior dirs; writes stay on DotDir.
+// Load merges prior dirs into ~/.theboringfloor (and ~/.config/theboringfloor).
 package config
 
 import (
@@ -30,29 +28,6 @@ func homeRoot() string {
 		home = os.Getenv("HOME")
 	}
 	return home
-}
-
-// MigrateHome moves ~/.theboringoffice → ~/.theboringfloor.
-// If the new dir already exists (first-boot defaults), it is renamed to
-// ~/.theboringfloor.bak so the office-era tree takes the canonical name.
-func MigrateHome() {
-	root := homeRoot()
-	if root == "" {
-		return
-	}
-	dst := filepath.Join(root, brand.DotDir)
-	src := filepath.Join(root, brand.OfficeDotDir)
-	if _, err := os.Stat(src); err != nil {
-		return
-	}
-	if _, err := os.Stat(dst); err == nil {
-		bak := dst + ".bak"
-		_ = os.RemoveAll(bak)
-		if err := os.Rename(dst, bak); err != nil {
-			return
-		}
-	}
-	_ = os.Rename(src, dst)
 }
 
 // Path returns the brain.json location, honoring HomeOverride() (tests).
@@ -225,9 +200,7 @@ func Default() *Config {
 }
 
 // Load reads brain.json; creates it (parents + defaults) when absent.
-// A pre-rename file under ~/.grafeio is READ as a fallback (never moved,
-// never written — the next Save lands on the new path only), so an upgrade
-// never silently loses the user's brain.json.
+// Prior dirs are merged into ~/.theboringfloor first (see MigrateHome).
 // Unknown keys are tolerated; bad JSON returns the error (caller decides).
 func Load() (*Config, error) {
 	MigrateHome()

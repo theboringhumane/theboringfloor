@@ -11,7 +11,7 @@
 // swaps the active theme and re-points ALL exported style vars (Bar, PanelBox,
 // TabActive, DimText, …) — chrome/panels/topbar/statusbar read those vars at
 // render time, so a switch is live within a frame. Theme names persist to
-// $XDG_CONFIG_HOME/theboringoffice/theme (best effort); LoadPersistedTheme is read by
+// $XDG_CONFIG_HOME/theboringfloor/theme (best effort); LoadPersistedTheme is read by
 // main at startup.
 package chrome
 
@@ -25,6 +25,7 @@ import (
 	glst "charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
 
+	"github.com/theboringhumane/theboringoffice/internal/config"
 	"github.com/theboringhumane/theboringoffice/internal/office"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -345,6 +346,7 @@ func themeConfigDir() string {
 // fallback: when the new file is absent the pre-rename
 // ~/.config/grafeio/theme is read (never written).
 func LoadPersistedTheme() string {
+	config.MigrateThemeDirs()
 	b, err := os.ReadFile(ThemeConfigPath())
 	if err != nil {
 		b, err = os.ReadFile(officeThemeConfigPath())

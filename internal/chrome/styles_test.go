@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
@@ -178,17 +179,18 @@ func TestLoadPersistedTheme_LegacyFallback(t *testing.T) {
 	if got := LoadPersistedTheme(); got != "dracula" {
 		t.Fatalf("legacy fallback: want dracula, got %q", got)
 	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Fatalf("grafeio theme dir must be merged away")
+	}
+	if b, err := os.ReadFile(ThemeConfigPath()); err != nil || strings.TrimSpace(string(b)) != "dracula" {
+		t.Fatalf("theme must live at the new path: %q err=%v", b, err)
+	}
 
-	// A persist lands ONLY on the new path; the legacy file stays as found.
 	if !SetTheme("paper") {
 		t.Fatal("SetTheme(paper) returned false")
 	}
 	if err := PersistTheme(); err != nil {
 		t.Fatalf("PersistTheme: %v", err)
-	}
-	b, err := os.ReadFile(legacy)
-	if err != nil || string(b) != "dracula\n" {
-		t.Errorf("legacy file must stay untouched after PersistTheme, got %q (err=%v)", b, err)
 	}
 	if got := LoadPersistedTheme(); got != "paper" {
 		t.Fatalf("new path wins once present: want paper, got %q", got)
