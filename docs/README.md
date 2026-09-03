@@ -2,7 +2,7 @@
 
 Canonical manual is the **website**. This folder is the in-repo map: architecture + screenshots + links.
 
-**Site:** [theboringoffice.pages.dev/docs](https://theboringoffice.pages.dev/docs)
+**Site:** [theboringfloor.pages.dev/docs](https://boringfloor.com/docs)
 
 ## Manual
 
@@ -10,39 +10,39 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 
 | Page | |
 |---|---|
-| [Getting started](https://theboringoffice.pages.dev/docs/getting-started) | curl, `--demo`, live office, `--session` |
+| [Getting started](https://boringfloor.com/docs/getting-started) | curl, `theboringfloor --demo`, live office, `--session` |
 
 ### Core
 
 | Page | |
 |---|---|
-| [Backends](https://theboringoffice.pages.dev/docs/backends) | `opencode` serve-attach or `claudecode` stream-json |
-| [Chat & work threads](https://theboringoffice.pages.dev/docs/chat-and-threads) | streaming replies, nested worker threads |
-| [Plan mode](https://theboringoffice.pages.dev/docs/plan-mode) | draft, edit, approve → build |
+| [Backends](https://boringfloor.com/docs/backends) | `opencode` serve-attach or `claudecode` stream-json |
+| [Chat & work threads](https://boringfloor.com/docs/chat-and-threads) | streaming replies, nested worker threads |
+| [Plan mode](https://boringfloor.com/docs/plan-mode) | draft, edit, approve → build |
 
 ### Workflow
 
 | Page | |
 |---|---|
-| [Permissions & questions](https://theboringoffice.pages.dev/docs/permissions-and-questions) | allow once / always / reject |
-| [Queue, board & memory](https://theboringoffice.pages.dev/docs/queue-board-memory) | backlog, board sync, ledger |
+| [Permissions & questions](https://boringfloor.com/docs/permissions-and-questions) | allow once / always / reject |
+| [Queue, board & memory](https://boringfloor.com/docs/queue-board-memory) | backlog, board sync, ledger |
 
 ### Panels & reference
 
 | Page | |
 |---|---|
-| [Terminal & git tabs](https://theboringoffice.pages.dev/docs/terminal-and-git-tabs) | PTY shell + live git |
-| [Browser tab](https://theboringoffice.pages.dev/docs/browser-tab) | text lane · headless screenshots · opt-in zenbu |
-| [Layout, themes & power](https://theboringoffice.pages.dev/docs/layout-themes-power) | compact, themes, battery |
-| [Keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash) | every binding, every `/` |
+| [Terminal & git tabs](https://boringfloor.com/docs/terminal-and-git-tabs) | PTY shell + live git |
+| [Browser tab](https://boringfloor.com/docs/browser-tab) | text lane · headless screenshots · opt-in zenbu |
+| [Layout, themes & power](https://boringfloor.com/docs/layout-themes-power) | compact, themes, battery |
+| [Keys & slash commands](https://boringfloor.com/docs/keys-and-slash) | every binding, every `/` |
 
 ## Also on the site
 
-- [Home](https://theboringoffice.pages.dev)
-- [Get started (tour)](https://theboringoffice.pages.dev/get-started)
-- [Vision](https://theboringoffice.pages.dev/vision)
-- [Sounds](https://theboringoffice.pages.dev/sounds)
-- [Blog](https://theboringoffice.pages.dev/blog)
+- [Home](https://boringfloor.com)
+- [Get started (tour)](https://boringfloor.com/get-started)
+- [Vision](https://boringfloor.com/vision)
+- [Sounds](https://boringfloor.com/sounds)
+- [Blog](https://boringfloor.com/blog)
 
 ## In this folder
 

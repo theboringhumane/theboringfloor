@@ -1,6 +1,6 @@
 # cmd/
 
-Go entrypoints. Product binary is `theboringoffice`.
+Go entrypoints. Product binary is `theboringfloor` (Go package still `cmd/theboringoffice`). The installer also links `tbo` / `theboringoffice` as shims.
 
 | Package | Job |
 |---|---|
@@ -19,4 +19,4 @@ go run ./cmd/uishot
 go run ./cmd/floorshot
 ```
 
-Install: [Getting started](https://theboringoffice.pages.dev/docs/getting-started). Architecture: [`../docs/architecture.md`](../docs/architecture.md).
+Install: [Getting started](https://boringfloor.com/docs/getting-started). Architecture: [`../docs/architecture.md`](../docs/architecture.md).

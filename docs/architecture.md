@@ -1,4 +1,4 @@
-# theboringoffice — Architecture ("the boring office") — v2 (Go)
+# theboringfloor — Architecture ("the boring office") — v2 (Go)
 
 A terminal office run by a real agent manager. Everything on screen is backed
 by a real system; nothing on screen is fake except the coffee.
@@ -9,7 +9,7 @@ by a real system; nothing on screen is fake except the coffee.
 
 ```
 +----------------- THEBORINGOFFICE (Go + Bubble Tea) ------------------+
-|  topbar: theboringoffice <ver> | MODE | agents <n>   <clock> | <cwd> |
+|  topbar: theboringfloor <ver> | MODE | agents <n>   <clock> | <cwd> |
 |  OFFICE FLOOR (left, flex)  |  SIDEBAR (right, cfg width 26..100)    |
 |  sprites animated           <- tabs: chat | terminal | agents |      |
 |  by live events                 board | mail | activity | git        |
@@ -46,11 +46,11 @@ Floor physics (event -> sprite):
 | `internal/panels` | the sidebar: tab strip + chat, terminal, agents, board, mail, activity, git (live status + diff viewer); slash/@ popover, question + permission modals, MCP status block, subagent threads |
 | `internal/office` | the floor: props-driven floorplan, roster seats, sprite glyphs + walker physics, the pure frame renderer, tick-pure ambient fixtures |
 | `internal/chrome` | topbar, statusbar, shared lipgloss styles + themes |
-| `internal/config` | one file to run the office: `~/.theboringoffice/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults); session state lives per working directory at `~/.theboringoffice/projects/<dirhash>/session.json` (the old `~/.theboringoffice/sessions/<dirhash>` and `~/.grafeio/sessions/<dirhash>` roots are read-only fallbacks) |
+| `internal/config` | one file to run the office: `~/.theboringfloor/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults); session state lives per working directory at `~/.theboringfloor/projects/<dirhash>/session.json` (the old `~/.theboringfloor/sessions/<dirhash>` and `~/.grafeio/sessions/<dirhash>` roots are read-only fallbacks) |
 | `internal/charter` | the oikonomos manager protocol as an embedded asset, copied into `<dir>/.opencode/` for the spawned server; the same charter pass (in `internal/backend`) generates `mcp-servers.md` — the available-MCP-servers prompt attachment discovered from opencode's own config chain — and wires it into the served `instructions`; it also seeds `memory: office-ledger.md` (`<dir>/.opencode/office-ledger.md`, the office's completed-work memory; seeded when absent, never rewritten — the app appends entries) and merges it into `instructions` beside them |
-| `internal/sound` | terminal-native office audio: eight pure-Go PCM chimes into `~/.theboringoffice/sounds/`, platform player / bell / off |
+| `internal/sound` | terminal-native office audio: eight pure-Go PCM chimes into `~/.theboringfloor/sounds/`, platform player / bell / off |
 | `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback; OPT-IN capture — released by default (office keys everywhere), `ctrl+space` toggles capture both ways (`tab`/`shift+tab`/digits go to the PTY while captured; byte `0x00`, safe against the `ctrl+i` byte-identity with tab), `ctrl+o` releases as an alias; capture auto-drops when the tab loses focus; `ctrl+q` (quit-arm) stays app-global in both states |
-| `internal/version` | build-time stamp, one source of truth: `dev` in-tree, releases rewrite the vars via ldflags `-X`; drives `theboringoffice --version` and the topbar (`internal/chrome.AppVersion`) |
+| `internal/version` | build-time stamp, one source of truth: `dev` in-tree, releases rewrite the vars via ldflags `-X`; drives `theboringfloor --version` and the topbar (`internal/chrome.AppVersion`) |
 
 ## Data flow
 
@@ -76,6 +76,6 @@ harnesses freeze deterministic full runs into greppable frames.
 ## Design vows
 
 1. **One state shape.** UI never calls SDK/HTTP directly; backend never renders.
-2. **Demo mode is first-class** (`theboringoffice --demo`): simulated events, alive on any machine — EXPLICITLY labeled demo.
+2. **Demo mode is first-class** (`theboringfloor --demo` / `theboringfloor --demo`): simulated events, alive on any machine — EXPLICITLY labeled demo.
 3. **The boss is real.** Chat goes to a real opencode session with the oikonomos plugin active.
 4. Plain ASCII in-app — emoji budget near zero (the 📎 attachment chip excepted).

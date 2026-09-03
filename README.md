@@ -1,15 +1,15 @@
 <div align="center">
 
-<img src="website/public/imgs/logo.jpg" alt="theboringoffice" width="88" />
+<img src="website/public/imgs/logo.jpg" alt="theboringfloor" width="88" />
 
-# theboringoffice
+# theboringfloor
 
 **A startup office in your terminal, staffed by real agents.**
 
 Chat with the boss. Watch the floor — employees walk, type, drop mail, hit the tea machine.
 Right panel is yours. Left pane is the floor (or the in-TUI browser).
 
-[Website](https://theboringoffice.pages.dev) · [Docs](https://theboringoffice.pages.dev/docs) · [Get started](https://theboringoffice.pages.dev/get-started) · [Discord](https://discord.gg/YPDsHVHTVf)
+[Website](https://boringfloor.com) · [Docs](https://boringfloor.com/docs) · [Get started](https://boringfloor.com/get-started) · [Discord](https://discord.gg/YPDsHVHTVf)
 
 <br />
 
@@ -31,40 +31,39 @@ Under the wallpaper it is real: the manager is **[Oikonomos](https://github.com/
 One-liner — binary plus [agentmemory](https://github.com/rohitg00/agentmemory) as a reboot-safe service:
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh
+curl -fsSL https://boringfloor.com/install.sh | sh
 ```
 
 Windows (PowerShell):
 
 ```powershell
-irm https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 | iex
+irm https://boringfloor.com/install.ps1 | iex
 ```
 
-The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringoffice.exe` in `%LOCALAPPDATA%\theboringoffice\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringoffice --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringoffice/releases), verify the checksum, then put `theboringoffice.exe` in a directory on your `PATH`.
+The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringoffice/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
 
 Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI):
 
 ```bash
-curl -fsSL \
-  https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh -s -- --backend claudecode
+curl -fsSL https://boringfloor.com/install.sh | sh -s -- --backend claudecode
 ```
 
 Then:
 
 ```bash
-theboringoffice            # live office
-theboringoffice --demo     # touring mode
-theboringoffice --version  # stamp: version, commit, date
+theboringfloor            # live office
+theboringfloor --demo     # touring mode
+theboringfloor --version  # stamp: version, commit, date
 ```
 
 Pin a tag, or grab a prebuilt (macOS/Linux/Windows, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringoffice/releases):
 
 ```bash
 go install github.com/theboringhumane/theboringoffice/cmd/theboringoffice@latest
+ln -sf "$(go env GOPATH)/bin/theboringoffice" "$(go env GOPATH)/bin/theboringfloor"
 ```
 
-Full on-ramp: **[Getting started](https://theboringoffice.pages.dev/docs/getting-started)** · local notes in [`docs/`](docs/README.md).
+Full on-ramp: **[Getting started](https://boringfloor.com/docs/getting-started)** · local notes in [`docs/`](docs/README.md).
 
 ## Docs
 
@@ -72,35 +71,35 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 
 | In-repo | Website |
 |---|---|
-| [Docs hub](docs/README.md) | [Docs home](https://theboringoffice.pages.dev/docs) |
-| [Architecture](docs/architecture.md) | [Vision](https://theboringoffice.pages.dev/vision) |
-| [Website](website/README.md) | [Get started](https://theboringoffice.pages.dev/get-started) |
-| [Commands (`cmd/`)](cmd/README.md) | [Sounds](https://theboringoffice.pages.dev/sounds) |
-| [Scripts](scripts/README.md) | [Blog](https://theboringoffice.pages.dev/blog) |
+| [Docs hub](docs/README.md) | [Docs home](https://boringfloor.com/docs) |
+| [Architecture](docs/architecture.md) | [Vision](https://boringfloor.com/vision) |
+| [Website](website/README.md) | [Get started](https://boringfloor.com/get-started) |
+| [Commands (`cmd/`)](cmd/README.md) | [Sounds](https://boringfloor.com/sounds) |
+| [Scripts](scripts/README.md) | [Blog](https://boringfloor.com/blog) |
 
 ### Manual (site)
 
 **Install & setup**
-- [Getting started](https://theboringoffice.pages.dev/docs/getting-started) — curl, demo, live office, `--session`
+- [Getting started](https://boringfloor.com/docs/getting-started) — curl, demo, live office, `--session`
 
 **Core**
-- [Backends](https://theboringoffice.pages.dev/docs/backends) — opencode or claudecode, both primed with the same manager charter
-- [Chat & work threads](https://theboringoffice.pages.dev/docs/chat-and-threads)
-- [Plan mode](https://theboringoffice.pages.dev/docs/plan-mode)
+- [Backends](https://boringfloor.com/docs/backends) — opencode or claudecode, both primed with the same manager charter
+- [Chat & work threads](https://boringfloor.com/docs/chat-and-threads)
+- [Plan mode](https://boringfloor.com/docs/plan-mode)
 
 **Workflow**
-- [Permissions & questions](https://theboringoffice.pages.dev/docs/permissions-and-questions)
-- [Queue, board & memory](https://theboringoffice.pages.dev/docs/queue-board-memory)
+- [Permissions & questions](https://boringfloor.com/docs/permissions-and-questions)
+- [Queue, board & memory](https://boringfloor.com/docs/queue-board-memory)
 
 **Panels & reference**
-- [Terminal & git tabs](https://theboringoffice.pages.dev/docs/terminal-and-git-tabs)
-- [Browser tab](https://theboringoffice.pages.dev/docs/browser-tab)
-- [Layout, themes & power](https://theboringoffice.pages.dev/docs/layout-themes-power)
-- [Keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash)
+- [Terminal & git tabs](https://boringfloor.com/docs/terminal-and-git-tabs)
+- [Browser tab](https://boringfloor.com/docs/browser-tab)
+- [Layout, themes & power](https://boringfloor.com/docs/layout-themes-power)
+- [Keys & slash commands](https://boringfloor.com/docs/keys-and-slash)
 
-Config file: `~/.theboringoffice/configs/brain.json` (`theboringoffice --print-default-config`). Details: [backends](https://theboringoffice.pages.dev/docs/backends) + [layout](https://theboringoffice.pages.dev/docs/layout-themes-power).
+Config file: `~/.theboringfloor/configs/brain.json` (`theboringfloor --print-default-config`). Details: [backends](https://boringfloor.com/docs/backends) + [layout](https://boringfloor.com/docs/layout-themes-power).
 
-Whichever backend you pick, the office primes it with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringoffice charter -->` block appended below your content. Nothing member-owned is ever overwritten.
+Whichever backend you pick, the office primes it with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringfloor charter -->` block appended below your content. Nothing member-owned is ever overwritten.
 
 ## Peek
 
@@ -113,7 +112,7 @@ Whichever backend you pick, the office primes it with the same manager charter b
 
 ## Keys
 
-One line per key — the full table lives at [keys & slash commands](https://theboringoffice.pages.dev/docs/keys-and-slash).
+One line per key — the full table lives at [keys & slash commands](https://boringfloor.com/docs/keys-and-slash).
 
 | Key | Does |
 |---|---|
@@ -150,7 +149,7 @@ Browser tab (the left pane, behind `ctrl+b`):
 | `pgup` / `pgdn` | scroll the body |
 | `q` / `esc` | back to the floor |
 
-On kitty/ghostty with Chrome, pages render as headless screenshots — ` shot ` badge, PNGs under `~/.theboringoffice/shots/` — and the boss can screenshot pages for you, snapshot pages to read for itself, and (with your approve-once permission) click, fill and eval on them. Pastes into the terminal tab reach the shell bracketed-paste-wrapped. Everywhere else the browser is text on purpose.
+On kitty/ghostty with Chrome, pages render as headless screenshots — ` shot ` badge, PNGs under `~/.theboringfloor/shots/` — and the boss can screenshot pages for you, snapshot pages to read for itself, and (with your approve-once permission) click, fill and eval on them. Pastes into the terminal tab reach the shell bracketed-paste-wrapped. Everywhere else the browser is text on purpose.
 
 ## Community
 
