@@ -1,20 +1,21 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { useState } from 'react'
-import { ShaderBackground } from '@/components/ui/light-blue-plasma-shader-w-grain-interactive'
+import Link from "next/link";
+import { useState } from "react";
+import { Database } from "lucide-react";
+import { ShaderBackground } from "@/components/ui/light-blue-plasma-shader-w-grain-interactive";
 
 const INSTALL =
-  'curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh'
+  "curl -fsSL https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh | sh";
 
 export function Hero() {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState(false);
 
   async function copyInstall() {
     try {
-      await navigator.clipboard.writeText(INSTALL)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
+      await navigator.clipboard.writeText(INSTALL);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
     } catch {
       /* ignore */
     }
@@ -34,17 +35,48 @@ export function Hero() {
           The virtual office
         </p>
 
+        <a
+          href="https://synehq.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-8 flex max-w-xl overflow-hidden border border-(--band-fg)/15 transition-colors hover:bg-(--band-fg)/4"
+        >
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-4 p-4">
+            <p className="font-sans text-lg font-medium tracking-tight md:text-xl">
+              Talk to your data like a human.
+            </p>
+            <div className="flex items-center gap-2 text-(--band-fg)/45">
+              <Database className="size-3.5 shrink-0" aria-hidden />
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                Query data with AI agents
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end justify-between border-l border-(--band-fg)/15 px-4 py-4">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-(--band-fg)/40">
+              Sponsored
+            </span>
+            <img
+              className="h-7 w-auto"
+              src="https://framerusercontent.com/images/DpVtRdL2gGDwSRNF4GSIdB6Ajkg.svg?scale-down-to=512&width=840&height=299"
+              alt="Syne HQ"
+            />
+          </div>
+        </a>
+
         <h1 className="mt-10 max-w-[14ch] font-sans text-[clamp(3.25rem,11vw,8.5rem)] font-medium leading-[0.9] tracking-[-0.05em]">
-          Work with agents
+          <span className="">Work with agents</span>
           <br />
-          that feel like{' '}
-          <span className="text-(--band-accent)">coworkers.</span>
+          that feel like{" "}
+          <span className="text-(--band-accent) italic">coworkers.</span>
         </h1>
+        
 
         <p className="mt-10 max-w-lg text-pretty font-sans text-base leading-relaxed text-(--band-fg)/50 md:text-lg">
-          A terminal app where your opencode or Claude Code boss and sub-agents clock in as
-          coworkers on a living floor. See the work move, talk to the boss like a person, and
-          come back tomorrow to an office that remembers.
+          A terminal app where your opencode or Claude Code boss and sub-agents
+          clock in as coworkers on a living floor. See the work move, talk to
+          the boss like a person, and come back tomorrow to an office that
+          remembers.
         </p>
 
         <div className="mt-12 flex max-w-xl items-stretch border border-(--band-fg)/15 bg-(--band-well) font-mono text-sm">
@@ -57,7 +89,7 @@ export function Hero() {
             onClick={copyInstall}
             className="shrink-0 border-l border-(--band-fg)/15 px-4 text-[11px] uppercase tracking-wider text-(--band-fg)/55 transition-colors hover:bg-(--band-fg)/5 hover:text-(--band-fg)"
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? "Copied" : "Copy"}
           </button>
         </div>
 
@@ -77,5 +109,5 @@ export function Hero() {
         </div>
       </div>
     </section>
-  )
+  );
 }
