@@ -14,9 +14,9 @@ Right panel is yours. Left pane is the floor (or the in-TUI browser).
 <br />
 
 [![Go](https://img.shields.io/github/go-mod/go-version/theboringhumane/theboringoffice?style=for-the-badge&logo=go&logoColor=white&label=Go)](https://go.dev)
-[![Release](https://img.shields.io/github/v/release/theboringhumane/theboringoffice?style=for-the-badge&logo=github&label=release)](https://github.com/theboringhumane/theboringoffice/releases)
-[![Release workflow](https://img.shields.io/github/actions/workflow/status/theboringhumane/theboringoffice/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=build)](https://github.com/theboringhumane/theboringoffice/actions/workflows/release.yml)
-[![Go Reference](https://img.shields.io/badge/pkg.go.dev-reference-007d9c?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/theboringhumane/theboringoffice)
+[![Release](https://img.shields.io/github/v/release/theboringhumane/theboringoffice?style=for-the-badge&logo=github&label=release)](https://github.com/theboringhumane/theboringfloor/releases)
+[![Release workflow](https://img.shields.io/github/actions/workflow/status/theboringhumane/theboringoffice/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=build)](https://github.com/theboringhumane/theboringfloor/actions/workflows/release.yml)
+[![Go Reference](https://img.shields.io/badge/pkg.go.dev-reference-007d9c?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/theboringhumane/theboringfloor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111111?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join%20community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/YPDsHVHTVf)
 
@@ -40,7 +40,7 @@ Windows (PowerShell):
 irm https://boringfloor.com/install.ps1 | iex
 ```
 
-The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringoffice/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
+The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringfloor/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
 
 Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI):
 
@@ -56,10 +56,10 @@ theboringfloor --demo     # touring mode
 theboringfloor --version  # stamp: version, commit, date
 ```
 
-Pin a tag, or grab a prebuilt (macOS/Linux/Windows, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringoffice/releases):
+Pin a tag, or grab a prebuilt (macOS/Linux/Windows, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringfloor/releases):
 
 ```bash
-go install github.com/theboringhumane/theboringoffice/cmd/theboringoffice@latest
+go install github.com/theboringhumane/theboringfloor/cmd/theboringoffice@latest
 ln -sf "$(go env GOPATH)/bin/theboringoffice" "$(go env GOPATH)/bin/theboringfloor"
 ```
 
@@ -158,7 +158,7 @@ On kitty/ghostty with Chrome, pages render as headless screenshots — ` shot ` 
     <img src="https://cdn.simpleicons.org/discord/5865F2" alt="Discord" width="28" height="28" />
   </a>
   &nbsp;
-  <a href="https://github.com/theboringhumane/theboringoffice">
+  <a href="https://github.com/theboringhumane/theboringfloor">
     <img src="https://cdn.simpleicons.org/github/181717" alt="GitHub" width="28" height="28" />
   </a>
 </p>

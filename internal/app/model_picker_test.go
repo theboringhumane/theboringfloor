@@ -29,8 +29,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // modelsBackend — a recording backend WITH the /model picker's listing

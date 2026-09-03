@@ -80,8 +80,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // threadHintText — the dim-italic hint row trailing the last thread block

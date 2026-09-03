@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // TestMicroPlan80x10RendersBossAndPodsNoBadge — the mobile band at a

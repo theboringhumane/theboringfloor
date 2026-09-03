@@ -32,14 +32,14 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/backend"
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/gitx"
-	"github.com/theboringhumane/theboringoffice/internal/office"
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/projinfo"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/backend"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/office"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/projinfo"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 const (

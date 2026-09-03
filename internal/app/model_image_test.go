@@ -14,8 +14,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // imageFixture — the raster lane's gold fixture (the panels package's own

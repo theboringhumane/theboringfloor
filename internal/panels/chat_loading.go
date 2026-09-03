@@ -30,7 +30,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
 )
 
 // loadingWordTicks — ticks per fun-word rotation. The office tick fires

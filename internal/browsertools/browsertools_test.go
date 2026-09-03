@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // flagEnv pins the allow-http flag for one Decide/Bridge call.

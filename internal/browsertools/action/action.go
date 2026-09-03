@@ -29,8 +29,8 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 // Op names (the marker grammar's three verbs — kept as plain strings so

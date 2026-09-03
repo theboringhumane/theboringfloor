@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // scratchHome points THEBORINGOFFICE_HOME at a t.TempDir for the sessions tests.

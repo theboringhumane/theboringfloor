@@ -16,8 +16,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // fail prints and exits 1.

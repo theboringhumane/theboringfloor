@@ -16,9 +16,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // spliceCleanup — the process-singleton registry's per-test hygiene

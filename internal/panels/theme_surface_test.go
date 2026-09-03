@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
 )
 
 func sameColor(a, b color.Color) bool {

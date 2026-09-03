@@ -21,7 +21,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 // editKey — the editor surface's special keys (browserKey covers the

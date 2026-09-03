@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // pinBackend — a LIVE-mode recording backend WITH the primary seam

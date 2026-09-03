@@ -21,10 +21,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
-	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // browserOpens filters an opencode-side event log down to the tool events.

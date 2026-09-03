@@ -1,12 +1,12 @@
 // Package version — build-time version stamp, one source of truth.
 //
-// `go build` / `go install github.com/theboringhumane/theboringoffice/cmd/theboringoffice@<tag>`
+// `go build` / `go install github.com/theboringhumane/theboringfloor/cmd/theboringoffice@<tag>`
 // leaves Version = "dev". Releases stamp real values via ldflags:
 //
 //	go build -ldflags "\
-//	    -X github.com/theboringhumane/theboringoffice/internal/version.Version=0.1.0 \
-//	    -X github.com/theboringhumane/theboringoffice/internal/version.Commit=$(git rev-parse --short HEAD) \
-//	    -X github.com/theboringhumane/theboringoffice/internal/version.Date=$(date -u +%F)" ./cmd/theboringoffice
+//	    -X github.com/theboringhumane/theboringfloor/internal/version.Version=0.1.0 \
+//	    -X github.com/theboringhumane/theboringfloor/internal/version.Commit=$(git rev-parse --short HEAD) \
+//	    -X github.com/theboringhumane/theboringfloor/internal/version.Date=$(date -u +%F)" ./cmd/theboringoffice
 //
 // -X only rewrites package-level string vars — keep these as `var`, not `const`.
 package version

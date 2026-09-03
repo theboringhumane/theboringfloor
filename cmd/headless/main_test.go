@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/backend"
-	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/backend"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // the boot summary's transport row: demo names itself, live names the

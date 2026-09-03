@@ -38,7 +38,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // ---------------------------------------------------------------- live: list

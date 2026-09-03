@@ -15,8 +15,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // TestChatAttachRender stages two attachments (an image paste chip and an

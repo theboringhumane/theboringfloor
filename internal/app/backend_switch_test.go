@@ -26,8 +26,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // swapStubBackend — a LIVE-mode recording backend for the /backend tests:

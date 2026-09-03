@@ -27,7 +27,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 // laneRig — a Browser wired for the lane matrix: stub fetch, the fake

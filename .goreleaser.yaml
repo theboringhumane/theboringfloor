@@ -17,9 +17,9 @@ builds:
     ldflags:
       - >-
         -s -w
-        -X github.com/theboringhumane/theboringoffice/internal/version.Version={{ .Version }}
-        -X github.com/theboringhumane/theboringoffice/internal/version.Commit={{ .Commit }}
-        -X github.com/theboringhumane/theboringoffice/internal/version.Date={{ .Date }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Version={{ .Version }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Commit={{ .Commit }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
 
 archives:
   - id: theboringoffice

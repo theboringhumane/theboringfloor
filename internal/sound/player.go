@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
 // throttleGap — the same sound played within this window is suppressed, so a

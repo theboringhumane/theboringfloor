@@ -45,7 +45,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // grabFakeTerm — a recording TerminalTab double for the SpawnTerminal seam:

@@ -27,7 +27,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // bigPaste builds a paste of n numbered lines ("lorem NN" — short, so

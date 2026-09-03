@@ -53,8 +53,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/charter"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // liveClaudeGate is the double gate EVERY live test passes through:

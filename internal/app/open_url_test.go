@@ -37,7 +37,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
 )
 
 // TestResolveBrowserToolMatrix — the selection matrix driven PURE

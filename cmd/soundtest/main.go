@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/sound"
+	"github.com/theboringhumane/theboringfloor/internal/sound"
 )
 
 func main() {

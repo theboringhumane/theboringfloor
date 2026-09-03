@@ -7,7 +7,7 @@ package office
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // ambientCellSet — every cell the ambient pass may ever churn on this plan:

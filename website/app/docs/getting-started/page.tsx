@@ -128,7 +128,7 @@ export default function GettingStartedPage() {
               Prefer a manual install? Download the matching Windows <code className="font-mono text-xs text-foreground">.zip</code>{' '}
               and checksums file from{' '}
               <a
-                href="https://github.com/theboringhumane/theboringoffice/releases"
+                href="https://github.com/theboringhumane/theboringfloor/releases"
                 className="text-foreground underline underline-offset-4 hover:text-accent"
               >
                 Releases

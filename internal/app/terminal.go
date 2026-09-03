@@ -41,8 +41,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // terminalIndex is the terminal tab's position in the sidebar strip

@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 // liveServer — the fixture over loopback http; skips unless both gates open.

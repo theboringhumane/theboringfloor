@@ -18,7 +18,7 @@ import (
 	"strings"
 	"testing"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // timelineIDs flattens a merged timeline to one label per unit —

@@ -45,7 +45,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // selChat builds the canonical selection fixture: ONE user turn of the

@@ -22,8 +22,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 func TestNavigateAndActValidation(t *testing.T) {

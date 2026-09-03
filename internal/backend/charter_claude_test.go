@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/charter"
 )
 
 // wantClaudeCharterFresh is the pinned byte-exact expectation for the

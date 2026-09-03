@@ -1,4 +1,4 @@
-module github.com/theboringhumane/theboringoffice
+module github.com/theboringhumane/theboringfloor
 
 go 1.25.8
 

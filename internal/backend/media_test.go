@@ -14,7 +14,7 @@ import (
 	"image/png"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // tinyPNG builds a REAL 2×2 PNG (dims must decode — the media gate

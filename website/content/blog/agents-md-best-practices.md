@@ -182,7 +182,7 @@ Honest ceilings, because this file is easy to overbuild.
 
 ## How we encode this
 
-We run on this advice literally: theboringfloor's own agents get their instructions from a charter file — [`.opencode/oikonomos.md`](https://github.com/theboringhumane/theboringoffice/blob/main/.opencode/oikonomos.md) — committed to the repo, reviewed like code, and read by every session before it touches a file. Same physics as everything above, applied to ourselves.
+We run on this advice literally: theboringfloor's own agents get their instructions from a charter file — [`.opencode/oikonomos.md`](https://github.com/theboringhumane/theboringfloor/blob/main/.opencode/oikonomos.md) — committed to the repo, reviewed like code, and read by every session before it touches a file. Same physics as everything above, applied to ourselves.
 
 ## Sources
 

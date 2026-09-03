@@ -18,9 +18,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/projinfo"
-	"github.com/theboringhumane/theboringoffice/internal/state"
-	"github.com/theboringhumane/theboringoffice/internal/version"
+	"github.com/theboringhumane/theboringfloor/internal/projinfo"
+	"github.com/theboringhumane/theboringfloor/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/version"
 )
 
 // AppVersion is shown in the topbar (theboringoffice v0.2.1, or "dev" for a

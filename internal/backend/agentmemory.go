@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 const defaultAgentmemoryBase = "http://localhost:3111"

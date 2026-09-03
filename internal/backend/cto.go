@@ -19,7 +19,7 @@ package backend
 import (
 	"fmt"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // ctoName is the CTO's office identity (roster name + mail sender).

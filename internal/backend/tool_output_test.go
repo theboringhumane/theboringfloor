@@ -22,7 +22,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // toolEvents filters EvTool rows out of an event slice (in order).

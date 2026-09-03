@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
 // minGap — the same kind re-pinged within this window is suppressed, so a

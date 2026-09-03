@@ -27,7 +27,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // kittyTestPayload — the deterministic fake frame (content irrelevant —

@@ -26,7 +26,7 @@
 #   --uninstall          Remove the theboringfloor binary, shims, the agentmemory
 #                        service, and the terminal-browser bundle + shim
 #
-# Consumes goreleaser assets from https://github.com/theboringhumane/theboringoffice/releases :
+# Consumes goreleaser assets from https://github.com/theboringhumane/theboringfloor/releases :
 #   theboringoffice_<version>_<os>_<arch>.tar.gz        (contains a single binary: theboringoffice)
 #   theboringoffice_<version>_checksums.txt
 # Fallback when the GitHub API can't resolve a version:
@@ -135,7 +135,7 @@ print_banner() {
   \___/  |_|   |_|   |_|  \___|  \___|
 
         t h e b o r i n g o f f i c e  -  i n s t a l l e r
-        github.com/theboringhumane/theboringoffice
+        github.com/theboringhumane/theboringfloor
 BANNER
     printf '\n'
 }

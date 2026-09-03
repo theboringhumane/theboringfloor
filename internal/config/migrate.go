@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
 // MigrateHome folds prior product dirs into the canonical names:

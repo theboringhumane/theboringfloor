@@ -40,8 +40,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // errFakeSpawn — the spawn seam's canned failure (respawn tests).

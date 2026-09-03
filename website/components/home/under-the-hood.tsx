@@ -103,7 +103,7 @@ export function UnderTheHood() {
               curl -fsSL https://boringfloor.com/install.sh | sh
             </p>
             <p className="shrink-0 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              macOS · Linux · amd64 · arm64
+              macOS · Linux · Windows · amd64 · arm64
             </p>
           </div>
           <p className="border-t border-border px-6 py-3 font-mono text-xs text-muted-foreground">

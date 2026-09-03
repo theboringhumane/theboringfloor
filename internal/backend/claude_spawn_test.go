@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
-	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // claudeStubScript writes a stream-json fake `claude` (POSIX sh) into a

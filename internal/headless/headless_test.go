@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 )
 
 // Compile-time signature pins — the contract, verbatim.

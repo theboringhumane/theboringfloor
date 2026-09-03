@@ -37,7 +37,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // boardSyncPrefixMinRunes — the minimum shared normalized title prefix for

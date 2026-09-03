@@ -35,7 +35,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // mapClaudeLineForTest runs one raw stdout line through the SAME entry

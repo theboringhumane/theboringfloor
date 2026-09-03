@@ -22,7 +22,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
 )
 
 // permOption — one row of the popover's menu: the display label and the

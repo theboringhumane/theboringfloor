@@ -28,7 +28,7 @@ import (
 	"net/url"
 	"sort"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // ocProviderModel — one model entry inside a Provider's models map (only

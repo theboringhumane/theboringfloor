@@ -20,7 +20,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // tbAssertExpanded pins ONE thread's effective expansion (the exact rule

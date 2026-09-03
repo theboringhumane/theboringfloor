@@ -35,7 +35,7 @@ import (
 	"image/png"    // register png + re-encode for the kitty strip
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 const (

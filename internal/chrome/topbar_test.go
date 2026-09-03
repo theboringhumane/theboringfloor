@@ -12,8 +12,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/projinfo"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/projinfo"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 var testInfo = projinfo.Info{Project: "myproj", Branch: "main"}

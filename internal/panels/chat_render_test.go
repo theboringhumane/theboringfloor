@@ -14,7 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // chatDividerRow — the View row index of the divider (a run of cells that

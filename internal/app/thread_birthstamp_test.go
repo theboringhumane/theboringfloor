@@ -12,7 +12,7 @@ package app
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // birthStamp — the first-seen slot every merge must preserve.

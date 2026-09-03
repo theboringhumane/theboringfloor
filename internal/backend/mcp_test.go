@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // newMCPTestBackend pins a liveBackend onto the test server without Start

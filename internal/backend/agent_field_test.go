@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // payloadAgent decodes the prompt body's "agent" string, "" when absent.

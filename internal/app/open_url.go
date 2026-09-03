@@ -21,7 +21,7 @@
 package app
 
 import (
-	"github.com/theboringhumane/theboringoffice/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
 )
 
 // BrowserTool — the panels enum ALIASED app-side (one source of truth,

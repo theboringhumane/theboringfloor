@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func emp(id, name string, role state.EmployeeRole, seat string, sprite state.SpriteState) state.Employee {

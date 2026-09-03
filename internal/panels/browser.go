@@ -111,11 +111,11 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
-	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/headless"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/cellmetrics"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // browserFetchDeadline bounds every page fetch (spec: 10s).

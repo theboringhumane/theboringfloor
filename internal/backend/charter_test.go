@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/charter"
 )
 
 // charterProbePhrases is the live-probe subset contract: the charter must

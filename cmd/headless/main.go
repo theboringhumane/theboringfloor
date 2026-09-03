@@ -152,12 +152,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/app"
-	"github.com/theboringhumane/theboringoffice/internal/backend"
-	"github.com/theboringhumane/theboringoffice/internal/charter"
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/gitx"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/app"
+	"github.com/theboringhumane/theboringfloor/internal/backend"
+	"github.com/theboringhumane/theboringfloor/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func claudeResultLineSess(sess, turnUUID string, in, out, cacheR, cacheW int64, cost float64) string {

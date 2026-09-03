@@ -23,7 +23,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // TestClaudeControlRequestRoundTrip drives one shell stub that asks for

@@ -10,7 +10,7 @@ package app
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func workerEditTool(callID string) state.Event {

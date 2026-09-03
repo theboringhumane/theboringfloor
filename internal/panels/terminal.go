@@ -92,9 +92,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/state"
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // termSess is the panel's seam onto a live PTY session — *term.Session

@@ -34,7 +34,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
 )
 
 // ModelPickRow — one switchable boss model for the /model picker. Built

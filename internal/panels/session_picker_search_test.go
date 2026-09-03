@@ -22,7 +22,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
 )
 
 // (a-unit) the row renderer: match bright/accent, rest dim — over title

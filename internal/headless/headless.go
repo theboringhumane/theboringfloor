@@ -45,7 +45,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
 )
 
 // Result — one viewport screenshot: the final (post-redirect) URL, the

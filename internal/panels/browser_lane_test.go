@@ -23,7 +23,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // laneEnv builds the injected env read for the pure resolve matrix.

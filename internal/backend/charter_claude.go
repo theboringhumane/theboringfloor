@@ -60,7 +60,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/charter"
 )
 
 // claudeCharterBeginMarker / claudeCharterEndMarker bracket the appended

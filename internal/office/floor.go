@@ -21,7 +21,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // LEGEND — role legend line (kept for parity with the TS shell).

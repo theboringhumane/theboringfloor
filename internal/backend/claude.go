@@ -48,11 +48,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/browsertools"
-	"github.com/theboringhumane/theboringoffice/internal/chatcontext"
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/gitx"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/chatcontext"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // liveClaudeBackend is the claude CLI twin of liveBackend (opencode.go).

@@ -42,8 +42,8 @@ package app
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // imageRasterMsg — the lazy rasterize landing (rasterizeCmd's result):

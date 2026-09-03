@@ -21,7 +21,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // stubTab — the smallest Tab implementation: a fixed canonical title, no

@@ -36,8 +36,8 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // toolRowChat builds the bare chat holding ONE completed boss tool call

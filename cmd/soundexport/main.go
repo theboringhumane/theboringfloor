@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/theboringhumane/theboringoffice/internal/sound"
+	"github.com/theboringhumane/theboringfloor/internal/sound"
 )
 
 func main() {

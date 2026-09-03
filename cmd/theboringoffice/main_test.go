@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // hungStopBackend — a state.Backend whose Stop NEVER returns (the wedged

@@ -1,7 +1,7 @@
 export const SITE_URL = 'https://boringfloor.com'
 export const SITE_NAME = 'theboringfloor'
 export const SITE_TAGLINE = 'a virtual office where your agents clock in'
-export const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
+export const GITHUB_REPO = 'https://github.com/theboringhumane/theboringfloor'
 export const INSTALL_SH = `${SITE_URL}/install.sh`
 export const INSTALL_PS1 = `${SITE_URL}/install.ps1`
 export const DISCORD_INVITE = 'https://discord.gg/YPDsHVHTVf'

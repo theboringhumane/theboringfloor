@@ -13,8 +13,8 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/projinfo"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/projinfo"
 )
 
 // governor — the power/caching bookkeeping, pointer-shared across the

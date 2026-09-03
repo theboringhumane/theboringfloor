@@ -25,9 +25,9 @@ import (
 	glst "charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/office"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/office"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // Theme — every color slot the UI reads from.

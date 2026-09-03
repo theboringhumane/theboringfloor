@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // G5(d) — the per-call abort ctx: a serve that parks /session/{id}/abort

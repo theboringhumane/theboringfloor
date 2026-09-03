@@ -9,7 +9,7 @@ package app
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // permRecBackend — the app-test recBackend PLUS a recording

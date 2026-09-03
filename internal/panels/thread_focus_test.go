@@ -22,7 +22,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func tfChat(id, from, kind, text, meta string) state.ChatMsg {

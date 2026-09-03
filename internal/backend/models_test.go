@@ -17,8 +17,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // modelStub is a stub opencode serve that answers the control calls a

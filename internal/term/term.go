@@ -44,7 +44,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/theboringhumane/theboringoffice/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/gitx"
 )
 
 // DefaultShell picks the user's shell: $SHELL, else /bin/zsh (darwin

@@ -15,7 +15,7 @@ package panels
 import (
 	"sort"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // timelineItem is one unit of the merged chat timeline: either a regular

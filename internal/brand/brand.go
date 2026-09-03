@@ -1,5 +1,5 @@
 // Package brand is the public product name. GitHub module path stays
-// github.com/theboringhumane/theboringoffice; this package is what humans
+// github.com/theboringhumane/theboringfloor; this package is what humans
 // see: CLI, dirs, env, OS banners, wire prefix.
 package brand
 

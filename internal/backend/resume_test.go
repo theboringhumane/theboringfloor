@@ -17,7 +17,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // resolveFixture boots a bare liveBackend (no Start — resolvePrimary is

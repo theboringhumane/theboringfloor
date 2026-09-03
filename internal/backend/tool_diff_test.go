@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // partUpdated wraps one ToolPart body in the message.part.updated envelope.

@@ -3,7 +3,7 @@ import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
 
 const DISCORD_INVITE = 'https://discord.gg/YPDsHVHTVf'
-const GITHUB_REPO = 'https://github.com/theboringhumane/theboringoffice'
+const GITHUB_REPO = 'https://github.com/theboringhumane/theboringfloor'
 
 const discordLog = [
   { who: 'theboringhumane', text: 'wave 34 is open — the floor needs a doorbell' },

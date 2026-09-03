@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
 const (

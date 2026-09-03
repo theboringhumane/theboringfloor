@@ -30,18 +30,18 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringoffice/internal/app"
-	"github.com/theboringhumane/theboringoffice/internal/backend"
-	"github.com/theboringhumane/theboringoffice/internal/brand"
-	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/config"
-	"github.com/theboringhumane/theboringoffice/internal/notify"
-	"github.com/theboringhumane/theboringoffice/internal/office"
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/sound"
-	"github.com/theboringhumane/theboringoffice/internal/state"
-	"github.com/theboringhumane/theboringoffice/internal/version"
+	"github.com/theboringhumane/theboringfloor/internal/app"
+	"github.com/theboringhumane/theboringfloor/internal/backend"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/cellmetrics"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/notify"
+	"github.com/theboringhumane/theboringfloor/internal/office"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/sound"
+	"github.com/theboringhumane/theboringfloor/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/version"
 )
 
 // sndBus adapts *sound.Bus (Play returns error) to the app's Play-void seam.

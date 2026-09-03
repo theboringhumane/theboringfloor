@@ -12,7 +12,7 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // devSeatRE — machine-format seat ids, not natural language.

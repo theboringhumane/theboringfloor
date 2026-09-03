@@ -30,8 +30,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/headless"
-	"github.com/theboringhumane/theboringoffice/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
 )
 
 // TestMain pins the panels headless engine seam HERMETIC for the whole

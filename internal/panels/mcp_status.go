@@ -16,8 +16,8 @@ package panels
 import (
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // RenderMCPStatus renders the MCP server list as chat-ready lines.

@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // preparedAttachment is an attachment proven readable at send time. Paths

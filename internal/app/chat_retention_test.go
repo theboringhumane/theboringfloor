@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // TestChatRetentionKeepsFullHistory drives 120 user+boss turn pairs (240

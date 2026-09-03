@@ -6,7 +6,7 @@
 package office
 
 import (
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // ROLE_GLYPH — one rune per role.

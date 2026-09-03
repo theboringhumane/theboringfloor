@@ -5,7 +5,7 @@ package backend
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // TestBossSessionTitles: fresh-create title is cfg.Boss.Name exactly;

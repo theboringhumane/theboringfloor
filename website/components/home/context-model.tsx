@@ -56,24 +56,24 @@ export function ContextModel() {
           <div className="relative h-56 overflow-hidden border border-border bg-card" aria-label="Supported model and coding agent logos">
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--accent),transparent_62%)] opacity-10" />
             <div className="absolute left-1/2 top-1/2 size-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/30 bg-background/80 shadow-[0_0_45px_var(--foreground)] shadow-foreground/20" />
-            <div className="absolute left-1/2 top-1/2 flex size-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-foreground/50 bg-foreground/10 font-mono text-lg font-semibold text-accent">
-              <img src="/imgs/logo.jpg" alt="Theboringoffice" className="size-full bg-blend-color " />
+            <div className="absolute left-1/2 top-1/2 size-12 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full border border-foreground/50">
+              <img src="/imgs/logo.jpg" alt="Theboringoffice" className="size-full object-cover" />
             </div>
 
             <div className="absolute left-[8%] top-[18%] flex items-center gap-2 border border-border bg-background/90 px-3 py-2 shadow-lg transition-transform hover:-translate-y-1">
-              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/cursor.png" alt="Cursor" className="size-7 rounded-md border border-foreground/40 bg-background p-1" />
+              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/cursor.png" alt="Cursor" className="size-7 invert dark:invert-0" />
               <span className="font-mono text-xs text-foreground">Cursor</span>
             </div>
             <div className="absolute right-[8%] top-[14%] flex items-center gap-2 border border-border bg-background/90 px-3 py-2 shadow-lg transition-transform hover:-translate-y-1">
-              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-avatar/avatars/claudecode.webp" alt="Claude" className="size-7 rounded-md border border-foreground/40 bg-background p-1" />
+              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-avatar/avatars/claudecode.webp" alt="Claude" className="size-7 rounded-md" />
               <span className="font-mono text-xs text-foreground">Claude</span>
             </div>
             <div className="absolute bottom-[16%] left-[14%] flex items-center gap-2 border border-border bg-background/90 px-3 py-2 shadow-lg transition-transform hover:translate-y-1">
-              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/opencode.png" alt="OpenCode" className="size-7 rounded-md border border-foreground/40 bg-background p-1" />
+              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/opencode.png" alt="OpenCode" className="size-7 invert dark:invert-0" />
               <span className="font-mono text-xs text-foreground">OpenCode</span>
             </div>
             <div className="absolute bottom-[13%] right-[12%] flex items-center gap-2 border border-border bg-background/90 px-3 py-2 shadow-lg transition-transform hover:translate-y-1">
-            <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/codex.png" alt="AgentMemory" className="size-7 rounded-md border border-foreground/40 bg-background p-1" />
+              <img src="https://raw.githubusercontent.com/lobehub/lobe-icons/refs/heads/master/packages/static-png/dark/codex.png" alt="Codex" className="size-7 invert dark:invert-0" />
               <span className="font-mono text-xs text-foreground">Codex</span>
             </div>
 

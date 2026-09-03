@@ -68,12 +68,12 @@ export function OpenSource() {
             </div>
             <div className="mt-2 flex flex-wrap gap-3">
               <a
-                href="https://github.com/theboringhumane/theboringoffice"
+                href="https://github.com/theboringhumane/theboringfloor"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center bg-foreground px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
               >
-                github.com/theboringhumane/theboringoffice
+                github.com/theboringhumane/theboringfloor
               </a>
               <Link
                 href="/get-started"

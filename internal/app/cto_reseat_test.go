@@ -14,7 +14,7 @@ package app
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // bootFloor — the floor as live Start opens it: the two fixed seats

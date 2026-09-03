@@ -24,8 +24,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/cellmetrics"
-	"github.com/theboringhumane/theboringoffice/internal/headless"
+	"github.com/theboringhumane/theboringfloor/internal/cellmetrics"
+	"github.com/theboringhumane/theboringfloor/internal/headless"
 )
 
 // TestMain pins the headless engine seam HERMETIC for the whole panels

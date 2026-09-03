@@ -28,8 +28,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/theboringhumane/theboringoffice/internal/office"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/office"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 const (

@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/theboringhumane/theboringoffice/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
 // HomeOverride returns the test/harness scratch-root override:

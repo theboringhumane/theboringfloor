@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/gitx"
+	"github.com/theboringhumane/theboringfloor/internal/gitx"
 )
 
 // ---------------------------------------------------------------------------

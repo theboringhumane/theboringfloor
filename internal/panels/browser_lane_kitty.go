@@ -95,7 +95,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/theboringhumane/theboringoffice/internal/term"
+	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
 // zenbuMaxLiveImages bounds the store (the child reuses ids — a handful

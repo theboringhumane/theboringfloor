@@ -57,9 +57,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringoffice/internal/chrome"
-	"github.com/theboringhumane/theboringoffice/internal/office"
-	"github.com/theboringhumane/theboringoffice/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/office"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
 )
 
 // The left pane's two-tab slot: floor (the default) | browser.

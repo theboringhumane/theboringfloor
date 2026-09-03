@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func TestClaudeResumePinAfterMidTurnKill(t *testing.T) {

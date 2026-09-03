@@ -34,7 +34,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	state "github.com/theboringhumane/theboringoffice/internal/state"
+	state "github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // foldChat builds the bare chat holding ONE 5-row user turn

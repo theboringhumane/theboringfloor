@@ -10,8 +10,8 @@ package app
 import (
 	"testing"
 
-	"github.com/theboringhumane/theboringoffice/internal/panels"
-	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 func TestQuestionWizardTwoPageSubmit(t *testing.T) {
