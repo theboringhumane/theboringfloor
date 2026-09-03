@@ -93,7 +93,6 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -146,13 +145,6 @@ const BrowserLaneOptInEnv = "THEBORINGOFFICE_ZENBU_LANE"
 // exec.LookPath by default, swapped by tests to prove the
 // PATH-resolution-failure leg without depending on the host PATH.
 var zenbuLookPath = exec.LookPath
-
-// zenbuGroupSignal — the process-group signal seam (the same swap-var
-// idiom): syscall.Kill by default, swapped by the ordering test to
-// PROVE Freeze's park engages BEFORE the SIGSTOP (and Unfreeze's unpark
-// BEFORE the SIGCONT) — the leak window's shut-ness is observable at
-// the signal's own instant.
-var zenbuGroupSignal = syscall.Kill
 
 // ResolveBrowserLane — the browser tab's lane, live-read (fresh env +
 // PATH probe; callers wanting the per-boot memo use a
@@ -614,7 +606,7 @@ func (s *ZenbuSession) Freeze() error {
 	}
 	ZenbuRegistry().Clear()
 	if !exited && pid > 0 {
-		return zenbuGroupSignal(-pid, syscall.SIGSTOP)
+		return zenbuGroupSignal(-pid, zenbuSigStop)
 	}
 	return nil
 }
@@ -664,7 +656,7 @@ func (s *ZenbuSession) Unfreeze() error {
 		s.split.unpark()
 	}
 	if alive && pid > 0 {
-		return zenbuGroupSignal(-pid, syscall.SIGCONT)
+		return zenbuGroupSignal(-pid, zenbuSigCont)
 	}
 	return nil
 }
@@ -717,7 +709,7 @@ func (s *ZenbuSession) Close() error {
 		s.split.reset()
 	}
 	if wasFrozen && pid > 0 {
-		_ = zenbuGroupSignal(-pid, syscall.SIGCONT) // thaw into the KILL (see the doc)
+		_ = zenbuGroupSignal(-pid, zenbuSigCont) // thaw into the KILL (see the doc)
 	}
 	if s.images != nil {
 		if frames := s.images.dropAll(); frames != "" {
@@ -726,7 +718,7 @@ func (s *ZenbuSession) Close() error {
 	}
 	ZenbuRegistry().Clear()
 	if pid > 0 {
-		_ = zenbuGroupSignal(-pid, syscall.SIGKILL)
+		_ = zenbuGroupSignal(-pid, zenbuSigKill)
 	}
 	if s.mf != nil {
 		_ = s.mf.Close()

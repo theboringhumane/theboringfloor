@@ -40,7 +40,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/creack/pty"
@@ -53,6 +52,12 @@ import (
 func DefaultShell() string {
 	if s := os.Getenv("SHELL"); s != "" {
 		return s
+	}
+	if os.PathSeparator == '\\' {
+		if s := os.Getenv("COMSPEC"); s != "" {
+			return s
+		}
+		return `C:\Windows\System32\cmd.exe`
 	}
 	for _, cand := range []string{"/bin/zsh", "/bin/bash"} {
 		if _, err := os.Stat(cand); err == nil {
@@ -247,7 +252,7 @@ func (s *Session) Kill() error {
 
 	// Group kill first (best effort), then close the master so the reader
 	// unblocks even on the error path, then let the waiter reap.
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	killProcessGroup(pid)
 	_ = s.mf.Close()
 
 	for i := 0; i < 50; i++ {
