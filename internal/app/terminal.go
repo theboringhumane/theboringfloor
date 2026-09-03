@@ -109,8 +109,8 @@ func (t *termTabWrap) SetState(st state.OfficeState) {
 // panic — triggerSpawn (model.go) turns them into an office notice + chat
 // fallback. nil factory = the parallel panel isn't linked yet.
 func (t *termTabWrap) ensure() error {
-	if t.inner != nil || t.closed {
-		return nil
+	if t.inner != nil || t.closed || (t.tried && t.err != nil) {
+		return nil // ponytail: failed spawn stays failed until explicit "r" respawn
 	}
 	t.tried = true
 	if SpawnTerminal == nil {
@@ -341,6 +341,8 @@ func (t *termTabWrap) Update(msg tea.Msg) tea.Cmd {
 			_ = t.inner.Close()
 			t.inner = nil
 		}
+		t.tried = false
+		t.err = nil
 		_ = t.ensure()
 	}
 	return nil

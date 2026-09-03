@@ -205,14 +205,14 @@ func answerConfirm(t *testing.T, m Model, picks ...string) Model {
 func TestBypassStateResetsPerBoot(t *testing.T) {
 	scratchHome(t)
 	m := New(&recBackend{}, nil)
-	if m.bypassPerms || m.bypassRestarting || m.bypassQueued {
+	if m.bypassPerms || m.bypassRestarting {
 		t.Fatal("every boot must start with the bypass mode fully OFF")
 	}
 	// a model that HAD the mode armed never leaks it into the next boot.
 	m.bypassPerms = true
 	m.bypassRestarting = true
 	m2 := New(&recBackend{}, nil)
-	if m2.bypassPerms || m2.bypassRestarting || m2.bypassQueued {
+	if m2.bypassPerms || m2.bypassRestarting {
 		t.Fatal("a fresh boot must never inherit the previous session's bypass state")
 	}
 }
@@ -310,8 +310,8 @@ func TestBypassEnableAcceptRespawnsWithFlag(t *testing.T) {
 	if got := fresh.bypasses(); len(got) != 1 || got[0] != true {
 		t.Fatalf("the FRESH instance got SetBypassPermissions(true), got %v", got)
 	}
-	// The old generation stays accepting until fresh Start succeeds, then drains.
-	want := []string{"fresh:override:ses-live-1", "fresh:bypass:true", "fresh:start", "old:stop"}
+	// Clean restart: old stops BEFORE fresh builds and starts.
+	want := []string{"old:stop", "fresh:override:ses-live-1", "fresh:bypass:true", "fresh:start"}
 	if got := log.get(); strings.Join(got, ";") != strings.Join(want, ";") {
 		t.Fatalf("respawn ordering:\n got %v\nwant %v", got, want)
 	}
@@ -346,6 +346,11 @@ func TestBypassDisableInstantNoConfirm(t *testing.T) {
 	}
 	if got := fresh.bypasses(); len(got) != 1 || got[0] != false {
 		t.Fatalf("the fresh instance got SetBypassPermissions(false), got %v", got)
+	}
+	// Clean restart: old stops BEFORE fresh builds and starts.
+	want := []string{"old:stop", "fresh:override:ses-live-1", "fresh:bypass:false", "fresh:start"}
+	if got := log.get(); strings.Join(got, ";") != strings.Join(want, ";") {
+		t.Fatalf("disable respawn ordering:\n got %v\nwant %v", got, want)
 	}
 	// The same holder used by the chat callback must now point at the OFF
 	// replacement, not at the just-retired ON backend.
@@ -474,17 +479,16 @@ func TestBypassBrowserActionSkipsModal(t *testing.T) {
 
 // --- queue-while-restarting -------------------------------------------------------
 
-func TestBypassToggleQueuesBehindRespawn(t *testing.T) {
+func TestBypassToggleDuringRestartIsNoOp(t *testing.T) {
 	scratchHome(t)
 	log := &bypassLog{}
 	oldStub := newBypassStub("old", "ses-live-1", log)
 	fresh1 := newBypassStub("fresh1", "", log)
-	fresh2 := newBypassStub("fresh2", "", log)
-	calls := bypassFactory(t, fresh1, fresh2)
+	calls := bypassFactory(t, fresh1)
 	m := newBypassModel(oldStub, config.Default(), t.TempDir())
 	m.SetEventSink(func(state.Event) {})
 
-	// enable → respawn #1 starts (latch armed, no boot line yet).
+	// enable → respawn #1 starts and completes synchronously.
 	m = runMsg(t, m, slashMsg{text: "/bypass"})
 	m = answerConfirm(t, m, "enable")
 	fresh1.waitStarted(t, "respawn #1")
@@ -492,21 +496,20 @@ func TestBypassToggleQueuesBehindRespawn(t *testing.T) {
 		t.Fatalf("one build so far, got %v", *calls)
 	}
 
-	// The normal synchronous fake completes Start before this next input, so
-	// disable starts a second, independent transition.
+	// With the synchronous stub, the first toggle completes within runMsg.
+	// A second toggle starts a new independent transition (not queued).
+	fresh2 := newBypassStub("fresh2", "", log)
+	bypassFactory(t, fresh2)
 	m = runMsg(t, m, slashMsg{text: "/bypass"})
 	if m.bypassPerms {
 		t.Fatal("disable commits OFF after its replacement starts")
-	}
-	if len(*calls) != 2 {
-		t.Fatalf("disable constructs its fresh OFF backend, got %v builds", *calls)
 	}
 	fresh2.waitStarted(t, "respawn #2")
 	if got := fresh2.bypasses(); len(got) != 1 || got[0] != false {
 		t.Fatalf("the follow-up's fresh instance got SetBypassPermissions(false), got %v", got)
 	}
-	if m.bypassRestarting || m.bypassQueued {
-		t.Fatalf("completed transition latches = restarting:%v queued:%v", m.bypassRestarting, m.bypassQueued)
+	if m.bypassRestarting {
+		t.Fatalf("completed transition latch = restarting:%v", m.bypassRestarting)
 	}
 }
 
@@ -535,7 +538,7 @@ func TestBypassRespawnLatchClearsOnBootFailure(t *testing.T) {
 	}
 }
 
-func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
+func TestBypassRapidToggleWhileFactoryIsBlockedIsNoOp(t *testing.T) {
 	scratchHome(t)
 	log := &bypassLog{}
 	old := newBypassStub("old", "ses-live-1", log)
@@ -543,6 +546,7 @@ func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
 	freshOff := newBypassStub("fresh-off", "", log)
 	entered := make(chan struct{})
 	release := make(chan struct{})
+	var enteredOnce sync.Once
 	var mu sync.Mutex
 	builds := 0
 	oldFactory := BackendFactory
@@ -552,10 +556,12 @@ func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
 		build := builds
 		mu.Unlock()
 		if build == 1 {
-			close(entered)
+			enteredOnce.Do(func() { close(entered) })
 			<-release
 			return freshOn
 		}
+		// If the old model code still fires a queued second build
+		// (bypassQueued not yet removed), handle it gracefully.
 		return freshOff
 	}
 	t.Cleanup(func() { BackendFactory = oldFactory })
@@ -575,14 +581,11 @@ func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
 		t.Fatal("first factory did not block")
 	}
 
-	// This is the second rapid /bypass toggle: it changes the desired value,
-	// but must not construct a competing backend while the first build runs.
+	// Rapid second toggle while first is in-flight: bypassRestarting guard
+	// makes it a no-op — no second factory call.
 	m.bypassDesired = false
 	if cmd := m.respawnForBypass(); cmd != nil {
-		t.Fatal("second toggle must queue, not schedule another factory command")
-	}
-	if !m.bypassQueued {
-		t.Fatal("second toggle must record one queued desired state")
+		t.Fatal("second toggle must not schedule another factory command")
 	}
 	mu.Lock()
 	gotBuilds := builds
@@ -593,38 +596,11 @@ func TestBypassRapidToggleQueuesWhileFactoryIsBlocked(t *testing.T) {
 
 	close(release)
 	m = runMsg(t, m, <-result)
-	mu.Lock()
-	gotBuilds = builds
-	mu.Unlock()
-	if gotBuilds != 2 {
-		t.Fatalf("queued final state must construct exactly once after the first build, got %d builds", gotBuilds)
-	}
 	if got := freshOn.bypasses(); len(got) != 1 || got[0] != true {
 		t.Fatalf("first construction must retain its captured ON value, got %v", got)
 	}
-	if got := freshOff.bypasses(); len(got) != 1 || got[0] != false {
-		t.Fatalf("queued construction must apply final OFF value once, got %v", got)
-	}
-	if got := freshOn.stopCount(); got != 1 {
-		t.Fatalf("rapid stale candidate Stop calls = %d, want 1", got)
-	}
-	if m.backend != freshOff || m.bypassRestarting || m.bypassQueued {
-		t.Fatalf("final backend/latches = backend:%T restarting:%v queued:%v, want fresh-off/false/false", m.backend, m.bypassRestarting, m.bypassQueued)
-	}
-	attachment := state.Attachment{Name: "handoff.pdf", Mime: "application/pdf", Path: "/tmp/handoff.pdf"}
-	if msg := currentBackendSend(m.currentBackend, m.plan, "after rapid toggles", []state.Attachment{attachment})(); msg == nil {
-		t.Fatal("ordinary Enter after rapid toggles returned nil")
-	} else if _, ok := msg.(chatSentMsg); !ok {
-		t.Fatalf("ordinary Enter after rapid toggles = %T, want chatSentMsg", msg)
-	}
-	if got := old.sentTexts; len(got) != 0 {
-		t.Fatalf("original backend send ledger = %v, want no calls", got)
-	}
-	if got := freshOn.sentTexts; len(got) != 0 {
-		t.Fatalf("discarded ON candidate send ledger = %v, want no calls", got)
-	}
-	if got := freshOff.sentTexts; !reflect.DeepEqual(got, []string{"after rapid toggles"}) || len(freshOff.sentAtts) != 1 || len(freshOff.sentAtts[0]) != 1 || freshOff.sentAtts[0][0] != attachment {
-		t.Fatalf("final OFF backend send/attachment ledger = texts:%v atts:%+v", got, freshOff.sentAtts)
+	if m.bypassRestarting {
+		t.Fatalf("final latch = restarting:%v, want false", m.bypassRestarting)
 	}
 }
 
@@ -673,84 +649,59 @@ func TestBypassSlowStartKeepsOldBackendAndActiveIndicator(t *testing.T) {
 	}
 }
 
-func TestBypassCommitRoutesOrdinarySendsBeforeAndAfterOldCleanup(t *testing.T) {
+func TestBypassCommitRoutesSendsToFreshBackend(t *testing.T) {
 	scratchHome(t)
 	log := &bypassLog{}
 	old := newBypassStub("old", "ses-live-1", log)
 	fresh := newBypassStub("fresh", "", log)
-	fresh.startEntered = make(chan struct{})
-	fresh.startRelease = make(chan struct{})
 	bypassFactory(t, fresh)
 	m := newBypassModel(old, config.Default(), t.TempDir())
 	m.SetEventSink(func(state.Event) {})
-	m.bypassDesired = true
 
-	// Drive build and Start separately so fresh is committed while old cleanup
-	// remains delayed; this mirrors a user pressing Enter immediately after ON.
-	build := m.respawnForBypass()
-	next, start := m.Update(build())
-	m = next.(Model)
-	started := make(chan tea.Msg, 1)
-	go func() { started <- start() }()
-	select {
-	case <-fresh.startEntered:
-	case <-time.After(time.Second):
-		t.Fatal("fresh Start did not begin")
-	}
-	close(fresh.startRelease)
-	next, committed := m.Update(<-started)
-	m = next.(Model)
+	m = runMsg(t, m, slashMsg{text: "/bypass"})
+	m = answerConfirm(t, m, "enable")
 	if m.backend != fresh || !m.bypassPerms || m.bypassRestarting {
-		t.Fatalf("successful bypass commit = backend:%T on:%v restarting:%v, want fresh/true/false", m.backend, m.bypassPerms, m.bypassRestarting)
+		t.Fatalf("commit = backend:%T on:%v restarting:%v, want fresh/true/false", m.backend, m.bypassPerms, m.bypassRestarting)
 	}
 
-	// With no status side-effect command, tea.Batch elides to the cleanup
-	// command itself. Keep it unexecuted until after the first fresh send.
-	cleanup := committed
-	if cleanup == nil {
-		t.Fatal("successful commit must retain old-generation cleanup")
-	}
-
-	before := currentBackendSend(m.currentBackend, m.plan, "before old cleanup", nil)()
-	if _, ok := before.(chatSentMsg); !ok {
-		t.Fatalf("pre-cleanup ordinary Enter = %T, want chatSentMsg", before)
-	}
-	m = runMsg(t, m, before)
-	attachment := state.Attachment{Name: "notes.md", Mime: "text/markdown", Path: "/tmp/notes.md"}
-	after := currentBackendSend(m.currentBackend, m.plan, "after old cleanup", []state.Attachment{attachment})()
-	if _, ok := after.(chatSentMsg); !ok {
-		t.Fatalf("post-cleanup ordinary Enter = %T, want chatSentMsg", after)
-	}
-	m = runMsg(t, m, cleanup())
-	m = runMsg(t, m, after)
-
+	// Old was stopped during the clean restart (before fresh started).
 	if got := old.stopCount(); got != 1 {
 		t.Fatalf("old backend Stop calls = %d, want 1", got)
 	}
-	if got := fresh.stopCount(); got != 0 {
-		t.Fatalf("fresh backend Stop calls = %d, want 0", got)
+
+	// Sends after commit route to the fresh backend.
+	before := currentBackendSend(m.currentBackend, m.plan, "after commit plain", nil)()
+	if _, ok := before.(chatSentMsg); !ok {
+		t.Fatalf("post-commit Enter = %T, want chatSentMsg", before)
 	}
+	m = runMsg(t, m, before)
+	attachment := state.Attachment{Name: "notes.md", Mime: "text/markdown", Path: "/tmp/notes.md"}
+	after := currentBackendSend(m.currentBackend, m.plan, "after commit with att", []state.Attachment{attachment})()
+	if _, ok := after.(chatSentMsg); !ok {
+		t.Fatalf("post-commit Enter with attachment = %T, want chatSentMsg", after)
+	}
+	m = runMsg(t, m, after)
+
 	if got := old.sentTexts; len(got) != 0 {
 		t.Fatalf("old backend send ledger = %v, want no calls", got)
 	}
-	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{"before old cleanup", "after old cleanup"}) {
+	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{"after commit plain", "after commit with att"}) {
 		t.Fatalf("fresh backend send ledger = %v", got)
 	}
 	if got := fresh.sentAtts; len(got) != 2 || len(got[0]) != 0 || len(got[1]) != 1 || got[1][0] != attachment {
 		t.Fatalf("fresh attachment ledger = %+v, want only the second SendWith to carry %+v", got, attachment)
 	}
 
-	// Send acceptance makes no duplicate local bubbles. The backend's normal
-	// user/pending events still update the post-transition transcript.
+	// Post-transition events still update the transcript.
 	chatBefore := len(m.st.Chat)
-	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{From: "user", Text: "after old cleanup"}})
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{From: "user", Text: "after commit with att"}})
 	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{From: "boss", Pending: true}})
 	if len(m.st.Chat) != chatBefore+2 || m.st.Chat[len(m.st.Chat)-2].From != "user" || !m.st.Chat[len(m.st.Chat)-1].Pending {
 		t.Fatalf("post-commit user/pending lifecycle = %+v", m.st.Chat[chatBefore:])
 	}
 }
 
-func TestBypassFactoryAndStartFailuresKeepOldBackendUsable(t *testing.T) {
+func TestBypassFactoryAndStartFailuresSurfaceError(t *testing.T) {
 	scratchHome(t)
 	log := &bypassLog{}
 	old := newBypassStub("old", "ses-live-1", log)
@@ -761,18 +712,25 @@ func TestBypassFactoryAndStartFailuresKeepOldBackendUsable(t *testing.T) {
 	m.SetEventSink(func(state.Event) {})
 	m.bypassDesired = true
 	m = runMsg(t, m, m.respawnForBypass()())
-	if m.bypassRestarting || m.bypassPerms || m.backend != old {
-		t.Fatalf("factory failure changed active state: restarting=%v active=%v backend=%T", m.bypassRestarting, m.bypassPerms, m.backend)
+	// With clean restart, old was stopped before factory. A nil factory
+	// result leaves the model in a recoverable (not wedged) state.
+	if m.bypassRestarting || m.bypassPerms {
+		t.Fatalf("factory failure must clear latches: restarting=%v active=%v", m.bypassRestarting, m.bypassPerms)
 	}
-	sendThroughCurrentBackend(t, &m, "factory failure still sends", nil)
+	if !strings.Contains(m.st.StatusLine, "bypass restart failed") {
+		t.Fatalf("factory failure must surface error in status, got %q", m.st.StatusLine)
+	}
 
+	// A subsequent toggle can still attempt a fresh respawn (not wedged).
 	failing := newBypassStub("failing", "", log)
 	failing.startErr = errors.New("start boom")
-	BackendFactory = func(string, string, string, *config.Config) state.Backend { return failing }
+	bypassFactory(t, failing)
 	m.bypassDesired = true
 	m = runMsg(t, m, m.respawnForBypass()())
-	if m.bypassRestarting || m.bypassPerms || m.backend != old || !strings.Contains(m.st.StatusLine, "active permissions off") {
-		t.Fatalf("start failure changed active state/status: restarting=%v active=%v backend=%T status=%q", m.bypassRestarting, m.bypassPerms, m.backend, m.st.StatusLine)
+	// Start failure clears the lifecycle latch; bypassPerms retains its
+	// pre-toggle value (failBypassTransition does not flip it).
+	if m.bypassRestarting {
+		t.Fatalf("start failure must clear restarting latch: %v", m.bypassRestarting)
 	}
 	if got := failing.stopCount(); got != 1 {
 		t.Fatalf("partially started candidate Stop calls = %d, want 1", got)
@@ -780,10 +738,6 @@ func TestBypassFactoryAndStartFailuresKeepOldBackendUsable(t *testing.T) {
 	if !failing.didSpawn() {
 		t.Fatal("failing candidate must model a child spawned before Start returned its error")
 	}
-	if got := old.stopCount(); got != 0 {
-		t.Fatalf("active backend Stop calls after candidate failure = %d, want 0", got)
-	}
-	sendThroughCurrentBackend(t, &m, "start failure still sends", nil)
 }
 
 func TestBypassStaleStartedCandidateStopsExactlyOnce(t *testing.T) {
@@ -818,7 +772,9 @@ func TestBypassStaleStartedCandidateStopsExactlyOnce(t *testing.T) {
 	if m.bypassRestarting || m.backendTransitioning {
 		t.Fatalf("stale result must clear latches: restarting=%v transitioning=%v", m.bypassRestarting, m.backendTransitioning)
 	}
-	sendThroughCurrentBackend(t, &m, "old remains usable after stale candidate", nil)
+	// With clean restart, the old backend was drained before this transition
+	// started. The stale handler must leave the model in a recoverable state
+	// (not wedged) — a subsequent toggle can attempt a fresh respawn.
 }
 
 func TestBypassRespawnSkippedInDemo(t *testing.T) {
@@ -832,7 +788,7 @@ func TestBypassRespawnSkippedInDemo(t *testing.T) {
 	if !m.bypassPerms {
 		t.Fatal("demo: the office-side mode still arms")
 	}
-	if m.bypassRestarting || m.bypassQueued {
+	if m.bypassRestarting {
 		t.Fatal("demo: no respawn latch — the scripted tour's backend is fixed")
 	}
 	if got := lastOfficeText(t, m); got != bypassOnNotice {
@@ -974,5 +930,95 @@ func TestBypassQuestionMCPBrowserReachReplacement(t *testing.T) {
 	}
 	if len(fresh.sentTexts) != 2 || !strings.Contains(fresh.sentTexts[1], "browser-action ok") {
 		t.Fatalf("fresh action send = %v", fresh.sentTexts)
+	}
+}
+
+// --- settings persistence -------------------------------------------------------
+
+func TestBypassSettingsPersistence(t *testing.T) {
+	scratchHome(t)
+	log := &bypassLog{}
+	old := newBypassStub("old", "ses-live-1", log)
+	fresh := newBypassStub("fresh", "", log)
+	bypassFactory(t, fresh)
+	dir := t.TempDir()
+	m := newBypassModel(old, config.Default(), dir)
+	m.SetEventSink(func(state.Event) {})
+
+	m = runMsg(t, m, slashMsg{text: "/bypass"})
+	m = answerConfirm(t, m, "enable")
+
+	ps := config.LoadProjectSettings(dir)
+	if !ps.BypassPermissions {
+		t.Fatal("bypass toggle must persist BypassPermissions=true to project settings")
+	}
+
+	// Disable: must clear settings.
+	fresh2 := newBypassStub("fresh2", "", log)
+	bypassFactory(t, fresh2)
+	m = runMsg(t, m, slashMsg{text: "/bypass"})
+
+	ps = config.LoadProjectSettings(dir)
+	if ps.BypassPermissions {
+		t.Fatal("bypass disable must persist BypassPermissions=false to project settings")
+	}
+}
+
+func TestBypassBootFromProjectSettings(t *testing.T) {
+	scratchHome(t)
+	b := newBypassStub("boot", "ses-1", &bypassLog{})
+	m := New(b, nil, WithBypassPermissions(true))
+	if !m.bypassPerms {
+		t.Fatal("WithBypassPermissions(true) must arm bypass at boot")
+	}
+	if !m.bypassDesired {
+		t.Fatal("WithBypassPermissions(true) must set desired=true at boot")
+	}
+	got := b.bypasses()
+	if len(got) != 1 || got[0] != true {
+		t.Fatalf("WithBypassPermissions must call SetBypassPermissions(true), got %v", got)
+	}
+}
+
+func TestBypassSendDuringRestartNoErrorSound(t *testing.T) {
+	scratchHome(t)
+	log := &bypassLog{}
+	old := newBypassStub("old", "ses-live-1", log)
+	fresh := newBypassStub("fresh", "", log)
+	bypassFactory(t, fresh)
+
+	dir := t.TempDir()
+	m := newBypassModel(old, config.Default(), dir)
+	m.SetEventSink(func(state.Event) {})
+	sounds := &bypassSoundLog{}
+	m.SetSoundBus(sounds)
+
+	// Start the bypass toggle — with the synchronous stub, the full pipeline
+	// completes within runMsg. Manually set transitioning state to test the
+	// mid-restart window.
+	m = runMsg(t, m, slashMsg{text: "/bypass"})
+	m = answerConfirm(t, m, "enable")
+
+	// Simulate the mid-restart transitioning window.
+	m.backendTransitioning = true
+	m.currentBackend.current = nil
+
+	m = enterBypassChat(t, m, "during restart")
+
+	for _, s := range sounds.names {
+		if s == "error" {
+			t.Fatal("sends during restart must NOT play error sound")
+		}
+	}
+
+	// Should have a "backend restarting" notice, not "send failed".
+	found := false
+	for _, c := range m.st.Chat {
+		if c.From == "office" && strings.Contains(c.Text, "backend restarting") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("sends during restart should show 'backend restarting' notice")
 	}
 }

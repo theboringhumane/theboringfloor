@@ -152,7 +152,8 @@ func main() {
 		return panels.NewTerminal(cols, rows)
 	}
 
-	model := app.New(b, cfg, app.WithResumeSession(*session), app.WithServerURL(*server))
+	ps := config.LoadProjectSettings(mustGetwd())
+	model := app.New(b, cfg, app.WithResumeSession(*session), app.WithServerURL(*server), app.WithBypassPermissions(ps.BypassPermissions))
 	if cfg.UI.Sounds != "" && cfg.UI.Sounds != "off" {
 		model.SetSoundBus(sndBus{sound.NewBus(cfg.UI.Sounds, "")})
 	}

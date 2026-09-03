@@ -37,15 +37,23 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 	"time"
 
-	"github.com/creack/pty"
-
 	"github.com/theboringhumane/theboringfloor/internal/gitx"
 )
+
+// ptyResult is the platform-neutral contract returned by platformStart.
+// Each platform file (pty_unix.go, pty_windows.go) provides a
+// platformStart that fills this in.
+type ptyResult struct {
+	master   io.ReadWriteCloser
+	pid      int
+	waitFn   func() (int, error)
+	resizeFn func(cols, rows int) error
+	closeFn  func()
+}
 
 // DefaultShell picks the user's shell: $SHELL, else /bin/zsh (darwin
 // default) if present, else /bin/bash.
@@ -78,12 +86,15 @@ type TermConfig struct {
 
 // Session is one live PTY-bound shell process.
 type Session struct {
-	cfg  TermConfig
-	cmd  *exec.Cmd
-	mf   *os.File // pty master
-	sb   *Scrollback
-	grid *Grid  // live screen model (same bytes as sb, parsed)
-	name string // shell basename (ps/pgrep proofs)
+	cfg      TermConfig
+	mf       io.ReadWriteCloser // pty master (*os.File on Unix, conptyMaster on Windows)
+	sb       *Scrollback
+	grid     *Grid  // live screen model (same bytes as sb, parsed)
+	name     string // shell basename (ps/pgrep proofs)
+	pid      int
+	waitFn   func() (int, error)
+	resizeFn func(cols, rows int) error
+	closeFn  func()
 
 	mu     sync.Mutex
 	alive  bool
@@ -116,28 +127,23 @@ func Spawn(cfg TermConfig) (*Session, error) {
 	// four GIT_* vars win over any inherited ones). No-op otherwise.
 	env = gitx.WithMajdoorAuthorEnv(env)
 
-	cmd := exec.Command(cfg.Shell, "-i")
-	if cfg.CWD != "" {
-		cmd.Dir = cfg.CWD
-	}
-	cmd.Env = env
-	mf, err := pty.StartWithSize(cmd, &pty.Winsize{
-		Rows: uint16(cfg.Rows),
-		Cols: uint16(cfg.Cols),
-	})
+	result, err := platformStart(cfg, env)
 	if err != nil {
 		return nil, fmt.Errorf("term: spawn %s: %w", cfg.Shell, err)
 	}
 
 	s := &Session{
-		cfg:   cfg,
-		cmd:   cmd,
-		mf:    mf,
-		sb:    NewScrollback(defaultScrollback),
-		grid:  NewGrid(cfg.Cols, cfg.Rows),
-		name:  filepath.Base(cfg.Shell),
-		alive: true,
-		code:  -1,
+		cfg:      cfg,
+		mf:       result.master,
+		sb:       NewScrollback(defaultScrollback),
+		grid:     NewGrid(cfg.Cols, cfg.Rows),
+		name:     filepath.Base(cfg.Shell),
+		pid:      result.pid,
+		waitFn:   result.waitFn,
+		resizeFn: result.resizeFn,
+		closeFn:  result.closeFn,
+		alive:    true,
+		code:     -1,
 	}
 	s.startReader()
 	go s.waiter()
@@ -169,16 +175,7 @@ func (s *Session) startReader() {
 
 // waiter reaps the child so it never zombifies and records the exit code.
 func (s *Session) waiter() {
-	err := s.cmd.Wait()
-	code := 0
-	if err != nil {
-		var ee *exec.ExitError
-		if errors.As(err, &ee) {
-			code = ee.ExitCode()
-		} else {
-			code = -1
-		}
-	}
+	code, _ := s.waitFn()
 	s.mu.Lock()
 	s.alive, s.exited, s.code = false, true, code
 	s.mu.Unlock()
@@ -227,7 +224,7 @@ func (s *Session) Resize(cols, rows int) error {
 	// reshape the screen model first so the SIGWINCH reprint paints into
 	// the new geometry (top-left content kept by the grid).
 	s.grid.SetSize(cols, rows)
-	return pty.Setsize(s.mf, &pty.Winsize{Rows: uint16(rows), Cols: uint16(cols)})
+	return s.resizeFn(cols, rows)
 }
 
 // Size reports the current PTY geometry.
@@ -247,12 +244,13 @@ func (s *Session) Kill() error {
 		return nil
 	}
 	s.closed = true
-	pid := s.cmd.Process.Pid
+	pid := s.pid
 	s.mu.Unlock()
 
-	// Group kill first (best effort), then close the master so the reader
-	// unblocks even on the error path, then let the waiter reap.
+	// Group kill first (best effort), then close platform resources before
+	// the master so the reader unblocks even on the error path.
 	killProcessGroup(pid)
+	s.closeFn()
 	_ = s.mf.Close()
 
 	for i := 0; i < 50; i++ {
@@ -293,10 +291,7 @@ func (s *Session) ExitCode() int {
 func (s *Session) Pid() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cmd == nil || s.cmd.Process == nil {
-		return -1
-	}
-	return s.cmd.Process.Pid
+	return s.pid
 }
 
 // ShellName is the shell binary basename ("zsh", "bash", …) — handy for

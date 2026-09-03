@@ -341,6 +341,29 @@ func (c *currentBackend) replace(b state.Backend) tea.Cmd {
 	}
 }
 
+// drain moves the accepting generation to draining and returns a channel that
+// closes when all in-flight sends complete. After drain(), c.current is nil —
+// new sends hit errBackendUnavailable. The caller then stops the old backend
+// and builds a replacement.
+func (c *currentBackend) drain() <-chan struct{} {
+	c.mu.Lock()
+	g := c.current
+	c.current = nil
+	if g != nil {
+		g.state = backendDraining
+		if g.inFlight == 0 {
+			close(g.drained)
+		}
+	}
+	c.mu.Unlock()
+	if g == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return g.drained
+}
+
 // currentBackendSend is the chat panel's ordinary-Enter callback. Its backend
 // lookup deliberately happens inside the returned tea.Cmd, at SEND time.
 func currentBackendSend(current *currentBackend, plan *panels.PlanEditor, text string, atts []state.Attachment) tea.Cmd {
@@ -701,9 +724,9 @@ type Model struct {
 	browserActionHolds map[string]browserActionHold
 	browserActionSeq   int
 
-	// Bypass-permissions mode (/bypass): SESSION-SCOPED ONLY — model
-	// state, never written to brain.json or session.json (every boot
-	// starts OFF). While on: the topbar carries the loud ⚠ BYPASS segment
+	// Bypass-permissions mode (/bypass): persisted to project-local
+	// .theboringfloor/settings.json; restored at boot via
+	// WithBypassPermissions. While on: the topbar carries the loud ⚠ BYPASS segment
 	// (Frame's spliceBypassBadge), stray EvPermission asks are answered
 	// allow-once immediately with NO modal (handlePermissionEvent's
 	// bypass arm), and the office's OWN browser-action gate executes
@@ -719,7 +742,7 @@ type Model struct {
 	bypassPerms      bool
 	bypassDesired    bool
 	bypassRestarting bool
-	bypassQueued     bool // compatibility/UI latch: desired differs from the in-flight build
+	bypassQueued     bool // TODO: remove field after test update — no longer used for logic
 
 	// backendTransitioning admits exactly one asynchronous construction at a
 	// time. backendTransitionID makes a delayed result harmless if an older
@@ -1234,6 +1257,23 @@ func WithResumeSession(id string) Option {
 // transports through backendFor with the same baseURL. "" = spawn mode.
 func WithServerURL(u string) Option {
 	return func(m *Model) { m.serverURL = u }
+}
+
+// WithBypassPermissions restores the persisted bypass-permissions state at
+// boot. When on, it lands SetBypassPermissions on the backend BEFORE Start
+// (main owns Start) and arms the model flags so the topbar badge and
+// auto-approve gates are active from the first frame.
+func WithBypassPermissions(on bool) Option {
+	return func(m *Model) {
+		if !on {
+			return
+		}
+		if bb, ok := m.backend.(bypassBackend); ok {
+			bb.SetBypassPermissions(true)
+		}
+		m.bypassPerms = true
+		m.bypassDesired = true
+	}
 }
 
 // SetEventSink injects the tea-loop bridge main hands the boot backend's
@@ -1789,15 +1829,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the chat panel's attachment notices join the office notice feed
 		m.notice(msg.text)
 	case sendErrMsg:
-		m.playSound("error")
-		// F6 — a failed send is not just a transient statusline blip: the
-		// transcript keeps the red row too (the next EvStatus overwrites
-		// the line, never the transcript).
-		m.noticeErr(fmt.Sprintf("send failed: %v", msg.err))
-		cmds = append(cmds, m.applyEvent(state.Event{
-			Kind: state.EvStatus,
-			Text: fmt.Sprintf("[theboringfloor] send failed: %v", msg.err),
-		}))
+		if m.backendTransitioning {
+			m.notice("backend restarting — please resend in a moment")
+			cmds = append(cmds, m.applyEvent(state.Event{
+				Kind: state.EvStatus,
+				Text: "[theboringfloor] backend restarting — message not sent",
+			}))
+		} else {
+			m.playSound("error")
+			// F6 — a failed send is not just a transient statusline blip: the
+			// transcript keeps the red row too (the next EvStatus overwrites
+			// the line, never the transcript).
+			m.noticeErr(fmt.Sprintf("send failed: %v", msg.err))
+			cmds = append(cmds, m.applyEvent(state.Event{
+				Kind: state.EvStatus,
+				Text: fmt.Sprintf("[theboringfloor] send failed: %v", msg.err),
+			}))
+		}
 	case backendBuildMsg:
 		cmds = append(cmds, m.finishBackendTransition(msg))
 	case backendReadyMsg:
@@ -6580,7 +6628,7 @@ func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
 			// its lifecycle latch waiting for a status event that belongs to a
 			// discarded transport.
 			m.bypassRestarting = false
-			m.bypassQueued = false
+			m.bypassQueued = false // TODO: remove after test update
 			m.backendTransitioning = false
 		}
 		return stopDiscardedBackend(result.backend)
@@ -6703,22 +6751,18 @@ func (m *Model) applyBypassSlash() tea.Cmd {
 	return nil
 }
 
-// respawnForBypass — the toggle's transport hop: swapBackend's drain-first
-// ordering, same-name. The member's context survives: the fresh transport
-// re-pins the CURRENT primary id (claude's spawn then rides --resume <id>;
-// opencode's resolvePrimary re-resolves the pinned session — the existing
-// precedents), SetBypassPermissions(m.bypassPerms) lands BEFORE Start (the
-// backend contract: a running instance rejects the flip), and Start rides
-// the boot sink — the floor's seats/boot lines re-emit from the fresh
-// transport exactly like a boot.
+// respawnForBypass — the toggle's transport hop: drain-first, then clean
+// stop, then build a fresh backend. The member's context survives: the fresh
+// transport re-pins the CURRENT primary id. SetBypassPermissions lands BEFORE
+// Start (the backend contract). Demo/harness offices skip the hop entirely.
 //
-// ONE respawn runs at a time: with the latch armed (a fresh transport's
-// boot line not yet seen) a toggle queues ONE follow-up behind it
-// (bypassLatchKick fires it) — no double-spawn. Demo/harness offices skip
-// the hop entirely: the office-side gates (indicator, stray-ask
-// auto-answer, the browser-action gate) hold regardless.
+// The drain() call moves the accepting generation to nil immediately — sends
+// during the restart window hit errBackendUnavailable (suppressed by the
+// sendErrMsg transitioning guard). The old backend is stopped only after all
+// in-flight sends complete, then the factory builds the replacement.
 func (m *Model) respawnForBypass() tea.Cmd {
 	if m.st.Mode != state.ModeLive {
+		// demo/harness: no transport hop, just flip the flag
 		if m.bypassPerms != m.bypassDesired {
 			m.bypassPerms = m.bypassDesired
 			m.notice(map[bool]string{true: bypassOnNotice, false: bypassOffNotice}[m.bypassPerms])
@@ -6726,44 +6770,52 @@ func (m *Model) respawnForBypass() tea.Cmd {
 		return nil
 	}
 	if m.bypassRestarting {
-		// Do not launch another construction. A completed build is committed
-		// only when it still matches this value; otherwise it is discarded and
-		// exactly one successor is built.
-		m.bypassQueued = true
+		// Already restarting — ignore duplicate toggle
 		return nil
 	}
-	// Arm before returning the asynchronous persistence/factory command: a
-	// second toggle that lands while construction is blocked must queue rather
-	// than schedule another factory call.
+
 	m.bypassRestarting = true
 	m.backendTransitioning = true
 	m.backendTransitionID++
-	// This is transient operational status only. The indicator remains tied to
-	// bypassPerms (the active generation) until completeBypassStart commits.
 	m.st.StatusLine = "[theboringfloor] backend restarting — bypass permissions " + bypassStateWord(m.bypassDesired)
+
+	// Drain the current generation immediately — sends get errBackendUnavailable
+	// during the restart window (intentional: clean stop before clean start)
+	drained := m.currentBackend.drain()
+
 	resumeID := ""
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		resumeID = ps.PrimaryID()
 	}
 	name, serverURL, sessDir, cfg := m.backendName(), m.serverURL, m.sessDir, m.cfg
 	bypassValue, transition := m.bypassDesired, m.backendTransitionID
+	oldBackend := m.backend
+
 	return func() tea.Msg {
-		m.PersistSession() // outgoing archive; disk I/O stays off the UI loop
-		return backendBuildMsg{name: name, oldName: name, resumeID: resumeID, bypass: true, bypassValue: bypassValue, transition: transition,
+		// Persist bypass to project settings
+		if sessDir != "" {
+			config.SaveProjectSettings(sessDir, config.ProjectSettings{BypassPermissions: bypassValue})
+		}
+		// Wait for in-flight sends to complete
+		<-drained
+		// Clean stop old backend
+		if oldBackend != nil {
+			oldBackend.Stop()
+		}
+		m.PersistSession()
+		// Build new backend
+		return backendBuildMsg{name: name, oldName: name, resumeID: resumeID,
+			bypass: true, bypassValue: bypassValue, transition: transition,
 			backend: BackendFactory(name, serverURL, sessDir, cfg)}
 	}
 }
 
-// finishBypassLatch clears one completed or failed respawn and schedules the
-// current desired state once. It is only called from Update handling, never
-// while factory/Start work is running.
+// finishBypassLatch clears the respawn lifecycle latch. The drain-first flow
+// no longer queues follow-ups, so this just resets the flag.
 func (m *Model) finishBypassLatch() tea.Cmd {
 	m.bypassRestarting = false
-	if !m.bypassQueued {
-		return nil
-	}
-	m.bypassQueued = false
-	return m.respawnForBypass()
+	m.bypassQueued = false // TODO: remove after test update
+	return nil
 }
 
 func bypassStateWord(on bool) string {
@@ -6779,7 +6831,7 @@ func bypassStateWord(on bool) string {
 func (m *Model) failBypassTransition(err error) tea.Cmd {
 	m.backendTransitioning = false
 	m.bypassRestarting = false
-	m.bypassQueued = false
+	m.bypassQueued = false // TODO: remove after test update
 	m.noticeErr("bypass restart failed: " + err.Error() + " — active backend unchanged")
 	return m.applyEvent(state.Event{Kind: state.EvStatus,
 		Text: "[theboringfloor] bypass restart failed — active permissions " + bypassStateWord(m.bypassPerms)})
@@ -6807,7 +6859,7 @@ func (m *Model) completeBypassStart(msg backendStartMsg) tea.Cmd {
 			// otherwise release this latch. Retire its candidate and leave the
 			// already-active generation/status untouched.
 			m.bypassRestarting = false
-			m.bypassQueued = false
+			m.bypassQueued = false // TODO: remove after test update
 			m.backendTransitioning = false
 		}
 		return stopDiscardedBackend(result.backend)
@@ -6817,7 +6869,7 @@ func (m *Model) completeBypassStart(msg backendStartMsg) tea.Cmd {
 	}
 	if result.bypassValue != m.bypassDesired {
 		m.bypassRestarting = false
-		m.bypassQueued = false
+		m.bypassQueued = false // TODO: remove after test update
 		m.backendTransitioning = false
 		return tea.Batch(stopDiscardedBackend(result.backend), m.respawnForBypass())
 	}
@@ -6825,7 +6877,7 @@ func (m *Model) completeBypassStart(msg backendStartMsg) tea.Cmd {
 	cleanup := m.currentBackend.replace(result.backend)
 	m.bypassPerms = result.bypassValue
 	m.bypassRestarting = false
-	m.bypassQueued = false
+	m.bypassQueued = false // TODO: remove after test update
 	m.backendTransitioning = false
 	m.resetPager()
 	m.notice(map[bool]string{true: bypassOnNotice, false: bypassOffNotice}[m.bypassPerms])
