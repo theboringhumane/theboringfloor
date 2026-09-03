@@ -362,7 +362,7 @@ func TestBrowserSnapFlowSendsFollowup(t *testing.T) {
 	if len(rb.sentTexts) != 1 {
 		t.Fatalf("exactly ONE follow-up prompt posts back to the agent, got %v", rb.sentTexts)
 	}
-	want := "[theboringoffice] snapshot of https://theboring.name/docs (title: The Boring Gazette)\n" +
+	want := "[theboringfloor] snapshot of https://theboring.name/docs (title: The Boring Gazette)\n" +
 		"hello world\n" +
 		"links: [1] https://a.example/x [2] https://b.example/y"
 	if rb.sentTexts[0] != want {
@@ -448,7 +448,7 @@ func TestSnapshotFollowupShapes(t *testing.T) {
 	got := buildSnapshotFollowup("https://x.example", &headless.SnapResult{
 		URL: "https://x.example", Title: "T", Text: "body text",
 	})
-	want := "[theboringoffice] snapshot of https://x.example (title: T)\nbody text\nlinks: (none)"
+	want := "[theboringfloor] snapshot of https://x.example (title: T)\nbody text\nlinks: (none)"
 	if got != want {
 		t.Fatalf("no-links followup = %q, want %q", got, want)
 	}
@@ -469,7 +469,7 @@ func TestSnapshotFollowupShapes(t *testing.T) {
 	if !strings.HasSuffix(got, " …") {
 		t.Fatalf("a truncated links list ends with the ellipsis marker, got tail %q", got[len(got)-40:])
 	}
-	if !strings.HasPrefix(got, "[theboringoffice] snapshot of https://x.example (title: T)\n") {
+	if !strings.HasPrefix(got, "[theboringfloor] snapshot of https://x.example (title: T)\n") {
 		t.Fatal("the header always survives the bound")
 	}
 	// no links + an over-long text → the TEXT cuts on a rune boundary.
@@ -641,7 +641,7 @@ func TestBrowserActionApproveOnceFlow(t *testing.T) {
 	if len(rb.sentTexts) != 1 {
 		t.Fatalf("exactly ONE follow-up posts back to the agent, got %v", rb.sentTexts)
 	}
-	want := "[theboringoffice] browser-action ok on https://theboring.name/after: click '#buy'"
+	want := "[theboringfloor] browser-action ok on https://theboring.name/after: click '#buy'"
 	if rb.sentTexts[0] != want {
 		t.Fatalf("the approve follow-up:\n got %q\nwant %q", rb.sentTexts[0], want)
 	}
@@ -679,7 +679,7 @@ func TestBrowserActionAlwaysMapsToOnce(t *testing.T) {
 	if len(rb.answered) != 0 {
 		t.Fatalf("the always answer still never rides the wire, got %+v", rb.answered)
 	}
-	if len(rb.sentTexts) != 1 || rb.sentTexts[0] != "[theboringoffice] browser-action ok on https://theboring.name: click '#buy'" {
+	if len(rb.sentTexts) != 1 || rb.sentTexts[0] != "[theboringfloor] browser-action ok on https://theboring.name: click '#buy'" {
 		t.Fatalf("the once-mapped follow-up posts, got %v", rb.sentTexts)
 	}
 }
@@ -712,7 +712,7 @@ func TestBrowserActionRejectFlow(t *testing.T) {
 	if len(rb.sentTexts) != 1 {
 		t.Fatalf("exactly ONE rejection follow-up posts, got %v", rb.sentTexts)
 	}
-	want := "[theboringoffice] browser-action REJECTED by the member: click '#buy' on https://theboring.name"
+	want := "[theboringfloor] browser-action REJECTED by the member: click '#buy' on https://theboring.name"
 	if rb.sentTexts[0] != want {
 		t.Fatalf("the reject follow-up:\n got %q\nwant %q", rb.sentTexts[0], want)
 	}
@@ -749,7 +749,7 @@ func TestBrowserActionEngineFailureFlow(t *testing.T) {
 	if len(rb.sentTexts) != 1 {
 		t.Fatalf("the failure follow-up posts back to the agent, got %v", rb.sentTexts)
 	}
-	want := `[theboringoffice] browser-action failed on https://theboring.name: click '#buy' — browser-action: https://theboring.name: selector "#buy" did not match a visible node within the 20s budget: context deadline exceeded`
+	want := `[theboringfloor] browser-action failed on https://theboring.name: click '#buy' — browser-action: https://theboring.name: selector "#buy" did not match a visible node within the 20s budget: context deadline exceeded`
 	if rb.sentTexts[0] != want {
 		t.Fatalf("the failure follow-up:\n got %q\nwant %q", rb.sentTexts[0], want)
 	}
@@ -783,7 +783,7 @@ func TestBrowserActionEvalFollowup(t *testing.T) {
 	}
 	m = runMsg(t, m, permAnswerMsg{response: "once"})
 
-	want := "[theboringoffice] browser-action ok on https://theboring.name: eval → " + big
+	want := "[theboringfloor] browser-action ok on https://theboring.name: eval → " + big
 	if len(rb.sentTexts) != 1 || rb.sentTexts[0] != want {
 		t.Fatalf("the eval follow-up carries the FULL JSON:\n got %q\nwant %q", rb.sentTexts, want)
 	}
@@ -845,7 +845,7 @@ func TestBrowserActionEscThenAnswer(t *testing.T) {
 	if runs != 1 {
 		t.Fatalf("the deferred answer executes exactly once, got %d", runs)
 	}
-	if len(rb.sentTexts) != 1 || !strings.HasPrefix(rb.sentTexts[0], "[theboringoffice] browser-action ok on ") {
+	if len(rb.sentTexts) != 1 || !strings.HasPrefix(rb.sentTexts[0], "[theboringfloor] browser-action ok on ") {
 		t.Fatalf("the deferred approve posts the follow-up, got %v", rb.sentTexts)
 	}
 }

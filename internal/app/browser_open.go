@@ -73,6 +73,7 @@ import (
 	"github.com/theboringhumane/theboringoffice/internal/browsertools/action"
 	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/state"
+	"github.com/theboringhumane/theboringoffice/internal/config"
 )
 
 const (
@@ -222,7 +223,7 @@ func browserShotCmd(url string) tea.Cmd {
 // browserShotsDir — the PNG landing zone: <THEBORINGOFFICE_HOME>/shots
 // when the member/harness overrides home, else <os.TempDir>/shots.
 func browserShotsDir() string {
-	if home := os.Getenv("THEBORINGOFFICE_HOME"); home != "" {
+	if home := config.HomeOverride(); home != "" {
 		return filepath.Join(home, "shots")
 	}
 	return filepath.Join(os.TempDir(), "shots")
@@ -271,7 +272,7 @@ func (m *Model) applyBrowserSnap(ev state.Event) tea.Cmd {
 	if url == "" {
 		return nil // shapeless: never a snapshot (degrade silent)
 	}
-	b := m.backend
+	b := m.currentBackend
 	if b == nil {
 		m.noticeErr("browser: snapshot of " + url + " — no backend to read it back")
 		return nil
@@ -284,7 +285,7 @@ func (m *Model) applyBrowserSnap(ev state.Event) tea.Cmd {
 // agent via the backend's normal prompt path (sendChat from inside the
 // cmd — the queue flush's send-in-closure precedent; the UI goroutine
 // never blocks on the engine or the wire).
-func browserSnapCmd(b state.Backend, url string) tea.Cmd {
+func browserSnapCmd(current *currentBackend, url string) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), browserToolTimeout)
 		defer cancel()
@@ -293,7 +294,7 @@ func browserSnapCmd(b state.Backend, url string) tea.Cmd {
 			return state.Event{Kind: state.EvBrowserSnapshot, Text: url,
 				BrowserToolDone: true, BrowserOpenReason: err.Error()}
 		}
-		if err := sendChat(b, buildSnapshotFollowup(url, res), nil); err != nil {
+		if err := sendViaCurrentBackend(current, buildSnapshotFollowup(url, res), nil, ""); err != nil {
 			return state.Event{Kind: state.EvBrowserSnapshot, Text: url,
 				BrowserToolDone: true, BrowserOpenReason: "could not post the snapshot back: " + err.Error()}
 		}
@@ -306,7 +307,7 @@ func browserSnapCmd(b state.Backend, url string) tea.Cmd {
 // buildSnapshotFollowup — the EXACT synthetic follow-up the agent
 // receives after a snapshot:
 //
-//	[theboringoffice] snapshot of <url> (title: <title>)
+//	[theboringfloor] snapshot of <url> (title: <title>)
 //	<text>
 //	links: [1] <url> [2] <url> …
 //
@@ -315,7 +316,7 @@ func browserSnapCmd(b state.Backend, url string) tea.Cmd {
 // (a truncated list ends with " …"), then the text cuts on a rune
 // boundary.
 func buildSnapshotFollowup(url string, res *headless.SnapResult) string {
-	head := "[theboringoffice] snapshot of " + url + " (title: " + res.Title + ")\n"
+	head := "[theboringfloor] snapshot of " + url + " (title: " + res.Title + ")\n"
 	linksLine := func(n int) string {
 		if n == 0 {
 			return "links: (none)"
@@ -413,7 +414,7 @@ func (m *Model) applyBrowserAction(ev state.Event) tea.Cmd {
 			url: url, op: ev.BrowserActionOp, sel: ev.BrowserActionSel, arg: ev.BrowserActionArg,
 		}
 		m.notice("bypass: browser action auto-approved — " + browserActionSummary(hold.op, hold.sel, hold.arg))
-		return browserActionCmd(m.backend, hold)
+		return browserActionCmd(m.currentBackend, hold)
 	}
 	// park the hold + open the member's permission modal (the SAME
 	// enqueue path a backend EvPermission takes — one queue, one
@@ -451,21 +452,19 @@ func (m *Model) consumeBrowserActionPerm(pid, response string) (bool, tea.Cmd) {
 		return false, nil
 	}
 	delete(m.browserActionHolds, pid)
-	b := m.backend
+	current := m.currentBackend
 	summary := browserActionSummary(hold.op, hold.sel, hold.arg)
 	if response == "reject" {
 		m.notice("browser: action REJECTED by the member: " + summary + " on " + hold.url)
 		return true, func() tea.Msg {
-			if b != nil {
-				if err := sendChat(b, "[theboringoffice] browser-action REJECTED by the member: "+summary+" on "+hold.url, nil); err != nil {
-					return sendErrMsg{err: err}
-				}
+			if err := sendViaCurrentBackend(current, "[theboringfloor] browser-action REJECTED by the member: "+summary+" on "+hold.url, nil, ""); err != nil {
+				return sendErrMsg{err: err}
 			}
 			return nil
 		}
 	}
 	// "once" AND "always" land here (always → once).
-	return true, browserActionCmd(b, hold)
+	return true, browserActionCmd(current, hold)
 }
 
 // browserActionCmd — the execution half: run the engine (bounded, OFF
@@ -474,7 +473,7 @@ func (m *Model) consumeBrowserActionPerm(pid, response string) (bool, tea.Cmd) {
 // precedent), and land the member's result row via the state.Event leg
 // (Update's state.Event case routes it back through applyBrowserAction
 // with BrowserToolDone=true).
-func browserActionCmd(b state.Backend, hold browserActionHold) tea.Cmd {
+func browserActionCmd(current *currentBackend, hold browserActionHold) tea.Cmd {
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), browserActionTimeout)
 		defer cancel()
@@ -482,10 +481,8 @@ func browserActionCmd(b state.Backend, hold browserActionHold) tea.Cmd {
 		res, err := browserActionFn(ctx, hold.url, action.Action{Op: hold.op, Sel: hold.sel, Arg: hold.arg})
 		if err != nil {
 			reason := err.Error()
-			if b != nil {
-				if serr := sendChat(b, "[theboringoffice] browser-action failed on "+hold.url+": "+summary+" — "+reason, nil); serr != nil {
-					reason += " (and the follow-up post failed: " + serr.Error() + ")"
-				}
+			if serr := sendViaCurrentBackend(current, "[theboringfloor] browser-action failed on "+hold.url+": "+summary+" — "+reason, nil, ""); serr != nil {
+				reason += " (and the follow-up post failed: " + serr.Error() + ")"
 			}
 			return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
 				BrowserToolDone: true, BrowserActionOp: hold.op, BrowserOpenReason: reason}
@@ -497,12 +494,10 @@ func browserActionCmd(b state.Backend, hold browserActionHold) tea.Cmd {
 		if hold.op == action.OpEval {
 			tail = "eval → " + res.Text
 		}
-		if b != nil {
-			if serr := sendChat(b, "[theboringoffice] browser-action ok on "+res.URL+": "+tail, nil); serr != nil {
-				return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
-					BrowserToolDone: true, BrowserActionOp: hold.op,
-					BrowserOpenReason: "the action ran but the follow-up post failed: " + serr.Error()}
-			}
+		if serr := sendViaCurrentBackend(current, "[theboringfloor] browser-action ok on "+res.URL+": "+tail, nil, ""); serr != nil {
+			return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
+				BrowserToolDone: true, BrowserActionOp: hold.op,
+				BrowserOpenReason: "the action ran but the follow-up post failed: " + serr.Error()}
 		}
 		return state.Event{Kind: state.EvBrowserAction, Text: hold.url,
 			BrowserToolDone: true, BrowserOpenAllowed: true, BrowserActionOp: hold.op,

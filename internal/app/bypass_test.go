@@ -33,6 +33,7 @@ import (
 
 	"github.com/theboringhumane/theboringoffice/internal/browsertools/action"
 	"github.com/theboringhumane/theboringoffice/internal/config"
+	"github.com/theboringhumane/theboringoffice/internal/headless"
 	"github.com/theboringhumane/theboringoffice/internal/panels"
 	"github.com/theboringhumane/theboringoffice/internal/state"
 )
@@ -86,6 +87,40 @@ func newBypassModel(b *bypassStubBackend, cfg *config.Config, dir string) Model 
 	m.bootDone = true
 	m.sessDir = dir
 	return m
+}
+
+// bypassSoundLog records the reducer-owned sound hook so the interactive
+// Enter regression can distinguish a delivered prompt from the historical
+// rejected prompt/error-chime path.
+type bypassSoundLog struct{ names []string }
+
+func (s *bypassSoundLog) Play(name string) { s.names = append(s.names, name) }
+
+// enterBypassChat drives the same character and Enter messages Bubble Tea
+// receives from a member, rather than calling currentBackendSend directly.
+func enterBypassChat(t *testing.T, m Model, text string) Model {
+	t.Helper()
+	for _, r := range text {
+		m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
+	}
+	return runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
+}
+
+func armBypassReplacement(t *testing.T) (m Model, old, fresh *bypassStubBackend) {
+	t.Helper()
+	scratchHome(t)
+	log := &bypassLog{}
+	old = newBypassStub("old", "ses-live-1", log)
+	fresh = newBypassStub("fresh", "", log)
+	bypassFactory(t, fresh)
+	m = newBypassModel(old, config.Default(), t.TempDir())
+	m.SetEventSink(func(state.Event) {})
+	m = runMsg(t, m, slashMsg{text: "/bypass"})
+	m = answerConfirm(t, m, "enable")
+	if m.backend != fresh || !m.bypassPerms || m.bypassRestarting {
+		t.Fatalf("bypass activation did not finish on fresh backend: backend=%T on=%v restarting=%v", m.backend, m.bypassPerms, m.bypassRestarting)
+	}
+	return m, old, fresh
 }
 
 func (b *bypassStubBackend) Stop() error {
@@ -802,5 +837,142 @@ func TestBypassRespawnSkippedInDemo(t *testing.T) {
 	}
 	if got := lastOfficeText(t, m); got != bypassOnNotice {
 		t.Fatalf("demo: the ON notice lands verbatim, got %q", got)
+	}
+}
+
+// TestBypassInteractiveEnterReachesReplacement is the v0.3.22 regression:
+// after the member confirms /bypass and the replacement has finished Start,
+// a real composer Enter must use the fresh accepting generation. Previously
+// every Enter took the unavailable branch, adding a red send-failed row and
+// playing the error sound.
+func TestBypassInteractiveEnterReachesReplacement(t *testing.T) {
+	m, old, fresh := armBypassReplacement(t)
+	sounds := &bypassSoundLog{}
+	m.SetSoundBus(sounds)
+
+	m = enterBypassChat(t, m, "deliver after bypass")
+	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{"deliver after bypass"}) {
+		t.Fatalf("fresh backend send ledger = %v, want delivered interactive Enter", got)
+	}
+	if got := old.sentTexts; len(got) != 0 {
+		t.Fatalf("retired backend send ledger = %v, want no calls", got)
+	}
+	if got := sounds.names; !reflect.DeepEqual(got, []string{"send"}) {
+		t.Fatalf("interactive bypass sound sequence = %v, want [send] (no error)", got)
+	}
+	for _, row := range m.st.Chat {
+		if row.Meta == "error" && strings.Contains(row.Text, "send failed") {
+			t.Fatalf("interactive bypass Enter must not add a send failure row: %+v", row)
+		}
+	}
+}
+
+// TestBypassBusyQueueAndResendReachReplacement is the sibling of interactive
+// Enter: busy free-send, queue flush, and batch resend must also lease the
+// replacement instead of the backend captured when the cmd was built.
+func TestBypassBusyQueueAndResendReachReplacement(t *testing.T) {
+	m, old, fresh := armBypassReplacement(t)
+	m.st.BossDelegating = true
+	m = runMsg(t, m, busySendReqMsg{text: "busy after bypass"})
+	m = runMsg(t, m, enqueueMsg{text: "queued after bypass", atts: nil})
+	m = runMsg(t, m, queueFlushMsg{})
+	m = runMsg(t, m, m.resendBatchCmd([]queueEntry{{text: "batch after bypass"}})())
+	if got := old.sentTexts; len(got) != 0 {
+		t.Fatalf("retired backend send ledger = %v, want no calls", got)
+	}
+	if got := fresh.sentTexts; !reflect.DeepEqual(got, []string{
+		"busy after bypass",
+		"queued after bypass",
+		composeBatch([]queueEntry{{text: "batch after bypass"}}),
+	}) {
+		t.Fatalf("fresh backend send ledger = %v, want busy + flush + resend", got)
+	}
+}
+
+// TestInteractiveEnterWithoutActiveBackendStillRejects is the paired control:
+// no active generation is a real failure, so Enter must keep its visible error
+// row and error sound rather than being silently accepted.
+func TestInteractiveEnterWithoutActiveBackendStillRejects(t *testing.T) {
+	scratchHome(t)
+	log := &bypassLog{}
+	m := newBypassModel(newBypassStub("live", "ses-live-1", log), config.Default(), t.TempDir())
+	sounds := &bypassSoundLog{}
+	m.SetSoundBus(sounds)
+	// The chat callback captured this holder at New time; making its current
+	// generation unavailable models a genuine transport blackout.
+	m.currentBackend.current = nil
+
+	m = enterBypassChat(t, m, "must remain rejected")
+	if got := sounds.names; !reflect.DeepEqual(got, []string{"error"}) {
+		t.Fatalf("unavailable interactive Enter sound sequence = %v, want [error]", got)
+	}
+	if len(m.st.Chat) == 0 {
+		t.Fatal("unavailable interactive Enter must append a send failure row")
+	}
+	row := m.st.Chat[len(m.st.Chat)-1]
+	if row.From != "office" || row.Meta != "error" || !strings.Contains(row.Text, "send failed: active backend unavailable") {
+		t.Fatalf("unavailable interactive Enter row = %+v, want active-backend send failure", row)
+	}
+}
+
+func TestBypassQuestionMCPBrowserReachReplacement(t *testing.T) {
+	m, old, fresh := armBypassReplacement(t)
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+
+	m = runMsg(t, m, state.Event{Kind: state.EvQuestion, QuestionID: "q-after",
+		EmployeeName: "boss", ToolState: "pending", Text: "ship?"})
+	m = runMsg(t, m, questionAnswerMsg{ans: panels.QuestionAnswer{Text: "yes"}})
+	if len(old.qAnswers) != 0 {
+		t.Fatalf("retired AnswerQuestion = %+v, want none", old.qAnswers)
+	}
+	if len(fresh.qAnswers) != 1 || fresh.qAnswers[0].id != "q-after" {
+		t.Fatalf("fresh AnswerQuestion = %+v, want q-after", fresh.qAnswers)
+	}
+
+	m = runMsg(t, m, slashMsg{text: "/mcp"})
+	m = runMsg(t, m, slashMsg{text: "/mcp reconnect alpha"})
+	if old.mcpCalls != 0 || len(old.mcpReconned) != 0 {
+		t.Fatalf("retired MCP hops calls=%d reconn=%v", old.mcpCalls, old.mcpReconned)
+	}
+	if fresh.mcpCalls != 2 || !reflect.DeepEqual(fresh.mcpReconned, []string{"alpha"}) {
+		t.Fatalf("fresh MCP hops calls=%d reconn=%v, want 2 + [alpha]", fresh.mcpCalls, fresh.mcpReconned)
+	}
+
+	m = runMsg(t, m, state.Event{Kind: state.EvPermission, EmployeeName: "boss",
+		PermissionID: "perm-after", ToolName: "bash", ToolSummary: "ls", ToolState: "pending"})
+	if len(old.permAnswers) != 0 {
+		t.Fatalf("retired AnswerPermission = %v, want none", old.permAnswers)
+	}
+	if !reflect.DeepEqual(fresh.permAnswers, [][2]string{{"perm-after", "once"}}) {
+		t.Fatalf("fresh AnswerPermission = %v, want allow-once on replacement", fresh.permAnswers)
+	}
+
+	pinFakeBrowserEngines(t, nil, func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error) {
+		return &headless.SnapResult{URL: rawurl, Title: "t", Text: "body"}, nil
+	})
+	cmd := m.applyBrowserOpen(state.Event{
+		Kind: state.EvBrowserSnapshot, Text: "https://theboring.name/docs", BrowserOpenAllowed: true,
+	})
+	if cmd == nil {
+		t.Fatal("allowed snapshot must return the engine cmd")
+	}
+	m = drainBrowserCmd(t, m, cmd)
+	if len(old.sentTexts) != 0 {
+		t.Fatalf("retired snapshot send = %v, want none", old.sentTexts)
+	}
+	if len(fresh.sentTexts) != 1 || !strings.Contains(fresh.sentTexts[0], "snapshot of https://theboring.name/docs") {
+		t.Fatalf("fresh snapshot send = %v", fresh.sentTexts)
+	}
+
+	pinFakeBrowserAction(t, func(ctx context.Context, rawurl string, a action.Action) (*action.Result, error) {
+		return &action.Result{URL: rawurl, Text: "ok"}, nil
+	})
+	m = runMsg(t, m, state.Event{Kind: state.EvBrowserAction, Text: "https://theboring.name",
+		BrowserOpenAllowed: true, BrowserActionOp: "click", BrowserActionSel: "#buy"})
+	if len(old.sentTexts) != 0 {
+		t.Fatalf("retired action send = %v, want none", old.sentTexts)
+	}
+	if len(fresh.sentTexts) != 2 || !strings.Contains(fresh.sentTexts[1], "browser-action ok") {
+		t.Fatalf("fresh action send = %v", fresh.sentTexts)
 	}
 }

@@ -27,6 +27,7 @@ package app
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -521,4 +522,195 @@ func TestWedgePlanCompletionUnaffected(t *testing.T) {
 		t.Fatal("the plan completion is boss activity: the latch must clear")
 	}
 	assertNoWedgeInChat(t, m)
+}
+
+func idleWrapFixture(t *testing.T) Model {
+	t.Helper()
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
+		ID: "u-ask", From: "user", Text: "ship the recap path",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteWorking, Task: "ship it",
+	}})
+	if !m.shiftBusy {
+		t.Fatal("fixture: a live developer must open a busy shift")
+	}
+	m = runMsg(t, m, state.Event{Kind: state.EvReturned, EmployeeID: "dev-1", TaskID: "t1",
+		Mail: state.MailItem{Kind: state.MailReturn, From: "tekton-1", Subject: "done"}})
+	if m.shiftBusy || m.ghostArmAt.IsZero() {
+		t.Fatal("fixture: worker return with last chat from the user must arm the idle-wrap clock")
+	}
+	return m
+}
+
+func TestIdleWrapFiresWhenShiftGoesQuiet(t *testing.T) {
+	m := idleWrapFixture(t)
+	b := m.backend.(*recBackend)
+	m.ghostArmAt = time.Now().Add(-bossWedgeAfter - time.Second)
+	cmd := m.checkIdleWrap()
+	if cmd == nil {
+		t.Fatal("2m idle after work with no wrap must ask the boss for a recap")
+	}
+	if !m.ghostNoted {
+		t.Fatal("the latch must arm before the send hops")
+	}
+	msg := cmd()
+	if _, ok := msg.(idleWrapSentMsg); !ok {
+		t.Fatalf("recap send = %T, want idleWrapSentMsg", msg)
+	}
+	m = runMsg(t, m, msg)
+	want := idleWrapPromptHead + " Their last ask: ship the recap path"
+	if !reflect.DeepEqual(b.sentTexts, []string{want}) {
+		t.Fatalf("boss recap prompt = %v, want %q", b.sentTexts, want)
+	}
+	for _, c := range m.st.Chat {
+		if c.Text == idleWrapNotice {
+			t.Fatal("a successful recap send must not dump the fallback notice")
+		}
+	}
+	n := 0
+	for _, ln := range m.ActivityLines() {
+		if strings.Contains(ln, "asked the boss for an idle recap") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("activity recap lines = %d, want 1", n)
+	}
+}
+
+func TestIdleWrapSendFailureFallsBackToNotice(t *testing.T) {
+	m := idleWrapFixture(t)
+	m.ghostArmAt = time.Now().Add(-bossWedgeAfter - time.Second)
+	m.currentBackend.current = nil
+	cmd := m.checkIdleWrap()
+	if cmd == nil {
+		t.Fatal("unavailable transport must still try the recap hop")
+	}
+	msg := cmd()
+	if _, ok := msg.(idleWrapFailMsg); !ok {
+		t.Fatalf("failed recap send = %T, want idleWrapFailMsg", msg)
+	}
+	m = runMsg(t, m, msg)
+	found := false
+	for _, c := range m.st.Chat {
+		if c.From == "office" && c.Text == idleWrapNotice {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("fallback recap must land in the transcript, chat=%+v", m.st.Chat)
+	}
+}
+
+func TestIdleWrapSilentWhenBossWrapped(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
+		ID: "u-ask", From: "user", Text: "scan it",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "sco-1", Name: "skopos-1", Role: state.RoleScout, Sprite: state.SpriteWorking, Task: "scan",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvChatBoss,
+		Msg: state.ChatMsg{ID: "b-wrap", From: "boss", Text: "scout is back — shift closed."}})
+	m = runMsg(t, m, state.Event{Kind: state.EvReturned, EmployeeID: "sco-1",
+		Mail: state.MailItem{Kind: state.MailReturn, From: "skopos-1"}})
+	if !m.ghostArmAt.IsZero() || m.ghostNoted {
+		t.Fatal("a boss wrap during the shift must not arm idle-wrap")
+	}
+	m = pumpTicks(m, 3)
+	if m.ghostNoted {
+		t.Fatal("boss wrap → no recap")
+	}
+}
+
+func TestIdleWrapSilentWhenOfficeConciergeSpoke(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
+		ID: "u-ask", From: "user", Text: "status?",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteWorking,
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvChatOffice, Msg: state.ChatMsg{
+		ID: "office-1", From: "office", Kind: "office", Text: "workers are on it.",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvReturned, EmployeeID: "dev-1",
+		Mail: state.MailItem{Kind: state.MailReturn, From: "tekton-1"}})
+	if !m.ghostArmAt.IsZero() || m.ghostNoted {
+		t.Fatal("a concierge wrap must not arm idle-wrap")
+	}
+}
+
+func TestIdleWrapSkipsLocalOfficeNoticeAsWrap(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
+		ID: "u-ask", From: "user", Text: "do the thing",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteWorking,
+	}})
+	m.notice("queued as item #1 — flushes as a batch when the boss frees up")
+	m = runMsg(t, m, state.Event{Kind: state.EvReturned, EmployeeID: "dev-1",
+		Mail: state.MailItem{Kind: state.MailReturn, From: "tekton-1"}})
+	if m.ghostArmAt.IsZero() {
+		t.Fatal("a dim office notice must not count as a wrap — last real chat is still the user")
+	}
+}
+
+func TestIdleWrapSilentWithNoRealChat(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteWorking,
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvReturned, EmployeeID: "dev-1",
+		Mail: state.MailItem{Kind: state.MailReturn, From: "tekton-1"}})
+	if !m.ghostArmAt.IsZero() {
+		t.Fatal("no user/boss/office chat → do not recap an empty floor")
+	}
+}
+
+func TestIdleWrapSilentWhileWorkersOrBossPending(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = runMsg(t, m, state.Event{Kind: state.EvChatUser, Msg: state.ChatMsg{
+		ID: "u-ask", From: "user", Text: "go",
+	}})
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-1", Name: "tekton-1", Role: state.RoleDeveloper, Sprite: state.SpriteWorking,
+	}})
+	m.ghostArmAt = time.Now().Add(-bossWedgeAfter - time.Second)
+	m = pumpTicks(m, 2)
+	if m.ghostNoted {
+		t.Fatal("a live developer must not fire idle-wrap")
+	}
+
+	m2, _ := wedgeFixture(t)
+	m2.ghostArmAt = time.Now().Add(-bossWedgeAfter - time.Second)
+	m2 = pumpTicks(m2, 2)
+	if m2.ghostNoted {
+		t.Fatal("a pending boss turn is W1, not idle-wrap")
+	}
+}
+
+func TestIdleWrapSilentOnBoot(t *testing.T) {
+	m := New(&recBackend{}, config.Default())
+	m = pumpTicks(m, 2)
+	if m.ghostNoted || !m.ghostArmAt.IsZero() {
+		t.Fatal("boot idle with no shift must not arm or fire idle-wrap")
+	}
+}
+
+func TestIdleWrapRearmsOnNextShift(t *testing.T) {
+	m := idleWrapFixture(t)
+	m.ghostArmAt = time.Now().Add(-bossWedgeAfter - time.Second)
+	if cmd := m.checkIdleWrap(); cmd == nil {
+		t.Fatal("first quiet shift must fire")
+	}
+	m = runMsg(t, m, state.Event{Kind: state.EvHire, Employee: state.Employee{
+		ID: "dev-2", Name: "tekton-2", Role: state.RoleDeveloper, Sprite: state.SpriteWorking,
+	}})
+	if m.ghostNoted || !m.shiftBusy {
+		t.Fatal("a new live worker must clear the latch and open a fresh shift")
+	}
 }

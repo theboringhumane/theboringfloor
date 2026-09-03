@@ -109,7 +109,7 @@ const (
 	// (opencode.go's SSE ladder): a fresh stream re-arms the walk's
 	// failure backoff (pager.ResetFailures) AND re-opens seeding when the
 	// first seed hop died with the old stream.
-	streamReconnectedMarker = "[theboringoffice] event stream: reconnected"
+	streamReconnectedMarker = "[theboringfloor] event stream: reconnected"
 )
 
 // batchMarker prefixes the ONE composed batch prompt. Machine format (the
@@ -249,6 +249,60 @@ func (c *currentBackend) send(text string, atts []state.Attachment, agent string
 	return sendChatMode(g.backend, text, atts, agent)
 }
 
+// lease admits one in-flight op on the accepting generation so Stop cannot
+// race a cmd that captured m.backend at build time. fn runs without the
+// holder lock. MCP/question/permission hops use this; chat send has its
+// own path because of the beforeSend test seam.
+func (c *currentBackend) lease(fn func(state.Backend) error) error {
+	if c == nil {
+		return errBackendUnavailable
+	}
+	c.mu.Lock()
+	g := c.current
+	if g == nil || g.backend == nil || g.state != backendAccepting {
+		c.mu.Unlock()
+		return errBackendUnavailable
+	}
+	g.inFlight++
+	c.mu.Unlock()
+	defer c.release(g)
+	return fn(g.backend)
+}
+
+// sendConcierge leases the same accepting generation as ordinary chat. Busy
+// sends may route to the concierge, but that route must not retain an old
+// backend past a bypass replacement and race its Stop.
+func (c *currentBackend) sendConcierge(text string) (handled bool, err error) {
+	c.mu.Lock()
+	g := c.current
+	if g == nil || g.backend == nil || g.state != backendAccepting {
+		c.mu.Unlock()
+		return true, errBackendUnavailable
+	}
+	cb, ok := g.backend.(state.ConciergeCapable)
+	if !ok {
+		c.mu.Unlock()
+		return false, nil
+	}
+	g.inFlight++
+	c.mu.Unlock()
+	defer c.release(g)
+	return true, cb.SendConcierge(text)
+}
+
+func (c *currentBackend) supportsConcierge() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.current == nil || c.current.backend == nil || c.current.state != backendAccepting {
+		return false
+	}
+	_, ok := c.current.backend.(state.ConciergeCapable)
+	return ok
+}
+
 func (c *currentBackend) release(g *backendGeneration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -297,13 +351,24 @@ func currentBackendSend(current *currentBackend, plan *panels.PlanEditor, text s
 			return slashMsg{text: text}
 		}
 		agent := paneAgent(plan)
-		if err := current.send(text, atts, agent); err != nil {
+		if err := sendViaCurrentBackend(current, text, atts, agent); err != nil {
 			cleanupAttachments(atts) // nobody will retry this prompt
 			return sendErrMsg{err: err}
 		}
 		cleanupAttachments(atts)
 		return chatSentMsg{text: text, agent: agent}
 	}
+}
+
+// sendViaCurrentBackend resolves the accepting transport when a command
+// actually runs. Commands issued while a bypass replacement is starting may
+// otherwise retain the old backend and reach it after the generation has been
+// retired. Callers pass paneAgent (or approve's build tag) computed at send time.
+func sendViaCurrentBackend(current *currentBackend, text string, atts []state.Attachment, agent string) error {
+	if current == nil {
+		return errBackendUnavailable
+	}
+	return current.send(text, atts, agent)
 }
 
 // queueEntry — one backlog item: the typed text, its chat-input
@@ -715,6 +780,13 @@ type Model struct {
 	wedgeNoted         bool
 	wedgeAfter         time.Duration
 
+	// Idle-wrap watchdog: after a busy shift goes quiet, recap once if
+	// the last real chat is not already from the boss or office (and
+	// nobody is drafting). Shares wedgeAfter with W1 (0 = 2m).
+	shiftBusy  bool
+	ghostArmAt time.Time
+	ghostNoted bool
+
 	// Office-session persistence (sessions.go; LIVE mode only):
 	// sessDir is the working directory the office belongs to ("" = no
 	// persist), sessLast throttles the 5s cheap-write loop off EvTick.
@@ -973,7 +1045,18 @@ type busySendReqMsg struct {
 
 // conciergeSentMsg fires after backend.SendConcierge resolves — the office
 // placeholder/answer bubbles arrive via the EvChatOffice seam.
-type conciergeSentMsg struct{ text string }
+type conciergeSentMsg struct {
+	text   string
+	notice bool // first concierge hop this turn — print after Send succeeds
+}
+
+// idleWrapSentMsg — the recap prompt reached the boss. Echo + typing
+// bubble ride the backend event stream (same as a snapshot follow-up).
+type idleWrapSentMsg struct{}
+
+// idleWrapFailMsg — recap send missed the wire; Update posts the
+// fallback office recap so the member is not left ghosted.
+type idleWrapFailMsg struct{ err error }
 
 // chatNoticeMsg is the chat panel's office-notice seam (attachment events:
 // cap eviction, backspace removal, image-paste platform gaps).
@@ -1675,6 +1758,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the concierge backend owns the office echo (pending placeholder +
 		// completion bubbles) via the EvChatOffice seam.
 		m.playSound("send")
+		if msg.notice {
+			m.notice("office routed: boss busy → concierge")
+		}
+	case idleWrapSentMsg:
+		m.notifyDoneArmed = true
+		m.activity.Add(fmt.Sprintf("[%s] asked the boss for an idle recap", chrome.OfficeClock(m.st.Tick)))
+		m.activityAdds++
+		m.fireNotification("done", "the office went quiet — asking the boss for a recap")
+	case idleWrapFailMsg:
+		m.notice(idleWrapNotice)
+		m.playSound("done")
+		m.fireNotification("done", "the office went quiet — here's a recap")
 	case busySentMsg:
 		// free-queuing: straight to the server mid-turn — tally it so the
 		// status compose + placeholder turn count keep the UI alive (the
@@ -1701,7 +1796,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.noticeErr(fmt.Sprintf("send failed: %v", msg.err))
 		cmds = append(cmds, m.applyEvent(state.Event{
 			Kind: state.EvStatus,
-			Text: fmt.Sprintf("[theboringoffice] send failed: %v", msg.err),
+			Text: fmt.Sprintf("[theboringfloor] send failed: %v", msg.err),
 		}))
 	case backendBuildMsg:
 		cmds = append(cmds, m.finishBackendTransition(msg))
@@ -1737,7 +1832,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playSound("error")
 		cmds = append(cmds, m.applyEvent(state.Event{
 			Kind: state.EvStatus,
-			Text: fmt.Sprintf("[theboringoffice] approve failed: %v", msg.err),
+			Text: fmt.Sprintf("[theboringfloor] approve failed: %v", msg.err),
 		}))
 		m.noticeErr(fmt.Sprintf("approve failed — still in plan: %v", msg.err))
 	case queueSendErrMsg:
@@ -1762,7 +1857,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playSound("error")
 		cmds = append(cmds, m.applyEvent(state.Event{
 			Kind: state.EvStatus,
-			Text: fmt.Sprintf("[theboringoffice] send failed: %v", msg.err),
+			Text: fmt.Sprintf("[theboringfloor] send failed: %v", msg.err),
 		}))
 	case slashMsg:
 		// slash handlers mutate panel-only visual state (thinking/tools/
@@ -1915,11 +2010,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 				break
 			}
+			current := m.currentBackend
 			cmds = append(cmds, func() tea.Msg {
-				if m.backend != nil {
-					if err := m.backend.AnswerPermission(pid, response); err != nil {
-						return sendErrMsg{err: err}
-					}
+				err := current.lease(func(b state.Backend) error {
+					return b.AnswerPermission(pid, response)
+				})
+				if err != nil {
+					return sendErrMsg{err: err}
 				}
 				return nil
 			})
@@ -1978,16 +2075,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// the question popover hides the permission popover — re-push
 			// the queue front now the region is free again.
 			m.chat.SetPermission(m.permQ.view())
-			b := m.backend
+			current := m.currentBackend
 			ids := append([]string(nil), hold.IDs...)
 			answers := hold.Answers
 			cmds = append(cmds, func() tea.Msg {
-				if b != nil {
+				err := current.lease(func(b state.Backend) error {
 					for _, qid := range ids {
 						if err := b.AnswerQuestion(qid, answers); err != nil {
-							return sendErrMsg{err: err}
+							return err
 						}
 					}
+					return nil
+				})
+				if err != nil {
+					return sendErrMsg{err: err}
 				}
 				return nil
 			})
@@ -2066,12 +2167,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.tabs.SetState(m.st)
 			m.notice("btw session — esc or /done to return")
 			if msg.trailing != "" {
-				b := m.backend
+				current := m.currentBackend
 				cmds = append(cmds, func() tea.Msg {
-					if b == nil {
-						return nil
-					}
-					_ = b.Send(msg.trailing)
+					_ = sendViaCurrentBackend(current, msg.trailing, nil, "")
 					return nil
 				})
 			}
@@ -3300,6 +3398,9 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	m.st = reducer(m.st, ev)
 	m.pruneRecentToolOutputs()
 	m.applyDelegation(ev) // P3 — before panels see the state
+	if ev.Kind != state.EvTick {
+		m.updateIdleWrap()
+	}
 	// tool-output capture (EvTool.ToolOutput → the transcript's
 	// click-to-expand body): the reducer's ChatMsg has no output field,
 	// so the panel's expansion map rides this side feed, keyed by the
@@ -3338,7 +3439,7 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 	}
 
 	// memory probe latch: the live backend's boot line announces the board
-	// lane ("[theboringoffice] live - … | board: agentmemory (<winner>)" when
+	// lane ("[theboringfloor] live - … | board: agentmemory (<winner>)" when
 	// the agentmemory probe is hot, "| board: in-memory …" when offline) —
 	// the /memory header reads this unless the additive AgentmemoryOK seam
 	// exists (degrade-open file-only otherwise).
@@ -3393,9 +3494,12 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 		// (checkBossWedge) — rides this same cheap loop since the tick is
 		// the only event guaranteed to keep arriving during dead silence.
 		m.checkBossWedge()
-		// governor: the next delay is chosen from the CURRENT cycle's
-		// busy/idle posture (power.go).
-		return m.tickCmd()
+		wrap := m.checkIdleWrap()
+		tick := m.tickCmd()
+		if wrap == nil {
+			return tick
+		}
+		return tea.Batch(wrap, tick)
 	}
 	// A completed boss bubble unblocks a parked question turn: the hold
 	// resolved, the server resumed — the chat goes back to "typing" and
@@ -3846,6 +3950,153 @@ func (m *Model) bossWedgeOverdue() bool {
 // zero/negative value restores the default.
 func (m *Model) SetWedgeAfterForShot(d time.Duration) { m.wedgeAfter = d }
 
+// idleWrapNotice is the one transcript recap when a shift goes idle and
+// the last real chat was not from the boss or office.
+const idleWrapNotice = "office recap: quiet for 2m with the floor idle — last chat wasn't from the boss or office. Looks like the shift finished."
+
+// idleWrapPromptHead is the boss-facing check-in. It rides Send like other
+// [theboringfloor] follow-ups so the member sees the ask, then the recap.
+const idleWrapPromptHead = "[theboringfloor] check-in: idle 2m, no workers running, last chat wasn't from the boss or office. Recap the shift for the member in a few lines (what finished, what's blocked, or that nothing landed). Do not start new work."
+
+func lastUserChat(st state.OfficeState) string {
+	for i := len(st.Chat) - 1; i >= 0; i-- {
+		c := st.Chat[i]
+		if c.From == "user" && strings.TrimSpace(c.Text) != "" {
+			return c.Text
+		}
+	}
+	return ""
+}
+
+func idleWrapPrompt(st state.OfficeState) string {
+	if u := lastUserChat(st); u != "" {
+		return idleWrapPromptHead + " Their last ask: " + clipRunes(strings.TrimSpace(u), 80)
+	}
+	return idleWrapPromptHead
+}
+
+func hasPendingOffice(st state.OfficeState) bool {
+	for _, c := range st.Chat {
+		if c.From == "office" && c.Pending {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) liveWorkerCount() int {
+	n := 0
+	for _, e := range m.st.Employees {
+		if e.Role == state.RoleManager || e.Role == state.RoleHR || e.Role == state.RoleCTO {
+			continue
+		}
+		switch e.Sprite {
+		case state.SpriteWorking, state.SpriteToManager, state.SpriteMeeting:
+			n++
+		}
+	}
+	return n
+}
+
+func (m *Model) officeWorkInFlight() bool {
+	if hasPendingBoss(m.st) || hasPendingOffice(m.st) {
+		return true
+	}
+	if m.questionParked || m.question != nil || m.permQ.front() != nil {
+		return true
+	}
+	if m.liveWorkerCount() > 0 {
+		return true
+	}
+	for _, t := range m.st.Tasks {
+		if t.Status == state.TaskInProgress {
+			return true
+		}
+	}
+	return false
+}
+
+// lastRealChatFrom walks the transcript newest-first. Skips empty
+// placeholders, tool/think rows, and local office notices (Kind !=
+// "office") so a "queued as item" row cannot fake a wrap. Boss or
+// concierge (From office + Kind office) are real wraps.
+func lastRealChatFrom(st state.OfficeState) string {
+	for i := len(st.Chat) - 1; i >= 0; i-- {
+		c := st.Chat[i]
+		if strings.TrimSpace(c.Text) == "" {
+			continue
+		}
+		switch c.Kind {
+		case "tool", "wtool", "wthink", "think", "wdiff":
+			continue
+		}
+		if c.From == "office" && c.Kind != "office" {
+			continue
+		}
+		return c.From
+	}
+	return ""
+}
+
+func lastChatIsBossOrOffice(st state.OfficeState) bool {
+	switch lastRealChatFrom(st) {
+	case "boss", "office":
+		return true
+	}
+	return false
+}
+
+// updateIdleWrap arms a 2m recap clock only when a busy shift goes idle
+// AND the last real chat is not already from the boss or office. A late
+// wrap (boss/office bubble while armed) disarms without a recap.
+func (m *Model) updateIdleWrap() {
+	if m.officeWorkInFlight() {
+		if !m.shiftBusy {
+			m.shiftBusy = true
+			m.ghostNoted = false
+		}
+		m.ghostArmAt = time.Time{}
+		return
+	}
+	if lastChatIsBossOrOffice(m.st) {
+		m.ghostArmAt = time.Time{}
+		m.shiftBusy = false
+		return
+	}
+	if m.shiftBusy {
+		m.shiftBusy = false
+		if lastRealChatFrom(m.st) != "" && m.ghostArmAt.IsZero() {
+			m.ghostArmAt = time.Now()
+		}
+	}
+}
+
+func (m *Model) checkIdleWrap() tea.Cmd {
+	if m.ghostNoted || m.ghostArmAt.IsZero() || m.officeWorkInFlight() {
+		return nil
+	}
+	if lastChatIsBossOrOffice(m.st) || lastRealChatFrom(m.st) == "" {
+		m.ghostArmAt = time.Time{}
+		return nil
+	}
+	threshold := m.wedgeAfter
+	if threshold <= 0 {
+		threshold = bossWedgeAfter
+	}
+	if time.Since(m.ghostArmAt) < threshold {
+		return nil
+	}
+	m.ghostNoted = true
+	prompt := idleWrapPrompt(m.st)
+	current := m.currentBackend
+	return func() tea.Msg {
+		if err := sendViaCurrentBackend(current, prompt, nil, ""); err != nil {
+			return idleWrapFailMsg{err: err}
+		}
+		return idleWrapSentMsg{}
+	}
+}
+
 // ActivityLines is the uishot/test read seam for the activity tab's raw
 // log lines (same additive harness pattern as SetWedgeAfterForShot):
 // proofs count entries byte-deterministically without parsing the
@@ -3893,7 +4144,7 @@ func (m *Model) clearBusyStatus() {
 // watchServe: the "serve died" note is statusline-only by nature (the next
 // EvStatus overwrites it), so it rides the F5a escalation seam into the
 // transcript as a red office row.
-const serveDiedStatusMarker = "[theboringoffice] opencode serve died"
+const serveDiedStatusMarker = "[theboringfloor] opencode serve died"
 
 // resetServerTurn closes the free-queuing tally for the busy turn that just
 // ended (completion / error / /stop): placeholder turn count back to 0, the
@@ -3926,17 +4177,23 @@ func (m *Model) resetServerTurn() {
 func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 	busy := hasPendingBoss(m.st) || m.st.BossDelegating || m.questionParked
 	if busy && m.cfg != nil && m.cfg.Boss.Concierge && len(atts) == 0 {
-		if cb, ok := m.backend.(state.ConciergeCapable); ok {
-			if !m.conciergeNoted {
-				m.conciergeNoted = true
-				m.notice("office routed: boss busy → concierge")
-			}
+		if m.currentBackend.supportsConcierge() {
+			notice := !m.conciergeNoted
+			m.conciergeNoted = true
 			qdebugf("concierge: routed %q (boss busy)", text)
+			current, plan := m.currentBackend, m.plan
 			return func() tea.Msg {
-				if err := cb.SendConcierge(text); err != nil {
+				if handled, err := current.sendConcierge(text); handled {
+					if err != nil {
+						return sendErrMsg{err: err}
+					}
+					return conciergeSentMsg{text: text, notice: notice}
+				}
+				agent := paneAgent(plan)
+				if err := sendViaCurrentBackend(current, text, nil, agent); err != nil {
 					return sendErrMsg{err: err}
 				}
-				return conciergeSentMsg{text: text}
+				return busySentMsg{text: text, agent: agent}
 			}
 		}
 		if !m.conciergeNoted {
@@ -3944,18 +4201,15 @@ func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
 			m.notice("(concierge unavailable — boss queued it)")
 		}
 	}
-	b := m.backend
+	current, plan := m.currentBackend, m.plan
 	return func() tea.Msg {
-		if b != nil {
-			agent := m.planAgent()
-			if err := sendChatMode(b, text, atts, agent); err != nil {
-				cleanupAttachments(atts) // nobody will retry this prompt
-				return sendErrMsg{err: err}
-			}
-			cleanupAttachments(atts)
-			return busySentMsg{text: text, agent: agent}
+		agent := paneAgent(plan)
+		if err := sendViaCurrentBackend(current, text, atts, agent); err != nil {
+			cleanupAttachments(atts) // nobody will retry this prompt
+			return sendErrMsg{err: err}
 		}
-		return busySentMsg{text: text}
+		cleanupAttachments(atts)
+		return busySentMsg{text: text, agent: agent}
 	}
 }
 
@@ -4151,22 +4405,19 @@ func (m *Model) dispatchQueued(manual bool) tea.Cmd {
 			}
 		}
 	}
-	b := m.backend
+	current, plan := m.currentBackend, m.plan
 	send := func() tea.Msg {
 		if !batch && strings.HasPrefix(texts[0], "/") {
 			return slashMsg{text: texts[0]}
 		}
-		if b != nil {
-			agent := m.planAgent()
-			if err := sendChatMode(b, sendText, batchAtts, agent); err != nil {
-				// no cleanup: a respawn retry (queueSendErrMsg) may still
-				// need the files; IT owns the cleanup on terminal failure.
-				return queueSendErrMsg{err: err, items: items, batch: batch, retry: false}
-			}
-			cleanupEntries(items)
-			return chatSentMsg{text: sendText, agent: agent}
+		agent := paneAgent(plan)
+		if err := sendViaCurrentBackend(current, sendText, batchAtts, agent); err != nil {
+			// no cleanup: a respawn retry (queueSendErrMsg) may still
+			// need the files; IT owns the cleanup on terminal failure.
+			return queueSendErrMsg{err: err, items: items, batch: batch, retry: false}
 		}
-		return chatSentMsg{text: sendText}
+		cleanupEntries(items)
+		return chatSentMsg{text: sendText, agent: agent}
 	}
 	return send
 }
@@ -4181,7 +4432,7 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 	for _, it := range items {
 		atts = append(atts, it.atts...)
 	}
-	b := m.backend
+	current, plan := m.currentBackend, m.plan
 	tb, _ := m.team()
 	return func() tea.Msg {
 		if tb != nil {
@@ -4189,15 +4440,12 @@ func (m *Model) resendBatchCmd(items []queueEntry) tea.Cmd {
 				return queueSendErrMsg{err: fmt.Errorf("respawn: %w", err), batch: true, retry: true}
 			}
 		}
-		if b != nil {
-			agent := m.planAgent()
-			if err := sendChatMode(b, text, atts, agent); err != nil {
-				return queueSendErrMsg{err: err, items: items, batch: true, retry: true}
-			}
-			cleanupEntries(items)
-			return chatSentMsg{text: text, agent: agent}
+		agent := paneAgent(plan)
+		if err := sendViaCurrentBackend(current, text, atts, agent); err != nil {
+			return queueSendErrMsg{err: err, items: items, batch: true, retry: true}
 		}
-		return chatSentMsg{text: text}
+		cleanupEntries(items)
+		return chatSentMsg{text: text, agent: agent}
 	}
 }
 
@@ -4227,11 +4475,13 @@ func (m *Model) handlePermissionEvent(ev state.Event) tea.Cmd {
 	if m.bypassPerms {
 		m.notice(fmt.Sprintf(bypassAutoNotice, ev.ToolName))
 		pid := ev.PermissionID
+		current := m.currentBackend
 		return func() tea.Msg {
-			if m.backend != nil {
-				if err := m.backend.AnswerPermission(pid, "once"); err != nil {
-					return sendErrMsg{err: err}
-				}
+			err := current.lease(func(b state.Backend) error {
+				return b.AnswerPermission(pid, "once")
+			})
+			if err != nil {
+				return sendErrMsg{err: err}
 			}
 			return nil
 		}
@@ -4257,7 +4507,7 @@ func (m *Model) handlePermissionEvent(ev state.Event) tea.Cmd {
 
 // notifyTitle — every desktop ping's banner title: the product badge. The
 // OS shows it once; the body carries the signal.
-const notifyTitle = "theboringoffice"
+const notifyTitle = "theboringfloor"
 
 // fireNotification — THE single bus call-site shape. Gates: an engine is
 // wired (nil = headless harness), the terminal is UNfocused (these are
@@ -4539,7 +4789,7 @@ func initialState(mode state.Mode) state.OfficeState {
 			{ID: "hr", Name: "hr", Role: state.RoleHR, Seat: "hr", Sprite: state.SpriteAtDesk},
 		},
 		Mode:       mode,
-		StatusLine: fmt.Sprintf("[theboringoffice] %s - booting...", string(mode)),
+		StatusLine: fmt.Sprintf("[theboringfloor] %s - booting...", string(mode)),
 	}
 }
 
@@ -5236,7 +5486,7 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 	case state.EvStatus:
 		st.StatusLine = ev.Text
 		// Backend-name latch (string-marker contract): every transport's
-		// boot emits "[theboringoffice] backend: <name>" first, and the
+		// boot emits "[theboringfloor] backend: <name>" first, and the
 		// /backend swap line ("… <old> → <new> (turn #N archived)")
 		// re-latches through the same grammar — the topbar renders
 		// st.BackendName between mode and agents.
@@ -5247,7 +5497,7 @@ func reducer(st state.OfficeState, ev state.Event) state.OfficeState {
 
 	case state.EvOffline:
 		// Connectivity watcher says down — badge + status land together.
-		// The backend pairs this with its own EvStatus right after ("[theboringoffice]
+		// The backend pairs this with its own EvStatus right after ("[theboringfloor]
 		// offline — office waiting for internet…"); this text is the fallback
 		// for a kind fired without a paired status.
 		st.Offline = true
@@ -5355,7 +5605,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// reconnect of one server (the live route POSTs /mcp/{name}/connect,
 		// older serves may reject with a wrapped 404 — that error surfaces
 		// as the notice). Both hops are async so the input never stalls.
-		b := m.backend
+		current := m.currentBackend
 		if len(fields) >= 2 && fields[1] == "reconnect" {
 			if len(fields) < 3 {
 				m.noticeErr("/mcp: usage /mcp reconnect <name>")
@@ -5364,21 +5614,31 @@ func (m *Model) applySlash(input string) tea.Cmd {
 			name := fields[2]
 			m.notice("mcp: reconnecting " + name + "…")
 			return func() tea.Msg {
-				if b == nil {
-					return mcpStatusMsg{err: errors.New("no backend attached")}
+				var sv []state.MCPServer
+				var reconnOK bool
+				err := current.lease(func(b state.Backend) error {
+					if err := b.ReconnectMCP(name); err != nil {
+						return err
+					}
+					reconnOK = true
+					var e error
+					sv, e = b.MCPServers()
+					return e
+				})
+				msg := mcpStatusMsg{servers: sv, err: err}
+				if reconnOK {
+					msg.reconnected = name
 				}
-				if err := b.ReconnectMCP(name); err != nil {
-					return mcpStatusMsg{err: err}
-				}
-				sv, err := b.MCPServers()
-				return mcpStatusMsg{servers: sv, err: err, reconnected: name}
+				return msg
 			}
 		}
 		return func() tea.Msg {
-			if b == nil {
-				return mcpStatusMsg{err: errors.New("no backend attached")}
-			}
-			sv, err := b.MCPServers()
+			var sv []state.MCPServer
+			err := current.lease(func(b state.Backend) error {
+				var e error
+				sv, e = b.MCPServers()
+				return e
+			})
 			return mcpStatusMsg{servers: sv, err: err}
 		}
 	case "/clear":
@@ -6130,18 +6390,18 @@ func (m *Model) persistCfg() string {
 // --- backend selection (install-seeded brain.json backend.name + /backend) --
 
 // backendStatusMarker — the EvStatus prefix every transport's boot emits
-// FIRST ("[theboringoffice] backend: opencode" / "… claudecode"); the
+// FIRST ("[theboringfloor] backend: opencode" / "… claudecode"); the
 // reducer latches OfficeState.BackendName off it (topbar segment), and the
-// /backend swap line ("[theboringoffice] backend: <old> → <new> (turn #N
+// /backend swap line ("[theboringfloor] backend: <old> → <new> (turn #N
 // archived)") re-latches through the very same grammar. String-marker
 // contract, same pattern as agentFieldStatusMarker.
-const backendStatusMarker = "[theboringoffice] backend: "
+const backendStatusMarker = "[theboringfloor] backend: "
 
 // backendFailedMarker — the EvStatus prefix a transport's Start failure
 // mints from the swap/respawn goroutine. The /bypass respawn latch
 // (bypassLatchKick) clears on it too: a failed boot must never wedge the
 // one-respawn-in-flight gate.
-const backendFailedMarker = "[theboringoffice] backend failed: "
+const backendFailedMarker = "[theboringfloor] backend failed: "
 
 // backendNameFromStatus parses the marker grammar: "… backend: <name>" at
 // boot, "… backend: <old> → <new> (…)" on swap — the arrow's RIGHT side is
@@ -6222,16 +6482,7 @@ func (m *Model) backendSwapBlockers() []string {
 			break
 		}
 	}
-	workers := 0
-	for _, e := range m.st.Employees {
-		if e.Role == state.RoleManager || e.Role == state.RoleHR || e.Role == state.RoleCTO {
-			continue // fixed seats are always-seated, never "live work"
-		}
-		switch e.Sprite {
-		case state.SpriteWorking, state.SpriteToManager, state.SpriteMeeting:
-			workers++
-		}
-	}
+	workers := m.liveWorkerCount()
 	if workers > 0 {
 		why = append(why, fmt.Sprintf("%d worker(s) live", workers))
 	}
@@ -6478,7 +6729,7 @@ func (m *Model) respawnForBypass() tea.Cmd {
 	m.backendTransitionID++
 	// This is transient operational status only. The indicator remains tied to
 	// bypassPerms (the active generation) until completeBypassStart commits.
-	m.st.StatusLine = "[theboringoffice] backend restarting — bypass permissions " + bypassStateWord(m.bypassDesired)
+	m.st.StatusLine = "[theboringfloor] backend restarting — bypass permissions " + bypassStateWord(m.bypassDesired)
 	resumeID := ""
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		resumeID = ps.PrimaryID()
@@ -6520,7 +6771,7 @@ func (m *Model) failBypassTransition(err error) tea.Cmd {
 	m.bypassQueued = false
 	m.noticeErr("bypass restart failed: " + err.Error() + " — active backend unchanged")
 	return m.applyEvent(state.Event{Kind: state.EvStatus,
-		Text: "[theboringoffice] bypass restart failed — active permissions " + bypassStateWord(m.bypassPerms)})
+		Text: "[theboringfloor] bypass restart failed — active permissions " + bypassStateWord(m.bypassPerms)})
 }
 
 // stopDiscardedBackend tears down a replacement that never became current.

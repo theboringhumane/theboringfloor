@@ -147,7 +147,7 @@ const (
 // escalation (F5a): an EvStatus text carrying this prefix ALSO lands in
 // the transcript as a red office row, because the statusline-only note is
 // overwritten by the next status event.
-const agentFieldStatusMarker = "[theboringoffice] agent-field:"
+const agentFieldStatusMarker = "[theboringfloor] agent-field:"
 
 // approveArmWindow — the ctrl+x double-press window (identical to
 // quitArmWindow by design: the two armed-destructive keys feel the same).
@@ -478,21 +478,15 @@ func (m *Model) approvePlan() tea.Cmd {
 	}
 	v := m.plan.Value()
 	text := approvePrefix + v
-	b := m.backend
+	current := m.currentBackend
 	return func() tea.Msg {
-		if b != nil {
-			var err error
-			if ab, ok := b.(agentBackend); ok {
-				err = ab.SendAgent(text, agentModeBuild)
-			} else {
-				// seam-less harness stub — degrade open to the plain send
-				err = sendChat(b, text, nil)
-			}
-			if err != nil {
-				// tagged twin — no cross-talk with an ordinary failed
-				// send (sendErrMsg keeps its own generic transcript row).
-				return approveErrMsg{err: err}
-			}
+		if current == nil {
+			return approveErrMsg{err: errBackendUnavailable}
+		}
+		if err := current.send(text, nil, agentModeBuild); err != nil {
+			// tagged twin — no cross-talk with an ordinary failed
+			// send (sendErrMsg keeps its own generic transcript row).
+			return approveErrMsg{err: err}
 		}
 		return approveSentMsg{planLen: len(v)}
 	}

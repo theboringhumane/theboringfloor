@@ -1384,7 +1384,7 @@ func TestAgentFieldStatusEscalatesToTranscript(t *testing.T) {
 	m := New(b, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 
-	note := "[theboringoffice] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"
+	note := "[theboringfloor] agent-field: plan/build agent field unavailable on this serve (400 rejected the agent field) — retried this prompt without it; future prompts skip it"
 	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: note})
 	row, ok := officeRowByText(m, "agent field unavailable")
 	if !ok {
@@ -1401,8 +1401,8 @@ func TestAgentFieldStatusEscalatesToTranscript(t *testing.T) {
 	}
 
 	// a plain (unmarked) status never double-posts
-	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringoffice] live - http://127.0.0.1:9999 | board: git"})
-	if n := countOfficeRows(m, "[theboringoffice]"); n != 1 {
+	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: "[theboringfloor] live - http://127.0.0.1:9999 | board: git"})
+	if n := countOfficeRows(m, "[theboringfloor]"); n != 1 {
 		t.Fatalf("unmarked statuses stay statusline-only (office rows=%d)", n)
 	}
 }

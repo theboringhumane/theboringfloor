@@ -24,7 +24,10 @@ type recBackend struct {
 	sentAtts  [][]state.Attachment
 	// qAnswers records every AnswerQuestion call (request id + the full
 	// per-page answer set it carried).
-	qAnswers []qAnswerCall
+	qAnswers    []qAnswerCall
+	permAnswers [][2]string
+	mcpCalls    int
+	mcpReconned []string
 }
 
 // qAnswerCall — one recorded AnswerQuestion request.
@@ -33,18 +36,27 @@ type qAnswerCall struct {
 	answers [][]string
 }
 
-func (r *recBackend) Mode() state.Mode                      { return state.ModeDemo }
-func (r *recBackend) Start(func(state.Event)) error         { return nil }
-func (r *recBackend) Stop() error                           { return nil }
-func (r *recBackend) Send(text string) error                { return nil } // untouched: the seam wins
-func (r *recBackend) AnswerPermission(string, string) error { return nil }
+func (r *recBackend) Mode() state.Mode              { return state.ModeDemo }
+func (r *recBackend) Start(func(state.Event)) error { return nil }
+func (r *recBackend) Stop() error                   { return nil }
+func (r *recBackend) Send(text string) error        { return nil } // untouched: the seam wins
+func (r *recBackend) AnswerPermission(id, response string) error {
+	r.permAnswers = append(r.permAnswers, [2]string{id, response})
+	return nil
+}
 func (r *recBackend) AnswerQuestion(id string, answers [][]string) error {
 	r.qAnswers = append(r.qAnswers, qAnswerCall{id: id, answers: answers})
 	return nil
 }
-func (r *recBackend) RejectQuestion(string) error            { return nil }
-func (r *recBackend) MCPServers() ([]state.MCPServer, error) { return nil, nil }
-func (r *recBackend) ReconnectMCP(string) error              { return nil }
+func (r *recBackend) RejectQuestion(string) error { return nil }
+func (r *recBackend) MCPServers() ([]state.MCPServer, error) {
+	r.mcpCalls++
+	return nil, nil
+}
+func (r *recBackend) ReconnectMCP(name string) error {
+	r.mcpReconned = append(r.mcpReconned, name)
+	return nil
+}
 func (r *recBackend) SendWith(text string, atts []state.Attachment) error {
 	r.sentTexts = append(r.sentTexts, text)
 	r.sentAtts = append(r.sentAtts, atts)

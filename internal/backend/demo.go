@@ -413,7 +413,12 @@ func (b *demoBackend) SendWith(text string, atts []state.Attachment) error {
 	if trimmed == "" {
 		named = "the attachments"
 	}
+	idleCheckin := strings.HasPrefix(trimmed, "[theboringfloor] check-in:")
 	ack := "On it: " + named + " is on the board - watch the floor."
+	if idleCheckin {
+		// idle wrap: recap only — the tour must not hire a new worker.
+		ack = "Shift recap: the floor went quiet. Last work already wrapped. Nothing new started."
+	}
 	if names := attachmentNames(atts); len(names) > 0 {
 		ack += " I see " + itoa(len(names)) + " attachment(s): " + strings.Join(names, ", ") + "."
 	}
@@ -437,6 +442,9 @@ func (b *demoBackend) SendWith(text string, atts []state.Attachment) error {
 		}})
 	})
 
+	if idleCheckin {
+		return nil
+	}
 	// ...and one ad-hoc dispatch cycle proves the request landed.
 	// Architecture-flavored asks route to the CTO — the one matcher is
 	// state.IsArchitectureBrief (same rule the live role mapping uses).
@@ -617,11 +625,11 @@ func (b *demoBackend) ResetPrimary(forceNew bool) error { return nil }
 func (b *demoBackend) netTransition(online bool) {
 	if !online {
 		b.fl.emit(state.Event{Kind: state.EvOffline})
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] offline — office waiting for internet…"})
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] offline — office waiting for internet…"})
 		return
 	}
 	b.fl.emit(state.Event{Kind: state.EvOnline})
-	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringoffice] back online — resumed"})
+	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] back online — resumed"})
 }
 
 // SetOffline drives the offline/online event pair directly — the manual
