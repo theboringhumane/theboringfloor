@@ -2,9 +2,6 @@
 //
 // The file is created with defaults on first run. Precedence:
 // CLI flag > brain.json > persisted UI prefs (~/.config/theboringfloor/theme) > defaults.
-//
-// Rename-era compatibility: grafeio → theboringoffice → theboringfloor.
-// Load merges prior dirs into ~/.theboringfloor (and ~/.config/theboringfloor).
 package config
 
 import (
@@ -17,10 +14,33 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
 
-// HomeOverride returns the test/harness scratch-root override:
-// THEBORINGFLOOR_HOME, then THEBORINGOFFICE_HOME, then GRAFEIO_HOME.
-// "" means "use $HOME".
-func HomeOverride() string { return brand.Get("HOME") }
+// HomeOverride returns the test/harness scratch-root override. Env provides
+// the silent legacy compatibility read; "" means "use $HOME".
+func HomeOverride() string { return Env("HOME") }
+
+// Env reads the canonical spelling first; a nonempty canonical value wins.
+// When it is empty, it silently reads the legacy spelling for compatibility.
+func Env(suffix string) string {
+	if value := os.Getenv("THEFLOOR_" + suffix); value != "" {
+		return value
+	}
+	return os.Getenv("THEBORINGOFFICE_" + suffix)
+}
+
+// EnvBool reports whether Env(suffix) is exactly "1".
+func EnvBool(suffix string) bool {
+	return Env(suffix) == "1"
+}
+
+// LookupEnv reads the canonical spelling first. When it is unset, it silently
+// reads the legacy spelling for compatibility. The canonical spelling always
+// wins, including when it is explicitly empty.
+func LookupEnv(suffix string) (string, bool) {
+	if value, ok := os.LookupEnv("THEFLOOR_" + suffix); ok {
+		return value, true
+	}
+	return os.LookupEnv("THEBORINGOFFICE_" + suffix)
+}
 
 func homeRoot() string {
 	home := HomeOverride()
@@ -33,16 +53,6 @@ func homeRoot() string {
 // Path returns the brain.json location, honoring HomeOverride() (tests).
 func Path() string {
 	return filepath.Join(homeRoot(), brand.DotDir, "configs", "brain.json")
-}
-
-// officePath is the theboringoffice-era brain.json. Read fallback only.
-func officePath() string {
-	return filepath.Join(homeRoot(), brand.OfficeDotDir, "configs", "brain.json")
-}
-
-// legacyPath is the grafeio-era brain.json. Read fallback only.
-func legacyPath() string {
-	return filepath.Join(homeRoot(), brand.GrafeioDotDir, "configs", "brain.json")
 }
 
 // PowerMode — battery posture of the whole app.
@@ -200,20 +210,11 @@ func Default() *Config {
 }
 
 // Load reads brain.json; creates it (parents + defaults) when absent.
-// Prior dirs are merged into ~/.theboringfloor first (see MigrateHome).
 // Unknown keys are tolerated; bad JSON returns the error (caller decides).
 func Load() (*Config, error) {
 	MigrateHome()
 	p := Path()
-	readFrom := p
 	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		if ob, oerr := os.ReadFile(officePath()); oerr == nil {
-			b, err, readFrom = ob, nil, officePath()
-		} else if lb, lerr := os.ReadFile(legacyPath()); lerr == nil {
-			b, err, readFrom = lb, nil, legacyPath()
-		}
-	}
 	if errors.Is(err, os.ErrNotExist) {
 		cfg := Default()
 		if werr := save(p, cfg); werr != nil {
@@ -222,11 +223,11 @@ func Load() (*Config, error) {
 		return cfg, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("config: read %s: %w", readFrom, err)
+		return nil, fmt.Errorf("config: read %s: %w", p, err)
 	}
 	cfg := Default()
 	if err := json.Unmarshal(b, cfg); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", readFrom, err)
+		return nil, fmt.Errorf("config: parse %s: %w", p, err)
 	}
 	if cfg.Boss.Name == "" {
 		cfg.Boss.Name = "boss (oikonomos)"

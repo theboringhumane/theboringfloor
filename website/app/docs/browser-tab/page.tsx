@@ -217,7 +217,7 @@ export default function BrowserTabPage() {
               <strong className="text-foreground">off by default</strong>. Opt in
               explicitly: install the binary (re-run the office installer with{' '}
               <Code>--with-terminal-browser</Code>) and export{' '}
-              <Code>THEBORINGOFFICE_ZENBU_LANE=1</Code>. Then the tab embeds the
+              <Code>THEFLOOR_ZENBU_LANE=1</Code>. Then the tab embeds the
               live page at the pane&apos;s exact pixel size under a top strip{' '}
               <Code>▸ zenbu terminal-browser · &lt;url&gt;</Code> and a{' '}
               <Code>zenbu</Code> badge.
@@ -227,13 +227,13 @@ export default function BrowserTabPage() {
               drops back to the text viewer with the URL state kept and a dim{' '}
               <Code>zenbu exited (&lt;code&gt;) — falling back to text mode</Code>{' '}
               note; a clean exit just returns to text quietly. Two kill-switches
-              force the text lane — <Code>THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1</Code>{' '}
-              or <Code>THEBORINGOFFICE_NO_TERMINAL_BROWSER=1</Code> — and they win
+              force the text lane — <Code>THEFLOOR_TERMINAL_BROWSER_OFF=1</Code>{' '}
+              or <Code>THEFLOOR_NO_TERMINAL_BROWSER=1</Code> — and they win
               over the opt-in flag.
             </p>
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <Chip combo="kitty / ghostty + Chrome" action="rendered screenshots" />
-              <Chip combo="THEBORINGOFFICE_ZENBU_LANE=1" action="opt in to the embedded lane" />
+              <Chip combo="THEFLOOR_ZENBU_LANE=1" action="opt in to the embedded lane" />
               <Chip combo="terminal-browser on PATH" action="the embedded lane's binary" />
               <Chip combo="&lt;300ms exit" action="falls back to text, URL kept" />
             </div>
@@ -253,7 +253,7 @@ export default function BrowserTabPage() {
               always allowed on either scheme, and <Code>https://</Code> opens any
               host by default. Only plain <Code>http://</Code> beyond localhost asks
               for an explicit unlock: export{' '}
-              <Code>THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1</Code> — read at use time,
+              <Code>THEFLOOR_BROWSER_ALLOW_HTTP=1</Code> — read at use time,
               with no config schema and no brain.json key. A blocked fetch says so in
               a dim row and tells you the exact flag.
             </p>
@@ -261,7 +261,7 @@ export default function BrowserTabPage() {
               <Chip combo="file:// · bare paths" action="read straight off disk" />
               <Chip combo="localhost / 127.0.0.1 / ::1" action="always allowed, either scheme" />
               <Chip combo="https://" action="any host by default" />
-              <Chip combo="THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1" action="unlocks outbound http" />
+              <Chip combo="THEFLOOR_BROWSER_ALLOW_HTTP=1" action="unlocks outbound http" />
             </div>
           </div>
         </section>
@@ -302,7 +302,7 @@ export default function BrowserTabPage() {
               <li>
                 <strong className="text-foreground">The embedded lane is off by
                 default.</strong> The zenbu <Code>terminal-browser</Code> embed is
-                opt-in (<Code>THEBORINGOFFICE_ZENBU_LANE=1</Code> + the binary on{' '}
+                opt-in (<Code>THEFLOOR_ZENBU_LANE=1</Code> + the binary on{' '}
                 <Code>PATH</Code>); the default premium path is headless
                 screenshots.
               </li>

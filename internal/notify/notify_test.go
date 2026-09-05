@@ -34,9 +34,9 @@ func TestBusModes(t *testing.T) {
 }
 
 func TestBusNoNotifyEnvOverridesConfig(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_NO_NOTIFY", "1")
+	t.Setenv("THEFLOOR_NO_NOTIFY", "1")
 	if b := NewBus("on"); b.Mode() != "off" {
-		t.Fatalf("THEBORINGOFFICE_NO_NOTIFY=1 must force off, got %q", b.Mode())
+		t.Fatalf("THEFLOOR_NO_NOTIFY=1 must force off, got %q", b.Mode())
 	}
 
 	b, got := captBus("on")
@@ -44,13 +44,6 @@ func TestBusNoNotifyEnvOverridesConfig(t *testing.T) {
 	b.Send("done", "t", "b")
 	if len(*got) != 0 {
 		t.Fatalf("env-forced-off must never exec, got %v", *got)
-	}
-}
-
-func TestBusLegacyNoNotifyEnv(t *testing.T) {
-	t.Setenv("GRAFEIO_NO_NOTIFY", "1") // pre-rename name keeps working
-	if b := NewBus("on"); b.Mode() != "off" {
-		t.Fatalf("GRAFEIO_NO_NOTIFY=1 must force off, got %q", b.Mode())
 	}
 }
 
@@ -75,12 +68,12 @@ func TestResolveNotifier(t *testing.T) {
 func TestSendDarwinArgvAndQuoting(t *testing.T) {
 	b, got := captBus("on")
 	b.notifier = "/usr/bin/osascript"
-	b.Send("done", "theboringoffice", `the boss is done — he said "hi" \o/`)
+	b.Send("done", "theboringfloor", `the boss is done — he said "hi" \o/`)
 	if len(*got) != 1 {
 		t.Fatalf("expected exactly 1 exec, got %d", len(*got))
 	}
 	argv := (*got)[0]
-	wantScript := `display notification "the boss is done — he said \"hi\" \\o/" with title "theboringoffice" sound name "Glass"`
+	wantScript := `display notification "the boss is done — he said \"hi\" \\o/" with title "theboringfloor" sound name "Glass"`
 	if argv[0] != "/usr/bin/osascript" || argv[1] != "-e" || argv[2] != wantScript {
 		t.Fatalf("darwin argv mismatch:\ngot  %q\nwant [-e + script] %q", argv, wantScript)
 	}
@@ -90,19 +83,19 @@ func TestSendLinuxArgv(t *testing.T) {
 	b, got := captBus("on")
 	b.notifier = "/usr/bin/notify-send"
 
-	b.Send("done", "theboringoffice", "the boss is done — shipped")
-	b.Send("permission", "theboringoffice", "permission needed — boss needs write")
+	b.Send("done", "theboringfloor", "the boss is done — shipped")
+	b.Send("permission", "theboringfloor", "permission needed — boss needs write")
 
 	if len(*got) != 2 {
 		t.Fatalf("expected 2 execs, got %d (%v)", len(*got), *got)
 	}
 	done := (*got)[0]
-	if strings.Join(done, " ") != "/usr/bin/notify-send theboringoffice the boss is done — shipped" {
+	if strings.Join(done, " ") != "/usr/bin/notify-send theboringfloor the boss is done — shipped" {
 		t.Fatalf("done argv mismatch: %q", done)
 	}
 	perm := (*got)[1]
 	// "permission" kind rides -u critical (blocked floors stay on glass)
-	if strings.Join(perm, " ") != "/usr/bin/notify-send -u critical theboringoffice permission needed — boss needs write" {
+	if strings.Join(perm, " ") != "/usr/bin/notify-send -u critical theboringfloor permission needed — boss needs write" {
 		t.Fatalf("permission argv mismatch: %q", perm)
 	}
 }

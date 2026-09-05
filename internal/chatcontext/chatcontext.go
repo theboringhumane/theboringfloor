@@ -31,7 +31,7 @@ const (
 // PromptPreamble is appended after the browser-tool preamble on the first
 // boss prompt. It intentionally lives apart from browsertools so that the
 // browser preamble's byte contract remains unchanged.
-const PromptPreamble = "[theboringoffice harness — recent messages]\n" +
+const PromptPreamble = "[theboringfloor harness — recent messages]\n" +
 	"If you lose or compact context, you may recover recent office transcript messages sparingly. " +
 	"Emit one of these directives on ITS OWN line, at most once per reply:\n" +
 	marker + markerClose + " — request the default 20 messages.\n" +

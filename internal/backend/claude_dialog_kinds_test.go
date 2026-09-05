@@ -258,13 +258,13 @@ func TestClaudeF1PermissionBashRoundTrip(t *testing.T) {
 		t.Fatalf("allow-always bytes drifted:\n got: %s\nwant: %s", got, want)
 	}
 
-	// reject -> {behavior:"deny", message:"Denied by the boss in theboringoffice"}
+	// reject -> {behavior:"deny", message:"Denied by the boss in theboringfloor"}
 	raw, err = claudeDialogResultJSON(meta, e.Questions, [][]string{{"Reject"}})
 	if err != nil {
 		t.Fatalf("reject: %v", err)
 	}
 	got, _ = claudeControlResponseFor("dlg-b1", claudeControlResult{Behavior: "completed", Result: raw})
-	want = `{"type":"control_response","response":{"subtype":"success","request_id":"dlg-b1","response":{"behavior":"completed","result":{"behavior":"deny","message":"Denied by the boss in theboringoffice"}}}}`
+	want = `{"type":"control_response","response":{"subtype":"success","request_id":"dlg-b1","response":{"behavior":"completed","result":{"behavior":"deny","message":"Denied by the boss in theboringfloor"}}}}`
 	if string(got) != want {
 		t.Fatalf("reject bytes drifted:\n got: %s\nwant: %s", got, want)
 	}

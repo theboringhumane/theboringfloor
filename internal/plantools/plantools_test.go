@@ -168,7 +168,7 @@ func TestScrubFallbackAndPreamble(t *testing.T) {
 	if len(emitted) != 1 || emitted[0].Kind != Present || emitted[0].Text != "first" {
 		t.Fatalf("multiple directives must emit only the first, got %+v", emitted)
 	}
-	for _, want := range []string{"[theboringoffice harness — plan tools]", "ctrl+x twice", "⟦plan-present⟧", "⟦plan-update⟧", "⟦plan-get-approved⟧", "never requests approval"} {
+	for _, want := range []string{"[theboringfloor harness — plan tools]", "ctrl+x twice", "⟦plan-present⟧", "⟦plan-update⟧", "⟦plan-get-approved⟧", "never requests approval"} {
 		if !strings.Contains(PromptPreamble, want) {
 			t.Fatalf("PromptPreamble missing %q:\n%s", want, PromptPreamble)
 		}

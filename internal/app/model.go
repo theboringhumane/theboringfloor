@@ -1,4 +1,4 @@
-// Package app — the root Bubble Tea model for theboringoffice v2: state reducer
+// Package app — the root Bubble Tea model for theboringfloor v2: state reducer
 // (exact port of node-legacy/src/app.tsx officeReducer + initialState),
 // layout, key routing, the power governor, and the backend event seam.
 //
@@ -392,7 +392,7 @@ func qdebugf(format string, args ...any) {
 }
 
 // cleanupAttachments removes panel-created temp dirs (pasted images live in
-// os.MkdirTemp "theboringoffice-paste-*", Attachment.Temp). Best-effort, and ONLY
+// os.MkdirTemp "theboringfloor-paste-*", Attachment.Temp). Best-effort, and ONLY
 // ever called after a send has resolved: enqueue must not clean (the flush
 // still needs the file), and the batch respawn path keeps them for its one
 // retry — the cleanup fires on success or on the terminal failure.
@@ -646,9 +646,9 @@ type Model struct {
 	// /done restores and nils it. /btw while non-nil is rejected (no nesting).
 	// /new while in btw discards the save (you abandoned it). btwHiddenSnap
 	// retains a side session that Esc hid behind its pinned main-chat bubble.
-	btwSaved       *btwSnapshot
-	btwHiddenSnap  *btwSnapshot
-	btwPinMsgID    string
+	btwSaved      *btwSnapshot
+	btwHiddenSnap *btwSnapshot
+	btwPinMsgID   string
 
 	// Batch dispatch bookkeeping (set by dispatchQueued, consumed by the
 	// pending→non-pending completion transition):
@@ -871,7 +871,7 @@ type Model struct {
 	emitFn func(state.Event)
 
 	// execSession — the /session picker accept's exec-replace intent:
-	// accept = quit + relaunch as `theboringoffice -s <id>` (recorded by
+	// accept = quit + relaunch as `theboringfloor -s <id>` (recorded by
 	// acceptSessionPick in session_picker.go, read by cmd's post-Run path
 	// via ExecRequest). "" = a normal quit, no relaunch.
 	execSession string
@@ -1233,7 +1233,7 @@ func WithResumeSession(id string) Option {
 }
 
 // WithServerURL records the attach target main resolved for this boot
-// (--server flag / THEBORINGOFFICE_SERVER): the /backend swap re-constructs
+// (--server flag / THEFLOOR_SERVER): the /backend swap re-constructs
 // transports through backendFor with the same baseURL. "" = spawn mode.
 func WithServerURL(u string) Option {
 	return func(m *Model) { m.serverURL = u }
@@ -2340,7 +2340,7 @@ func (m Model) projInfo() projinfo.Info {
 // same tick+sprites never rebuilds the grid).
 func (m Model) Frame() string {
 	if m.width == 0 {
-		return "theboringoffice — waiting for terminal size…"
+		return "theboringfloor — waiting for terminal size…"
 	}
 	digest := m.frameDigest()
 	if m.gov.frameCached != "" && m.gov.frameKey == digest {
@@ -3300,14 +3300,14 @@ func (m *Model) closeTerminal() {
 	}
 }
 
-// CloseTerminal is the exported quit-path hook for cmd/theboringoffice (the runtime
+// CloseTerminal is the exported quit-path hook for the runtime (the runtime
 // intercepts tea.QuitMsg before Update, so an external p.Quit skips
 // handleKey — call CloseTerminal alongside to never leak a shell process).
 func (m *Model) CloseTerminal() { m.closeTerminal() }
 
 // ExecRequest — the /session picker accept's exec-replace intent: the
-// session id cmd/theboringoffice's post-Run path relaunches the binary with
-// (`theboringoffice -s <id>`). "" when the picker never accepted this run
+// session id the runtime's post-Run path relaunches the binary with
+// (`theboringfloor -s <id>`). "" when the picker never accepted this run
 // (every other quit way leaves it empty).
 func (m Model) ExecRequest() string { return m.execSession }
 
@@ -5638,7 +5638,7 @@ const slashHelp = `commands:
   /status            office status
   /mcp [reconnect x] show MCP servers; reconnect one by name
   /memory [filter]   the office ledger — completed dispatches, newest first
-  /quit              exit theboringoffice`
+  /quit              exit theboringfloor`
 
 // applySlash dispatches one slash command. Slash input never echoes as
 // chat-user; every outcome surfaces as a From "office" chat notice.
@@ -5959,7 +5959,7 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.btwSaved = nil // /new abandons any btw session
 		m.btwHiddenSnap = nil
 		m.btwPinMsgID = ""
-		m.newOffice()    // sessions.go — clear surfaces + fresh "theboringoffice office"
+		m.newOffice() // sessions.go — clear surfaces + fresh floor
 	case "/backend":
 		// install-seeded brain.json backend.name's in-app twin: show the
 		// active transport or swap it mid-flight (idle-office gate inside).
@@ -6476,7 +6476,7 @@ func (m *Model) memoryBody(filter string) string {
 		project = filepath.Base(m.memoryDir())
 	}
 	if project == "" || project == "." {
-		project = "theboringoffice"
+		project = "theboringfloor"
 	}
 	header := func(n int) string {
 		unit := "dispatches"
@@ -6604,7 +6604,7 @@ func backendNameFromStatus(text string) (string, bool) {
 // contract — the only honest silence-proof default). baseURL is the
 // opencode serve attach target ONLY: the claude transport spawns its own
 // CLI (its first param is a bin OVERRIDE, which the office leaves to
-// THEBORINGOFFICE_CLAUDE_BIN / PATH resolution).
+// THEFLOOR_CLAUDE_BIN / PATH resolution).
 func backendFor(name, baseURL, dir string, cfg *config.Config) state.Backend {
 	switch name {
 	case config.BackendNameClaude:

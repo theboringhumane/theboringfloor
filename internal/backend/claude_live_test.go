@@ -30,7 +30,7 @@
 //     faked.
 //
 // Gating (requirement: CI must never touch the real CLI): every test
-// skips unless THEBORINGOFFICE_LIVE_CLAUDE=1 AND `claude` resolves on
+// skips unless THEFLOOR_LIVE_CLAUDE=1 AND `claude` resolves on
 // PATH. CLAUDE_CONFIG_DIR is left at its default (the user's real
 // ~/.claude) so the machine's existing login carries — that IS the
 // production path under test.
@@ -54,16 +54,17 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringfloor/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
 // liveClaudeGate is the double gate EVERY live test passes through:
-// THEBORINGOFFICE_LIVE_CLAUDE=1 (explicit human opt-in — CI never sets it)
+// THEFLOOR_LIVE_CLAUDE=1 (explicit human opt-in — CI never sets it)
 // AND a real `claude` CLI on PATH. Both skips carry the reason.
 func liveClaudeGate(t *testing.T) string {
 	t.Helper()
-	if os.Getenv("THEBORINGOFFICE_LIVE_CLAUDE") != "1" {
-		t.Skip("skipping LIVE claude CLI test: THEBORINGOFFICE_LIVE_CLAUDE=1 not set " +
+	if !config.EnvBool("LIVE_CLAUDE") {
+		t.Skip("skipping LIVE claude CLI test: THEFLOOR_LIVE_CLAUDE=1 not set " +
 			"(real CLI + real API spend — opt-in only, CI must never run this)")
 	}
 	bin, err := exec.LookPath("claude")
@@ -385,7 +386,7 @@ func TestClaudeLiveBossBubbleSinglePin(t *testing.T) {
 func TestClaudeLivePermissionRoundTrip(t *testing.T) {
 	bin := liveClaudeGate(t)
 	scratch := t.TempDir() // auto-removed — no residue
-	target := filepath.Join(scratch, "theboringoffice-live-perm.txt")
+	target := filepath.Join(scratch, "theboringfloor-live-perm.txt")
 	b, log, rec := liveBoot(t, bin, scratch)
 
 	prompt := fmt.Sprintf("Use the Write tool to create the file %s with the exact content \"hello\" and nothing else. Do not do anything else.", target)
@@ -661,7 +662,7 @@ func TestClaudeLiveThinkingEvThought(t *testing.T) {
 func TestClaudeLiveBypass(t *testing.T) {
 	bin := liveClaudeGate(t)
 	scratch := t.TempDir() // auto-removed — no residue
-	target := filepath.Join(scratch, "theboringoffice-live-bypass.txt")
+	target := filepath.Join(scratch, "theboringfloor-live-bypass.txt")
 
 	log := &claudeEventLog{}
 	rec := &liveFrameRec{}

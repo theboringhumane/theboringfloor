@@ -88,7 +88,7 @@ func TestSessionPickerAcceptCapturesExecIntent(t *testing.T) {
 	if b.primary != "ses-alpha-new" {
 		t.Fatalf("the live primary must NOT move in-app (the relaunch swaps it), got %q", b.primary)
 	}
-	if !chatHas(m, "closing — relaunching as `theboringoffice -s ses-beta-older`") {
+	if !chatHas(m, "closing — relaunching as `theboringfloor -s ses-beta-older`") {
 		t.Fatalf("the frozen closing row must land as transcript history: %v", chatTexts(m))
 	}
 	// the pin lands in session.json SYNCHRONOUSLY (a quit right after

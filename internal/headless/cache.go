@@ -39,7 +39,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 const (
@@ -285,10 +285,10 @@ func snapKey(rawurl string, maxText int) string {
 
 // --- SaveShot — the engine-owned PNG landing convention ------------------
 
-// shotsDir — the PNG landing zone: <THEBORINGOFFICE_HOME>/shots when the
+// shotsDir — the PNG landing zone: <THEFLOOR_HOME>/shots when the
 // member/harness overrides home, else <os.TempDir>/shots.
 func shotsDir() string {
-	if home := brand.Get("HOME"); home != "" {
+	if home := config.Env("HOME"); home != "" {
 		return filepath.Join(home, "shots")
 	}
 	return filepath.Join(os.TempDir(), "shots")

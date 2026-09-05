@@ -1,8 +1,9 @@
 package gitx
 
 import (
-	"os"
 	"strings"
+
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // AutoCommitFlag is the office's own env flag opting every spawned child
@@ -14,7 +15,7 @@ import (
 // Why the spawn env and not a git hook: git runs hooks as CHILD processes,
 // so a hook's `export` never reaches the git parent — the only seam that
 // covers every downstream commit is the office's own process-launch env.
-const AutoCommitFlag = "THEBORINGOFFICE_AUTO_COMMIT"
+const AutoCommitFlag = "THEFLOOR_AUTO_COMMIT"
 
 // The git author/committer env keys the majdoor injection owns.
 const (
@@ -48,7 +49,7 @@ func MajdoorAuthorEnvActive(getenv func(string) string) bool {
 // WithMajdoorAuthorEnv is MajdoorEnvMerge bound to the real process env —
 // the one-liner every spawn seam calls on the child env it assembled.
 func WithMajdoorAuthorEnv(env []string) []string {
-	return MajdoorEnvMerge(env, os.Getenv)
+	return MajdoorEnvMerge(env, func(string) string { return config.Env("AUTO_COMMIT") })
 }
 
 // MajdoorEnvMerge merges MajdoorAuthorEnv() into env when the office

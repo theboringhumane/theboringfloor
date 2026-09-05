@@ -178,7 +178,7 @@ func TestNotifyBlurFiresLiveCohortImmediately(t *testing.T) {
 }
 
 func TestNotifySlashToggle(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir()) // persistCfg lands in scratch, never the real brain.json
+	t.Setenv("THEFLOOR_HOME", t.TempDir()) // persistCfg lands in scratch, never the real brain.json
 	m, bus := newNotifyRig(t)
 
 	// bare /notify: status line reports the current mode

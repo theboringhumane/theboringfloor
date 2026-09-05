@@ -8,7 +8,7 @@ by a real system; nothing on screen is fake except the coffee.
 > app stays frozen v1 behaviors, kept as git tag `node-v0.1.0`.
 
 ```
-+----------------- THEBORINGOFFICE (Go + Bubble Tea) ------------------+
++----------------- THEBORINGFLOOR (Go + Bubble Tea) -------------------+
 |  topbar: theboringfloor <ver> | MODE | agents <n>   <clock> | <cwd> |
 |  OFFICE FLOOR (left, flex)  |  SIDEBAR (right, cfg width 26..100)    |
 |  sprites animated           <- tabs: chat | terminal | agents |      |
@@ -34,7 +34,7 @@ Floor physics (event -> sprite):
 
 | Path | Job |
 |---|---|
-| `cmd/theboringoffice` | TUI entry: flags (`--demo`, `--server`, `--theme`, `--version`), spawns/attaches the backend, wires `app.SpawnTerminal = panels.NewTerminal`, runs the tea program |
+| `cmd/theboringfloor` | TUI entry: flags (`--demo`, `--server`, `--theme`, `--version`), spawns/attaches the backend, wires `app.SpawnTerminal = panels.NewTerminal`, runs the tea program |
 | `cmd/headless` | verification binary for the backend layer: demo run, live spawn, `--prompt` round-trips, `--batch-probe` contract checks |
 | `cmd/uishot` | deterministic UI shot harness: the REAL app model against a scripted stub backend, fixed size + event script, frame printed between markers |
 | `cmd/floorshot` | freeze-frame renderer for the office floor: styled + plain frames of a seeded state at standard shell sizes |
@@ -46,7 +46,7 @@ Floor physics (event -> sprite):
 | `internal/panels` | the sidebar: tab strip + chat, terminal, agents, board, mail, activity, git (live status + diff viewer); slash/@ popover, question + permission modals, MCP status block, subagent threads |
 | `internal/office` | the floor: props-driven floorplan, roster seats, sprite glyphs + walker physics, the pure frame renderer, tick-pure ambient fixtures |
 | `internal/chrome` | topbar, statusbar, shared lipgloss styles + themes |
-| `internal/config` | one file to run the office: `~/.theboringfloor/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults); session state lives per working directory at `~/.theboringfloor/projects/<dirhash>/session.json` (the old `~/.theboringfloor/sessions/<dirhash>` and `~/.grafeio/sessions/<dirhash>` roots are read-only fallbacks) |
+| `internal/config` | one file to run the office: `~/.theboringfloor/configs/brain.json` (created with defaults on first run; precedence CLI > brain.json > UI prefs > defaults); session state lives per working directory at `~/.theboringfloor/projects/<dirhash>/session.json` |
 | `internal/charter` | the oikonomos manager protocol as an embedded asset, copied into `<dir>/.opencode/` for the spawned server; the same charter pass (in `internal/backend`) generates `mcp-servers.md` — the available-MCP-servers prompt attachment discovered from opencode's own config chain — and wires it into the served `instructions`; it also seeds `memory: office-ledger.md` (`<dir>/.opencode/office-ledger.md`, the office's completed-work memory; seeded when absent, never rewritten — the app appends entries) and merges it into `instructions` beside them |
 | `internal/sound` | terminal-native office audio: eight pure-Go PCM chimes into `~/.theboringfloor/sounds/`, platform player / bell / off |
 | `internal/term` | embedded OS terminal: real PTY session, xterm-style screen grid, scrollback; OPT-IN capture — released by default (office keys everywhere), `ctrl+space` toggles capture both ways (`tab`/`shift+tab`/digits go to the PTY while captured; byte `0x00`, safe against the `ctrl+i` byte-identity with tab), `ctrl+o` releases as an alias; capture auto-drops when the tab loses focus; `ctrl+q` (quit-arm) stays app-global in both states |

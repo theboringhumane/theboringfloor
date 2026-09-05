@@ -1,5 +1,5 @@
 // claudestub — a deterministic stand-in for the Claude Code CLI in
-// stream-json mode. It speaks the exact protocol subset theboringoffice's
+// stream-json mode. It speaks the exact protocol subset theboringfloor's
 // claude backend reads/writes (`claude -p --input-format stream-json
 // --output-format stream-json --verbose --include-partial-messages`):
 //
@@ -15,10 +15,10 @@
 //
 // Env:
 //
-//	THEBORINGOFFICE_CLAUDE_STUB_SCENARIO  planshot (default) | roundtrip | silent | no-init
-//	THEBORINGOFFICE_CLAUDE_STUB_CAPTURE   append every STDIN line here (proof)
-//	THEBORINGOFFICE_CLAUDE_STUB_STDOUTLOG append every STDOUT frame here (proof)
-//	THEBORINGOFFICE_CLAUDE_STUB_ARGV      record the exact argv (proof)
+//	THEFLOOR_CLAUDE_STUB_SCENARIO  planshot (default) | roundtrip | silent | no-init
+//	THEFLOOR_CLAUDE_STUB_CAPTURE   append every STDIN line here (proof)
+//	THEFLOOR_CLAUDE_STUB_STDOUTLOG append every STDOUT frame here (proof)
+//	THEFLOOR_CLAUDE_STUB_ARGV      record the exact argv (proof)
 package main
 
 import (
@@ -27,6 +27,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // ---------------- constant frames (scripted schedule) ----------------
@@ -236,7 +238,7 @@ func (s *stub) emit(line string) {
 }
 
 func (s *stub) logStdout(line string) {
-	if p := os.Getenv("THEBORINGOFFICE_CLAUDE_STUB_STDOUTLOG"); p != "" {
+	if p := config.Env("CLAUDE_STUB_STDOUTLOG"); p != "" {
 		f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err == nil {
 			f.WriteString(line + "\n")
@@ -246,7 +248,7 @@ func (s *stub) logStdout(line string) {
 }
 
 func (s *stub) logCapture(line string) {
-	if p := os.Getenv("THEBORINGOFFICE_CLAUDE_STUB_CAPTURE"); p != "" {
+	if p := config.Env("CLAUDE_STUB_CAPTURE"); p != "" {
 		f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 		if err == nil {
 			f.WriteString(line + "\n")
@@ -257,9 +259,9 @@ func (s *stub) logCapture(line string) {
 
 // frameHeads classifies one stdin line for the scripted handlers.
 type stubIn struct {
-	Type       string `json:"type"`
-	RequestID  string `json:"request_id"`
-	Message    struct {
+	Type      string `json:"type"`
+	RequestID string `json:"request_id"`
+	Message   struct {
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -324,14 +326,14 @@ func main() {
 		}
 	}
 	_ = session // the --resume pin flows through the init line
-	if p := os.Getenv("THEBORINGOFFICE_CLAUDE_STUB_ARGV"); p != "" {
+	if p := config.Env("CLAUDE_STUB_ARGV"); p != "" {
 		if f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644); err == nil {
 			f.WriteString(strings.Join(os.Args[1:], " ") + "\n")
 			f.Close()
 		}
 	}
 
-	s := &stub{out: bufio.NewWriter(os.Stdout), scenario: os.Getenv("THEBORINGOFFICE_CLAUDE_STUB_SCENARIO")}
+	s := &stub{out: bufio.NewWriter(os.Stdout), scenario: config.Env("CLAUDE_STUB_SCENARIO")}
 	if s.scenario == "" {
 		s.scenario = "planshot"
 	}

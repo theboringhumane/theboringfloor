@@ -1,4 +1,4 @@
-// claude.go — the live Claude Code backend for theboringoffice: one
+// claude.go — the live Claude Code backend for theboringfloor: one
 // `claude -p --input-format stream-json --output-format stream-json
 // --verbose --include-partial-messages --permission-prompt-tool stdio`
 // process per office session (a
@@ -142,7 +142,7 @@ type liveClaudeBackend struct {
 var _ state.Backend = (*liveClaudeBackend)(nil)
 
 // newClaudeBackend wires the backend; bin "" means "resolve at Start"
-// (THEBORINGOFFICE_CLAUDE_BIN, then PATH's `claude`).
+// (THEFLOOR_CLAUDE_BIN, then PATH's `claude`).
 func newClaudeBackend(bin, directory string, cfg *config.Config) *liveClaudeBackend {
 	b := &liveClaudeBackend{
 		directory:     directory,
@@ -160,7 +160,7 @@ func newClaudeBackend(bin, directory string, cfg *config.Config) *liveClaudeBack
 
 // NewClaude creates the live claude-CLI backend: directory is the office's
 // project dir, binOverride overrides the `claude` binary explicitly ("" =
-// THEBORINGOFFICE_CLAUDE_BIN env, then PATH's `claude`); cfg may be nil —
+// THEFLOOR_CLAUDE_BIN env, then PATH's `claude`); cfg may be nil —
 // config.Default(). Mirrors NewLive's (baseURL, directory, cfg) shape so
 // the app's transport resolver (model.go backendFor) can construct both
 // backends through one seam.
@@ -333,20 +333,20 @@ var (
 var claudeStopDrain = 30 * time.Second
 
 // claudeBin resolves the `claude` executable: the harness pin wins
-// (THEBORINGOFFICE_CLAUDE_BIN), then PATH.
+// (THEFLOOR_CLAUDE_BIN), then PATH.
 func claudeBin() (string, error) {
-	if p := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_CLAUDE_BIN")); p != "" {
+	if p := strings.TrimSpace(config.Env("CLAUDE_BIN")); p != "" {
 		return p, nil
 	}
 	p, err := exec.LookPath("claude")
 	if err != nil {
-		return "", errors.New("claude CLI not found on PATH (install: https://claude.ai/code) and THEBORINGOFFICE_CLAUDE_BIN is unset")
+		return "", errors.New("claude CLI not found on PATH (install: https://claude.ai/code) and THEFLOOR_CLAUDE_BIN is unset")
 	}
 	return p, nil
 }
 
 // claudeConfigDir resolves the child's CLAUDE_CONFIG_DIR: the harness pin
-// (THEBORINGOFFICE_CLAUDE_CONFIG) wins outright — an explicit sandbox
+// (THEFLOOR_CLAUDE_CONFIG) wins outright — an explicit sandbox
 // opt-in for tests and isolation-minded members; otherwise the user's REAL
 // ~/.claude, so an existing `claude` login (auth, settings, MCP roster)
 // carries straight into office sessions (a fresh sandbox makes `claude -p`
@@ -354,7 +354,7 @@ func claudeBin() (string, error) {
 // (the office owns no settings.json). directory is retained for seam
 // stability — the user's claude config is global, not per-project.
 func claudeConfigDir(directory string) string {
-	if p := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_CLAUDE_CONFIG")); p != "" {
+	if p := strings.TrimSpace(config.Env("CLAUDE_CONFIG")); p != "" {
 		return p
 	}
 	home := config.HomeOverride()
@@ -368,7 +368,7 @@ func claudeConfigDir(directory string) string {
 // a partial inheritance invites the settings.json `env` blocks' half-
 // applied overrides — the office controls the whole process env instead.
 // ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN pass through when present
-// (never into argv). THEBORINGOFFICE_CLAUDE_* harness vars pass through so
+// (never into argv). THEFLOOR_CLAUDE_STUB_* harness vars pass through so
 // the uishot/test stubs can be scripted. When the office's auto-commit
 // flag is on, the four majdoor GIT_* vars are appended so the agent's own
 // `git commit`s are authored by the majdoor.
@@ -385,9 +385,9 @@ func claudeChildEnv(directory string) []string {
 			env = append(env, k+"="+v)
 		}
 	}
-	for _, kv := range os.Environ() {
-		if strings.HasPrefix(kv, "THEBORINGOFFICE_CLAUDE_") {
-			env = append(env, kv)
+	for _, suffix := range []string{"CLAUDE_STUB_ARGV", "CLAUDE_STUB_CAPTURE", "CLAUDE_STUB_SCENARIO", "CLAUDE_STUB_STDOUTLOG"} {
+		if value, ok := config.LookupEnv(suffix); ok {
+			env = append(env, "THEFLOOR_"+suffix+"="+value)
 		}
 	}
 	configDir := claudeConfigDir(directory)
@@ -1312,7 +1312,7 @@ func (b *liveClaudeBackend) AnswerPermission(permissionID, response string) erro
 		}
 	case "reject":
 		res.Behavior = "deny"
-		res.Message = "Denied by the boss in theboringoffice"
+		res.Message = "Denied by the boss in theboringfloor"
 	default:
 		return fmt.Errorf("invalid permission response %q (want once|always|reject)", response)
 	}
@@ -1444,7 +1444,7 @@ func claudeAskUserResultJSON(items []state.QuestionItem, answers [][]string) (js
 //     {behavior:"allow"} (+updatedInput re-emitting the payload's tool
 //     input when the wire carried one — the CLI's own "yes" builder is
 //     {behavior:"allow", updatedInput:t.input}); Reject ->
-//     {behavior:"deny", message:"Denied by the boss in theboringoffice"}.
+//     {behavior:"deny", message:"Denied by the boss in theboringfloor"}.
 //   - dialogFamilyLabelResult (F2 + F3 label kinds): the picked option's
 //     prebuilt bytes (a bare enum STRING for F2, a fixed object for F3).
 //   - dialogFamilyFlaggedAllow: {toRemove:[...picked rules...]} ("Remove
@@ -1479,7 +1479,7 @@ func claudeDialogResultJSON(meta claudeDialogMeta, items []state.QuestionItem, a
 			}
 			return json.RawMessage(`{"behavior":"allow"}`), nil
 		case claudeDialogReject:
-			return json.RawMessage(`{"behavior":"deny","message":"Denied by the boss in theboringoffice"}`), nil
+			return json.RawMessage(`{"behavior":"deny","message":"Denied by the boss in theboringfloor"}`), nil
 		}
 		return nil, fmt.Errorf("claude dialog %q: unknown permission answer %q", meta.kind, shortTitle(firstSelection(), 40))
 	case dialogFamilyLabelResult:

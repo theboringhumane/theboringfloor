@@ -163,7 +163,7 @@ func TestBossImageFailedProbe(t *testing.T) {
 // detected lane, a mode argument flips cfg AND persists to brain.json
 // (scratch home — the real one is never touched), a bogus mode errors.
 func TestImagesSlashCycler(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	cfg := config.Default()
 	m := imageModel(t, cfg)
 	m = runMsg(t, m, slashMsg{text: "/images"})

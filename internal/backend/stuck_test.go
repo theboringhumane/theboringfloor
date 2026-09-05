@@ -43,7 +43,7 @@ func reconcileFixture(t *testing.T, rows string, textFor map[string]string) (*li
 		case r.Method == http.MethodGet && r.URL.Path == "/session":
 			w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/session":
-			w.Write([]byte(`{"id":"ses-primary","title":"theboringoffice office","time":{"created":1,"updated":1}}`))
+			w.Write([]byte(`{"id":"ses-primary","title":"theboringfloor office","time":{"created":1,"updated":1}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/session/ses-primary/message":
 			w.Write([]byte(rows))
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/session/ses-primary/message/"):

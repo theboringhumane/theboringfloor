@@ -37,7 +37,7 @@ func lookMissing(string) (string, error) { return "", errors.New("exec: no comma
 // TestBrowserLaneResolveMatrix — the pure lane table: kitty-found,
 // kitty-missing (PATH-resolution-failure), terminal-mismatch, kill-switch
 // (both spellings), and the wave-85 OPT-IN gate (premium requires
-// THEBORINGOFFICE_ZENBU_LANE=1 explicitly — "0" is NOT set). Every miss
+// THEFLOOR_ZENBU_LANE=1 explicitly — "0" is NOT set). Every miss
 // is the universal text lane.
 func TestBrowserLaneResolveMatrix(t *testing.T) {
 	ghostty := map[string]string{"TERM_PROGRAM": "ghostty", "TERM": "xterm-256color"}
@@ -57,8 +57,8 @@ func TestBrowserLaneResolveMatrix(t *testing.T) {
 		{"terminal-mismatch: WezTerm resolves the iterm image lane, never zenbu", map[string]string{"TERM_PROGRAM": "WezTerm"}, lookFound, BrowserLaneText},
 		{"terminal-mismatch: plain xterm", map[string]string{"TERM": "xterm-256color"}, lookFound, BrowserLaneText},
 		{"terminal-mismatch: tmux folds out conservatively", map[string]string{"TERM_PROGRAM": "ghostty", "TMUX": "/tmp/tmux-1000/default,1,0"}, lookFound, BrowserLaneText},
-		{"kill-switch: THEBORINGOFFICE_TERMINAL_BROWSER_OFF=1 (opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText},
-		{"kill-switch: THEBORINGOFFICE_NO_TERMINAL_BROWSER=1 (wave-70 spelling, opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText},
+		{"kill-switch: THEFLOOR_TERMINAL_BROWSER_OFF=1 (opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "1"}, lookFound, BrowserLaneText},
+		{"kill-switch: THEFLOOR_NO_TERMINAL_BROWSER=1 (wave-70 spelling, opted in — the kill-switch wins)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", TerminalBrowserOffEnv: "1"}, lookFound, BrowserLaneText},
 		{"kill-switch: '0' is NOT armed (opted in)", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "1", BrowserLaneOffEnv: "0"}, lookFound, BrowserLaneZenbu},
 		{"opt-in-off: qualified but the flag UNSET — the default-off pivot", ghostty, lookFound, BrowserLaneText},
 		{"opt-in-off: '0' is NOT set", map[string]string{"TERM_PROGRAM": "ghostty", BrowserLaneOptInEnv: "0"}, lookFound, BrowserLaneText},
@@ -109,7 +109,7 @@ func TestBrowserLaneOptInGate(t *testing.T) {
 	// the hint copy for the new class (the pane's dim "why" row consumes
 	// it verbatim through browser.go's laneHint).
 	if got, want := browserLaneHintText(BrowserLaneOptInOff, BrowserLaneOptInEnv),
-		"text lane — the embedded browser is opt-in: THEBORINGOFFICE_ZENBU_LANE=1 to enable it"; got != want {
+		"text lane — the embedded browser is opt-in: THEFLOOR_ZENBU_LANE=1 to enable it"; got != want {
 		t.Fatalf("the opt-in-off hint copy: got %q want %q", got, want)
 	}
 	if got := BrowserLaneOptInOff.String(); got != "opt-in-off" {

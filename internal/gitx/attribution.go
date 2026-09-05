@@ -6,7 +6,7 @@ import (
 )
 
 // Attribution constants for the office's bot profile. Every commit the
-// theboringoffice code authors (today: none in-app — the gitx surface is
+// theboringfloor code authors (today: none in-app — the gitx surface is
 // read-only; tomorrow: whatever commit path wires this helper) must carry
 // MajdoorTrailer so GitHub renders TheBoringMajdoor as a co-author.
 const (

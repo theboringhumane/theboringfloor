@@ -1,7 +1,7 @@
 // chat_loading.go — the "team is working…" status row: a one-line,
 // COLORFUL, animated indicator for the chat tab, shown only while at
 // least one subagent thread is LIVE. Claude Code cycles spinner verbs
-// while the model chews; theboringoffice does the same for the whole team: a
+// while the model chews; theboringfloor does the same for the whole team: a
 // shimmering "✦" glyph, a dim "team is working", and a fun gerund that
 // rotates off the office tick (Brewing → Churning → Pondering → …), the
 // word's ink rotating with it.

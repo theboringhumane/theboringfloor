@@ -602,11 +602,11 @@ func TestScreenshotInvalidViewport(t *testing.T) {
 // --- SaveShot -----------------------------------------------------------------
 
 // TestSaveShot — the PNG landing convention, verbatim:
-// <THEBORINGOFFICE_HOME>/shots/<unix-millis>-<sha1(png)[:8]>.png, dirs
+// <THEFLOOR_HOME>/shots/<unix-millis>-<sha1(png)[:8]>.png, dirs
 // 0o755, files 0o644, bytes round-trip.
 func TestSaveShot(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", home)
+	t.Setenv("THEFLOOR_HOME", home)
 	png := []byte{0x89, 'P', 'N', 'G', 1, 2, 3, 4}
 	p, err := SaveShot(png)
 	if err != nil {
@@ -661,11 +661,11 @@ func TestSaveShot(t *testing.T) {
 // TestShotsDir — the landing-zone selection: the home override wins, else
 // <os.TempDir>/shots.
 func TestShotsDir(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", "")
+	t.Setenv("THEFLOOR_HOME", "")
 	if got := shotsDir(); got != filepath.Join(os.TempDir(), "shots") {
 		t.Fatalf("no override → os.TempDir()/shots, got %q", got)
 	}
-	t.Setenv("THEBORINGOFFICE_HOME", "/tmp/member-home")
+	t.Setenv("THEFLOOR_HOME", "/tmp/member-home")
 	if got := shotsDir(); got != "/tmp/member-home/shots" {
 		t.Fatalf("the home override wins, got %q", got)
 	}

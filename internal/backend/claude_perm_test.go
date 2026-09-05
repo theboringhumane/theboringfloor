@@ -149,7 +149,7 @@ done
 		// once → plain allow
 		`{"type":"control_response","response":{"subtype":"success","request_id":"req-0003","response":{"behavior":"allow"}}}`,
 		// reject → deny + message
-		`{"type":"control_response","response":{"subtype":"success","request_id":"req-0004","response":{"behavior":"deny","message":"Denied by the boss in theboringoffice"}}}`,
+		`{"type":"control_response","response":{"subtype":"success","request_id":"req-0004","response":{"behavior":"deny","message":"Denied by the boss in theboringfloor"}}}`,
 		// always without suggestions → plain allow (fallback)
 		`{"type":"control_response","response":{"subtype":"success","request_id":"req-0005","response":{"behavior":"allow"}}}`,
 		// dialog answer / dismiss (the request_user_dialog vocabulary:

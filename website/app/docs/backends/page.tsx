@@ -149,12 +149,11 @@ export default function BackendsPage() {
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The precedence chain is short and total:{' '}
-              <code className="font-mono text-xs text-foreground">--backend</code> flag on the
-              binary overrides{' '}
-              <code className="font-mono text-xs text-foreground">THEBORINGFLOOR_BACKEND</code>{' '}
-              (with <code className="font-mono text-xs text-foreground">GRAFEIO_BACKEND</code> as
-              the upgrade-era fallback), which overrides{' '}
-              <code className="font-mono text-xs text-foreground">brain.json</code>&apos;s{' '}
+               <code className="font-mono text-xs text-foreground">--backend</code> flag on the
+               binary overrides{' '}
+               <code className="font-mono text-xs text-foreground">THEFLOOR_BACKEND</code>, which
+               overrides{' '}
+               <code className="font-mono text-xs text-foreground">brain.json</code>&apos;s{' '}
               <code className="font-mono text-xs text-foreground">backend.name</code> — which{' '}
               <code className="font-mono text-xs text-foreground">install.sh --backend</code> seeds
               for you. Nothing set anywhere means opencode. An invalid name is rejected with a
@@ -170,7 +169,7 @@ export default function BackendsPage() {
                   { t: '"backend": { "name": "claudecode" }' },
                   { t: '', dim: true },
                   { t: '# 3 · pin one boot from the shell', dim: true },
-                  { t: 'THEBORINGFLOOR_BACKEND=claudecode theboringfloor' },
+                  { t: 'THEFLOOR_BACKEND=claudecode theboringfloor' },
                 ]}
               />
             </div>

@@ -1,11 +1,11 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: theboringoffice
+project_name: theboringfloor
 
 builds:
-  - id: theboringoffice
-    main: ./cmd/theboringoffice
+  - id: theboringfloor
+    main: ./cmd/theboringfloor
     binary: theboringfloor
     goos:
       - darwin
@@ -38,16 +38,16 @@ builds:
         -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
 
 archives:
-  - id: theboringoffice
+  - id: theboringfloor
     ids:
-      - theboringoffice
+      - theboringfloor
       - thefloor_mcp
     formats:
       - tar.gz
     format_overrides:
       - goos: windows
         formats: [zip]
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "theboringfloor_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"

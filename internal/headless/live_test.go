@@ -1,5 +1,5 @@
 // live_test.go — the REAL engine against the member's REAL Chrome:
-// gated behind THEBORINGOFFICE_LIVE_CHROME=1 AND a successful Available
+// gated behind THEFLOOR_LIVE_CHROME=1 AND a successful Available
 // probe, so CI/dev machines without the flag or a browser never spawn a
 // process. The fixture rides a loopback httptest server (127.0.0.1 is
 // always policy-allowed) — this also proves the policy gate passes real
@@ -13,16 +13,17 @@ import (
 	"image/png"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // liveServer — the fixture over loopback http; skips unless both gates open.
 func liveServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	if os.Getenv("THEBORINGOFFICE_LIVE_CHROME") != "1" {
-		t.Skip("set THEBORINGOFFICE_LIVE_CHROME=1 to run the live engine tests")
+	if !config.EnvBool("LIVE_CHROME") {
+		t.Skip("set THEFLOOR_LIVE_CHROME=1 to run the live engine tests")
 	}
 	path, ok := Available()
 	if !ok {

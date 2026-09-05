@@ -1,5 +1,5 @@
 #!/bin/sh
-# theboringoffice — TheBoringMajdoor author/committer identity. SOURCE this:
+# theboringfloor — TheBoringMajdoor author/committer identity. SOURCE this:
 #
 #   . scripts/majdoor-env.sh
 #
@@ -7,10 +7,10 @@
 # anything a hook exports dies with the child and never reaches the git
 # process that writes the commit. Authorship therefore travels as env — the
 # office exports these four vars into every shell it spawns with
-# THEBORINGOFFICE_AUTO_COMMIT=true; hand-rolled flows source this file for
+# THEFLOOR_AUTO_COMMIT=true; hand-rolled flows source this file for
 # the same effect. When the flag is not exactly "true", nothing is exported.
 
-if [ "${THEBORINGOFFICE_AUTO_COMMIT:-}" = "true" ]; then
+if [ "${THEFLOOR_AUTO_COMMIT:-}" = "true" ]; then
     GIT_AUTHOR_NAME="TheBoringMajdoor"
     GIT_AUTHOR_EMAIL="themajdoor@theboring.name"
     GIT_COMMITTER_NAME="TheBoringMajdoor"

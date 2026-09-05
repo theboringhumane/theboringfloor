@@ -34,7 +34,7 @@
 //	file) read straight off disk; http(s):// fetches allow the localhost
 //	whitelist (localhost / 127.0.0.1 / ::1) on either scheme and https to
 //	ANY host by default — plain http to a non-localhost host is refused
-//	unless the member exports THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read
+//	unless the member exports THEFLOOR_BROWSER_ALLOW_HTTP=1 (read
 //	AT USE TIME, no config schema, no brain.json key). Every fetch is context-bounded (10s),
 //	byte-capped (4 MiB), and the payload is content-SNIFFED: HTML only —
 //	images/pdf/etc land a dim "unsupported content type" row instead of a
@@ -111,9 +111,9 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/theboringhumane/theboringfloor/internal/brand"
 	"github.com/theboringhumane/theboringfloor/internal/cellmetrics"
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/headless"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
@@ -129,7 +129,7 @@ const browserHistMax = 100
 
 // browserAllowHTTPEnv — the ONLY config surface: set "1" to allow non-
 // localhost http(s) fetches (read at use time; no schema, no brain.json).
-const browserAllowHTTPEnv = "THEBORINGOFFICE_BROWSER_ALLOW_HTTP"
+const browserAllowHTTPEnv = "THEFLOOR_BROWSER_ALLOW_HTTP"
 
 // browserStarterCard — the idle body (frozen copy, uishot-pinned).
 const browserStarterCard = "▸ enter a url · /open <url> · e to edit · o for file"
@@ -362,7 +362,7 @@ func (b *Browser) wrapW() int {
 // Every landed fetch (Open / Reload / link-nav / ring hop) arms ONE
 // headless render of the same URL at the pane body box's PIXEL dims
 // (widthPx = paneBodyCols*cellW, heightPx = paneBodyRows*cellH — the cell
-// metric's win order: THEBORINGOFFICE_CELL_PX=W:H's pin, then the
+// metric's win order: THEFLOOR_CELL_PX=W:H's pin, then the
 // terminal's REAL cell size learned at runtime by internal/cellmetrics
 // (the CSI 16t dance), then the 9x18 default). The render rides a
 // tea.Cmd (15s bounded) and lands back as BrowserPageMsg{Shot:…} through
@@ -375,7 +375,7 @@ func (b *Browser) wrapW() int {
 // f=100, NO c=/r= keys, the wave-81/82 production emission ruling: the
 // c=/r= variant did not visibly paint on the member's ghostty, the bare
 // a=T+t=d+f=100+i=<id>+q=2 did). Everywhere else a success still SAVES
-// the PNG (<$THEBORINGOFFICE_HOME or os.TempDir>/shots/<ts>-<hash8>.png,
+// the PNG (<$THEFLOOR_HOME or os.TempDir>/shots/<ts>-<hash8>.png,
 // the agent-tool flow's naming convention) and the text lane carries one
 // dim "screenshot: <path>" row (kitty prints the path too — the member's
 // `o`-to-open habit). A failure (chrome absent / navigation refused /
@@ -439,7 +439,7 @@ func SetShotNowForShot(fn func() time.Time) (restore func()) {
 
 // shotFailChromeCopy — the chrome-missing class's EXACT dim row (frozen;
 // names the fix).
-const shotFailChromeCopy = "text lane — headless chrome not found · install Chrome or export THEBORINGOFFICE_CHROME"
+const shotFailChromeCopy = "text lane — headless chrome not found · install Chrome or export THEFLOOR_CHROME"
 
 // shotFailCopy — the failure classifier: ONE dim reason row per class
 // (chrome-missing names the fix; a policy refusal carries the decision's
@@ -462,13 +462,13 @@ func shotFailCopy(err error) string {
 }
 
 // browserShotCellPx — the cell metric for the pixel-dims math, in win
-// order: (1) THEBORINGOFFICE_CELL_PX=W:H read AT USE TIME (the override
+// order: (1) THEFLOOR_CELL_PX=W:H read AT USE TIME (the override
 // ALWAYS wins); (2) the terminal's REAL cell size learned at runtime by
 // internal/cellmetrics — Resolve waits out the ONE 150ms answer window
 // from the boot probe, then never blocks again; (3) the 9x18 default for
 // non-answering terminals (tmux, iTerm, most — zero behavioral change).
 func browserShotCellPx() (cellW, cellH int) {
-	raw := strings.TrimSpace(os.Getenv("THEBORINGOFFICE_CELL_PX"))
+	raw := strings.TrimSpace(config.Env("CELL_PX"))
 	if raw != "" {
 		var w, h int
 		if n, err := fmt.Sscanf(raw, "%d:%d", &w, &h); err == nil && n == 2 && w > 0 && h > 0 {
@@ -518,12 +518,12 @@ func shotKittyFrame(officeID uint32, png []byte) string {
 }
 
 // saveShotPNG — every successful shot lands on disk (the member's
-// `o`-to-open habit): <THEBORINGOFFICE_HOME or os.TempDir>/shots/
+// `o`-to-open habit): <THEFLOOR_HOME or os.TempDir>/shots/
 // <unixMillis>-<hash8>.png (the agent-tool flow's naming convention —
 // hash8 = sha1(png)[:4] hex, KittyIDHash8's exact shape). A save failure
 // never kills the shot mode ("" path back).
 func saveShotPNG(png []byte) (string, error) {
-	base := strings.TrimSpace(brand.Get("HOME"))
+	base := strings.TrimSpace(config.Env("HOME"))
 	if base == "" {
 		base = os.TempDir()
 	}
@@ -1475,7 +1475,7 @@ func intIn(set []int, n int) bool {
 //   - http(s):// against the localhost whitelist (localhost, 127.0.0.1,
 //     ::1) on either scheme, and https:// to any host by default — plain
 //     http to a non-localhost host is REFUSED unless
-//     THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 is exported (never network
+//     THEFLOOR_BROWSER_ALLOW_HTTP=1 is exported (never network
 //     silently).
 //
 // The fetch is context-bounded (10s) and byte-capped (4 MiB); the payload
@@ -1577,7 +1577,7 @@ func localBrowserPath(rawurl string) string {
 
 // browserFetchAllowed — the fetch gate: localhost always (either scheme),
 // https to any host by default, plain http to non-localhost only with
-// THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME).
+// THEFLOOR_BROWSER_ALLOW_HTTP=1 (read AT USE TIME).
 func browserFetchAllowed(scheme, host string) bool {
 	switch strings.ToLower(host) {
 	case "localhost", "127.0.0.1", "::1":
@@ -1586,5 +1586,5 @@ func browserFetchAllowed(scheme, host string) bool {
 	if scheme == "https" {
 		return true
 	}
-	return os.Getenv(browserAllowHTTPEnv) == "1"
+	return config.EnvBool("BROWSER_ALLOW_HTTP")
 }

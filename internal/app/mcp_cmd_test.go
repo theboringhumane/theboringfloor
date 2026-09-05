@@ -269,7 +269,7 @@ func TestBootSkippedOnSessionRestore(t *testing.T) {
 		t.Fatalf("the restore notice must survive (hydration still runs)")
 	}
 
-	// cold live start: THEBORINGOFFICE_HOME is the same scratch dir but nothing
+	// cold live start: THEFLOOR_HOME is the same scratch dir but nothing
 	// was saved for a DIFFERENT working directory… so swap to an
 	// unsaved one via a fresh scratch home.
 	scratchHome(t)

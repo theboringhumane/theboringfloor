@@ -7,8 +7,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 $App = 'theboringfloor'
-$AssetApp = 'theboringoffice'
-$Repo = 'theboringhumane/theboringoffice'
+$Repo = 'theboringhumane/theboringfloor'
 $ApiLatest = "https://api.github.com/repos/$Repo/releases/latest"
 
 function Write-Stage([string]$Message) {
@@ -16,7 +15,7 @@ function Write-Stage([string]$Message) {
 }
 
 function Stop-Install([string]$Message) {
-    throw "theboringoffice install failed: $Message"
+    throw "theboringfloor install failed: $Message"
 }
 
 function Get-WindowsArchitecture {
@@ -59,13 +58,13 @@ if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA) -and -not $PSBoundParameters
 }
 
 $architecture = Get-WindowsArchitecture
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("theboringoffice-install-" + [guid]::NewGuid())
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("theboringfloor-install-" + [guid]::NewGuid())
 
 try {
     Write-Stage "Detecting Windows architecture ($architecture)"
     Write-Stage 'Resolving the latest release'
     try {
-        $release = Invoke-RestMethod -Uri $ApiLatest -Headers @{ 'User-Agent' = 'theboringoffice-installer' }
+        $release = Invoke-RestMethod -Uri $ApiLatest -Headers @{ 'User-Agent' = 'theboringfloor-installer' }
     }
     catch {
         Stop-Install "could not read the latest GitHub release: $($_.Exception.Message)"
@@ -76,8 +75,8 @@ try {
         Stop-Install 'the latest GitHub release did not provide a version tag.'
     }
 
-    $archiveName = "${AssetApp}_${version}_windows_${architecture}.zip"
-    $checksumsName = "${AssetApp}_${version}_checksums.txt"
+    $archiveName = "${App}_${version}_windows_${architecture}.zip"
+    $checksumsName = "${App}_${version}_checksums.txt"
     $archive = Get-ReleaseAsset $release $archiveName
     $checksums = Get-ReleaseAsset $release $checksumsName
 
@@ -106,10 +105,7 @@ try {
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
     $primaryBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${App}.exe")
     if ($primaryBinaries.Count -ne 1) {
-        $primaryBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${AssetApp}.exe")
-    }
-    if ($primaryBinaries.Count -ne 1) {
-        Stop-Install "expected one $App.exe or $AssetApp.exe in $archiveName, found $($primaryBinaries.Count)."
+        Stop-Install "expected one $App.exe in $archiveName, found $($primaryBinaries.Count)."
     }
     $mcpBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter 'thefloor_mcp.exe')
     if ($mcpBinaries.Count -gt 1) {
@@ -132,7 +128,7 @@ try {
         }
     }
     catch {
-        Stop-Install "could not replace $destination. Close a running theboringoffice process and try again. $($_.Exception.Message)"
+        Stop-Install "could not replace $destination. Close a running theboringfloor process and try again. $($_.Exception.Message)"
     }
 
     $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

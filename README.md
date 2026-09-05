@@ -13,9 +13,9 @@ Right panel is yours. Left pane is the floor (or the in-TUI browser).
 
 <br />
 
-[![Go](https://img.shields.io/github/go-mod/go-version/theboringhumane/theboringoffice?style=for-the-badge&logo=go&logoColor=white&label=Go)](https://go.dev)
-[![Release](https://img.shields.io/github/v/release/theboringhumane/theboringoffice?style=for-the-badge&logo=github&label=release)](https://github.com/theboringhumane/theboringfloor/releases)
-[![Release workflow](https://img.shields.io/github/actions/workflow/status/theboringhumane/theboringoffice/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=build)](https://github.com/theboringhumane/theboringfloor/actions/workflows/release.yml)
+[![Go](https://img.shields.io/github/go-mod/go-version/theboringhumane/theboringfloor?style=for-the-badge&logo=go&logoColor=white&label=Go)](https://go.dev)
+[![Release](https://img.shields.io/github/v/release/theboringhumane/theboringfloor?style=for-the-badge&logo=github&label=release)](https://github.com/theboringhumane/theboringfloor/releases)
+[![Release workflow](https://img.shields.io/github/actions/workflow/status/theboringhumane/theboringfloor/release.yml?style=for-the-badge&logo=githubactions&logoColor=white&label=build)](https://github.com/theboringhumane/theboringfloor/actions/workflows/release.yml)
 [![Go Reference](https://img.shields.io/badge/pkg.go.dev-reference-007d9c?style=for-the-badge&logo=go&logoColor=white)](https://pkg.go.dev/github.com/theboringhumane/theboringfloor)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111111?style=for-the-badge)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join%20community-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/YPDsHVHTVf)
@@ -40,7 +40,7 @@ Windows (PowerShell):
 irm https://boringfloor.com/install.ps1 | iex
 ```
 
-The Windows installer downloads the matching release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching Windows `.zip` and checksums file from [Releases](https://github.com/theboringhumane/theboringfloor/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
+The Windows installer downloads the matching `theboringfloor_<version>_<os>_<arch>.tar.gz` release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching `theboringfloor_<version>_<os>_<arch>.tar.gz` archive and checksums file from [Releases](https://github.com/theboringhumane/theboringfloor/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
 
 Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI):
 
@@ -59,8 +59,7 @@ theboringfloor --version  # stamp: version, commit, date
 Pin a tag, or grab a prebuilt (macOS/Linux/Windows, amd64/arm64) from [Releases](https://github.com/theboringhumane/theboringfloor/releases):
 
 ```bash
-go install github.com/theboringhumane/theboringfloor/cmd/theboringoffice@latest
-ln -sf "$(go env GOPATH)/bin/theboringoffice" "$(go env GOPATH)/bin/theboringfloor"
+go install github.com/theboringhumane/theboringfloor/cmd/theboringfloor@latest
 ```
 
 Full on-ramp: **[Getting started](https://boringfloor.com/docs/getting-started)** · local notes in [`docs/`](docs/README.md).
@@ -166,8 +165,8 @@ The on-disk transcript is capped to its most recent 200 messages per project, so
 
 | Environment variable | Effect |
 |---|---|
-| `THEBORINGOFFICE_NO_CONTROL=1` | disables the office control API |
-| `THEBORINGOFFICE_NO_MCP_INSTALL=1` | disables automatic MCP registration |
+| `THEFLOOR_NO_CONTROL=1` | disables the office control API |
+| `THEFLOOR_NO_MCP_INSTALL=1` | disables automatic MCP registration |
 | `THEFLOOR_PROJECT_DIR` | overrides the project directory that `thefloor_mcp` binds to |
 
 The office control API listens only on loopback (`127.0.0.1`) on an ephemeral port and requires a bearer token. Its discovery file is `~/.theboringfloor/projects/<dirhash>/control.json`, mode `0600`; it holds the port and token for the current project.

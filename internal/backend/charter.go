@@ -1,5 +1,5 @@
 // charter.go — bundles the oikonomos manager charter into whatever
-// directory theboringoffice's live backend serves. On Start (live only) it:
+// directory theboringfloor's live backend serves. On Start (live only) it:
 //
 //  1. writes the embedded charter text (internal/charter) byte-exact to
 //     <dir>/.opencode/oikonomos.md,
@@ -26,8 +26,7 @@
 //
 // Hard guarantees: AGENTS.md / CLAUDE.md and every other opencode.json
 // field are never touched; a second run is byte-identical (changed=false,
-// "already wired"); THEBORINGOFFICE_NO_AUTOCHARTER=1 (pre-rename:
-// GRAFEIO_NO_AUTOCHARTER=1) skips the whole pass. A fresh
+// "already wired"); THEFLOOR_NO_AUTOCHARTER=1 skips the whole pass. A fresh
 // charter or a newly-added instructions entry reports changed=true so a
 // serve started earlier can be found stale and respawned (opencode spoils
 // its config at start — a running serve may not pick up a config it
@@ -43,6 +42,7 @@ import (
 	"strings"
 
 	"github.com/theboringhumane/theboringfloor/internal/charter"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -67,12 +67,11 @@ var charterAcceptedPaths = []string{
 // written (callers that already spawned a serve should restart it; see the
 // header comment). notes are status-line text describing what happened.
 // The pass is idempotent: a follow-up run with everything already in place
-// returns changed=false and writes nothing. THEBORINGOFFICE_NO_AUTOCHARTER=1
-// opts out entirely (changed=false, note explaining); the pre-rename
-// GRAFEIO_NO_AUTOCHARTER=1 is honored as a fallback.
+// returns changed=false and writes nothing. THEFLOOR_NO_AUTOCHARTER=1 opts
+// out entirely (changed=false, note explaining).
 func EnsureCharter(dir string) (changed bool, notes []string) {
-	if envOrLegacy("THEBORINGOFFICE_NO_AUTOCHARTER", "GRAFEIO_NO_AUTOCHARTER") == "1" {
-		return false, []string{"[theboringfloor] manager charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)"}
+	if config.EnvBool("NO_AUTOCHARTER") {
+		return false, []string{"[theboringfloor] manager charter: disabled (THEFLOOR_NO_AUTOCHARTER)"}
 	}
 
 	ocDir := filepath.Join(dir, ".opencode")
@@ -210,16 +209,6 @@ func mergeInstruction(cfg []byte, relPath string, accepted []string) (merged []b
 		return nil, false, err
 	}
 	return append(out, '\n'), true, nil
-}
-
-// envOrLegacy reads the THEBORINGOFFICE_* env var, falling back to the
-// pre-rename GRAFEIO_* name (whole-product rename: grafeio ->
-// theboringoffice; old dotfiles and CI exports keep working).
-func envOrLegacy(key, legacyKey string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return os.Getenv(legacyKey)
 }
 
 // ---------------------------------------------------------------- office ledger

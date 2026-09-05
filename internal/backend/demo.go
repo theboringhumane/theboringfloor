@@ -165,7 +165,7 @@ func (b *demoBackend) Start(emit func(state.Event)) error {
 	// AnswerQuestion/RejectQuestion can resolve the same id. The request
 	// carries TWO structured pages (mirroring the live wire's ocQuestionInfo
 	// list): a radio page with 3 options and a free-text page, so the new
-	// popover kinds can be dogfooded in `theboringoffice --demo`; Text/ToolSummary
+	// popover kinds can be dogfooded in `theboringfloor --demo`; Text/ToolSummary
 	// stay the legacy flattened one-liner.
 	b.fl.at(2*time.Second, func() {
 		b.mu.Lock()
@@ -199,7 +199,7 @@ func (b *demoBackend) Start(emit func(state.Event)) error {
 	// t+2.4s: the boss's own grep lands, done in the same beat.
 	b.fl.at(2400*time.Millisecond, func() {
 		b.fl.emit(state.Event{Kind: state.EvTool, EmployeeID: "boss", EmployeeName: "boss",
-			ToolName: "grep", ToolSummary: "THEBORINGOFFICE_*, 12 hits", ToolState: "done", CallID: "demo-call-1"})
+			ToolName: "grep", ToolSummary: "THEFLOOR_*, 12 hits", ToolState: "done", CallID: "demo-call-1"})
 	})
 
 	// t+4.5s: tekton-2's edits land inline — one file diff beside the brief.

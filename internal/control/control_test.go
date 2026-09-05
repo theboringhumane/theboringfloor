@@ -18,8 +18,7 @@ func controlTestDir(t *testing.T) string {
 
 func controlTestHome(t *testing.T) {
 	t.Helper()
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
-	t.Setenv("GRAFEIO_HOME", "")
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 }
 
 func TestNewToken(t *testing.T) {
@@ -250,7 +249,7 @@ func startOfficeNamedProcess(t *testing.T) *exec.Cmd {
 }
 
 func TestControlHelperProcess(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	if os.Getenv("GO_WANT_CONTROL_HELPER") == "1" {
 		select {}
 	}

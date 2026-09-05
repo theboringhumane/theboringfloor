@@ -13,8 +13,8 @@ import (
 const (
 	planPresentNotice       = "plan: boss presented a plan — review, edit, ctrl+x twice to approve"
 	planUpdateNotice        = "plan: boss updated the plan — review, edit, ctrl+x twice to approve"
-	planApprovedHeader      = "[theboringoffice] current approved plan"
-	planNoApprovedAvailable = "[theboringoffice] no approved plan available"
+	planApprovedHeader      = "[theboringfloor] current approved plan"
+	planNoApprovedAvailable = "[theboringfloor] no approved plan available"
 )
 
 // applyPlanTools adapts agent plan-tool events to the existing plan editor

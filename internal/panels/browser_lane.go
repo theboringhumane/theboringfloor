@@ -12,11 +12,11 @@
 //	  KITTY_WINDOW_ID, or TERM_PROGRAM ghostty|kitty; tmux folds out
 //	  conservatively, iTerm2/WezTerm/VSCode/xterm are NOT this lane)
 //	AND exec.LookPath("terminal-browser") finds the binary
-//	AND neither kill-switch is armed: THEBORINGOFFICE_TERMINAL_BROWSER_OFF
-//	  (this lane's own gate) or THEBORINGOFFICE_NO_TERMINAL_BROWSER
+//	AND neither kill-switch is armed: THEFLOOR_TERMINAL_BROWSER_OFF
+//	  (this lane's own gate) or THEFLOOR_NO_TERMINAL_BROWSER
 //	  (wave 70's documented `o`-lane gate — one zenbu off-switch contract,
 //	  both spellings honored so an armed member is never surprised)
-//	AND the lane is explicitly OPTED IN: THEBORINGOFFICE_ZENBU_LANE=1
+//	AND the lane is explicitly OPTED IN: THEFLOOR_ZENBU_LANE=1
 //	  (the wave-85 default-off pivot — the embedded lane is RETAINED but
 //	  opt-in; headless screenshots are the default premium path now)
 //	→ BrowserLaneZenbu; every miss → BrowserLaneText.
@@ -99,6 +99,7 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
@@ -111,7 +112,7 @@ const (
 	BrowserLaneText BrowserLane = iota
 	// BrowserLaneZenbu — zenbu's terminal-browser embedded in the pane
 	// (kitty-capable host + binary on PATH + no kill-switch + the
-	// THEBORINGOFFICE_ZENBU_LANE=1 opt-in — default-off since wave 85).
+	// THEFLOOR_ZENBU_LANE=1 opt-in — default-off since wave 85).
 	BrowserLaneZenbu
 )
 
@@ -124,11 +125,11 @@ func (l BrowserLane) String() string {
 }
 
 // BrowserLaneOffEnv — the premium lane's own kill-switch, read AT USE
-// TIME with no config schema field (the THEBORINGOFFICE_MUTE house style;
+// TIME with no config schema field (the THEFLOOR_MUTE house style;
 // TerminalBrowserOffEnv's wave-70 contract). wave 70's
 // TerminalBrowserOffEnv is honored too: ONE off-switch contract, both
 // spellings — the lane is off when either reads "1".
-const BrowserLaneOffEnv = "THEBORINGOFFICE_TERMINAL_BROWSER_OFF"
+const BrowserLaneOffEnv = "THEFLOOR_TERMINAL_BROWSER_OFF"
 
 // BrowserLaneOptInEnv — the premium lane's OPT-IN flag (the wave-85
 // default-off pivot): the embedded zenbu lane resolves premium ONLY when
@@ -139,7 +140,7 @@ const BrowserLaneOffEnv = "THEBORINGOFFICE_TERMINAL_BROWSER_OFF"
 // the lane is retained for members who want it, but headless screenshots
 // are the default premium path now, so the embedded Chromium never boots
 // unless the member explicitly asks.
-const BrowserLaneOptInEnv = "THEBORINGOFFICE_ZENBU_LANE"
+const BrowserLaneOptInEnv = "THEFLOOR_ZENBU_LANE"
 
 // zenbuLookPath — the binary probe (links.go's openLookPath precedent):
 // exec.LookPath by default, swapped by tests to prove the
@@ -149,7 +150,7 @@ var zenbuLookPath = exec.LookPath
 // ResolveBrowserLane — the browser tab's lane, live-read (fresh env +
 // PATH probe; callers wanting the per-boot memo use a
 // BrowserLaneResolver).
-func ResolveBrowserLane() BrowserLane { return ResolveBrowserLaneFrom(os.Getenv, zenbuLookPath) }
+func ResolveBrowserLane() BrowserLane { return ResolveBrowserLaneFrom(browserLaneEnv, zenbuLookPath) }
 
 // BrowserLaneReason — WHY the lane resolved the way it did (the pane's
 // hint-row class; the gate that missed, in the resolve's own precedence:
@@ -202,7 +203,22 @@ func (r BrowserLaneReason) String() string {
 // ResolveBrowserLaneReason — the live-read reasoned resolve (fresh env +
 // PATH probe; callers wanting the per-pane memo use a BrowserLaneResolver).
 func ResolveBrowserLaneReason() (BrowserLane, BrowserLaneReason, string) {
-	return ResolveBrowserLaneReasonFrom(os.Getenv, zenbuLookPath)
+	return ResolveBrowserLaneReasonFrom(browserLaneEnv, zenbuLookPath)
+}
+
+// browserLaneEnv routes this package's product-scoped settings through the
+// canonical accessor while leaving terminal-detection inputs untouched.
+func browserLaneEnv(name string) string {
+	switch name {
+	case BrowserLaneOffEnv:
+		return config.Env("TERMINAL_BROWSER_OFF")
+	case TerminalBrowserOffEnv:
+		return config.Env("NO_TERMINAL_BROWSER")
+	case BrowserLaneOptInEnv:
+		return config.Env("ZENBU_LANE")
+	default:
+		return os.Getenv(name)
+	}
 }
 
 // ResolveBrowserLaneReasonFrom — the pure reasoned core

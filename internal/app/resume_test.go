@@ -228,7 +228,7 @@ func TestSessionSlashCommand(t *testing.T) {
 	for _, want := range []string{
 		"session: ses-live-9 (primary)",
 		"session.json: " + SessionPath(cwd),
-		"resume on the next boot: theboringoffice -s ses-live-9",
+		"resume on the next boot: theboringfloor -s ses-live-9",
 	} {
 		if !strings.Contains(last.Text, want) {
 			t.Fatalf("/session output must contain %q, got:\n%s", want, last.Text)

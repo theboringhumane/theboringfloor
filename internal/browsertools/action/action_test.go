@@ -11,7 +11,7 @@
 //	     eval) phrase deadline vs canceled vs generic errors as their
 //	     DISTINCT actionable strings.
 //
-// The REAL chrome runs live in live_test.go (THEBORINGOFFICE_LIVE_CHROME=1).
+// The REAL chrome runs live in live_test.go (THEFLOOR_LIVE_CHROME=1).
 package action
 
 import (

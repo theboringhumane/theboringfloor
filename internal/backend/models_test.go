@@ -118,7 +118,7 @@ func TestModelOverrideAdditiveByDefault(t *testing.T) {
 	log := &eventLog{}
 	b.fl.setEmit(log.emit)
 
-	if _, err := b.createPrimary("theboringoffice office"); err != nil {
+	if _, err := b.createPrimary("theboringfloor office"); err != nil {
 		t.Fatal(err)
 	}
 	body, ok := stub.lastPost("POST /session")
@@ -186,7 +186,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 	// And the session CREATE stays model-free even with the knob set (the
 	// serve documents model only on prompt_async — see postPrompt's note).
 	cfg.Backend.BossModel = "anthropic/claude-sonnet-4"
-	if _, err := b.createPrimary("theboringoffice office"); err != nil {
+	if _, err := b.createPrimary("theboringfloor office"); err != nil {
 		t.Fatal(err)
 	}
 	body, ok := stub.lastPost("POST /session")

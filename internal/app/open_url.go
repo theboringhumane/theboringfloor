@@ -41,7 +41,7 @@ const (
 
 // ResolveBrowserTool — the next `o` open's preferred lane, resolved
 // FRESH per call (panels.ResolveOpenTool — env + PATH probed at use
-// time, so THEBORINGOFFICE_NO_TERMINAL_BROWSER=1 and an install or
+// time, so THEFLOOR_NO_TERMINAL_BROWSER=1 and an install or
 // uninstall land immediately). terminal-browser requires ALL of: no
 // kill-switch env, a kitty-capable host (ghostty/kitty/wezterm or
 // KITTY_WINDOW_ID; tmux is a default miss, iTerm2/Apple Terminal a

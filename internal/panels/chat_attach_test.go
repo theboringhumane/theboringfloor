@@ -35,7 +35,7 @@ func TestChatAttachRender(t *testing.T) {
 	c.atOpen = true
 	c.atFrag = "internal"
 	c.onAttachWalk(attachWalkMsg{files: []string{
-		"cmd/theboringoffice/main.go", "internal/app/model.go", "internal/panels/chat.go",
+		"cmd/theboringfloor/main.go", "internal/app/model.go", "internal/panels/chat.go",
 	}})
 
 	view := ansi.Strip(c.View())
@@ -55,7 +55,7 @@ func TestChatAttachRender(t *testing.T) {
 			t.Fatalf("popover row %q missing from view:\n%s", want, view)
 		}
 	}
-	if strings.Contains(view, "cmd/theboringoffice/main.go") {
+	if strings.Contains(view, "cmd/theboringfloor/main.go") {
 		t.Fatalf("unfiltered file leaked the 'internal' filter:\n%s", view)
 	}
 	// the SetSize budget pays exactly the rows the tab draws (no overlap)
@@ -188,7 +188,7 @@ func TestChatAttachKeyflow(t *testing.T) {
 		t.Fatal("typing @ at a word boundary must open the picker")
 	}
 	// the open cmd walks the disk; the answer arrives as its own msg
-	c.Update(attachWalkMsg{files: []string{"cmd/theboringoffice/main.go", "internal/app/model.go", "internal/panels/chat.go"}})
+	c.Update(attachWalkMsg{files: []string{"cmd/theboringfloor/main.go", "internal/app/model.go", "internal/panels/chat.go"}})
 	for _, r := range "mod" {
 		typeRune(r)
 	}

@@ -107,7 +107,7 @@ export const viewport: Viewport = {
 // Anti-FOUC: runs synchronously in <head> before first paint. Reads the saved
 // theme (default "light"), resolves "system" against the OS, and stamps the
 // resolved class + colorScheme on <html>. Keep in sync with theme-provider.tsx.
-const themeInitScript = `(function(){try{var t=localStorage.getItem("theboringfloor-theme")||localStorage.getItem("theboringoffice-theme");if(t!=="light"&&t!=="dark"&&t!=="system"){t="light"}var m=t;if(t==="system"){m=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}var d=document.documentElement;d.classList.remove("light","dark");d.classList.add(m);d.style.colorScheme=m}catch(e){}})()`
+const themeInitScript = `(function(){try{var t=localStorage.getItem("theboringfloor-theme");if(t!=="light"&&t!=="dark"&&t!=="system"){t="light"}var m=t;if(t==="system"){m=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}var d=document.documentElement;d.classList.remove("light","dark");d.classList.add(m);d.style.colorScheme=m}catch(e){}})()`
 
 export default function RootLayout({
   children,

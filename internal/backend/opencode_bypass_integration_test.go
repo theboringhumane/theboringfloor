@@ -41,7 +41,7 @@ func newBypassLiveServe(t *testing.T) (*bypassLiveServe, *httptest.Server) {
 		case r.Method == http.MethodGet && r.URL.Path == "/session":
 			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/session":
-			_, _ = w.Write([]byte(`{"id":"ses-primary","title":"theboringoffice office","time":{"created":1,"updated":1}}`))
+			_, _ = w.Write([]byte(`{"id":"ses-primary","title":"theboringfloor office","time":{"created":1,"updated":1}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/session/ses-primary/message":
 			_, _ = w.Write([]byte(`[]`))
 		case r.Method == http.MethodGet && r.URL.Path == "/session/ses-primary/message/msg-after-bypass":

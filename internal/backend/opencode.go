@@ -1,4 +1,4 @@
-// opencode.go — the LIVE backend for theboringoffice. Port of
+// opencode.go — the LIVE backend for theboringfloor. Port of
 // node-legacy/src/backend/opencode.ts.
 //
 // Responsibilities:
@@ -43,7 +43,7 @@
 // "[theboringfloor] stream interrupted" note.
 //
 // Office concierge: cfg.Boss.Concierge (default on) adds a second,
-// lightweight root session ("theboringoffice concierge") so the member never talks
+// lightweight root session ("theboringfloor concierge") so the member never talks
 // to a dark boss while the primary turn is busy. It is created lazily on
 // the FIRST SendConcierge, registered in normCtx as the pseudo-desk
 // "concierge" (its own session's text stream rides EvChatOffice
@@ -170,7 +170,7 @@ type liveBackend struct {
 	// (syncBoard/amTasks) deliberately never arms it: the CTO reviews the
 	// office's own dispatched work, not a foreign board.
 	review reviewLatch
-	// Office concierge ("theboringoffice concierge" side session; see SendConcierge).
+	// Office concierge ("theboringfloor concierge" side session; see SendConcierge).
 	// conciergeID is "" until the first SendConcierge creates the session
 	// lazily (a quiet boss NEVER spins one up); conciergeBooted latches
 	// once the preamble has ridden the first prompt (subsequent prompts go
@@ -275,7 +275,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	b.mu.Unlock()
 
 	// Manager charter (oikonomos) runs FIRST, before server resolution:
-	// any directory theboringoffice serves gets .opencode/oikonomos.md + the
+	// any directory theboringfloor serves gets .opencode/oikonomos.md + the
 	// opencode.json instructions entry wired ahead of a spawned serve
 	// reading its project config. A degradation never blocks the boot —
 	// failures surface on the status line only.
@@ -540,7 +540,7 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 	b.mu.Unlock()
 
 	// Respawn path (ResetPrimary cleared the hold): establish a primary
-	// session on demand — forced-fresh ("theboringoffice office · respawn") when
+	// session on demand — forced-fresh ("theboringfloor office · respawn") when
 	// ResetPrimary(true) latched it, otherwise the normal reuse pass.
 	oldID := b.respawnOldID
 	if ready && primaryID == "" {
@@ -653,7 +653,7 @@ const conciergePreamble = "You are the office concierge. The boss is busy right 
 // the app type-asserts it when the boss's turn is occupied; deliberately NOT
 // on state.Backend, mirrors SessionAborter/SendWith).
 //
-// Lifecycle: the concierge session ("theboringoffice concierge", same serve, same
+// Lifecycle: the concierge session ("theboringfloor concierge", same serve, same
 // cwd) is created LAZILY on this first call — a quiet boss never pays for
 // one (CONCIERGE-proof: ConciergeID() stays "" until first use). Once made,
 // it registers inside normCtx as the pseudo-desk "concierge"
@@ -709,7 +709,7 @@ func (b *liveBackend) SendConcierge(text string) error {
 		return nil
 	}
 	if conciergeID == "" {
-		sesh, err := b.createPrimary("theboringoffice concierge")
+		sesh, err := b.createPrimary("theboringfloor concierge")
 		if err != nil {
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] concierge session create failed: " + shortTitle(err.Error(), 100)})
 			b.mu.Lock()
@@ -868,7 +868,7 @@ func (b *liveBackend) Stop() error {
 	return nil
 }
 
-// The Stop budget, split in two so the teardown path (cmd/theboringoffice's
+// The Stop budget, split in two so the teardown path (cmd/theboringfloor's
 // stopBounded wraps the whole thing once more) always lands ~≤3s worst
 // case even against a wedged network/serve. Vars, not consts: deadline
 // tests shrink them (sseBackoffSteps idiom).
@@ -969,8 +969,8 @@ var urlRe = regexp.MustCompile(`https?://\S+`)
 var urlTrimRe = regexp.MustCompile(`[.,;)\]]+$`)
 
 // debugSSE toggles the raw SSE trace in streamOnce
-// (THEBORINGOFFICE_DEBUG_SSE=1; pre-rename GRAFEIO_DEBUG_SSE=1 works too).
-var debugSSE = envOrLegacy("THEBORINGOFFICE_DEBUG_SSE", "GRAFEIO_DEBUG_SSE") != ""
+// (THEFLOOR_DEBUG_SSE=1).
+var debugSSE = config.Env("DEBUG_SSE") != ""
 
 // spawnServe runs `opencode serve --port 0 --hostname 127.0.0.1` and
 // resolves with the listening URL scanned from stdout, or dies after 10s.
@@ -1168,11 +1168,11 @@ func httpErrorText(status int, body []byte) string {
 
 // STALE_SESSION_MSG_LIMIT: a reused root session carrying more history
 // than this is treated as a stale giant context (the class that timed out
-// turns earlier) and a fresh "theboringoffice office" session is created anyway.
+// turns earlier) and a fresh "theboringfloor office" session is created anyway.
 const STALE_SESSION_MSG_LIMIT = 50
 
 // ensurePrimary reuses the newest root session for this directory, else
-// creates one titled "theboringoffice office". Reuse passes the stale check first:
+// creates one titled "theboringfloor office". Reuse passes the stale check first:
 // > STALE_SESSION_MSG_LIMIT messages -> create fresh anyway. The choice is
 // logged on the status line.
 func (b *liveBackend) ensurePrimary() (ocSession, error) {
@@ -1466,7 +1466,7 @@ func (b *liveBackend) ledgerEntryForReturn(sessionID, title string, emp state.Em
 // ResetPrimary clears the hold on the primary session so the NEXT Send
 // lazily establishes a replacement (nothing is archived/deleted — the old
 // session simply stops being the boss). With forceNew=true the
-// replacement is a BRAND-NEW session titled "theboringoffice office · respawn",
+// replacement is a BRAND-NEW session titled "theboringfloor office · respawn",
 // consumed one-shot; false runs the normal reuse pass (which still creates
 // fresh when the newest root session is stale). Live backend only; the
 // demo twin is a no-op. Used by the queue-flush resilience path: a failed
@@ -1541,7 +1541,7 @@ func (b *liveBackend) PrimaryID() string {
 // NewOffice — the /new command's backend leg: ResetPrimary(true) semantics
 // (the old primary is un-seated, seconds-old respawn latch consumed, the
 // server-side session itself NEVER deleted), then create a BRAND-NEW
-// primary titled "theboringoffice office" (bossName()) NOW — not lazily on the
+// primary titled "theboringfloor office" (bossName()) NOW — not lazily on the
 // next send — and re-seat the floor boss on it (fire the old hire row,
 // hire the new one). Returns the new session id so the persist loop
 // threads it into the next snapshot. Requires a started backend.
@@ -1762,9 +1762,9 @@ func (b *liveBackend) bossModelRef() string {
 // ships without a "model" key at all (additive only).
 //
 // Note on reachability: CTO children are created by the serve itself on
-// the boss's task-tool calls — theboringoffice never POSTs their sessions or
+// the boss's task-tool calls — theboringfloor never POSTs their sessions or
 // prompts (see normCtx: per-sub-agent model dispatch is opencode's, not
-// ours) — so today a CTO-seated override surfaces only where theboringoffice
+// ours) — so today a CTO-seated override surfaces only where theboringfloor
 // itself prompts one. The routing rule lives here EXACTLY ONCE so any
 // future per-child prompt path carries it without re-learning the rule.
 func (b *liveBackend) promptModelOverride(sessionID string) string {
@@ -1796,7 +1796,7 @@ func (b *liveBackend) bossName() string {
 	if b.cfg.Boss.Name != "" {
 		return b.cfg.Boss.Name
 	}
-	return "theboringoffice office"
+	return "theboringfloor office"
 }
 
 // bossNameShort strips a trailing "(…)" parenthetical for the respawn
@@ -2457,7 +2457,7 @@ func (b *liveBackend) streamOnce() (bool, error) {
 			continue
 		}
 		if debugSSE {
-			// THEBORINGOFFICE_DEBUG_SSE=1: raw stream trace — event type plus, for
+			// THEFLOOR_DEBUG_SSE=1: raw stream trace — event type plus, for
 			// part traffic, the part id/type/text length so reasoning
 			// streaming behaviour can be verified without a proxy.
 			note := raw.Type

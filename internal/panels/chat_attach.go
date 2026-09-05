@@ -72,7 +72,7 @@ const (
 
 // chatAttachment — one staged chip: the display name + wire MIME plus the
 // file the backend base64s at send time. temp, when non-empty, marks the
-// panel-created temp dir (os.MkdirTemp "theboringoffice-paste-*") the app cleans
+// panel-created temp dir (os.MkdirTemp "theboringfloor-paste-*") the app cleans
 // up once the send resolves — the panel only removes it for DROPPED
 // attachments (a queued send must still find the file at flush time).
 type chatAttachment struct {
@@ -167,7 +167,7 @@ func probeClipboardImage(orig string, reprobe bool) tea.Cmd {
 		if runtime.GOOS != "darwin" {
 			return clipPasteMsg{unsupported: true, reprobe: reprobe, reinsert: orig}
 		}
-		dir, err := os.MkdirTemp("", "theboringoffice-paste-*")
+		dir, err := os.MkdirTemp("", "theboringfloor-paste-*")
 		if err != nil {
 			return clipPasteMsg{err: err, reprobe: reprobe, reinsert: orig}
 		}

@@ -332,7 +332,7 @@ func startLiveForTest(t *testing.T) (*liveBackend, *eventLog) {
 		case r.Method == http.MethodGet && r.URL.Path == "/session":
 			w.Write([]byte(`[]`))
 		case r.Method == http.MethodPost && r.URL.Path == "/session":
-			w.Write([]byte(`{"id":"ses-primary","title":"theboringoffice office","time":{"created":1,"updated":1}}`))
+			w.Write([]byte(`{"id":"ses-primary","title":"theboringfloor office","time":{"created":1,"updated":1}}`))
 		case strings.HasPrefix(r.URL.Path, "/event"):
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK) // empty body: streamOnce EOFs at once

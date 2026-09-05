@@ -10,7 +10,7 @@ import (
 )
 
 func TestControlPlanProjectionAndNilPlan(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	m.plan.SetValue("draft α")
 	m.setApprovedPlanText("approved β")
@@ -29,7 +29,7 @@ func TestControlPlanProjectionAndNilPlan(t *testing.T) {
 }
 
 func TestControlTranscriptTailAndPendingExclusion(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	m.st.Chat = []state.ChatMsg{
 		{ID: "one", From: "user", Kind: "user", Text: "first", At: 1},
@@ -50,7 +50,7 @@ func TestControlTranscriptTailAndPendingExclusion(t *testing.T) {
 }
 
 func TestControlTranscriptDefaultLimit(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	for i := 0; i < 51; i++ {
 		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), Text: fmt.Sprintf("message %d", i), At: int64(i)})
@@ -64,7 +64,7 @@ func TestControlTranscriptDefaultLimit(t *testing.T) {
 }
 
 func TestControlStatusProjectionAndUnknownQuery(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	m.sessDir = "/project"
 	m.plan.SetValue("a界")
@@ -86,7 +86,7 @@ func TestControlStatusProjectionAndUnknownQuery(t *testing.T) {
 }
 
 func TestControlIgnoresNonControlEvents(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	if got := m.applyControl(state.Event{Kind: state.EvStatus}); got != nil {
 		t.Fatal("non-control event must return nil")

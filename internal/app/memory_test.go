@@ -27,7 +27,7 @@ import (
 // backticked verdict, bulleted fields, "(none)" placeholders — exercising
 // done (with files + verify), done with "(none)" placeholders, and the
 // ✗ issues glyph.
-const memoryFixtureLedger = `# theboringoffice ledger — completed dispatches (newest first)
+const memoryFixtureLedger = `# theboringfloor ledger — completed dispatches (newest first)
 
 <!-- ledger:entries -->
 

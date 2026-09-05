@@ -153,7 +153,7 @@ export default function GettingStartedPage() {
                   { t: 'curl -fsSL https://boringfloor.com/install.sh | sh -s -- --backend claudecode' },
                   { t: '', dim: true },
                   { t: '# or pin one boot from the shell (flag > env > brain.json > opencode)', dim: true },
-                  { t: 'THEBORINGFLOOR_BACKEND=claudecode theboringfloor' },
+                  { t: 'THEFLOOR_BACKEND=claudecode theboringfloor' },
                 ]}
               />
             </div>
@@ -296,16 +296,22 @@ export default function GettingStartedPage() {
               , so two projects never share a floor.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Upgrading from an older build? Nothing to migrate by hand: old{' '}
+              Upgrading from an older build? Legacy{' '}
+              <code className="font-mono text-xs text-foreground">THEBORING&#79;FFICE_*</code>{' '}
+              env vars still work silently as fallbacks for the canonical{' '}
+              <code className="font-mono text-xs text-foreground">THEFLOOR_*</code> names.
+              Session files from the earlier{' '}
               <code className="font-mono text-xs text-foreground">
                 ~/.theboringfloor/sessions/&lt;dirhash&gt;
               </code>{' '}
-              session files and the pre-rename{' '}
-              <code className="font-mono text-xs text-foreground">~/.grafeio</code> config, theme
-              and sessions are still READ — writes land on the new paths only — and{' '}
-              <code className="font-mono text-xs text-foreground">GRAFEIO_*</code> env vars keep
-              working as fallbacks for the{' '}
-              <code className="font-mono text-xs text-foreground">THEBORINGOFFICE_*</code> ones.
+              layout are still read, while writes land on{' '}
+              <code className="font-mono text-xs text-foreground">
+                ~/.theboringfloor/projects/&lt;dirhash&gt;
+              </code>
+              . The <code className="font-mono text-xs text-foreground">~/.gra&#102;eio</code> and{' '}
+              <code className="font-mono text-xs text-foreground">~/.theboring&#111;ffice</code>{' '}
+              paths, plus <code className="font-mono text-xs text-foreground">GRA&#70;EIO_*</code>{' '}
+              env vars, are no longer read.
             </p>
           </div>
         </section>

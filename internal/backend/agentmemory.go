@@ -25,7 +25,7 @@ const agentmemoryProbeTimeout = 2 * time.Second
 // The signals lane needs ?agentId= (bare /agentmemory/signals is a 400 on
 // the live server), so it carries its default query.
 var boardCandidates = []string{"/agentmemory/actions", "/agentmemory/frontier", "/agentmemory/mail"}
-var mailCandidates = []string{"/agentmemory/signals?agentId=theboringoffice", "/agentmemory/mail"}
+var mailCandidates = []string{"/agentmemory/signals?agentId=theboringfloor", "/agentmemory/mail"}
 
 // amKind: "actions" when the board lane probed live, "none" otherwise.
 type amHandle struct {
@@ -144,7 +144,7 @@ func (h *amHandle) SaveWork(record LedgerEntry) error {
 	}
 	_, ok := h.postJSON("/agentmemory/observe", map[string]any{
 		"hookType":  "office_dispatch_done",
-		"sessionId": firstNonEmpty(record.PrimaryID, "theboringoffice"),
+		"sessionId": firstNonEmpty(record.PrimaryID, "theboringfloor"),
 		"project":   record.Project,
 		"timestamp": time.UnixMilli(at).UTC().Format(time.RFC3339),
 		"data": map[string]any{
@@ -183,7 +183,7 @@ func (h *amHandle) memoryLaneText() string {
 // CreateAction mirrors a queued office item onto the agentmemory board as
 // a PENDING action (POST /agentmemory/actions — live probe 2026-08-21:
 // {"title","status":"pending","priority","tags":[...]} -> 201; provenance
-// rides tags, e.g. "source:theboringoffice","queueItem:<id>"). Best-effort: in
+// rides tags, e.g. "source:theboringfloor","queueItem:<id>"). Best-effort: in
 // "none" mode this is a no-op success returning ""; on error the caller
 // drops it (status line only). NEVER throws; all I/O bounded at 2s.
 func (h *amHandle) CreateAction(title string, itemID string) (string, error) {
@@ -194,7 +194,7 @@ func (h *amHandle) CreateAction(title string, itemID string) (string, error) {
 		"title":    title,
 		"status":   "pending",
 		"priority": 5,
-		"tags":     []string{"source:theboringoffice", "queueItem:" + itemID},
+		"tags":     []string{"source:theboringfloor", "queueItem:" + itemID},
 	})
 	if !ok {
 		return "", errors.New("agentmemory create action: POST /agentmemory/actions failed")

@@ -55,7 +55,7 @@ func plantKittyFrameFake(t *testing.T) {
 
 // frameTestWrapper — ONE wrapper over a buffer on the SHARED registry,
 // with the lane's direct-emit seam wired to its DirectEmit — the EXACT
-// production shape (cmd/theboringoffice's main): one wrapper for the
+// production shape (the runtime's main): one wrapper for the
 // process's lifetime, every lane delete serialized through it.
 func frameTestWrapper(t *testing.T) (w *panels.ZenbuFrameWriter, out *strings.Builder) {
 	t.Helper()
@@ -341,7 +341,7 @@ func TestShotFramePublish(t *testing.T) {
 		t.Fatalf("read the checker fixture: %v", err)
 	}
 	e := pinShotFrameEngine(t, png)
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	panels.ZenbuRegistry().Clear()
 	t.Cleanup(panels.ZenbuRegistry().Clear)
 	w, out := frameTestWrapper(t)

@@ -27,7 +27,7 @@ type Attachment struct {
 	Mime string `json:"mime,omitempty"` // resolved at attach time; senders re-sniff when empty
 	Path string `json:"path"`           // the file the sender base64s into the data URL
 	// Temp — non-empty when Path lives in a panel-created temp dir
-	// (os.MkdirTemp "theboringoffice-paste-*"): the app removes the dir once the
+	// (os.MkdirTemp "theboringfloor-paste-*"): the app removes the dir once the
 	// send resolves (best effort — a queued send must find the file at
 	// flush time, so removal never happens at enqueue).
 	Temp string `json:"-"`
@@ -561,7 +561,7 @@ type Event struct {
 	EmployeeName string `json:"employeeName,omitempty"` // thought/tool
 	// Tool fields (EvTool).
 	ToolName    string `json:"toolName,omitempty"`
-	ToolSummary string `json:"toolSummary,omitempty"` // e.g. "src/main.go" or "THEBORINGOFFICE_*, 12 hits"
+	ToolSummary string `json:"toolSummary,omitempty"` // e.g. "src/main.go" or "THEFLOOR_*, 12 hits"
 	ToolState   string `json:"toolState,omitempty"`   // "running" | "done" | "error"
 	CallID      string `json:"callId,omitempty"`      // part/call id for dedupe
 	// ToolOutput — the tool's RESULT text on the done/error event,
@@ -712,7 +712,7 @@ type Backend interface {
 // abort seams — harness stubs stay untouched, the app type-asserts it).
 //
 // The concierge keeps the member answered while the boss's turn is occupied:
-// SendConcierge delivers chat to a lightweight side session ("theboringoffice
+// SendConcierge delivers chat to a lightweight side session ("theboringfloor
 // concierge", lazily created on FIRST use on the live backend) that answers
 // instantly — directly when the message is trivial, by dispatching its own
 // developer sub-agents (tracked like the boss's children) when it is real

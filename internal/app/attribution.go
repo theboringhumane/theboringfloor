@@ -1,7 +1,7 @@
 package app
 
 // Majdoor commit-attribution hook ensure — the write side of brain.json's
-// top-level "attribution" knob, wired once at boot (cmd/theboringoffice).
+// top-level "attribution" knob, wired once at boot.
 //
 // Why internal/app and NOT internal/gitx: gitx.go's package header
 // declares that package read-only git status/diff data for the Git panel
@@ -42,7 +42,7 @@ const hookGitTimeout = 2 * time.Second
 // neither). The hook appends exactly one MajdoorTrailer to every commit
 // message, skips an already-stamped message, and NEVER rejects a commit.
 const majdoorCommitMsgHook = `#!/bin/sh
-# theboringoffice — TheBoringMajdoor attribution hook (git commit-msg).
+# theboringfloor — TheBoringMajdoor attribution hook (git commit-msg).
 #
 # Auto-installed by the office into the repo it boots in when attribution is
 # on (the default); scripts/install-majdoor-hook.sh covers repos the office

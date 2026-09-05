@@ -370,12 +370,12 @@ func TestMCPServerJSON(t *testing.T) {
 }
 
 func TestAttachmentJSON(t *testing.T) {
-	in := Attachment{Name: "paste.png", Mime: "image/png", Path: "/tmp/theboringoffice-paste-1/p.png", Temp: "/tmp/theboringoffice-paste-1"}
+	in := Attachment{Name: "paste.png", Mime: "image/png", Path: "/tmp/theboringfloor-paste-1/p.png", Temp: "/tmp/theboringfloor-paste-1"}
 	data, err := json.Marshal(in)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}
-	if strings.Contains(string(data), "theboringoffice-paste-1\"") && strings.Contains(string(data), `"Temp"`) {
+	if strings.Contains(string(data), "theboringfloor-paste-1\"") && strings.Contains(string(data), `"Temp"`) {
 		t.Errorf("Temp must not serialize (json:\"-\"): %s", data)
 	}
 	out := roundTrip(t, in)

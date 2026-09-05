@@ -157,10 +157,10 @@ func TestEnsureWavUnknownName(t *testing.T) {
 }
 
 func TestBusMuteEnvOverridesConfig(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_MUTE", "1")
+	t.Setenv("THEFLOOR_MUTE", "1")
 	b := NewBus("on", t.TempDir())
 	if b.Mode() != "off" {
-		t.Fatalf("THEBORINGOFFICE_MUTE=1 should force off, got %q", b.Mode())
+		t.Fatalf("THEFLOOR_MUTE=1 should force off, got %q", b.Mode())
 	}
 	if err := b.Play("done"); err != nil {
 		t.Fatalf("off-mode Play should never error: %v", err)

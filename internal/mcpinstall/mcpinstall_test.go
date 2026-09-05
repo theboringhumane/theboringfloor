@@ -232,15 +232,18 @@ func TestEnsureDanglingSymlinkSkips(t *testing.T) {
 
 func TestEnsureOptOutAndMissingBinary(t *testing.T) {
 	root, bin := setup(t)
-	t.Setenv("THEBORINGOFFICE_NO_MCP_INSTALL", "1")
+	t.Setenv("THEFLOOR_NO_MCP_INSTALL", "1")
 	got, _ := Ensure(bin)
 	if got.OpenCode.Status != "skipped" || got.Claude.Status != "skipped" {
 		t.Fatalf("%+v", got)
 	}
+	if got.OpenCode.Reason != "disabled by THEFLOOR_NO_MCP_INSTALL" || got.Claude.Reason != "disabled by THEFLOOR_NO_MCP_INSTALL" {
+		t.Fatalf("opt-out reasons = %+v", got)
+	}
 	if _, err := os.Stat(configPath(t)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("opt-out wrote config: %v", err)
 	}
-	t.Setenv("THEBORINGOFFICE_NO_MCP_INSTALL", "")
+	t.Setenv("THEFLOOR_NO_MCP_INSTALL", "")
 	got, _ = Ensure(filepath.Join(root, "missing"))
 	if !strings.Contains(got.OpenCode.Reason, "binary not found") || got.Claude.Status != "skipped" {
 		t.Fatalf("%+v", got)

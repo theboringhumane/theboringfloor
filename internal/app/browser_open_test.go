@@ -123,7 +123,7 @@ func TestBrowserOpenRefusedPostsReason(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	before := len(m.st.Chat)
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	cmd := m.applyBrowserOpen(state.Event{
 		Kind: state.EvBrowserOpen, Text: "http://theboring.name",
 		BrowserOpenAllowed: false, BrowserOpenReason: reason,
@@ -195,7 +195,7 @@ func TestBrowserShotFlowSavesPNGAndFlipsSlot(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 	home := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", home)
+	t.Setenv("THEFLOOR_HOME", home)
 
 	fakePNG := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2, 3, 4}
 	var gotW, gotH int
@@ -228,7 +228,7 @@ func TestBrowserShotFlowSavesPNGAndFlipsSlot(t *testing.T) {
 	if !gotDeadline {
 		t.Fatal("the engine ctx must carry the 15s bound")
 	}
-	// the PNG landed under <THEBORINGOFFICE_HOME>/shots/<ts>-<hash8>.png
+	// the PNG landed under <THEFLOOR_HOME>/shots/<ts>-<hash8>.png
 	// (the tab's own display path may save ITS shot here too — find MINE
 	// by the deterministic hash8 tail of the fake PNG bytes).
 	entries, err := os.ReadDir(filepath.Join(home, "shots"))
@@ -269,7 +269,7 @@ func TestBrowserShotFlowSavesPNGAndFlipsSlot(t *testing.T) {
 
 func TestBrowserShotEngineFailurePostsReason(t *testing.T) {
 	pinBrowserTextLane(t)
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	called := false
 	pinFakeBrowserEngines(t, func(ctx context.Context, rawurl string, w, h int) (*headless.Result, error) {
 		called = true
@@ -306,7 +306,7 @@ func TestBrowserShotRefusedPostsReason(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	before := len(m.st.Chat)
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if cmd := m.applyBrowserOpen(state.Event{
 		Kind: state.EvBrowserScreenshot, Text: "http://theboring.name",
 		BrowserOpenAllowed: false, BrowserOpenReason: reason,
@@ -331,7 +331,7 @@ func TestBrowserShotRefusedPostsReason(t *testing.T) {
 // ----------------------------------------------------------------- snapshot
 
 func TestBrowserSnapFlowSendsFollowup(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	var gotMaxText int
 	pinFakeBrowserEngines(t, nil, func(ctx context.Context, rawurl string, maxText int) (*headless.SnapResult, error) {
 		gotMaxText = maxText
@@ -398,7 +398,7 @@ func TestBrowserSnapRefusedPostsReason(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	before := len(m.st.Chat)
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if cmd := m.applyBrowserOpen(state.Event{
 		Kind: state.EvBrowserSnapshot, Text: "http://theboring.name",
 		BrowserOpenAllowed: false, BrowserOpenReason: reason,
@@ -485,11 +485,11 @@ func TestSnapshotFollowupShapes(t *testing.T) {
 
 // the shots dir falls back to <os.TempDir>/shots without the home override.
 func TestBrowserShotsDirFallback(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", "")
+	t.Setenv("THEFLOOR_HOME", "")
 	if got := browserShotsDir(); got != filepath.Join(os.TempDir(), "shots") {
 		t.Fatalf("no home override → os.TempDir()/shots, got %q", got)
 	}
-	t.Setenv("THEBORINGOFFICE_HOME", "/tmp/member-home")
+	t.Setenv("THEFLOOR_HOME", "/tmp/member-home")
 	if got := browserShotsDir(); got != "/tmp/member-home/shots" {
 		t.Fatalf("the home override wins, got %q", got)
 	}
@@ -528,7 +528,7 @@ func TestBrowserActionRefusedNoModal(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	before := len(m.st.Chat)
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if cmd := m.applyBrowserOpen(state.Event{
 		Kind: state.EvBrowserAction, Text: "http://theboring.name",
 		BrowserOpenAllowed: false, BrowserOpenReason: reason,

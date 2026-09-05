@@ -75,9 +75,9 @@ func TestBrowserPreambleRidesFirstBossPrompt(t *testing.T) {
 	if !strings.Contains(posts[0], wireBrowserPolicy) {
 		t.Fatalf("the FIRST prompt must carry the exact browser policy paragraph, got %s", posts[0])
 	}
-	browserAt := strings.Index(posts[0], "[theboringoffice harness — browser tool]")
-	recentAt := strings.Index(posts[0], "[theboringoffice harness — recent messages]")
-	planAt := strings.Index(posts[0], "[theboringoffice harness — plan tools]")
+	browserAt := strings.Index(posts[0], "[theboringfloor harness — browser tool]")
+	recentAt := strings.Index(posts[0], "[theboringfloor harness — recent messages]")
+	planAt := strings.Index(posts[0], "[theboringfloor harness — plan tools]")
 	if browserAt < 0 || recentAt < 0 || planAt < 0 || browserAt > recentAt || recentAt > planAt {
 		t.Fatalf("the FIRST prompt must order browser, recent-message, then plan preambles, got %s", posts[0])
 	}
@@ -215,7 +215,7 @@ func TestBrowserMarkerBlockedNotice(t *testing.T) {
 
 	b.sseRecovered()
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	pins := bossPins(log)
 	if len(pins) != 1 {
 		t.Fatalf("want ONE boss pin, got %d", len(pins))
@@ -293,7 +293,7 @@ func TestBrowserShotSnapMarkersScrubAtPin(t *testing.T) {
 		!tool[0].BrowserOpenAllowed || tool[0].BrowserOpenReason != "" {
 		t.Fatalf("the screenshot event must carry the allowed verdict on its own kind, got %+v", tool[0])
 	}
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if tool[1].Kind != state.EvBrowserSnapshot || tool[1].Text != "http://theboring.name" ||
 		tool[1].BrowserOpenAllowed || tool[1].BrowserOpenReason != reason {
 		t.Fatalf("the snapshot refusal must carry the exact reason on its own kind, got %+v", tool[1])
@@ -377,7 +377,7 @@ func TestBrowserActionMarkerScrubbedAtPin(t *testing.T) {
 	b2.mu.Unlock()
 	b2.sseRecovered()
 
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	pins2 := bossPins(log2)
 	if len(pins2) != 1 || pins2[0].Msg.Text != "[theboringfloor] browser-action refused: "+reason {
 		t.Fatalf("the refused action-only bubble degrades to the kind-named note, got %+v", pins2)
@@ -509,7 +509,7 @@ func TestClaudeBrowserMarkerScrubbedAtPin(t *testing.T) {
 		ID: "bossmsg-m2", From: "boss", Kind: "boss",
 		Text: "⟦open-browser: http://theboring.name⟧", Pending: false,
 	}})
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	evs = log.snapshot()
 	if len(evs) != 4 {
 		t.Fatalf("the refused pin adds 2 events (4 total), got %d", len(evs))
@@ -569,7 +569,7 @@ func TestClaudeBrowserShotSnapScrubbedAtPin(t *testing.T) {
 		ID: "bossmsg-m2", From: "boss", Kind: "boss",
 		Text: "⟦browser-screenshot: http://theboring.name⟧", Pending: false,
 	}})
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	evs = log.snapshot()
 	if len(evs) != 5 {
 		t.Fatalf("the refused pin adds 2 events (5 total), got %d", len(evs))

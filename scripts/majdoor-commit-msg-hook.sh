@@ -1,5 +1,5 @@
 #!/bin/sh
-# theboringoffice — TheBoringMajdoor attribution hook (git commit-msg).
+# theboringfloor — TheBoringMajdoor attribution hook (git commit-msg).
 #
 # Auto-installed by the office into the repo it boots in when attribution is
 # on (the default); scripts/install-majdoor-hook.sh covers repos the office

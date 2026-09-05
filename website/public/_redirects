@@ -1,5 +1,5 @@
 # Always the installers on main — not a copy frozen at the last site deploy.
-/install.sh https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh 302
-/install.sh/ https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.sh 302
-/install.ps1 https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 302
-/install.ps1/ https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/install.ps1 302
+/install.sh https://raw.githubusercontent.com/theboringhumane/theboringfloor/main/install.sh 302
+/install.sh/ https://raw.githubusercontent.com/theboringhumane/theboringfloor/main/install.sh 302
+/install.ps1 https://raw.githubusercontent.com/theboringhumane/theboringfloor/main/install.ps1 302
+/install.ps1/ https://raw.githubusercontent.com/theboringhumane/theboringfloor/main/install.ps1 302

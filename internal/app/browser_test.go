@@ -431,10 +431,10 @@ func TestBrowserOSOpenThroughApp(t *testing.T) {
 // BOTH ways: the full drain (fetch first) and a hand-fed shot-first
 // ordering.
 func TestBrowserSlashOpenShotNoticeLatch(t *testing.T) {
-	pinBrowserLaneEnv(t)                          // the kitty display lane
-	t.Setenv(panels.BrowserLaneOffEnv, "1")       // the zenbu child stays out
-	t.Setenv("PATH", t.TempDir())                 // no terminal-browser binary either
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir()) // the save lands scratch
+	pinBrowserLaneEnv(t)                    // the kitty display lane
+	t.Setenv(panels.BrowserLaneOffEnv, "1") // the zenbu child stays out
+	t.Setenv("PATH", t.TempDir())           // no terminal-browser binary either
+	t.Setenv("THEFLOOR_HOME", t.TempDir())  // the save lands scratch
 	png, err := os.ReadFile("../panels/testdata/checker-8x8.png")
 	if err != nil {
 		t.Fatalf("read the checker fixture: %v", err)

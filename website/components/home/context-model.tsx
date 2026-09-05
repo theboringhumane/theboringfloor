@@ -57,7 +57,7 @@ export function ContextModel() {
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--accent),transparent_62%)] opacity-10" />
             <div className="absolute left-1/2 top-1/2 size-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-foreground/30 bg-background/80 shadow-[0_0_45px_var(--foreground)] shadow-foreground/20" />
             <div className="absolute left-1/2 top-1/2 size-12 -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-full border border-foreground/50">
-              <img src="/imgs/logo.jpg" alt="Theboringoffice" className="size-full object-cover" />
+              <img src="/imgs/logo.jpg" alt="theboringfloor" className="size-full object-cover" />
             </div>
 
             <div className="absolute left-[8%] top-[18%] flex items-center gap-2 border border-border bg-background/90 px-3 py-2 shadow-lg transition-transform hover:-translate-y-1">

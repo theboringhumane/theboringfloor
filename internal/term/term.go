@@ -81,7 +81,7 @@ type TermConfig struct {
 	Cols  int      // default: 80
 	Rows  int      // default: 24
 	CWD   string   // default: caller's working directory
-	Env   []string // default: os.Environ() + TERM + COLORTERM; either way the majdoor GIT_* vars merge in when THEBORINGOFFICE_AUTO_COMMIT=true
+	Env   []string // default: os.Environ() + TERM + COLORTERM; either way the majdoor GIT_* vars merge in when THEFLOOR_AUTO_COMMIT=true
 }
 
 // Session is one live PTY-bound shell process.

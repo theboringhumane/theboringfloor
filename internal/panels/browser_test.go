@@ -324,7 +324,7 @@ func TestShotKittyFrameShape(t *testing.T) {
 	}
 }
 
-// TestBrowserShotCellPx — the THEBORINGOFFICE_CELL_PX=W:H override matrix
+// TestBrowserShotCellPx — the THEFLOOR_CELL_PX=W:H override matrix
 // (the 9x18 default stands on any malformed value).
 func TestBrowserShotCellPx(t *testing.T) {
 	cases := []struct {
@@ -341,7 +341,7 @@ func TestBrowserShotCellPx(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("THEBORINGOFFICE_CELL_PX", tc.env)
+			t.Setenv("THEFLOOR_CELL_PX", tc.env)
 			w, h := browserShotCellPx()
 			if w != tc.w || h != tc.h {
 				t.Fatalf("browserShotCellPx(%q) = %dx%d, want %dx%d", tc.env, w, h, tc.w, tc.h)
@@ -352,11 +352,11 @@ func TestBrowserShotCellPx(t *testing.T) {
 
 // TestBrowserShotCellPxRealMetrics — the metric win order end to end: the
 // terminal's LEARNED cell size (cellmetrics' registry) beats the 9x18
-// default, and the THEBORINGOFFICE_CELL_PX pin beats BOTH.
+// default, and the THEFLOOR_CELL_PX pin beats BOTH.
 func TestBrowserShotCellPxRealMetrics(t *testing.T) {
 	restore := cellmetrics.ResetForShot()
 	t.Cleanup(restore)
-	t.Setenv("THEBORINGOFFICE_CELL_PX", "")
+	t.Setenv("THEFLOOR_CELL_PX", "")
 
 	// the zero-state registry: the 9x18 fallback stands (the old tests'
 	// exact expectation — zero behavioral change without an answer).
@@ -372,7 +372,7 @@ func TestBrowserShotCellPxRealMetrics(t *testing.T) {
 	}
 
 	// the member's pin still wins outright.
-	t.Setenv("THEBORINGOFFICE_CELL_PX", "10:20")
+	t.Setenv("THEFLOOR_CELL_PX", "10:20")
 	if w, h := browserShotCellPx(); w != 10 || h != 20 {
 		t.Fatalf("the override beats the learned metric: got %dx%d, want 10x20", w, h)
 	}
@@ -467,12 +467,12 @@ func TestShotFailCopyClasses(t *testing.T) {
 		t.Fatalf("the generic row degrades honest: %q", got)
 	}
 	// the chrome copy names the fix (the requirement's own words).
-	if !strings.Contains(shotFailChromeCopy, "install Chrome or export THEBORINGOFFICE_CHROME") {
+	if !strings.Contains(shotFailChromeCopy, "install Chrome or export THEFLOOR_CHROME") {
 		t.Fatalf("the chrome-missing row names the fix: %q", shotFailChromeCopy)
 	}
 }
 
-// TestSaveShotPNG — the save convention: <$THEBORINGOFFICE_HOME>/shots/
+// TestSaveShotPNG — the save convention: <$THEFLOOR_HOME>/shots/
 // <unixMillis>-<hash8>.png with the bytes round-tripping, and the
 // os.TempDir fallback when HOME is unset.
 func TestSaveShotPNG(t *testing.T) {
@@ -481,7 +481,7 @@ func TestSaveShotPNG(t *testing.T) {
 	defer SetShotNowForShot(func() time.Time { return pin })()
 
 	home := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", home)
+	t.Setenv("THEFLOOR_HOME", home)
 	got, err := saveShotPNG(png)
 	if err != nil {
 		t.Fatalf("saveShotPNG: %v", err)
@@ -501,7 +501,7 @@ func TestSaveShotPNG(t *testing.T) {
 	}
 
 	// the TempDir fallback: HOME unset → <os.TempDir>/shots.
-	t.Setenv("THEBORINGOFFICE_HOME", "")
+	t.Setenv("THEFLOOR_HOME", "")
 	got2, err := saveShotPNG(png)
 	if err != nil {
 		t.Fatalf("saveShotPNG (TempDir leg): %v", err)

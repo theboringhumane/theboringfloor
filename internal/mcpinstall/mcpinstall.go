@@ -1,7 +1,7 @@
 // Package mcpinstall safely registers thefloor_mcp in global OpenCode and
 // Claude Code MCP settings. It is JSON-only (never rewrites JSONC),
 // additive-only, idempotent, and uses atomic writes for OpenCode. Ensure is
-// never fatal so it cannot block office boot; THEBORINGOFFICE_NO_MCP_INSTALL=1
+// never fatal so it cannot block office boot; THEFLOOR_NO_MCP_INSTALL=1
 // opts out. Claude configuration deliberately goes through Claude's supported
 // CLI rather than merging ~/.claude.json, which is shared user state.
 package mcpinstall
@@ -17,6 +17,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 const (
@@ -47,10 +49,10 @@ var commandRunner = func(ctx context.Context, name string, args ...string) error
 // Ensure registers binPath with both hosts. It reports failures in Result and
 // always returns a nil error so startup remains best-effort and non-blocking.
 func Ensure(binPath string) (Result, error) {
-	if os.Getenv("THEBORINGOFFICE_NO_MCP_INSTALL") == "1" {
+	if config.EnvBool("NO_MCP_INSTALL") {
 		return Result{
-			OpenCode: HostResult{Status: "skipped", Reason: "disabled by THEBORINGOFFICE_NO_MCP_INSTALL"},
-			Claude:   HostResult{Status: "skipped", Reason: "disabled by THEBORINGOFFICE_NO_MCP_INSTALL"},
+			OpenCode: HostResult{Status: "skipped", Reason: "disabled by THEFLOOR_NO_MCP_INSTALL"},
+			Claude:   HostResult{Status: "skipped", Reason: "disabled by THEFLOOR_NO_MCP_INSTALL"},
 		}, nil
 	}
 

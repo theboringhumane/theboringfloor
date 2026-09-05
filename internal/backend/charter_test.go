@@ -218,13 +218,13 @@ func TestEnsureCharterAcceptedSpellings(t *testing.T) {
 
 func TestEnsureCharterEnvOptOut(t *testing.T) {
 	pinGlobalConfig(t)
-	t.Setenv("THEBORINGOFFICE_NO_AUTOCHARTER", "1")
+	t.Setenv("THEFLOOR_NO_AUTOCHARTER", "1")
 	dir := t.TempDir()
 	changed, notes := EnsureCharter(dir)
 	if changed {
 		t.Fatal("opt-out: changed=true, want false")
 	}
-	if !containsNote(notes, "disabled (THEBORINGOFFICE_NO_AUTOCHARTER)") {
+	if !containsNote(notes, "disabled (THEFLOOR_NO_AUTOCHARTER)") {
 		t.Fatalf("opt-out notes: %v", notes)
 	}
 	// Nothing written at all.

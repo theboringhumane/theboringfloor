@@ -143,7 +143,7 @@ func persistPathRefs(prepared []preparedAttachment, upload func(string) bool) {
 		if upload(att.mime) || att.attachment.Temp == "" {
 			continue
 		}
-		dir, err := os.MkdirTemp("", "theboringoffice-ref-*")
+		dir, err := os.MkdirTemp("", "theboringfloor-ref-*")
 		if err != nil {
 			continue
 		}

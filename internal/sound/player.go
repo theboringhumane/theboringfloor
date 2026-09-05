@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // throttleGap — the same sound played within this window is suppressed, so a
@@ -25,8 +26,7 @@ const watchdog = 2 * time.Second
 //	"bell" — print the terminal bell (\a) to stdout, no files needed
 //	"off"  — silence
 //
-// Env override: THEBORINGOFFICE_MUTE=1 (pre-rename: GRAFEIO_MUTE=1) forces
-// "off" above whatever config asked for.
+// Env override: THEFLOOR_MUTE=1 forces "off" above whatever config asked for.
 type Bus struct {
 	mode   string
 	dir    string
@@ -60,8 +60,8 @@ func ResolvePlayer() string {
 }
 
 // NewBus builds a Bus for the given config mode ("on"|"bell"|""|"off") and
-// home dir ("" = THEBORINGOFFICE_HOME, then GRAFEIO_HOME, then $HOME). Wav
-// paths live at <home>/.theboringoffice/sounds/<name>.wav. The player lookup
+// home dir ("" = THEFLOOR_HOME, then $HOME). Wav paths live at
+// <home>/.theboringfloor/sounds/<name>.wav. The player lookup
 // happens once here.
 func NewBus(cfgSound, home string) *Bus {
 	mode := cfgSound
@@ -73,11 +73,11 @@ func NewBus(cfgSound, home string) *Bus {
 	default:
 		mode = "off"
 	}
-	if brand.Get("MUTE") == "1" {
+	if config.EnvBool("MUTE") {
 		mode = "off"
 	}
 	if home == "" {
-		if h := brand.Get("HOME"); h != "" {
+		if h := config.Env("HOME"); h != "" {
 			home = h
 		} else {
 			home = os.Getenv("HOME")

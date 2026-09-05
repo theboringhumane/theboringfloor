@@ -6,8 +6,7 @@ dist/
 # Built Go harness binaries (go build ./cmd/... produces these at repo root)
 /headless
 /uishot
-/grafeio
-/theboringoffice
+/theboringfloor
 /termshot
 /soundtest
 /main

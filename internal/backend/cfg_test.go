@@ -11,7 +11,7 @@ import (
 // TestBossSessionTitles: fresh-create title is cfg.Boss.Name exactly;
 // the respawn title strips a trailing "(…)" descriptor ("boss · respawn"
 // reads like a title; "boss (oikonomos) · respawn" does not). A blank
-// Name keeps the historic "theboringoffice office" so hand-rolled configs cannot
+// Name keeps the historic "theboringfloor office" so hand-rolled configs cannot
 // break the floor.
 func TestBossSessionTitles(t *testing.T) {
 	b := newLiveBackend("", "/tmp", config.Default())
@@ -35,8 +35,8 @@ func TestBossSessionTitles(t *testing.T) {
 	cfg = config.Default()
 	cfg.Boss.Name = ""
 	b = newLiveBackend("", "/tmp", cfg)
-	if got := b.bossName(); got != "theboringoffice office" {
-		t.Fatalf("blank-name fallback: want %q, got %q", "theboringoffice office", got)
+	if got := b.bossName(); got != "theboringfloor office" {
+		t.Fatalf("blank-name fallback: want %q, got %q", "theboringfloor office", got)
 	}
 }
 

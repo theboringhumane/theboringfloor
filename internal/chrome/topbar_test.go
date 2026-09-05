@@ -59,8 +59,7 @@ func TestTopBarWidthBudget(t *testing.T) {
 func TestTopBarCompactDropsBranchBelowSixty(t *testing.T) {
 	st := state.OfficeState{Mode: state.ModeLive}
 
-	// 57 = the old 50-col budget + the 7 cells the app name grew in the
-	// grafeio→theboringoffice rename — below 60 the rule is unchanged:
+	// 57 = the compact-layout budget — below 60 the rule is unchanged:
 	// project stays, branch drops.
 	narrow := ansi.Strip(TopBarCompact(st, 57, testInfo))
 	if !strings.Contains(narrow, "myproj") {

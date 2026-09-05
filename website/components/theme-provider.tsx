@@ -6,7 +6,6 @@ export type Theme = 'light' | 'dark' | 'system'
 export type ResolvedTheme = 'light' | 'dark'
 
 const STORAGE_KEY = 'theboringfloor-theme'
-const LEGACY_STORAGE_KEY = 'theboringoffice-theme'
 const MEDIA = '(prefers-color-scheme: dark)'
 
 function isTheme(value: string | null): value is Theme {
@@ -16,7 +15,7 @@ function isTheme(value: string | null): value is Theme {
 function readStoredTheme(): Theme {
   if (typeof window === 'undefined') return 'light'
   try {
-    const stored = window.localStorage.getItem(STORAGE_KEY) ?? window.localStorage.getItem(LEGACY_STORAGE_KEY)
+    const stored = window.localStorage.getItem(STORAGE_KEY)
     return isTheme(stored) ? stored : 'light'
   } catch {
     return 'light'

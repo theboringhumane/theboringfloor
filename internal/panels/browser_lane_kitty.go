@@ -140,11 +140,11 @@ func ZenbuOfficeID(childID, place uint32) uint32 {
 // terminal (sound/player.go's bell-write precedent — one self-contained
 // escape, atomic at syscall granularity against the renderer's
 // one-write-per-frame). Production wires it to the frame wrapper's
-// DirectEmit (cmd/theboringoffice — serialized with the renderer's
+// DirectEmit (cmd/theboringfloor — serialized with the renderer's
 // flushes); the os.Stdout default only stands when no wrapper exists.
 var zenbuEmit = func(s string) { _, _ = os.Stdout.WriteString(s) }
 
-// SetZenbuEmit — the PRODUCTION wiring (cmd/theboringoffice's main): the
+// SetZenbuEmit — the PRODUCTION wiring (cmd/theboringfloor's main): the
 // frame wrapper's DirectEmit becomes the lane-lifecycle delete path for
 // the process's whole run. Tests/shots keep the swap+restore seam below.
 func SetZenbuEmit(fn func(string)) { zenbuEmit = fn }

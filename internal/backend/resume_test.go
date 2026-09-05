@@ -40,7 +40,7 @@ func TestResolvePrimaryOverrideHit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/session/ses-pin":
-			w.Write([]byte(`{"id":"ses-pin","title":"theboringoffice office","time":{"created":1,"updated":1}}`))
+			w.Write([]byte(`{"id":"ses-pin","title":"theboringfloor office","time":{"created":1,"updated":1}}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/session":
 			listed.Store(true)
 			w.Write([]byte(`[]`))

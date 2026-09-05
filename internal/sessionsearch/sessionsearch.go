@@ -1,7 +1,10 @@
 // Package sessionsearch reads persisted office transcripts for the current
-// project only. It is READ-ONLY by design: it never creates, modifies, or
-// indexes session files. On-disk transcripts are tail-capped at 200 messages,
-// so search results cover the recent tail rather than full history.
+// project from ~/.theboringfloor/projects/<dirhash>/session.json, then the
+// earlier same-product sessions/<dirhash>/session.json layout when the
+// canonical file is absent. Writes remain exclusively in projects/; this
+// package is READ-ONLY by design and never creates, modifies, or indexes
+// session files. On-disk transcripts are tail-capped at 200 messages, so search
+// results cover the recent tail rather than full history.
 package sessionsearch
 
 import (
@@ -14,6 +17,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -58,15 +63,27 @@ type Meta struct {
 	SavedAt   int64
 }
 
-// Load reads session.json for dir. Missing, unreadable, and malformed
-// snapshots all return ok=false. Only session.json is opened; temporary write
-// files are deliberately ignored.
+// Load reads session.json for dir from projects first, then the earlier
+// sessions layout if the canonical file is absent. Missing, unreadable, and
+// malformed snapshots all return ok=false. A malformed canonical file does not
+// fall through to older data, so stale content cannot be silently resurrected.
+// Only session.json is opened; temporary write files are deliberately ignored.
 func Load(dir string) (*Session, bool) {
-	hash := dirHash(dir)
-	for _, root := range readRoots() {
-		data, err := os.ReadFile(filepath.Join(root, hash, "session.json"))
+	home := config.Env("HOME")
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	paths := []string{
+		filepath.Join(home, brand.DotDir, "projects", dirHash(dir), "session.json"),
+		filepath.Join(earlierSessionsBase(home), dirHash(dir), "session.json"),
+	}
+	for i, path := range paths {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			if i == 0 && os.IsNotExist(err) {
+				continue
+			}
+			return nil, false
 		}
 		var session Session
 		if err := json.Unmarshal(data, &session); err != nil || session.Dir == "" {
@@ -75,6 +92,12 @@ func Load(dir string) (*Session, bool) {
 		return &session, true
 	}
 	return nil, false
+}
+
+// earlierSessionsBase is the prior same-product root. It is read-only
+// compatibility; session writers continue to use projects.
+func earlierSessionsBase(home string) string {
+	return filepath.Join(home, brand.DotDir, "sessions")
 }
 
 // Transcript returns completed transcript messages in chronological order.
@@ -188,23 +211,6 @@ func Info(dir string) (Meta, bool) {
 		ChatCount: len(session.Chat),
 		SavedAt:   session.SavedAt,
 	}, true
-}
-
-func readRoots() []string {
-	home := os.Getenv("THEBORINGOFFICE_HOME")
-	if home == "" {
-		home = os.Getenv("GRAFEIO_HOME")
-	}
-	if home == "" {
-		home = os.Getenv("HOME")
-	}
-	return []string{
-		filepath.Join(home, ".theboringfloor", "projects"),
-		filepath.Join(home, ".theboringoffice", "projects"),
-		filepath.Join(home, ".theboringfloor", "sessions"),
-		filepath.Join(home, ".theboringoffice", "sessions"),
-		filepath.Join(home, ".grafeio", "sessions"),
-	}
 }
 
 func dirHash(dir string) string {

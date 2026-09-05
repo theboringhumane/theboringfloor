@@ -39,7 +39,7 @@ func textPart(t *testing.T, parts []map[string]any) string {
 
 func TestPersistPathRefsSurvivesTempCleanup(t *testing.T) {
 	// Simulate a paste temp dir that will be cleaned post-send.
-	tempDir, err := os.MkdirTemp("", "theboringoffice-paste-*")
+	tempDir, err := os.MkdirTemp("", "theboringfloor-paste-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestPersistPathRefsSurvivesTempCleanup(t *testing.T) {
 func TestPersistPathRefsSkipsNonTempAndUploaded(t *testing.T) {
 	dir := t.TempDir()
 	repoFile := writeAttachment(t, dir, "main.go", "package main")
-	tempDir, err := os.MkdirTemp("", "theboringoffice-paste-*")
+	tempDir, err := os.MkdirTemp("", "theboringfloor-paste-*")
 	if err != nil {
 		t.Fatal(err)
 	}

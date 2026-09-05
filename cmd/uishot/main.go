@@ -1,4 +1,4 @@
-// uishot — deterministic UI shot harness for theboringoffice v2.
+// uishot — deterministic UI shot harness for theboringfloor v2.
 //
 // Runs the REAL app model against a scripted stub backend (fixed event
 // script: hires/dispatches/working/returned+mail/blocked/bubbles, boss
@@ -315,7 +315,7 @@ const bossDiffBody = "--- a/README.md\n" +
 	"- Native single binary. The **Ink/Node** v0.1 app is preserved under\n" +
 	"   [`node-legacy/`](node-legacy/) (tagged `node-v0.1.0`).\n" +
 	"+ Native single binary. Themes: `--theme noir|paper|mono|dracula`\n" +
-	"+ (also `/theme` in-app, persisted to `~/.config/theboringoffice/theme`).\n" +
+	"+ (also `/theme` in-app, persisted to `~/.config/theboringfloor/theme`).\n" +
 	" \n" +
 	"   ## Behind the glass\n" +
 	"@@ -49,6 +50,10 @@ renders **bold**, *italic*, `code` and lists.\n" +
@@ -327,11 +327,11 @@ const bossDiffBody = "--- a/README.md\n" +
 	" \n" +
 	"   ### Run it\n" +
 	"-```sh\n" +
-	"-cd theboringoffice && go build ./...\n" +
+	"-cd theboringfloor && go build ./...\n" +
 	"-```\n" +
 	"+```sh\n" +
-	"+go run ./cmd/theboringoffice --theme dracula\n" +
-	"+theboringoffice --theme paper\n" +
+	"+go run ./cmd/theboringfloor --theme dracula\n" +
+	"+theboringfloor --theme paper\n" +
 	"+```\n" +
 	" \n" +
 	" | Key | Action |\n" +
@@ -366,7 +366,7 @@ const employeeDiffBody = "--- /dev/null\n" +
 	"+package main\n" +
 	"+\n" +
 	"+func main() {\n" +
-	"+\tprintln(\"hello, theboringoffice\")\n" +
+	"+\tprintln(\"hello, theboringfloor\")\n" +
 	"+run()\n" +
 	"+}"
 
@@ -2198,17 +2198,17 @@ type powerWindow struct {
 }
 
 func runPowerProof(mode string) error {
-	// brain.json write-through lands in a scratch THEBORINGOFFICE_HOME — the user's
+	// brain.json write-through lands in a scratch THEFLOOR_HOME — the user's
 	// real config is never touched by shots.
-	home, err := os.MkdirTemp("", "theboringoffice-power")
+	home, err := os.MkdirTemp("", "theboringfloor-power")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(home)
-	if err := os.Setenv("THEBORINGOFFICE_HOME", home); err != nil {
+	if err := os.Setenv("THEFLOOR_HOME", home); err != nil {
 		return err
 	}
-	fmt.Printf("--- scratch THEBORINGOFFICE_HOME: %s ---\n", home)
+	fmt.Printf("--- scratch THEFLOOR_HOME: %s ---\n", home)
 
 	var modes []config.PowerMode
 	switch config.PowerMode(mode) {
@@ -2872,7 +2872,7 @@ func runPlanProof() error {
 
 // --- terminal-tab proof (--terminal) ----------------------------------------
 // The stub TermPanel (uisshot ONLY) wires through app.SpawnTerminal — the
-// production wiring point where cmd/theboringoffice plugs panels.NewTerminal.
+// production wiring point where cmd/theboringfloor plugs panels.NewTerminal.
 // Wave-42: the terminal tab's shell capture is OPT-IN — ctrl+space toggles
 // it BOTH ways, ctrl+o releases as the alias, RELEASED by default and on
 // every (re-)entry — so the proof walks the full toggle flow SYNCHRONOUSLY
@@ -3110,7 +3110,7 @@ func runTerminalProof() error {
 	}
 	fmt.Printf("deterministic: OK — two synchronous drives produced byte-identical frames\n")
 
-	// quit hook: cmd/theboringoffice calls CloseTerminal after Run returns —
+	// quit hook: cmd/theboringfloor calls CloseTerminal after Run returns —
 	// the explicit close is the leak guard.
 	if stub1.closed {
 		return fail("stub already closed before CloseTerminal — quit hook ran early")
@@ -3718,22 +3718,22 @@ func runFocusProof() error {
 
 // runPersistDemoSkipProof (--persist) — the office-session DEMO regression:
 // restore + persist are LIVE-only by ruling (demo restore = confusing).
-// Seeds a FRESH session.json for cwd in a scratch THEBORINGOFFICE_HOME (so the
+// Seeds a FRESH session.json for cwd in a scratch THEFLOOR_HOME (so the
 // "skip" cannot be a missing-file false pass), runs the standard scripted
 // demo shot, then asserts: (1) LoadSession DOES find the seeded file
 // (the gate is the mode check, not the file lookup), (2) NO "restored
 // office session" notice ever surfaces in the office state chat, (3) the
 // demo boot never OVERWRITES the seeded file (SavedAt byte-identical).
 func runPersistDemoSkipProof() error {
-	home, err := os.MkdirTemp("", "theboringoffice-persist-demo-skip")
+	home, err := os.MkdirTemp("", "theboringfloor-persist-demo-skip")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(home)
-	if err := os.Setenv("THEBORINGOFFICE_HOME", home); err != nil {
+	if err := os.Setenv("THEFLOOR_HOME", home); err != nil {
 		return err
 	}
-	fmt.Printf("--- scratch THEBORINGOFFICE_HOME: %s ---\n", home)
+	fmt.Printf("--- scratch THEFLOOR_HOME: %s ---\n", home)
 
 	dir, err := os.Getwd()
 	if err != nil {
@@ -4371,7 +4371,7 @@ func runThreadFocusProof() error {
 	}
 	// the sibling thread is HIDDEN but the office stays alive underneath —
 	// the topbar/statusbar chrome rows survive (the focus covers the mid only)
-	if !strings.Contains(frameA, "theboringoffice") && !strings.Contains(strippedA, "agents | board") {
+	if !strings.Contains(frameA, "theboringfloor") && !strings.Contains(strippedA, "agents | board") {
 		return fail("threadfocus A: topbar/statusbar chrome vanished under the focus")
 	}
 
@@ -5549,7 +5549,7 @@ var browserEnvKeys = []string{
 	"PATH", "TMUX", "KITTY_WINDOW_ID", "TERM_PROGRAM", "TERM_PROGRAM_VERSION",
 	"WEZTERM_UNIX_SOCKET", "VSCODE_PID", "ITERM_SESSION_ID", "TERM", "COLORTERM",
 	panels.BrowserLaneOffEnv, panels.TerminalBrowserOffEnv, "FAKE_TB_LIFE",
-	"THEBORINGOFFICE_HOME", "THEBORINGOFFICE_CELL_PX", "THEBORINGOFFICE_ZENBU_LANE",
+	"THEFLOOR_HOME", "THEFLOOR_CELL_PX", "THEFLOOR_ZENBU_LANE",
 }
 
 // pinShotEngineAbsent — NO live chrome in the text-lane browser drives:
@@ -5567,7 +5567,7 @@ const browserLanePage = "https://example.test/docs"
 // fallback leg (Dev A's viewer's stand-in behind the RegionView seam;
 // rows sized to the proof pane's 64 cols).
 var browserLaneTextFixture = []string{
-	"# theboringoffice — text fixture",
+	"# theboringfloor — text fixture",
 	"",
 	"text-mode body — the SAME url renders",
 	"while zenbu is absent, dead, or off.",
@@ -5634,7 +5634,7 @@ func browserDrive(tbLife string) (browserFrameOut, error) {
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
 	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
 	// in production — the headless shot lane is the default premium path).
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	c := panels.NewBrowserLaneController(64, 16)
@@ -5751,7 +5751,7 @@ func browserAssertFallback(tag string, out browserFrameOut) error {
 		return fmt.Errorf("%s: note %q, want %q", tag, out.note, want)
 	}
 	plain := ansi.Strip(out.frame)
-	for _, want := range []string{" text ", out.note, "# theboringoffice — text fixture", "[1] " + browserLanePage} {
+	for _, want := range []string{" text ", out.note, "# theboringfloor — text fixture", "[1] " + browserLanePage} {
 		if !strings.Contains(plain, want) {
 			return fmt.Errorf("%s: the fallback frame carries %q:\n%s", tag, want, plain)
 		}
@@ -5981,7 +5981,7 @@ func browserStreamDrive() (browserStreamOut, error) {
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
 	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
 	// in production — the headless shot lane is the default premium path).
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	restoreEmit := panels.SetZenbuEmitForShot(func(s string) { out.emitted = append(out.emitted, s) })
@@ -6209,7 +6209,7 @@ func browserKillDrive() (browserKillOut, error) {
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
 	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
 	// in production — the headless shot lane is the default premium path).
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	restoreEmit := panels.SetZenbuEmitForShot(func(string) {})
@@ -6374,7 +6374,7 @@ func browserLiveDrive(flavor string) (browserLiveFrameOut, error) {
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
 	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
 	// in production — the headless shot lane is the default premium path).
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	backend := &stubBackend{done: make(chan struct{})}
@@ -6720,7 +6720,7 @@ func browserKeepaliveDrive() (browserKeepaliveOut, error) {
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
 	// the wave-85 opt-in: these drives prove the PREMIUM lane (default-off
 	// in production — the headless shot lane is the default premium path).
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "1")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "1")
 	os.Setenv("PATH", root+string(os.PathListSeparator)+saved["PATH"])
 
 	// the frame-splice wrapper over the SHARED registry (the production
@@ -7237,9 +7237,9 @@ func browserShotDrive(flavor string) (browserShotOut, error) {
 	os.Setenv("COLORTERM", "truecolor")
 	os.Setenv(panels.BrowserLaneOffEnv, "")
 	os.Setenv(panels.TerminalBrowserOffEnv, "")
-	os.Setenv("THEBORINGOFFICE_ZENBU_LANE", "")
-	os.Setenv("THEBORINGOFFICE_HOME", home)
-	os.Setenv("THEBORINGOFFICE_CELL_PX", "")
+	os.Setenv("THEFLOOR_ZENBU_LANE", "")
+	os.Setenv("THEFLOOR_HOME", home)
+	os.Setenv("THEFLOOR_CELL_PX", "")
 
 	// the frame-splice wrapper over the SHARED registry (the production
 	// seam's exact shape), the lane's direct deletes captured.
@@ -7955,11 +7955,11 @@ func runToolOutputProof() error {
 		// (B) the done event lands WITH output: the SAME expanded body
 		// updates in place (the row never re-collapses)
 		done := focusTool("", "", "c-1", "bash", "go build ./...", "done")
-		done.ToolOutput = "compiling internal/app/model.go\nlinking theboringoffice\nbuild ok in 412ms"
+		done.ToolOutput = "compiling internal/app/model.go\nlinking theboringfloor\nbuild ok in 412ms"
 		d.send(done)
 		fB := d.m.Frame()
 		stripB := ansi.Strip(fB)
-		for _, want := range []string{"[tool] ▾ bash · go build ./... ✓", "compiling internal/app/model.go", "linking theboringoffice", "build ok in 412ms"} {
+		for _, want := range []string{"[tool] ▾ bash · go build ./... ✓", "compiling internal/app/model.go", "linking theboringfloor", "build ok in 412ms"} {
 			if !strings.Contains(stripB, want) {
 				return nil, fail("tooloutput B (done in place): frame missing %q", want)
 			}
@@ -8123,7 +8123,7 @@ func main() {
 	terminal := flag.Bool("terminal", false, "terminal-tab proof: the stub TermPanel wires through app.SpawnTerminal — lazy-spawn on first visit, OPT-IN capture toggle flow (released default with a real tab event leaving the tab, ctrl+space toggles BOTH ways, ctrl+o releases as the alias, auto-release on leave, re-entry released), hints + frames + asserts, byte-identical twice")
 	paste := flag.Bool("paste", false, "office-wide paste proof (synchronous, tea.PasteMsg driven): chat small-paste literal + batched insert, >20-line/>2000-char paste collapses to the one-line chip (ONE backspace unit, expand-on-send — the agent gets the FULL text), shift+enter + ctrl+j newlines, RELEASED terminal → chat fallback / CAPTURED terminal → shell (stub records the content), question float's answer field takes a multi-line paste verbatim → AnswerQuestion, agents-tab paste → the dim 'paste: nothing focused accepts text' notice; two drives byte-identical")
 	focus := flag.Bool("focus", false, "fix-wave proof, THREE synchronous-tick frames: (a) empty pending bubble — typing row below the divider (above the input), NO caret anywhere; (b) streaming partial bubble — text grows in the viewport while the typing row STAYS below the divider for the whole pending period (still no caret); (c) two concurrent agents — per-agent work threads grouped (headers + merged rows), boss tool line still inline, boss idle at the placeholder in delegating state (dim row in the same below-divider slot, [delegat] nameplate). Every frame: no \"▌\", every chat row inside the divider's width budget")
-	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEBORINGOFFICE_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
+	persist := flag.Bool("persist", false, "office-session DEMO regression: seed a fresh session.json for cwd in a scratch THEFLOOR_HOME, run the standard demo shot, assert NO restore notice surfaces and the file is untouched (restore is live-only) — prints PERSIST-DEMO-SKIP: OK|FAIL")
 	slashpop := flag.Bool("slashpop", false, "slash-popover proof: type \"/th\" → filtered menu (/theme /themes /thinking), Enter pre-fills \"/theme \" → theme picker, arrows preview LIVE (two states printed), esc cancels back, Enter commits + persists via the plain slash path")
 	threadsThink := flag.Bool("threads-think", false, "employee-thinking-in-threads proof: tekton-1 EvThought merges per CallID into its work thread (collapsed rollup keeps the \"· 1 think\" count), ctrl+g expands tools + thoughts in natural order — boss path byte-identical")
 	threads := flag.Bool("threads", false, "thread-render fixture (opencode renderer): ONE chat frame with BOTH thread states — a LIVE collapsed thread (animated braille glyph, NO rollup while running, bare ↳ sneak, live-only ctrl+g hint row) beside a COMPLETED collapsed thread (dim ✓ glyph, \"✓ done\" rollup) — every message reducer-shaped (Kind wtool, \"<verb> · <summary>\" text, \"<state>␟<tick>\" meta stamped by the REAL app reducer; the display layer shapes it to \"<Verb> <rest>\")")
@@ -8796,18 +8796,18 @@ func (b *notifyTaps) SetMode(mode string) { b.modes = append(b.modes, mode) }
 func runNotificationsProof() error {
 	fail := func(format string, args ...any) error { return fmt.Errorf(format, args...) }
 
-	// brain.json write-through lands in a scratch THEBORINGOFFICE_HOME —
+	// brain.json write-through lands in a scratch THEFLOOR_HOME —
 	// the user's real config is never touched by shots (runPowerProof's
 	// shape).
-	home, err := os.MkdirTemp("", "theboringoffice-notify")
+	home, err := os.MkdirTemp("", "theboringfloor-notify")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(home)
-	if err := os.Setenv("THEBORINGOFFICE_HOME", home); err != nil {
+	if err := os.Setenv("THEFLOOR_HOME", home); err != nil {
 		return err
 	}
-	fmt.Printf("--- scratch THEBORINGOFFICE_HOME: %s ---\n", home)
+	fmt.Printf("--- scratch THEFLOOR_HOME: %s ---\n", home)
 
 	stub := &stubBackend{done: make(chan struct{})}
 	m := app.New(stub, config.Default())
@@ -8864,7 +8864,7 @@ func runNotificationsProof() error {
 	// copy (agent + tool NAME — the ToolSummary path never leaves the glass).
 	d.send(state.Event{Kind: state.EvPermission, EmployeeName: "boss", PermissionID: "perm-1",
 		ToolName: "write", ToolSummary: "main.go", ToolState: "pending"})
-	wantTap0 := "permission | theboringoffice | permission needed — boss needs write"
+	wantTap0 := "permission | theboringfloor | permission needed — boss needs write"
 	if err := wantTaps(1, "leg 4 (boss ask opens the cohort)"); err != nil {
 		return err
 	}
@@ -8894,7 +8894,7 @@ func runNotificationsProof() error {
 	// done ping, the reply clipped to one line.
 	d.send(state.Event{Kind: state.EvChatBoss, Msg: chatMsg("bossmsg-1", "boss",
 		"banners landed next to the bell — notifier wired", false)})
-	wantTap1 := "done | theboringoffice | the boss is done — banners landed next to the bell — notifier wired"
+	wantTap1 := "done | theboringfloor | the boss is done — banners landed next to the bell — notifier wired"
 	if err := wantTaps(2, "leg 7 (boss completion)"); err != nil {
 		return err
 	}
@@ -8907,7 +8907,7 @@ func runNotificationsProof() error {
 	// CURRENT front (the child ask that advanced to the top).
 	d.send(tea.FocusMsg{})
 	d.send(tea.BlurMsg{})
-	wantTap2 := "permission | theboringoffice | permission needed — tekton-1 needs read"
+	wantTap2 := "permission | theboringfloor | permission needed — tekton-1 needs read"
 	if err := wantTaps(3, "leg 8 (re-blur re-nudges the live cohort front)"); err != nil {
 		return err
 	}

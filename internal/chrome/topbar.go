@@ -1,6 +1,6 @@
 // topbar.go — one-line app bar, full width (port of node-legacy topbar.tsx):
 //
-//	left:  theboringoffice <version> | MODE | agents <n>
+//	left:  theboringfloor <version> | MODE | agents <n>
 //	right: <office clock> | <project> (<branch>)   — with a projinfo.Info
 //	       <office clock> | <cwd basename>         — zero-arg fallback (unchanged)
 //
@@ -23,7 +23,7 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/version"
 )
 
-// AppVersion is shown in the topbar (theboringoffice v0.2.1, or "dev" for a
+// AppVersion is shown in the topbar (theboringfloor v0.2.1, or "dev" for a
 // tree build). One source of truth: version.Version — releases stamp it via
 // ldflags -X (see .goreleaser.yaml), so the bar can never drift stale against
 // the tag the binary was cut from.

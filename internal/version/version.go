@@ -1,12 +1,12 @@
 // Package version — build-time version stamp, one source of truth.
 //
-// `go build` / `go install github.com/theboringhumane/theboringfloor/cmd/theboringoffice@<tag>`
+// `go build` / `go install` of the main command package
 // leaves Version = "dev". Releases stamp real values via ldflags:
 //
 //	go build -ldflags "\
 //	    -X github.com/theboringhumane/theboringfloor/internal/version.Version=0.1.0 \
 //	    -X github.com/theboringhumane/theboringfloor/internal/version.Commit=$(git rev-parse --short HEAD) \
-//	    -X github.com/theboringhumane/theboringfloor/internal/version.Date=$(date -u +%F)" ./cmd/theboringoffice
+//	    -X github.com/theboringhumane/theboringfloor/internal/version.Date=$(date -u +%F)" ./cmd/<main>
 //
 // -X only rewrites package-level string vars — keep these as `var`, not `const`.
 package version
@@ -23,15 +23,15 @@ var (
 	Date = "unknown"
 )
 
-// String — one-line display for `theboringoffice --version`:
+// String — one-line display for `theboringfloor --version`:
 //
-//	dev build: "theboringoffice dev"
-//	stamped:   "theboringoffice v0.1.0 (abc1234, 2026-08-22)"
+//	dev build: "theboringfloor dev"
+//	stamped:   "theboringfloor v0.1.0 (abc1234, 2026-08-22)"
 func String() string {
 	v := strings.TrimPrefix(Version, "v") // milestones stamp both "0.1.0" and "v0.1.0" shapes
-	display := "theboringoffice dev"
+	display := "theboringfloor dev"
 	if v != "dev" && v != "" {
-		display = "theboringoffice v" + v
+		display = "theboringfloor v" + v
 	}
 	// build metadata — append only what was actually stamped
 	var meta []string

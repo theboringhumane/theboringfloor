@@ -5,7 +5,7 @@
 // and the agent's read-only browse tools; NOTHING in here is tied to a
 // terminal, a PTY, or an embedded browser process.
 //
-// Discovery (Available): THEBORINGOFFICE_CHROME=<path> wins first; on
+// Discovery (Available): THEFLOOR_CHROME=<path> wins first; on
 // macOS the three /Applications candidates (Chrome, Chromium, Edge); on
 // linux the four PATH names (google-chrome, chromium, chromium-browser,
 // microsoft-edge). The probe is memoized — a binary appearing mid-
@@ -13,7 +13,7 @@
 //
 // Policy: EVERY navigation passes browsertools.Decide first (localhost
 // always / https default / plain http non-localhost behind
-// THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1) — the exact same gate the agent
+// THEFLOOR_BROWSER_ALLOW_HTTP=1) — the exact same gate the agent
 // marker protocol uses; a refused URL never launches a browser process
 // and the decision's reason comes back as the error verbatim.
 //
@@ -46,6 +46,7 @@ import (
 	"github.com/chromedp/chromedp"
 
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // Result — one viewport screenshot: the final (post-redirect) URL, the
@@ -87,12 +88,15 @@ type PolicyError struct {
 func (e *PolicyError) Error() string { return e.Reason }
 
 // ErrChromeNotFound — Available found no Chrome-family binary: the fix
-// is installing Chrome/Chromium/Edge or exporting THEBORINGOFFICE_CHROME.
-var ErrChromeNotFound = errors.New("headless: no Chrome-family browser found (install Chrome, Chromium or Edge, or set THEBORINGOFFICE_CHROME)")
+// is installing Chrome/Chromium/Edge or exporting THEFLOOR_CHROME.
+var ErrChromeNotFound = errors.New("headless: no Chrome-family browser found (install Chrome, Chromium or Edge, or set THEFLOOR_CHROME)")
 
 const (
 	// chromeEnv — the member's explicit binary-path override.
-	chromeEnv = "THEBORINGOFFICE_CHROME"
+	chromeEnv = "THEFLOOR_CHROME"
+	// chromeEnvSuffix is passed to config.Env so legacy environment exports
+	// remain silently compatible.
+	chromeEnvSuffix = "CHROME"
 
 	// navTimeout — the engine-owned overall budget per call. Applied on
 	// top of the caller's context (a caller deadline still wins when
@@ -137,7 +141,7 @@ var (
 // ("", false). Memoized: the probe runs once per process.
 func Available() (path string, ok bool) {
 	probeOnce.Do(func() {
-		probePath, probeOK = discover(runtime.GOOS, os.Getenv, fileExists, exec.LookPath)
+		probePath, probeOK = discover(runtime.GOOS, config.Env, fileExists, exec.LookPath)
 	})
 	return probePath, probeOK
 }
@@ -146,7 +150,7 @@ func Available() (path string, ok bool) {
 // candidate list. stat answers "is this exact path a file", lookPath
 // answers "where is this name on PATH".
 func discover(goos string, getenv func(string) string, stat func(string) bool, lookPath func(string) (string, error)) (string, bool) {
-	if p := strings.TrimSpace(getenv(chromeEnv)); p != "" && stat(p) {
+	if p := strings.TrimSpace(getenv(chromeEnvSuffix)); p != "" && stat(p) {
 		return p, true
 	}
 	if goos == "darwin" {

@@ -175,7 +175,7 @@ func statusBar(st state.OfficeState, hint string, queueN int, agentBadge string,
 // both counters are zero — the segment hides itself entirely rather than
 // show an estimated or fabricated number. The $ figure leads and is
 // dropped on its own when only tokens are known (real cost data absent);
-// theboringoffice NEVER prices tokens itself.
+// theboringfloor NEVER prices tokens itself.
 func usageTag(st state.OfficeState) string {
 	toks := st.TokensIn + st.TokensOut
 	var parts []string

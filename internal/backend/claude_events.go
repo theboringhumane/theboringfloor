@@ -1241,7 +1241,7 @@ const (
 	// dialogFamilyPermission — an F1 permission gate: Allow once/Allow
 	// always -> {behavior:"allow"(,updatedInput:<payload.input>)},
 	// Reject -> {behavior:"deny",message:"Denied by the boss in
-	// theboringoffice"}.
+	// theboringfloor"}.
 	dialogFamilyPermission
 	// dialogFamilyLabelResult — a single-select page whose option labels
 	// map 1:1 onto prebuilt result bytes (F2 enum kinds: result is a bare
@@ -1612,7 +1612,7 @@ const (
 // result bytes are built at answer time (dialogFamilyPermission) — Allow
 // once/always -> {behavior:"allow"} (+updatedInput re-emitting the
 // payload's tool input, the CLI's own "yes" builder), Reject ->
-// {behavior:"deny",message:"Denied by the boss in theboringoffice"}.
+// {behavior:"deny",message:"Denied by the boss in theboringfloor"}.
 //
 // "Allow always" can NOT attach permissionUpdates: the F1 payload carries
 // NO permission_suggestions (the CLI computes those locally from the live

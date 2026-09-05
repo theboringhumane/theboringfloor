@@ -1,7 +1,7 @@
 // terminal.go — the sidebar's REAL OS-shell tab: a lazy-spawning adapter
 // around the parallel-built terminal panel.
 //
-// CONTRACT (the terminal dev builds this exactly; cmd/theboringoffice wires it):
+// CONTRACT (the terminal dev builds this exactly; the runtime wires it):
 //
 //	package panels
 //	NewTerminal(width, height int) (*TermPanel, error)
@@ -62,7 +62,7 @@ type TerminalTab interface {
 	Alive() bool
 }
 
-// SpawnTerminal — the factory cmd/theboringoffice wires to the real panels.NewTerminal
+// SpawnTerminal — the factory the runtime wires to the real panels.NewTerminal
 // (the PTY panel landed at internal/panels/terminal.go; cmd/uishot still pins
 // its own stub so shot frames stay deterministic). Contract:
 // SpawnTerminal(cols, rows) returns a RUNNING shell panel; errors mean
@@ -114,7 +114,7 @@ func (t *termTabWrap) ensure() error {
 	}
 	t.tried = true
 	if SpawnTerminal == nil {
-		t.err = fmt.Errorf("terminal panel not linked yet (parallel build — cmd/theboringoffice wires panels.NewTerminal)")
+		t.err = fmt.Errorf("terminal panel not linked yet (parallel build — the runtime wires panels.NewTerminal)")
 		return t.err
 	}
 	cols, rows := t.w, t.h

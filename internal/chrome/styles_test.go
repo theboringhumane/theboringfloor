@@ -10,7 +10,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"charm.land/lipgloss/v2"
@@ -157,10 +156,8 @@ func TestSetThemeAutoNeverPersists(t *testing.T) {
 	}
 }
 
-// TestLoadPersistedTheme_LegacyFallback pins the rename-era contract: with
-// nothing at the new theme path, a pre-rename ~/.config/grafeio/theme is
-// READ (never written); once a pin lands the new path wins.
-func TestLoadPersistedTheme_LegacyFallback(t *testing.T) {
+// TestLoadPersistedTheme uses the canonical path only.
+func TestLoadPersistedTheme(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	pinned = false
 	defer restoreTheme()
@@ -169,21 +166,15 @@ func TestLoadPersistedTheme_LegacyFallback(t *testing.T) {
 		t.Fatalf("no files anywhere: want \"\", got %q", got)
 	}
 
-	legacy := legacyThemeConfigPath()
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatalf("mkdir legacy: %v", err)
+	persisted := ThemeConfigPath()
+	if err := os.MkdirAll(filepath.Dir(persisted), 0o755); err != nil {
+		t.Fatalf("mkdir persisted theme directory: %v", err)
 	}
-	if err := os.WriteFile(legacy, []byte("dracula\n"), 0o644); err != nil {
-		t.Fatalf("write legacy: %v", err)
+	if err := os.WriteFile(persisted, []byte("dracula\n"), 0o644); err != nil {
+		t.Fatalf("write persisted theme: %v", err)
 	}
 	if got := LoadPersistedTheme(); got != "dracula" {
-		t.Fatalf("legacy fallback: want dracula, got %q", got)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("grafeio theme dir must be merged away")
-	}
-	if b, err := os.ReadFile(ThemeConfigPath()); err != nil || strings.TrimSpace(string(b)) != "dracula" {
-		t.Fatalf("theme must live at the new path: %q err=%v", b, err)
+		t.Fatalf("persisted theme: want dracula, got %q", got)
 	}
 
 	if !SetTheme("paper") {

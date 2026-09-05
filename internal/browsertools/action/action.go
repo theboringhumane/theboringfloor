@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"runtime"
 	"strings"
 	"time"
@@ -92,7 +91,7 @@ func NavigateAndAct(ctx context.Context, rawurl string, a Action) (*Result, erro
 		return nil, fmt.Errorf("browser-action: unknown op %q (want click|fill|eval)", a.Op)
 	}
 
-	d := browsertools.Decide(rawurl, os.Getenv)
+	d := browsertools.Decide(rawurl, nil)
 	if !d.Allowed {
 		return nil, &headless.PolicyError{URL: d.URL, Reason: d.Reason}
 	}

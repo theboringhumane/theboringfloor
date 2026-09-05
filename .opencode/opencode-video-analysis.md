@@ -25,7 +25,7 @@ A product-launch promo told in **four act bars** (matching its own footer strip 
 
 ### ACT 1.5 — bridge (frame f004, key frame ⭐)
 - **Content:** back on the brown card: **"Add in agents. They keep it ru▌"**. A row of **colored pixel-block agents** — purple, yellow, green, teal — tiny figures that idle/dance across the canvas top.
-- **Meaning:** THE ANCHOR SCENE. The UI alone is not the product; the tiny pixel coworkers are. From here on everything is *agents keeping the system alive* — identical in spirit to theboringoffice's office floor.
+- **Meaning:** THE ANCHOR SCENE. The UI alone is not the product; the tiny pixel coworkers are. From here on everything is *agents keeping the system alive* — identical in spirit to theboringfloor's office floor.
 - **Motion vocab:** **pixel sprites with idle bounce** — the only living elements in the whole video. All else is static UI.
 
 ### ACT 2 — numbers (frame f005)
@@ -60,7 +60,7 @@ A product-launch promo told in **four act bars** (matching its own footer strip 
 
 ### ACT 5 — agents keep it running (frame f011, final key frame ⭐)
 - **Content:** dark scene with **concentric dashed orbital rings**. Pixel-dot agents **orbit** around centrally-embedded image blobs (gallery screenshots pinned at some rings' centers). Purple accent strip at top, footer-phase rail ("Dream outcome | Solution | Demo | Outro") persists at the bottom.
-- **Meaning:** the closing formula: **agents don't wait — they circle, maintain, orbit. The system keeps running while you sleep.** This is the exact visual thesis of theboringoffice's ambient floor (walkers, tea-machine steam, whiteboard meetings).
+- **Meaning:** the closing formula: **agents don't wait — they circle, maintain, orbit. The system keeps running while you sleep.** This is the exact visual thesis of theboringfloor's ambient floor (walkers, tea-machine steam, whiteboard meetings).
 - **Motion vocab:** slow-ring rotation with sprites anchored to orbit ellipses; images previewed at ring centers (the "watching over their work" frame).
 
 ### ACT 6 (implied end-card beyond f011)
@@ -79,7 +79,7 @@ A product-launch promo told in **four act bars** (matching its own footer strip 
 
 ---
 
-# The same structure mapped for theboringoffice (Remotion)
+# The same structure mapped for theboringfloor (Remotion)
 
 | Act beat | Video's version | Ours |
 |---|---|---|

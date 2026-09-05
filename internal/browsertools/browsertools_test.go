@@ -1,7 +1,7 @@
 // browsertools_test.go — the browser tool's contracts:
 //
 //	policy (Decide) — localhost always, https by default, plain http
-//	     non-localhost only under THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1,
+//	     non-localhost only under THEFLOOR_BROWSER_ALLOW_HTTP=1,
 //	     every other scheme refused, each refusal carrying the exact
 //	     member-facing reason (ONE policy for all four marker kinds);
 //	protocol (Extract) — whole-line markers of ALL FOUR kinds strip
@@ -51,10 +51,10 @@ func TestDecidePolicyTable(t *testing.T) {
 		{"http ::1, flag off", "http://[::1]:9000", false, true, ""},
 		{"https localhost", "https://localhost:8443", false, true, ""},
 		{"http non-localhost, flag off", "http://theboring.name", false, false,
-			"plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"},
+			"plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"},
 		{"http non-localhost, flag ON", "http://theboring.name", true, true, ""},
 		{"http non-localhost ip, flag off", "http://203.0.113.7", false, false,
-			"plain http to 203.0.113.7 refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"},
+			"plain http to 203.0.113.7 refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"},
 		{"file scheme refused", "file:///tmp/x.html", false, false, "not an absolute http(s) URL"},
 		{"bare path refused", "/tmp/x.html", false, false, "not an absolute http(s) URL"},
 		{"ftp refused", "ftp://example.com/pub", false, false, "not an absolute http(s) URL"},
@@ -312,7 +312,7 @@ func TestBridgeEmitsOneEventPerRequest(t *testing.T) {
 	}
 	// refused events: verdict false + the agent/member-readable reason
 	// (the SAME policy + reason text for every marker kind).
-	const httpRefusal = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const httpRefusal = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if evs[2].BrowserOpenAllowed || evs[2].BrowserOpenReason != httpRefusal {
 		t.Fatalf("the http refusal must carry the exact reason: %+v", evs[2])
 	}
@@ -346,7 +346,7 @@ func TestScrubFallbackBubbles(t *testing.T) {
 	}
 	// marker-only (refused) → the refusal note.
 	if got := Scrub("⟦open-browser: http://theboring.name⟧", br); got !=
-		"[theboringfloor] open-browser refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] open-browser refused: plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused marker-only fallback = %q", got)
 	}
 	// no markers → identity, and NO bridge traffic.
@@ -384,12 +384,12 @@ func TestScrubFallbackNamesNewKinds(t *testing.T) {
 	}
 	// a refused screenshot rides its own kind label.
 	if got := Scrub("⟦browser-screenshot: http://theboring.name⟧", br); got !=
-		"[theboringfloor] browser-screenshot refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] browser-screenshot refused: plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused screenshot fallback = %q", got)
 	}
 	// allowed + refused mix → the " · refused: " tail (open-kind contract).
 	if got := Scrub("⟦open-browser: https://a.example⟧\n⟦browser-snapshot: http://theboring.name⟧", br); got !=
-		"[theboringfloor] open-browser: https://a.example · refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] open-browser: https://a.example · refused: plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("mixed allowed/refused fallback = %q", got)
 	}
 	// every scrub above stripped its markers (the notes are the WHOLE
@@ -438,7 +438,7 @@ func TestPromptPreambleTeachesTheContract(t *testing.T) {
 // before directive syntax, and the entire first-turn preamble is a stable
 // byte contract (backend tests build expected wire lines from it).
 func TestPromptPreambleByteContract(t *testing.T) {
-	const policyParagraph = "[theboringoffice harness — browser tool]\n" +
+	const policyParagraph = "[theboringfloor harness — browser tool]\n" +
 		"Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
 		"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
 		"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
@@ -706,7 +706,7 @@ func TestBridgeEmitsActionEvent(t *testing.T) {
 	}
 	// refused eval: the exact policy reason, the payload STILL rides
 	// (the app's red row names what was refused).
-	const reason = "plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
+	const reason = "plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages"
 	if acts[2].BrowserOpenAllowed || acts[2].BrowserOpenReason != reason ||
 		acts[2].BrowserActionOp != "eval" || acts[2].BrowserActionArg != "1+1" {
 		t.Fatalf("the refused eval event must carry the exact reason + payload: %+v", acts[2])
@@ -730,7 +730,7 @@ func TestScrubFallbackNamesAction(t *testing.T) {
 		t.Fatalf("action-only fallback = %q", got)
 	}
 	if got := Scrub("⟦browser-action: http://theboring.name | click: #buy⟧", br); got !=
-		"[theboringfloor] browser-action refused: plain http to theboring.name refused — export THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
+		"[theboringfloor] browser-action refused: plain http to theboring.name refused — export THEFLOOR_BROWSER_ALLOW_HTTP=1 to allow outbound http pages" {
 		t.Fatalf("refused action-only fallback = %q", got)
 	}
 	// prose + action marker → the prose stays, no fallback note.

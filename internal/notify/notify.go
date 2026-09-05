@@ -28,7 +28,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 // minGap — the same kind re-pinged within this window is suppressed, so a
@@ -55,8 +55,8 @@ const watchdog = 2 * time.Second
 //	"on"  — fire through the resolved platform notifier
 //	"off" — silence
 //
-// Env override: THEBORINGOFFICE_NO_NOTIFY=1 (pre-rename: GRAFEIO_NO_NOTIFY=1)
-// forces "off" above whatever config asked for.
+// Env override: THEFLOOR_NO_NOTIFY=1 forces "off" above whatever config asked
+// for.
 type Bus struct {
 	mode     string
 	notifier string
@@ -111,7 +111,7 @@ func NewBus(cfgNotifications string) *Bus {
 	default:
 		mode = "off"
 	}
-	if brand.Get("NO_NOTIFY") == "1" {
+	if config.EnvBool("NO_NOTIFY") {
 		mode = "off"
 	}
 	b := &Bus{

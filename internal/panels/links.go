@@ -59,6 +59,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -253,22 +254,22 @@ func (t OpenTool) String() string {
 }
 
 // TerminalBrowserOffEnv — the kill-switch, read AT USE TIME with no
-// config schema field (the THEBORINGOFFICE_MUTE house style: an optional
+// config schema field (the THEFLOOR_MUTE house style: an optional
 // lane's off-gate does not mint brain.json migration surface for the 99%
 // who never flip it — sound/player.go reads its env the same way). The
-// lane is new post-rename, so there is NO pre-rename GRAFEIO_ twin.
-const TerminalBrowserOffEnv = "THEBORINGOFFICE_NO_TERMINAL_BROWSER"
+// lane postdates the rename, so it has no legacy-spelling twin.
+const TerminalBrowserOffEnv = "THEFLOOR_NO_TERMINAL_BROWSER"
 
 // ResolveOpenTool — the next open's preferred lane, resolved FRESH per
 // call: fresh env + PATH probe at use time, so the kill-switch and an
 // install/uninstall land immediately (an `o` press is human-frequency;
 // the probe is PATH stats).
-func ResolveOpenTool() OpenTool { return ResolveOpenToolFrom(os.Getenv, openLookPath) }
+func ResolveOpenTool() OpenTool { return ResolveOpenToolFrom(openToolEnv, openLookPath) }
 
 // ResolveOpenToolFrom — the pure core (DetectImageSupportFrom's shape:
 // env + probe injected, the matrix a shell-out-free table). ALL of:
 //
-//  1. THEBORINGOFFICE_NO_TERMINAL_BROWSER != "1" — the kill-switch
+//  1. THEFLOOR_NO_TERMINAL_BROWSER != "1" — the kill-switch
 //     consults the env FIRST: a switched-off lane is never even probed;
 //  2. a kitty-capable host: TERM_PROGRAM ghostty|kitty|wezterm or
 //     kitty's own KITTY_WINDOW_ID (image_detect.go's KittyLane classes),
@@ -288,6 +289,15 @@ func ResolveOpenToolFrom(env func(string) string, lookPath func(string) (string,
 		return OpenToolSystemOpen
 	}
 	return OpenToolTerminalBrowser
+}
+
+// openToolEnv routes the product-scoped kill-switch through the canonical
+// accessor while leaving terminal-detection inputs untouched.
+func openToolEnv(name string) string {
+	if name == TerminalBrowserOffEnv {
+		return config.Env("NO_TERMINAL_BROWSER")
+	}
+	return os.Getenv(name)
 }
 
 // terminalBrowserHostOK — the kitty-capable host gate: tmux folds to a

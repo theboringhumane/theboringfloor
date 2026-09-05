@@ -206,7 +206,7 @@ func TestSessionPickerAcceptResumesLive(t *testing.T) {
 	if last.From != "office" || last.Meta == "error" {
 		t.Fatalf("the closing row must be a clean dim office notice: from=%q meta=%q", last.From, last.Meta)
 	}
-	if last.Text != "closing — relaunching as `theboringoffice -s ses-beta-older`" {
+	if last.Text != "closing — relaunching as `theboringfloor -s ses-beta-older`" {
 		t.Fatalf("the closing row text is frozen, got %q", last.Text)
 	}
 	// the pin must be persisted NOW, stamped with the ACCEPTED id (the
@@ -294,7 +294,7 @@ func TestSessionSlashFallbackNoSeam(t *testing.T) {
 	last := lastChat(t, m)
 	for _, want := range []string{
 		"session: ses-live-9 (primary)",
-		"resume on the next boot: theboringoffice -s ses-live-9",
+		"resume on the next boot: theboringfloor -s ses-live-9",
 		"(session picker unavailable on this backend",
 	} {
 		if !strings.Contains(last.Text, want) {
@@ -359,7 +359,7 @@ func TestSessionPickerResumeError(t *testing.T) {
 		t.Fatalf("the transcript is NOT wiped — quitting is the swap")
 	}
 	last := lastChat(t, m)
-	if last.Meta == "error" || !strings.Contains(last.Text, "closing — relaunching as `theboringoffice -s ses-beta-older`") {
+	if last.Meta == "error" || !strings.Contains(last.Text, "closing — relaunching as `theboringfloor -s ses-beta-older`") {
 		t.Fatalf("the accept lands the closing row (never a resume error): meta=%q text=%q", last.Meta, last.Text)
 	}
 }

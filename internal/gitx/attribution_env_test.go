@@ -14,6 +14,9 @@ func envOf(m map[string]string) func(string) string {
 // TestMajdoorAuthorEnvActive pins the flag grammar: only exactly "true"
 // (any case) activates the injection; unset/empty/everything else is off.
 func TestMajdoorAuthorEnvActive(t *testing.T) {
+	if AutoCommitFlag != "THEFLOOR_AUTO_COMMIT" {
+		t.Fatalf("AutoCommitFlag = %q", AutoCommitFlag)
+	}
 	cases := []struct {
 		name string
 		val  *string // nil = unset

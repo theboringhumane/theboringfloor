@@ -1,20 +1,20 @@
-// headless — verification binary for the theboringoffice backend layer.
+// headless — verification binary for the theboringfloor backend layer.
 //
-//	theboringoffice-headless            demo backend (default), ~7.2s of events, exit 0
-//	theboringoffice-headless --live     real `opencode serve` spawn + agentmemory probe,
+//	theboringfloor-headless            demo backend (default), ~7.2s of events, exit 0
+//	theboringfloor-headless --live     real `opencode serve` spawn + agentmemory probe,
 //	                            print startup events for 3s, stop, exit 0
-//	theboringoffice-headless --live --prompt "text"
+//	theboringfloor-headless --live --prompt "text"
 //	                            send the prompt once the primary session is
 //	                            ready, wait up to 60s for the completed boss
 //	                            reply, stop, exit 0
-//	theboringoffice-headless --live --prompt "text" --prompt2 "text2"
+//	theboringfloor-headless --live --prompt "text" --prompt2 "text2"
 //	                            stale-reply repro: send prompt, wait up to 60s
 //	                            for its completed boss text, send prompt2, wait
 //	                            likewise, then assert the two turns' texts are
 //	                            distinct and operation-appropriate. Prints
 //	                            "STALE-REPRO: FIXED" (exit 0) when all checks
 //	                            pass, "STALE-REPRO: BUG" (exit 1) otherwise.
-//	theboringoffice-headless --batch-probe
+//	theboringfloor-headless --batch-probe
 //	                            queue-flush contract probe (forces live):
 //	                            mirrors TWO queue items onto the agentmemory
 //	                            board via the QueueItemStart seam, sends ONE
@@ -24,21 +24,21 @@
 //	                            then marks the board actions done. Prints
 //	                            BATCH-PHASE lines + "BATCH-PROBE: OK" (exit 0)
 //	                            or "BATCH-PROBE: FAIL" (exit 1).
-//	theboringoffice-headless --answer   after the first permission event prints,
+//	theboringfloor-headless --answer   after the first permission event prints,
 //	                            call backend.AnswerPermission(pid, "once") and
 //	                            print the result (demo: clears tekton-1's block)
-//	theboringoffice-headless --cfg path/to/brain.json
+//	theboringfloor-headless --cfg path/to/brain.json
 //	                            use an explicit brain.json for this run
 //	                            (defaults-filled, never written back); without
-//	                            it, config.Load() reads THEBORINGOFFICE_HOME just like
+//	                            it, config.Load() reads THEFLOOR_HOME just like
 //	                            the UI binaries. A [cfg] summary line prints
 //	                            the loaded Boss/Backend before anything else.
-//	theboringoffice-headless --efficiency
+//	theboringfloor-headless --efficiency
 //	                            simulate 11 board-poll cadence decisions (8
 //	                            unchanged syncs, then a change) using the same
 //	                            BackoffInterval helper the live backend runs,
 //	                            printing the interval growth. EFFICIENCY: OK.
-//	theboringoffice-headless --ask      question-loop regression probe (forces live):
+//	theboringfloor-headless --ask      question-loop regression probe (forces live):
 //	                            auto-sends the question-tool prompt, answers the
 //	                            FIRST pending EvQuestion via
 //	                            backend.AnswerQuestion 2s after it surfaces, then
@@ -49,41 +49,41 @@
 //	                            answer. Prints "QUESTION-LOOP: FIXED" (exit 0) or
 //	                            "QUESTION-LOOP: STUCK" (exit 1).
 //
-//	theboringoffice-headless --persist-demo
+//	theboringfloor-headless --persist-demo
 //	                            office-session persist proof, run 1 (forces
-//	                            live): scratch THEBORINGOFFICE_HOME (pre-rename name GRAFEIO_HOME also honored; created when
+//	                            live): scratch THEFLOOR_HOME (created when
 //	                            unset, path printed as [persist-home]), Start,
 //	                            send "say pineapple", wait up to 60s for the
 //	                            completed boss bubble, persist the office
 //	                            session, print session.json verbatim. Prints
 //	                            "PERSIST: SAVED" (exit 0) or exits 1.
-//	theboringoffice-headless --persist-restore
+//	theboringfloor-headless --persist-restore
 //	                            office-session persist proof, run 2 (forces
-//	                            live; requires the SAME THEBORINGOFFICE_HOME + cwd as
+//	                            live; requires the SAME THEFLOOR_HOME + cwd as
 //	                            run 1): LoadSession + PrimaryOverride + Start,
 //	                            asserts the restore notice line AND that the
 //	                            SAME primary id got reused (session under the
 //	                            50-msg stale guard). Prints "PERSIST: RESTORED".
-//	theboringoffice-headless --persist-new
+//	theboringfloor-headless --persist-new
 //	                            office-session persist proof, run 3 (forces
-//	                            live; same THEBORINGOFFICE_HOME + cwd): /new leg —
+//	                            live; same THEFLOOR_HOME + cwd): /new leg —
 //	                            NewOffice() must mint a FRESH primary id (!=
 //	                            the saved one), print the /new notice, and
 //	                            prove the overwrite keeps the latest primary
 //	                            in session.json. Prints "PERSIST: NEW".
 //
-//	theboringoffice-headless --charter-probe
+//	theboringfloor-headless --charter-probe
 //	                            oikonomos-charter wiring probe: scratch dir,
 //	                            EnsureCharter twice (identical bytes, second
 //	                            run changed=false), spawn a REAL opencode
 //	                            serve rooted in the scratch with a curated
-//	                            env (THEBORINGOFFICE_*/GRAFEIO_*/
+//	                            env (THEFLOOR_*/
 //	                            OPENCODE_SERVER stripped),
 //	                            create a session, ask the boss who it is +
 //	                            the dispatch minimum, assert the reply names
 //	                            (manager|oikonomos) AND (three|3). Prints
 //	                            CHARTER-PROBE: ACTIVE (exit 0) else exit 1.
-//	theboringoffice-headless --abort-probe
+//	theboringfloor-headless --abort-probe
 //	                            /stop probe (forces live): print the opencode
 //	                            serve /doc abort route excerpt, then send the
 //	                            long-running prompt "write a 2000-word essay
@@ -96,7 +96,7 @@
 //	                            flush) AND no further boss-bubble stream
 //	                            growth beyond a 1.5s in-flight grace. Prints
 //	                            "STOP: OK" (exit 0) or "STOP: FAIL" (exit 1).
-//	theboringoffice-headless --concierge-probe
+//	theboringfloor-headless --concierge-probe
 //	                            office concierge / busy-boss probe (forces
 //	                            live): boss send "count from 1 to 300 with one
 //	                            number per line, then stop" (still working),
@@ -111,7 +111,7 @@
 //	                            lazily (never by boss traffic). Prints
 //	                            "CONCIERGE: OK" (exit 0) else "CONCIERGE: FAIL"
 //	                            (exit 1).
-//	theboringoffice-headless --sse-sim
+//	theboringfloor-headless --sse-sim
 //	                            SSE reconnect sim (D1): a fake standard-library
 //	                            serve emulates session list/create plus a
 //	                            scripted /event flap profile (clean closes,
@@ -168,7 +168,7 @@ func main() {
 	answer := flag.Bool("answer", false, "auto-answer the first permission prompt with \"once\" and print the result")
 	ask := flag.Bool("ask", false, "live mode: question-loop probe — send the question-tool prompt, AnswerQuestion the first pending question after 2s, assert resolution (15s budget, QUESTION-LOOP: FIXED|STUCK)")
 	batchProbe := flag.Bool("batch-probe", false, "live mode: queue-flush batch probe — board-mirror 2 queue items, send one composed batch, assert the boss covers both (BATCH-PROBE: OK|FAIL)")
-	cfgPath := flag.String("cfg", "", "path to a brain.json for this run (else config.Load() honors THEBORINGOFFICE_HOME)")
+	cfgPath := flag.String("cfg", "", "path to a brain.json for this run (else config.Load() honors THEFLOOR_HOME)")
 	efficiency := flag.Bool("efficiency", false, "simulate 11 board-poll cadence decisions (8 unchanged syncs, then a change) and print the exponential backoff, then exit")
 	persistDemo := flag.Bool("persist-demo", false, "office-session persist proof run 1 (live): send 'say pineapple', wait for the completed bubble, persist the office session, print session.json (PERSIST: SAVED)")
 	persistRestore := flag.Bool("persist-restore", false, "office-session persist proof run 2 (live): restore boot — restore notice + SAME primary id reused (PERSIST: RESTORED)")
@@ -192,7 +192,7 @@ func main() {
 	}
 
 	// Office-session persist probes run in their own harness (own emit,
-	// own chat capture) and resolve THEBORINGOFFICE_HOME BEFORE loadConfig — run 1
+	// own chat capture) and resolve THEFLOOR_HOME BEFORE loadConfig — run 1
 	// with an unset env creates the scratch home first, so the brain.json
 	// first-boot write lands in the scratch, never in the real home.
 	if *persistDemo || *persistRestore || *persistNew {
@@ -201,7 +201,7 @@ func main() {
 	}
 
 	// brain.json for this run. --cfg points at an explicit file; otherwise
-	// config.Load() reads (and first-boots) THEBORINGOFFICE_HOME/.theboringoffice/configs/
+	// config.Load() reads (and first-boots) THEFLOOR_HOME/.theboringfloor/configs/
 	// brain.json — identical to how the UI binaries load it.
 	cfg, err := loadConfig(*cfgPath)
 	if err != nil {
@@ -448,7 +448,7 @@ func main() {
 		// The composed batch literal, in the shape the app's queue-flush
 		// composes: one header naming the count, one line per QUE item.
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "[theboringoffice office] QUEUE FLUSH: %d queued items arrived together. Work ALL %d items in this one turn, then reply confirming EACH item by its QUE id and short answer.\n", len(items), len(items))
+		fmt.Fprintf(&sb, "[theboringfloor] QUEUE FLUSH: %d queued items arrived together. Work ALL %d items in this one turn, then reply confirming EACH item by its QUE id and short answer.\n", len(items), len(items))
 		for i, title := range items {
 			fmt.Fprintf(&sb, "QUE-%d: %s\n", i+1, title)
 		}
@@ -713,7 +713,7 @@ type queueBoard interface {
 
 // loadConfig resolves the run's brain.json: an explicit --cfg path wins
 // (defaults-filled, read-only — never written back), otherwise the standard
-// loader honors THEBORINGOFFICE_HOME like every other theboringoffice binary.
+// loader honors THEFLOOR_HOME like every other theboringfloor binary.
 func loadConfig(path string) (*config.Config, error) {
 	if path == "" {
 		return config.Load()
@@ -785,11 +785,11 @@ type officeSpawnSeam interface {
 
 // runPersistProbe drives the three-run office-session proof:
 //
-//	run 1 --persist-demo    (own THEBORINGOFFICE_HOME): boot live, send "say
+//	run 1 --persist-demo    (own THEFLOOR_HOME): boot live, send "say
 //	                        pineapple", wait for the completed bubble,
 //	                        persist the office session, print session.json.
 //	                        Verdict: PERSIST: SAVED.
-//	run 2 --persist-restore (SAME THEBORINGOFFICE_HOME + cwd as run 1): rebuild the
+//	run 2 --persist-restore (SAME THEFLOOR_HOME + cwd as run 1): rebuild the
 //	                        boot exactly as app.New does — LoadSession,
 //	                        PrimaryOverride before Start — then assert the
 //	                        restore notice line and that the SAME primary id
@@ -812,22 +812,22 @@ func runPersistProbe(cfgPath string, demo, restore, fresh bool) {
 		os.Exit(2)
 	}
 
-	// Scratch home: run 1 creates one when THEBORINGOFFICE_HOME is unset (and
+	// Scratch home: run 1 creates one when THEFLOOR_HOME is unset (and
 	// prints it — runs 2/3 MUST be invoked with that same home exported);
 	// runs 2/3 hard-require it so a stray run cannot read/write the real
-	// ~/.theboringoffice/projects.
-	home := config.HomeOverride() // THEBORINGOFFICE_HOME, GRAFEIO_HOME fallback
+	// ~/.theboringfloor/projects.
+	home := config.HomeOverride() // THEFLOOR_HOME, legacy fallback
 	if home == "" {
 		if !demo {
-			fmt.Fprintln(os.Stderr, "THEBORINGOFFICE_HOME is required for --persist-restore / --persist-new (export the [persist-home] path printed by run 1)")
+			fmt.Fprintln(os.Stderr, "THEFLOOR_HOME is required for --persist-restore / --persist-new (export the [persist-home] path printed by run 1)")
 			os.Exit(2)
 		}
 		var err error
-		home, err = os.MkdirTemp("", "theboringoffice-persist-home")
+		home, err = os.MkdirTemp("", "theboringfloor-persist-home")
 		if err != nil {
 			fail("persist home", err)
 		}
-		if err := os.Setenv("THEBORINGOFFICE_HOME", home); err != nil {
+		if err := os.Setenv("THEFLOOR_HOME", home); err != nil {
 			fail("persist home env", err)
 		}
 	}
@@ -1066,9 +1066,9 @@ func persistRunNew(cfg *config.Config, dir string) {
 var probeHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 // probeEnv is os.Environ() minus everything the probe must not inherit:
-// THEBORINGOFFICE_* and the pre-rename GRAFEIO_* (the strip rule) and
+// THEFLOOR_* (the strip rule) and
 // OPENCODE_SERVER (must not redirect the spawned-child resolution; serve
-// reads it, ditto THEBORINGOFFICE_SERVER).
+// reads it, ditto THEFLOOR_SERVER).
 func probeEnv() []string {
 	var out []string
 	for _, kv := range os.Environ() {
@@ -1076,7 +1076,7 @@ func probeEnv() []string {
 		if i := strings.IndexByte(kv, '='); i >= 0 {
 			k = kv[:i]
 		}
-		if strings.HasPrefix(k, "THEBORINGOFFICE_") || strings.HasPrefix(k, "GRAFEIO_") || k == "OPENCODE_SERVER" {
+		if strings.HasPrefix(k, "THEFLOOR_") || k == "OPENCODE_SERVER" {
 			continue
 		}
 		out = append(out, kv)
@@ -1092,7 +1092,7 @@ func probeEnv() []string {
 func spawnServeForProbe(dir string) (string, *exec.Cmd, error) {
 	cmd := exec.Command("opencode", "serve", "--port", "0", "--hostname", "127.0.0.1")
 	cmd.Dir = dir
-	// probeEnv strips THEBORINGOFFICE_* (incl. the flag itself); the merge
+	// probeEnv strips THEFLOOR_* (incl. the flag itself); the merge
 	// re-injects only the four resolved majdoor GIT_* vars when it was on.
 	cmd.Env = gitx.WithMajdoorAuthorEnv(probeEnv())
 	stdout, err := cmd.StdoutPipe()
@@ -1223,7 +1223,7 @@ func probePrompt(baseURL, dir, sessionID, text string, timeout time.Duration) (s
 //  3. run EnsureCharter a SECOND time: changed must be false and the bytes
 //     must be identical (idempotence);
 //  4. spawn a REAL opencode serve rooted in the scratch dir (fresh clean
-//     env for the child: OPENCODE_SERVER + THEBORINGOFFICE_*/GRAFEIO_* stripped — the probe
+//     env for the child: OPENCODE_SERVER + THEFLOOR_* stripped — the probe
 //     proves the WIRING, not the user's machine), create a session, and
 //     prompt: "in 2 sentences: who are you supposed to be and how many
 //     sub-agents minimum for real work";
@@ -1250,7 +1250,7 @@ func charterProbeMain() int {
 	}
 
 	// 1-3: the EnsureCharter pass + idempotence, in a scratch dir.
-	scratch, err := os.MkdirTemp("", "theboringoffice-charter-probe")
+	scratch, err := os.MkdirTemp("", "theboringfloor-charter-probe")
 	if err != nil {
 		fmt.Printf("[fatal] scratch dir: %v\n", err)
 		return 1
@@ -1298,7 +1298,7 @@ func charterProbeMain() int {
 		"charter subset probe: manager + oikonomos + MINIMUM 3 all present")
 
 	// 4: the ground-truth serve pass. A fresh child env strips
-	// OPENCODE_SERVER and every THEBORINGOFFICE_*/GRAFEIO_* so the probe measures ONLY what
+	// OPENCODE_SERVER and every THEFLOOR_* so the probe measures ONLY what
 	// the wiring itself does (the user's OPENCODE_SERVER could point at a
 	// serve that loaded other instructions).
 	if failures > 0 {
@@ -1934,7 +1934,7 @@ func (s *sseSimServer) handleEvent(w http.ResponseWriter, r *http.Request) {
 func runSSESim() int {
 	sim := newSSESimServer()
 	defer sim.close()
-	scratch, err := os.MkdirTemp("", "theboringoffice-sse-sim")
+	scratch, err := os.MkdirTemp("", "theboringfloor-sse-sim")
 	if err != nil {
 		fmt.Printf("[fatal] scratch dir: %v\n", err)
 		return 1

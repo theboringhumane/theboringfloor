@@ -82,7 +82,7 @@ type claudeDrive struct {
 // shared by both drives — the process re-spawns per drive, the bytes
 // don't change).
 func buildClaudeStub() (string, func(), error) {
-	dir, err := os.MkdirTemp("", "theboringoffice-claudestub-bin")
+	dir, err := os.MkdirTemp("", "theboringfloor-claudestub-bin")
 	if err != nil {
 		return "", func() {}, err
 	}
@@ -119,12 +119,12 @@ func readLinesSafe(path string) []string {
 // condition-driven (the stub answers in ms) — no wall clock influences
 // the frames.
 func driveClaudePlan(bin string, drive int) (*claudeDrive, error) {
-	scratch, err := os.MkdirTemp("", fmt.Sprintf("theboringoffice-claude-drive-%d-", drive))
+	scratch, err := os.MkdirTemp("", fmt.Sprintf("theboringfloor-claude-drive-%d-", drive))
 	if err != nil {
 		return nil, err
 	}
 	defer os.RemoveAll(scratch)
-	projDir := filepath.Join(os.TempDir(), "theboringoffice-claude-proj")
+	projDir := filepath.Join(os.TempDir(), "theboringfloor-claude-proj")
 	_ = os.RemoveAll(projDir)
 	if err := os.MkdirAll(projDir, 0o755); err != nil {
 		return nil, err
@@ -134,12 +134,12 @@ func driveClaudePlan(bin string, drive int) (*claudeDrive, error) {
 	capturePath := filepath.Join(scratch, "capture.log")
 	stdoutLogPath := filepath.Join(scratch, "stdout.log")
 	for _, kv := range [][2]string{
-		{"THEBORINGOFFICE_HOME", scratch},
-		{"THEBORINGOFFICE_CLAUDE_CONFIG", filepath.Join(scratch, "claude-config")},
-		{"THEBORINGOFFICE_CLAUDE_BIN", bin},
-		{"THEBORINGOFFICE_CLAUDE_STUB_SCENARIO", "planshot"},
-		{"THEBORINGOFFICE_CLAUDE_STUB_CAPTURE", capturePath},
-		{"THEBORINGOFFICE_CLAUDE_STUB_STDOUTLOG", stdoutLogPath},
+		{"THEFLOOR_HOME", scratch},
+		{"THEFLOOR_CLAUDE_CONFIG", filepath.Join(scratch, "claude-config")},
+		{"THEFLOOR_CLAUDE_BIN", bin},
+		{"THEFLOOR_CLAUDE_STUB_SCENARIO", "planshot"},
+		{"THEFLOOR_CLAUDE_STUB_CAPTURE", capturePath},
+		{"THEFLOOR_CLAUDE_STUB_STDOUTLOG", stdoutLogPath},
 	} {
 		old, had := os.LookupEnv(kv[0])
 		if err := os.Setenv(kv[0], kv[1]); err != nil {

@@ -135,7 +135,7 @@ export default function MCPServerPage() {
               Claude Code at user scope.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Set <Code>THEBORINGOFFICE_NO_MCP_INSTALL=1</Code> to keep the installer from making
+               Set <Code>THEFLOOR_NO_MCP_INSTALL=1</Code> to keep the installer from making
               either automatic registration. Set <Code>THEFLOOR_PROJECT_DIR</Code> when you need
               <Code>thefloor_mcp</Code> to bind to a project directory other than its current one.
             </p>
@@ -239,7 +239,7 @@ export default function MCPServerPage() {
               to.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Set <Code>THEBORINGOFFICE_NO_CONTROL=1</Code> to disable the control API entirely.
+               Set <Code>THEFLOOR_NO_CONTROL=1</Code> to disable the control API entirely.
               Without a running control API, the write tools return their live-office-required error;
               the documented on-disk read paths remain separate.
             </p>

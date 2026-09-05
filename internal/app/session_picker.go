@@ -9,9 +9,9 @@
 //   - ACCEPT = QUIT + EXEC-REPLACE: the swap is NOT re-anchored in-app.
 //     The accept quits exactly like ctrl+q's own path (pin persisted
 //     NOW — stamped with the ACCEPTED id — terminal reaped, transcript
-//     row "closing — relaunching as `theboringoffice -s <id>`" recorded)
+//     row "closing — relaunching as `theboringfloor -s <id>`" recorded)
 //     and returns a quit cmd, so cmd's post-Run path can syscall.Exec
-//     the same binary as `theboringoffice -s <id>`. The RELAUNCHED
+//     the same binary as `theboringfloor -s <id>`. The RELAUNCHED
 //     boot's resolvePrimary verifies the id server-side (degrades open
 //     on a miss) and, stored id == boot pin, hydrates the transcript
 //     straight through the swap.
@@ -143,7 +143,7 @@ func (m *Model) handleSessionList(msg sessionListMsg) {
 // ACCEPT = QUIT + EXEC-REPLACE: the office swaps sessions by QUITTING,
 // not by re-anchoring in-app — the accept records the relaunch intent on
 // the model (execSession; cmd's post-Run path syscall.Exec's the binary
-// as `theboringoffice -s <id>`), persists the pin into session.json NOW
+// as `theboringfloor -s <id>`), persists the pin into session.json NOW
 // (sync, stamped with the ACCEPTED id), reaps the terminal and returns
 // the quit cmd. The resume seam is only the capability gate (a backend
 // without it can't be re-pinned by a boot — static summary fallback);
@@ -197,7 +197,7 @@ func (m *Model) acceptSessionPick(id string) tea.Cmd {
 	m.st.Chat = kept
 	// the relaunch rides the transcript as REAL history — persisted with
 	// the pin below, the new boot hydrates right through the swap.
-	m.notice(fmt.Sprintf("closing — relaunching as `theboringoffice -s %s`", id))
+	m.notice(fmt.Sprintf("closing — relaunching as `theboringfloor -s %s`", id))
 	// the pin must land in session.json NOW (next boot auto-restores):
 	// the 5s cheap-write loop would lag the exec, so the forced sync
 	// write goes explicitly (small + bounded) with the ACCEPTED id as the

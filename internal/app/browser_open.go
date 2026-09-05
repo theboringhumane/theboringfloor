@@ -15,7 +15,7 @@
 //     /open-only, so no double notice);
 //   - screenshot allowed: the headless engine renders the page (15s
 //     bound, 990x540) OFF the UI goroutine, the PNG saves under
-//     <THEBORINGOFFICE_HOME or os.TempDir>/shots/<ts>-<hash8>.png, the
+//     <THEFLOOR_HOME or os.TempDir>/shots/<ts>-<hash8>.png, the
 //     left slot flips to the browser tab, and the pane's normal open
 //     rides along (the tab's own display path — NOT this file — picks
 //     the shot up there); the result lands back as a state.Event
@@ -220,7 +220,7 @@ func browserShotCmd(url string) tea.Cmd {
 	}
 }
 
-// browserShotsDir — the PNG landing zone: <THEBORINGOFFICE_HOME>/shots
+// browserShotsDir — the PNG landing zone: <THEFLOOR_HOME>/shots
 // when the member/harness overrides home, else <os.TempDir>/shots.
 func browserShotsDir() string {
 	if home := config.HomeOverride(); home != "" {

@@ -7,7 +7,7 @@
 //	    panels.ResolveOpenToolFrom (env + counting probe injected), the
 //	    probe's call count pinned per row (a host-miss row must never
 //	    even LOOK for the binary);
-//	(b) the KILL SWITCH: THEBORINGOFFICE_NO_TERMINAL_BROWSER=1 consults
+//	(b) the KILL SWITCH: THEFLOOR_NO_TERMINAL_BROWSER=1 consults
 //	    the env FIRST — a present binary on a matched terminal still
 //	    resolves system-open and the probe's call count is ZERO (the
 //	    binary is never even probed, recorded on the lookup counter);
@@ -92,7 +92,7 @@ func TestResolveBrowserToolMatrix(t *testing.T) {
 	}
 }
 
-// TestResolveBrowserToolKillSwitch — THEBORINGOFFICE_NO_TERMINAL_BROWSER=1
+// TestResolveBrowserToolKillSwitch — THEFLOOR_NO_TERMINAL_BROWSER=1
 // consults the env FIRST: a present binary on a matched terminal still
 // resolves system-open, and the lookup registry records ZERO probes (the
 // candidate is never even looked at). "0"/set-to-anything-else do NOT

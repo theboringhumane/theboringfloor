@@ -36,7 +36,7 @@ type Directive struct {
 
 // PromptPreamble rides the first boss prompt after the browser and
 // recent-message harness preambles.
-const PromptPreamble = "[theboringoffice harness — plan tools]\n" +
+const PromptPreamble = "[theboringfloor harness — plan tools]\n" +
 	"The member reviews and approves plan execution in the plan pane with ctrl+x twice. " +
 	"Presenting or updating a plan is presentation only, never execution. Emit at most one directive per reply:\n" +
 	"⟦plan-present⟧\n<markdown>\n⟦/plan-present⟧ — present a nonempty plan.\n" +

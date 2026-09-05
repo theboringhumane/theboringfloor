@@ -3,7 +3,7 @@
 // init only after the first stdin user message), init pins primaryID
 // WHENEVER it arrives, a child exit before init is the death watch's
 // report (never a Start error), and CLAUDE_CONFIG_DIR defaults to the
-// user's real ~/.claude unless THEBORINGOFFICE_CLAUDE_CONFIG explicitly
+// user's real ~/.claude unless THEFLOOR_CLAUDE_CONFIG explicitly
 // opts into a sandbox.
 package backend
 
@@ -23,7 +23,7 @@ import (
 
 // claudeStubScript writes a stream-json fake `claude` (POSIX sh) into a
 // fresh temp dir and returns its path. The stub signals strictly through
-// the THEBORINGOFFICE_CLAUDE_STUB_* env passthroughs (capture, argv log,
+// the THEFLOOR_CLAUDE_STUB_* env passthroughs (capture, argv log,
 // signal log) — the child env allowlist carries them by construction.
 func claudeStubScript(t *testing.T, body string) string {
 	t.Helper()
@@ -438,12 +438,13 @@ func TestClaudeEmptyOverrideLetsInitPin(t *testing.T) {
 
 // TestClaudeConfigDirDefaultsToRealHome — no explicit opt-in: the child
 // gets the user's REAL ~/.claude so an existing `claude` login carries
-// into office sessions. THEBORINGOFFICE_HOME still roots the default for
-// harness hermeticity; GRAFEIO_HOME is the pre-rename fallback.
+// into office sessions. THEFLOOR_HOME still roots the default for
+// harness hermeticity; THEBORINGOFFICE_HOME is the legacy fallback
+// config.Env still honours, so it must be cleared too.
 func TestClaudeConfigDirDefaultsToRealHome(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", "")
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", "")
+	t.Setenv("THEFLOOR_HOME", "")
 	t.Setenv("THEBORINGOFFICE_HOME", "")
-	t.Setenv("GRAFEIO_HOME", "")
 	want := filepath.Join(os.Getenv("HOME"), ".claude")
 	if got := claudeConfigDir(t.TempDir()); got != want {
 		t.Fatalf("claudeConfigDir = %q, want the user's real config %q", got, want)
@@ -452,25 +453,25 @@ func TestClaudeConfigDirDefaultsToRealHome(t *testing.T) {
 
 func TestClaudeConfigDirHonorsHomeOverride(t *testing.T) {
 	scratch := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", scratch)
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", "")
+	t.Setenv("THEFLOOR_HOME", scratch)
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", "")
 	want := filepath.Join(scratch, ".claude")
 	if got := claudeConfigDir(t.TempDir()); got != want {
 		t.Fatalf("claudeConfigDir = %q, want the override-rooted %q", got, want)
 	}
 }
 
-// TestClaudeConfigDirExplicitSandboxOptIn — THEBORINGOFFICE_CLAUDE_CONFIG
+// TestClaudeConfigDirExplicitSandboxOptIn — THEFLOOR_CLAUDE_CONFIG
 // wins outright (the only sandbox path left); whitespace-only is NOT set.
 func TestClaudeConfigDirExplicitSandboxOptIn(t *testing.T) {
 	sandbox := filepath.Join(t.TempDir(), "sandbox-test")
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", sandbox)
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", sandbox)
 	if got := claudeConfigDir(t.TempDir()); got != sandbox {
 		t.Fatalf("claudeConfigDir = %q, want the explicit sandbox %q", got, sandbox)
 	}
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", "   ")
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", "   ")
+	t.Setenv("THEFLOOR_HOME", "")
 	t.Setenv("THEBORINGOFFICE_HOME", "")
-	t.Setenv("GRAFEIO_HOME", "")
 	if got := claudeConfigDir(t.TempDir()); got == "   " {
 		t.Fatalf("a whitespace-only pin must be treated as unset")
 	}
@@ -481,7 +482,7 @@ func TestClaudeConfigDirExplicitSandboxOptIn(t *testing.T) {
 // path (under a regular FILE) never fails the env build.
 func TestClaudeChildEnvConfigDir(t *testing.T) {
 	sandbox := filepath.Join(t.TempDir(), "sand")
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", sandbox)
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", sandbox)
 	env := claudeChildEnv(t.TempDir())
 	found := ""
 	for _, kv := range env {
@@ -502,7 +503,7 @@ func TestClaudeChildEnvConfigDir(t *testing.T) {
 	}
 	_ = f.Close()
 	impossible := filepath.Join(f.Name(), "child")
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", impossible)
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", impossible)
 	env = claudeChildEnv(t.TempDir()) // must not panic or fail
 	found = ""
 	for _, kv := range env {
@@ -516,11 +517,11 @@ func TestClaudeChildEnvConfigDir(t *testing.T) {
 }
 
 // TestClaudeStartExplicitSandboxConfig — the opt-in sandbox still boots:
-// THEBORINGOFFICE_CLAUDE_CONFIG passes straight through to the child's
+// THEFLOOR_CLAUDE_CONFIG passes straight through to the child's
 // env and Start returns nil whether or not init ever arrives.
 func TestClaudeStartExplicitSandboxConfig(t *testing.T) {
 	sandbox := filepath.Join(t.TempDir(), "sandbox-test")
-	t.Setenv("THEBORINGOFFICE_CLAUDE_CONFIG", sandbox)
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", sandbox)
 	envlog := filepath.Join(t.TempDir(), "env.log")
 	stub := claudeStubScript(t, `printf '%s\n' "$CLAUDE_CONFIG_DIR" >> "`+envlog+`"
 while IFS= read -r line; do :; done

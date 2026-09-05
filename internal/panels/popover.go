@@ -78,7 +78,7 @@ var slashCommands = []slashCommand{
 	{"/stop", "abort current work (boss + workers)", ""},
 	{"/new", "fresh office (transcript archived)", ""},
 	{"/session", "past-sessions picker (enter resumes live)", ""},
-	{"/quit", "exit theboringoffice", ""},
+	{"/quit", "exit theboringfloor", ""},
 }
 
 // slash popover modes.

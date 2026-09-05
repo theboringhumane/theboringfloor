@@ -1,4 +1,4 @@
-package theboringoffice_test
+package main
 
 import (
 	"os"
@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestGetChecksumRegex(t *testing.T) {
+func TestInstallPs1GetChecksumRegex(t *testing.T) {
 	script, err := os.ReadFile("install.ps1")
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestGetChecksumRegex(t *testing.T) {
 		t.Fatalf("Get-Checksum match expression must not use -f: %s", matchExpression)
 	}
 
-	asset := "theboringoffice_0.3.24_windows_amd64.zip"
+	asset := "theboringfloor_0.3.24_windows_amd64.zip"
 	checksum := regexp.MustCompile(`^[a-fA-F0-9]{64}\s+\*?` + regexp.QuoteMeta(asset) + `$`)
 	hash := "c366c70ea763396f1794230b39ac8a70fcfa6a9e948671262ea39558673a2443"
 	tests := []struct {

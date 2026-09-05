@@ -126,7 +126,7 @@ func installFactory(t *testing.T, builds map[string]*swapStubBackend) *[]string 
 }
 
 // newSwapModel — a live-mode model on stub, with the session dir pinned at
-// dir (sessions go under the test's THEBORINGOFFICE_HOME scratch) and the
+// dir (sessions go under the test's THEFLOOR_HOME scratch) and the
 // boot splash lifted (backend input flows; the splash is a no-show).
 func newSwapModel(b *swapStubBackend, cfg *config.Config, dir string) Model {
 	m := New(b, cfg)

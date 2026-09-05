@@ -64,7 +64,7 @@ func (b *selBackend) AbortSessions() error { b.aborts++; return nil }
 
 // selSetupModel — a sized desktop model (140x40 → the floor|sidebar split,
 // width ≥ mobileMaxCols) on a scratch home; the transcript starts empty
-// (fresh THEBORINGOFFICE_HOME → no session.json, no hydration notices).
+// (fresh THEFLOOR_HOME → no session.json, no hydration notices).
 func selSetupModel(t *testing.T, b state.Backend) Model {
 	t.Helper()
 	scratchHome(t)

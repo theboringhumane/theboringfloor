@@ -1,10 +1,10 @@
 # cmd/
 
-Go entrypoints. Product binary is `theboringfloor` (Go package still `cmd/theboringoffice`). The installer also links `tbo` / `theboringoffice` as shims.
+Go entrypoints. Product binary and Go package are `theboringfloor` (`cmd/theboringfloor`).
 
 | Package | Job |
 |---|---|
-| [`theboringoffice`](theboringoffice/) | TUI — flags, backend spawn/attach, tea program |
+| [`theboringfloor`](theboringfloor/) | TUI — flags, backend spawn/attach, tea program |
 | [`headless`](headless/) | backend checks: demo, live spawn, `--prompt`, `--batch-probe` |
 | [`uishot`](uishot/) | deterministic UI frames vs a stub backend |
 | [`floorshot`](floorshot/) | freeze-frame of the office floor |
@@ -14,7 +14,7 @@ Go entrypoints. Product binary is `theboringfloor` (Go package still `cmd/thebor
 | [`kittyprobe`](kittyprobe/) | kitty graphics probe |
 
 ```bash
-go run ./cmd/theboringoffice --demo
+go run ./cmd/theboringfloor --demo
 go run ./cmd/uishot
 go run ./cmd/floorshot
 ```

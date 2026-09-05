@@ -11,11 +11,11 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
-// scratchHome points THEBORINGOFFICE_HOME at a t.TempDir for the sessions tests.
+// scratchHome points THEFLOOR_HOME at a t.TempDir for the sessions tests.
 func scratchHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", home)
+	t.Setenv("THEFLOOR_HOME", home)
 	return home
 }
 
@@ -55,7 +55,7 @@ func TestSessionRoundTrip(t *testing.T) {
 
 // TestSessionPathProjectsLayout pins the canonical on-disk shape after the
 // projects/<hash> migration:
-// <home>/.theboringoffice/projects/<dirhash>/session.json.
+// <home>/.theboringfloor/projects/<dirhash>/session.json.
 func TestSessionPathProjectsLayout(t *testing.T) {
 	home := scratchHome(t)
 	dir := t.TempDir()
@@ -66,8 +66,7 @@ func TestSessionPathProjectsLayout(t *testing.T) {
 }
 
 // TestSaveSessionWritesProjectsOnly pins the write side of the migration:
-// SaveSession creates projects/<hash>/session.json and NEVER a file under
-// the old ~/.theboringoffice/sessions or ~/.grafeio/sessions roots.
+// SaveSession creates projects/<hash>/session.json at the only supported root.
 func TestSaveSessionWritesProjectsOnly(t *testing.T) {
 	home := scratchHome(t)
 	dir := t.TempDir()
@@ -78,127 +77,6 @@ func TestSaveSessionWritesProjectsOnly(t *testing.T) {
 	want := filepath.Join(home, ".theboringfloor", "projects", hash, "session.json")
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("session.json must land at the projects path: %v", err)
-	}
-	for _, old := range []string{
-		filepath.Join(home, ".theboringoffice", "sessions", hash, "session.json"),
-		filepath.Join(home, ".grafeio", "sessions", hash, "session.json"),
-	} {
-		if _, err := os.Stat(old); !os.IsNotExist(err) {
-			t.Fatalf("no file may be written at the old path %q (stat err=%v)", old, err)
-		}
-	}
-}
-
-// TestLoadSession_SessionsDirFallback pins the migration-era read contract:
-// an office session stored under the pre-migration ~/.theboringoffice/sessions
-// root is still found when projects/<hash> has no file (that root is read
-// only), and in the fallback chain it outranks the pre-rename ~/.grafeio
-// root: projects > .theboringoffice/sessions > .grafeio/sessions.
-func TestLoadSession_SessionsDirFallback(t *testing.T) {
-	scratchHome(t)
-	dir := t.TempDir()
-	st := state.OfficeState{
-		Chat: []state.ChatMsg{{ID: "b1", From: "boss", Kind: "boss", Text: "old layout office", At: 4}},
-	}
-	sf := Snapshot(dir, "ses-oldlayout", st)
-
-	plant := func(base, id string) string {
-		path := filepath.Join(base, SessionDirHash(dir), "session.json")
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		s := sf
-		s.PrimaryID = id
-		b, err := json.Marshal(s)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, b, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-
-	// Leg 1: only the pre-migration same-home copy exists → found.
-	old := plant(legacySessionsBase(), "ses-oldlayout")
-	got, ok := LoadSession(dir)
-	if !ok {
-		t.Fatal("LoadSession must read the pre-migration ~/.theboringoffice/sessions copy when projects/ has none")
-	}
-	if got.PrimaryID != "ses-oldlayout" {
-		t.Fatalf("old-layout restore mismatch: primary=%q", got.PrimaryID)
-	}
-
-	// Leg 2: the grafeio-era copy ALSO exists → the same-home old layout
-	// still wins (fallback chain order: projects > sessions > .grafeio).
-	grafeio := plant(grafeioSessionsBase(), "ses-grafeio")
-	got, ok = LoadSession(dir)
-	if !ok || got.PrimaryID != "ses-oldlayout" {
-		t.Fatalf("the .theboringoffice/sessions copy must outrank the .grafeio one: %+v ok=%v", got, ok)
-	}
-
-	// Leg 3: a save lands ONLY under the projects root, wins the next load,
-	// and leaves BOTH old files byte-untouched.
-	sf.PrimaryID = "ses-new"
-	if err := SaveSession(dir, sf); err != nil {
-		t.Fatal(err)
-	}
-	got, ok = LoadSession(dir)
-	if !ok || got.PrimaryID != "ses-new" {
-		t.Fatalf("after save the projects root must win: %+v ok=%v", got, ok)
-	}
-	for path, id := range map[string]string{old: "ses-oldlayout", grafeio: "ses-grafeio"} {
-		if b, _ := os.ReadFile(path); !strings.Contains(string(b), id) {
-			t.Fatalf("old-layout file %q must stay untouched, got %s", path, b)
-		}
-	}
-}
-
-// TestLoadSession_LegacyFallback pins the rename-era read contract: an
-// office session stored under the pre-rename ~/.grafeio/sessions root is
-// still found when BOTH newer roots have none (the grafeio root is read
-// only), so an upgrade relaunches into the old transcript instead of
-// silently starting over.
-func TestLoadSession_LegacyFallback(t *testing.T) {
-	scratchHome(t)
-	dir := t.TempDir()
-	st := state.OfficeState{
-		Chat: []state.ChatMsg{{ID: "b1", From: "boss", Kind: "boss", Text: "old office", At: 4}},
-	}
-	sf := Snapshot(dir, "ses-legacy", st)
-
-	// Plant the file at the PRE-RENAME path (SaveSession writes the new one).
-	legacy := filepath.Join(grafeioSessionsBase(), SessionDirHash(dir), "session.json")
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	b, err := json.Marshal(sf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacy, b, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	got, ok := LoadSession(dir)
-	if !ok {
-		t.Fatal("LoadSession must read the legacy ~/.grafeio copy when both newer roots have none")
-	}
-	if got.PrimaryID != "ses-legacy" {
-		t.Fatalf("legacy restore mismatch: primary=%q", got.PrimaryID)
-	}
-
-	// A save still lands ONLY under the new root.
-	sf.PrimaryID = "ses-new"
-	if err := SaveSession(dir, sf); err != nil {
-		t.Fatal(err)
-	}
-	got, ok = LoadSession(dir)
-	if !ok || got.PrimaryID != "ses-new" {
-		t.Fatalf("after save the new root must win: %+v ok=%v", got, ok)
-	}
-	if b, _ := os.ReadFile(legacy); !strings.Contains(string(b), "ses-legacy") {
-		t.Fatalf("legacy file must stay untouched, got %s", b)
 	}
 }
 
@@ -219,7 +97,73 @@ func TestSessionMalformedFallsSilent(t *testing.T) {
 	}
 }
 
+func TestLoadSessionReadRoots(t *testing.T) {
+	cases := []struct {
+		name      string
+		canonical bool
+		fallback  bool
+		want      string
+	}{
+		{name: "canonical only", canonical: true, want: "canonical"},
+		{name: "fallback only", fallback: true, want: "fallback"},
+		{name: "both present", canonical: true, fallback: true, want: "canonical"},
+		{name: "neither present"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			scratchHome(t)
+			dir := t.TempDir()
+			if tt.canonical {
+				writeLoadSessionFixture(t, SessionPath(dir), dir, "canonical")
+			}
+			if tt.fallback {
+				writeLoadSessionFixture(t, filepath.Join(earlierSessionsBase(), SessionDirHash(dir), "session.json"), dir, "fallback")
+			}
+			got, ok := LoadSession(dir)
+			if tt.want == "" {
+				if ok || got != nil {
+					t.Fatalf("LoadSession() = %#v, %v; want no session", got, ok)
+				}
+				return
+			}
+			if !ok || got.PrimaryID != tt.want {
+				t.Fatalf("LoadSession() = %#v, %v; want primary %q", got, ok, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadSessionCorruptCanonicalDoesNotFallBack(t *testing.T) {
+	scratchHome(t)
+	dir := t.TempDir()
+	writeLoadSessionFixture(t, filepath.Join(earlierSessionsBase(), SessionDirHash(dir), "session.json"), dir, "fallback")
+	writeLoadSessionRaw(t, SessionPath(dir), "{")
+	if got, ok := LoadSession(dir); ok || got != nil {
+		t.Fatalf("corrupt canonical LoadSession() = %#v, %v; must not use fallback", got, ok)
+	}
+}
+
+func writeLoadSessionFixture(t *testing.T, path, dir, primaryID string) {
+	t.Helper()
+	data, err := json.Marshal(SessionFile{Dir: dir, PrimaryID: primaryID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeLoadSessionRaw(t, path, string(data))
+}
+
+func writeLoadSessionRaw(t *testing.T, path, contents string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSessionFreshWindow(t *testing.T) {
+	scratchHome(t)
 	fresh := &SessionFile{Dir: "/x", SavedAt: time.Now().Add(-3 * 24 * time.Hour).UnixMilli()}
 	if !fresh.Fresh() {
 		t.Fatal("3-day-old session must be fresh")
@@ -231,6 +175,7 @@ func TestSessionFreshWindow(t *testing.T) {
 }
 
 func TestSnapshotCaps(t *testing.T) {
+	scratchHome(t)
 	st := state.OfficeState{}
 	for i := 0; i < 205; i++ {
 		st.Chat = append(st.Chat, state.ChatMsg{ID: "c", From: "user", Text: "x"})
@@ -249,6 +194,7 @@ func TestSnapshotCaps(t *testing.T) {
 }
 
 func TestSessionDirHashStable(t *testing.T) {
+	scratchHome(t)
 	a, b := SessionDirHash("/tmp/foo"), SessionDirHash("/tmp/foo")
 	if a != b || len(a) != 40 {
 		t.Fatalf("hash unstable or not sha1 hex: %q vs %q", a, b)
@@ -287,10 +233,11 @@ func bootMetaRows(chat []state.ChatMsg) int {
 // by Snapshot — while red error notices and the deliberately persisted
 // "closing — relaunching" row (session_picker.go) ride along as before.
 func TestSessionsSnapshotStripsBootMeta(t *testing.T) {
+	scratchHome(t)
 	st := state.OfficeState{Chat: []state.ChatMsg{
 		{ID: "n1", From: "office", Text: "restored office session from 10:00 (5 msgs) · /new for a fresh office", Meta: bootNoticeMeta, At: 1},
 		{ID: "n2", From: "office", Text: "send failed: boom", Meta: "error", At: 2},
-		{ID: "n3", From: "office", Text: "closing — relaunching as `theboringoffice -s ses-y`", At: 3},
+		{ID: "n3", From: "office", Text: "closing — relaunching as `theboringfloor -s ses-y`", At: 3},
 		{ID: "u1", From: "user", Kind: "user", Text: "hi", At: 4},
 	}}
 	sf := Snapshot("/d", "p", st)
@@ -324,7 +271,7 @@ func TestSessionsBootNoticeDedupe(t *testing.T) {
 		{ID: "r1", From: "office", Text: "restored office session from 09:12 (88 msgs) · old boot", At: 2},
 		{ID: "r2", From: "office", Text: "restored office session from 09:41 (90 msgs) · older boot", At: 3},
 		{ID: "p1", From: "boss", Kind: "boss", Pending: true, At: 4},
-		{ID: "c1", From: "office", Text: "closing — relaunching as `theboringoffice -s ses-x`", At: 5},
+		{ID: "c1", From: "office", Text: "closing — relaunching as `theboringfloor -s ses-x`", At: 5},
 	}}
 	if err := SaveSession(cwd, Snapshot(cwd, "ses-x", polluted)); err != nil {
 		t.Fatalf("SaveSession: %v", err)

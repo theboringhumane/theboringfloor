@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/theboringhumane/theboringfloor/internal/brand"
+	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 const (
@@ -131,10 +132,7 @@ func DirHash(dir string) string {
 }
 
 func home() string {
-	if value := os.Getenv("THEBORINGOFFICE_HOME"); value != "" {
-		return value
-	}
-	if value := os.Getenv("GRAFEIO_HOME"); value != "" {
+	if value := config.Env("HOME"); value != "" {
 		return value
 	}
 	return os.Getenv("HOME")

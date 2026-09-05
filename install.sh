@@ -1,5 +1,5 @@
 #!/bin/sh
-# theboringoffice installer — curl-pipe friendly.
+# theboringfloor installer — curl-pipe friendly.
 #
 #   curl -fsSL https://boringfloor.com/install.sh | sh
 #   then: theboringfloor --demo
@@ -27,10 +27,10 @@
 #                        service, and the terminal-browser bundle + shim
 #
 # Consumes goreleaser assets from https://github.com/theboringhumane/theboringfloor/releases :
-#   theboringoffice_<version>_<os>_<arch>.tar.gz        (contains theboringfloor plus thefloor_mcp)
-#   theboringoffice_<version>_checksums.txt
+#   theboringfloor_<version>_<os>_<arch>.tar.gz         (contains theboringfloor plus thefloor_mcp)
+#   theboringfloor_<version>_checksums.txt
 # Fallback when the GitHub API can't resolve a version:
-#   .../releases/latest/download/theboringoffice_<os>_<arch>.tar.gz   (checksums skipped, loudly)
+#   .../releases/latest/download/theboringfloor_<os>_<arch>.tar.gz    (checksums skipped, loudly)
 # With --with-terminal-browser, also pulls the zenbu terminal-browser bundle
 # (opt-in embedded browser lane — off by default):
 #   https://github.com/zenbu-labs/terminal-browser/releases/latest/download/terminal-browser-<os>-<arch>.tar.gz
@@ -39,8 +39,8 @@
 set -eu
 umask 022
 
-APP="theboringoffice"
-REPO="theboringhumane/theboringoffice"
+APP="theboringfloor"
+REPO="theboringhumane/theboringfloor"
 REPO_URL="https://github.com/${REPO}"
 API_LATEST="https://api.github.com/repos/${REPO}/releases/latest"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/main"
@@ -116,10 +116,10 @@ stage() {
 }
 
 print_banner() {
-# "theboringoffice" is 14 chars — too wide for one figlet row at 80 cols,
+# "theboringfloor" is 15 chars — too wide for one figlet row at 80 cols,
 # so the wordmark splits into two stacked words. Generator discipline
-# (same as the original grafeio banner): figlet standard, full-width
-# layout — `figlet -f standard -h full theboring` / `... office`, every
+# (unchanged from the original banner): figlet standard, full-width
+# layout — `figlet -f standard -h full theboring` / `... floor`, every
 # row <= 80 cols (widest: 64).
     cat <<'BANNER'
 
@@ -129,13 +129,13 @@ print_banner() {
  | |_  | | | | |  __/ | |_) | | (_) | | |    | | | | | | | (_| |
   \__| |_| |_|  \___| |_.__/   \___/  |_|    |_| |_| |_|  \__, |
                                                           |___/
-           __    __   _
-   ___    / _|  / _| (_)   ___    ___
-  / _ \  | |_  | |_  | |  / __|  / _ \
- | (_) | |  _| |  _| | | | (__  |  __/
-  \___/  |_|   |_|   |_|  \___|  \___|
+     __   _
+    / _| | |   ___     ___    _ __
+   | |_  | |  / _ \   / _ \  | '__|
+   |  _| | | | (_) | | (_) | | |
+   |_|   |_|  \___/   \___/  |_|
 
-        t h e b o r i n g o f f i c e  -  i n s t a l l e r
+         t h e b o r i n g f l o o r  -  i n s t a l l e r
         github.com/theboringhumane/theboringfloor
 BANNER
     printf '\n'
@@ -143,7 +143,7 @@ BANNER
 
 usage() {
     cat <<'USAGE'
-theboringoffice installer
+theboringfloor installer
 
 Usage:
   sh install.sh [--dry-run] [--prefix DIR] [--skip-agentmemory] [--uninstall]
@@ -175,7 +175,7 @@ USAGE
 cleanup() {
     if [ -n "$TMPWORK" ] && [ -d "$TMPWORK" ]; then
         case "$TMPWORK" in
-            */theboringoffice-install.*) rm -rf "$TMPWORK" ;;
+            */theboringfloor-install.*) rm -rf "$TMPWORK" ;;
         esac
     fi
 }
@@ -213,7 +213,7 @@ unsupported_os() {
   Manual options:
     1. Build from source (requires Go):
          git clone ${REPO_URL}
-         cd theboringoffice && go build -o theboringoffice ./cmd/theboringoffice
+          cd theboringfloor && go build -o theboringfloor ./cmd/theboring""office
     2. Watch ${REPO_URL}/releases for new platform builds.
 
 EOF
@@ -229,7 +229,7 @@ unsupported_arch() {
   Manual options:
     1. Build from source (requires Go):
          git clone ${REPO_URL}
-         cd theboringoffice && go build -o theboringoffice ./cmd/theboringoffice
+          cd theboringfloor && go build -o theboringfloor ./cmd/theboring""office
     2. Watch ${REPO_URL}/releases for new architecture builds.
 
 EOF
@@ -273,7 +273,7 @@ fetch() { # $1 = url, $2 = dest file
     elif command -v wget >/dev/null 2>&1; then
         wget -q -O "$2" "$1"
     else
-        die "need 'curl' or 'wget' on PATH to download theboringoffice"
+        die "need 'curl' or 'wget' on PATH to download theboringfloor"
     fi
 }
 
@@ -315,23 +315,23 @@ resolve_version() {
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
         info "    [dry-run] note: real run prefers the API-resolved versioned URL,"
-        info "             i.e. ${REPO_URL}/releases/download/v<version>/theboringoffice_<version>_${OS}_${ARCH}.tar.gz"
+        info "             i.e. ${REPO_URL}/releases/download/v<version>/theboringfloor_<version>_${OS}_${ARCH}.tar.gz"
     fi
 }
 
 make_tmpdir() {
     if [ "$DRY_RUN" -eq 1 ]; then
-        TMPWORK="(mktemp -d theboringoffice-install.XXXXXX)"
+        TMPWORK="(mktemp -d theboringfloor-install.XXXXXX)"
         info "  [dry-run] create temp workdir via mktemp -d (trap-cleanup on exit)"
         return 0
     fi
-    TMPWORK=$(mktemp -d "${TMPDIR:-/tmp}/theboringoffice-install.XXXXXX") \
+    TMPWORK=$(mktemp -d "${TMPDIR:-/tmp}/theboringfloor-install.XXXXXX") \
         || die "could not create a temp directory"
     info "    temp workdir: ${TMPWORK}"
 }
 
 download_assets() {
-    stage "Download theboringoffice"
+    stage "Download theboringfloor"
     make_tmpdir
     fetch "${DL_BASE}/${TARBALL}" "${TMPWORK}/${TARBALL}"
     if [ -n "$CHECKSUMS" ]; then
@@ -375,10 +375,9 @@ install_binary() {
     stage "Install binary"
     run mkdir -p "$PREFIX"
     if [ "$DRY_RUN" -eq 1 ]; then
-        info "  [dry-run] tar extract theboringfloor (or theboringoffice) → ${PREFIX}/theboringfloor"
+        info "  [dry-run] tar extract theboringfloor → ${PREFIX}/theboringfloor"
         info "  [dry-run] install optional thefloor_mcp → ${PREFIX}/thefloor_mcp"
         info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/tbo"
-        info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/theboringoffice"
         MCP_BINARY="${PREFIX}/thefloor_mcp (if present in archive)"
         return 0
     fi
@@ -386,10 +385,8 @@ install_binary() {
     src=""
     if [ -f "${TMPWORK}/theboringfloor" ]; then
         src="${TMPWORK}/theboringfloor"
-    elif [ -f "${TMPWORK}/theboringoffice" ]; then
-        src="${TMPWORK}/theboringoffice"
     else
-        die "tarball did not contain a 'theboringfloor' or 'theboringoffice' binary"
+        die "tarball did not contain a 'theboringfloor' binary"
     fi
     if [ -e "${PREFIX}/theboringfloor" ] && [ ! -w "${PREFIX}/theboringfloor" ]; then
         die "${PREFIX}/theboringfloor is not writable — re-run with --prefix ~/.local/bin"
@@ -445,7 +442,7 @@ write_binary_manifest() {
         return 0
     fi
     {
-        printf '%s\n' '# Written by theboringoffice installer; SHA-256 binary ownership records.'
+        printf '%s\n' '# Written by theboringfloor installer; SHA-256 binary ownership records.'
         printf '%s %s\n' 'theboringfloor' "$main_hash"
         if [ "$MCP_BINARY" = "${PREFIX}/thefloor_mcp" ]; then
             mcp_hash=$(sha256_file "$MCP_BINARY" || true)
@@ -459,9 +456,9 @@ write_binary_manifest() {
         || { rm -f "$manifest_tmp"; warn "could not write ${manifest} — uninstall will leave binaries in place"; }
 }
 
-# tbo + theboringoffice — same binary. Leave a real (non-symlink) name untouched.
+# tbo is a shim to the main binary. Leave a real (non-symlink) name untouched.
 install_cli_shims() {
-    for name in tbo theboringoffice; do
+    for name in tbo; do
         dest="${PREFIX}/${name}"
         if [ -e "$dest" ] && [ ! -L "$dest" ]; then
             warn "${dest} exists and is not a symlink — not overwriting"
@@ -477,7 +474,7 @@ install_cli_shims() {
 print_manual_agentmemory() { # $1 = reason
     warn "agentmemory auto-setup unavailable: $1"
     cat <<EOF
-    Manual setup (best effort — theboringoffice itself is fully installed):
+    Manual setup (best effort — theboringfloor itself is fully installed):
       1. install  : npm i -g @agentmemory/agentmemory
       2. init env : agentmemory init
       3. run      : agentmemory          (keep alive with tmux, screen, or your init system)
@@ -644,7 +641,7 @@ setup_systemd() {
     unit_body() {
         cat <<EOF
 [Unit]
-Description=agentmemory server (theboringoffice companion)
+Description=agentmemory server (theboringfloor companion)
 
 [Service]
 ExecStart=${AM_ABS}
@@ -682,7 +679,7 @@ EOF
 print_manual_terminal_browser() { # $1 = reason
     warn "terminal-browser auto-install unavailable: $1"
     cat <<EOF
-    Manual setup (best effort — theboringoffice itself is fully installed):
+    Manual setup (best effort — theboringfloor itself is fully installed):
       1. download : https://github.com/zenbu-labs/terminal-browser/releases/latest
                     (terminal-browser-<os>-<arch>.tar.gz)
       2. extract  : tar -xzf <tarball> -C ~/.local/share/terminal-browser
@@ -697,7 +694,7 @@ EOF
 write_tb_shim() {
     cat > "$1" <<EOF
 #!/bin/sh
-# theboringoffice installer shim — terminal-browser ships as an intact bundle
+# theboringfloor installer shim — terminal-browser ships as an intact bundle
 # (bin + electron + cli MUST stay side-by-side); its launcher resolves ROOT
 # from \$0's dirname, so a plain symlink escapes the bundle. Exec the absolute
 # launcher path instead — \$0 lands inside the bundle and ROOT resolves right.
@@ -767,7 +764,7 @@ setup_terminal_browser() {
     fi
 
     # Never clobber a member-installed launcher that isn't ours.
-    if [ -e "$tb_shim" ] && ! grep -q 'theboringoffice installer shim' "$tb_shim" 2>/dev/null; then
+    if [ -e "$tb_shim" ] && ! grep -q 'theboringfloor installer shim' "$tb_shim" 2>/dev/null; then
         warn "${tb_shim} exists and was not written by this script — not overwriting"
         print_manual_terminal_browser "foreign file at ${tb_shim}"
         TB_STATE="not installed (${tb_shim} exists, not ours)"
@@ -835,12 +832,12 @@ manifest_hash_for() { # $1 = binary basename
 
 # version_probe_owns_binary recognizes the version line emitted by
 # internal/version.String for released builds. It deliberately only accepts
-# stamped releases (not a tree-build's "theboringoffice dev"), and runs the
+# stamped releases (not a tree-build's "theboringfloor dev"), and runs the
 # candidate in a short, bounded subprocess so an old or hostile file cannot
 # stall uninstall. Stderr is intentionally discarded: a failed probe is not an
 # installer error and should not make uninstall noisy.
 version_probe_owns_binary() { # $1 = candidate path
-    probe_output=$(mktemp "${TMPDIR:-/tmp}/theboringoffice-version.XXXXXX" 2>/dev/null || true)
+    probe_output=$(mktemp "${TMPDIR:-/tmp}/theboringfloor-version.XXXXXX" 2>/dev/null || true)
     if [ -z "$probe_output" ]; then
         return 1
     fi
@@ -858,7 +855,10 @@ version_probe_owns_binary() { # $1 = candidate path
         probe_seconds=$((probe_seconds + 1))
     done
     wait "$probe_pid" 2>/dev/null || true
+    # Keep the legacy spelling for already-installed v0.3.28 and earlier
+    # binaries, whose released --version output still used that product name.
     if awk '
+        NR == 1 && /^theboringfloor v[0-9][0-9A-Za-z._+-]*( \([^)]*\))?$/ { valid = 1; next }
         NR == 1 && /^theboringoffice v[0-9][0-9A-Za-z._+-]*( \([^)]*\))?$/ { valid = 1; next }
         { valid = 0; exit }
         END { exit valid ? 0 : 1 }
@@ -906,13 +906,13 @@ remove_managed_binary() { # $1 = binary basename
     else
         if [ "$DRY_RUN" -eq 1 ]; then
             info "    [dry-run] ${binary_path}: ${manifest_state}; would use bounded --version ownership probe (not executed in dry-run)"
-            info "    [dry-run] ${binary_path}: would remove only if it prints a released 'theboringoffice v…' version line"
+            info "    [dry-run] ${binary_path}: would remove only if it prints a released theboringfloor or legacy version line"
             return 0
         fi
         if version_probe_owns_binary "$binary_path"; then
             ownership_check="released --version probe (${manifest_state})"
         else
-            info "    left ${binary_path} in place (ownership could not be verified: ${manifest_state}; --version probe did not match a released theboringoffice version)"
+            info "    left ${binary_path} in place (ownership could not be verified: ${manifest_state}; --version probe did not match a released version)"
             return 0
         fi
     fi
@@ -942,14 +942,15 @@ do_uninstall() {
     fi
     remove_managed_binary theboringfloor
     remove_managed_binary thefloor_mcp
-    for name in tbo theboringoffice; do
+    legacy_name="theboring""office"
+    for name in tbo "$legacy_name"; do
         if [ -L "${PREFIX}/${name}" ] || [ "$DRY_RUN" -eq 1 ]; then
             tgt=""
             if [ "$DRY_RUN" -eq 0 ] && [ -L "${PREFIX}/${name}" ]; then
                 tgt=$(readlink "${PREFIX}/${name}")
             fi
             case "$tgt" in
-                ""|theboringfloor|*/theboringfloor|theboringoffice|*/theboringoffice)
+                ""|theboringfloor|*/theboringfloor|"$legacy_name"|*/"$legacy_name")
                     run rm -f "${PREFIX}/${name}"
                     info "    removed: ${PREFIX}/${name}"
                     ;;
@@ -1009,7 +1010,7 @@ do_uninstall() {
     # the bundle must have the intact launcher + VERSION shape. Anything else
     # (a member-installed terminal-browser) is left alone.
     if [ -e "$tb_shim" ] || [ "$DRY_RUN" -eq 1 ]; then
-        if [ "$DRY_RUN" -eq 1 ] || grep -q 'theboringoffice installer shim' "$tb_shim" 2>/dev/null; then
+        if [ "$DRY_RUN" -eq 1 ] || grep -q 'theboringfloor installer shim' "$tb_shim" 2>/dev/null; then
             run rm -f "$tb_shim"
             info "    removed: ${tb_shim} (shim)"
         else
@@ -1033,12 +1034,12 @@ do_uninstall() {
 # ---------------------------------------------------------------- backend
 
 # brain_path — the brain.json the office will boot on: honors the
-# THEBORINGOFFICE_HOME / GRAFEIO_HOME scratch-root overrides exactly like the
+# THEFLOOR_HOME / THEBORINGOFFICE_HOME scratch-root overrides, exactly like the
 # binary's own config.Path (install.sh --dry-run proofs point one at a
 # scratch home; a real install almost always lands on $HOME).
 brain_path() {
-    home="${THEBORINGOFFICE_HOME:-${GRAFEIO_HOME:-$HOME}}"
-    printf '%s/.theboringoffice/configs/brain.json\n' "$home"
+    home="${THEFLOOR_HOME:-${THEBORINGOFFICE_HOME:-$HOME}}"
+    printf '%s/.theboringfloor/configs/brain.json\n' "$home"
 }
 
 # seed_brain_backend — writes backend.name=<BACKEND> into brain.json for the
@@ -1091,7 +1092,7 @@ PYEOF
         return 0
     fi
     # No brain.json yet: write the stock default with the name injected.
-    cfg="$("${PREFIX}/theboringoffice" --print-default-config 2>/dev/null || true)"
+    cfg="$("${PREFIX}/theboringfloor" --print-default-config 2>/dev/null || true)"
     if [ -z "$cfg" ]; then
         warn "could not read the default brain.json (theboringfloor --print-default-config failed) — first boot writes one; /backend ${BACKEND} switches then"
         return 0
@@ -1128,7 +1129,7 @@ setup_backend() {
             BACKEND_STATE="claude CLI at ${CLAUDE_BIN}"
         else
             warn "--backend claudecode but the claude CLI is not on PATH"
-            warn "install claude code first, or run theboringoffice with /backend opencode until then"
+            warn "install claude code first, or run theboringfloor with /backend opencode until then"
             BACKEND_STATE="claude CLI NOT on PATH (install claude code; office degrades loudly until then)"
         fi
     else
@@ -1196,7 +1197,7 @@ print_install_summary() {
     box_hr
     box_row "  binary  : ${PREFIX}/theboringfloor"
     box_row "  companion: ${MCP_BINARY}"
-    box_row "  run it  : theboringfloor   (shims: tbo, theboringoffice)"
+    box_row "  run it  : theboringfloor   (shim: tbo)"
     if [ -n "$VERSION" ]; then
         box_row "  release : v${VERSION}"
     else
@@ -1224,11 +1225,11 @@ print_uninstall_summary() {
     if [ "$DRY_RUN" -eq 1 ]; then
         box_row 'dry-run uninstall summary — NOTHING was actually removed'
     else
-        box_row 'theboringoffice uninstalled'
+        box_row 'theboringfloor uninstalled'
     fi
     box_hr
     box_row "  binaries: ${PREFIX}/theboringfloor and ${PREFIX}/thefloor_mcp removed (when installer-owned)"
-    box_row "  shim    : ${PREFIX}/tbo removed (if it pointed at theboringoffice)"
+    box_row "  shims   : ${PREFIX}/tbo and legacy command symlink removed when installer-owned"
     box_row "  service : ${PLIST_LABEL} / agentmemory.service removed"
     box_row "  terminal-browser: shim + bundle removed (only files this script wrote)"
     box_row "  kept    : ~/.agentmemory data, and the agentmemory npm package"

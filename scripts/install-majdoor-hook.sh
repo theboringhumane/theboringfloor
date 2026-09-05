@@ -1,5 +1,5 @@
 #!/bin/sh
-# theboringoffice — install the TheBoringMajdoor commit-msg attribution hook
+# theboringfloor — install the TheBoringMajdoor commit-msg attribution hook
 # into any git repo.
 #
 # Normally unnecessary: the office auto-installs this hook into the repo it
@@ -13,7 +13,7 @@
 # Curl-pipe works too (the hook body is fetched when there's no checkout
 # next to this script):
 #   curl -fsSL \
-#     https://raw.githubusercontent.com/theboringhumane/theboringoffice/main/scripts/install-majdoor-hook.sh \
+#     https://raw.githubusercontent.com/theboringhumane/theboringfloor/main/scripts/install-majdoor-hook.sh \
 #     | sh -s -- /path/to/repo
 #
 # The hook stamps every commit with exactly one
@@ -21,7 +21,7 @@
 # trailer. Docs: README.md → "Commit attribution — TheBoringMajdoor".
 set -eu
 
-RAW_BASE="https://raw.githubusercontent.com/theboringhumane/theboringoffice/main"
+RAW_BASE="https://raw.githubusercontent.com/theboringhumane/theboringfloor/main"
 MARKER='themajdoor@theboring\.name'
 
 UNINSTALL=0

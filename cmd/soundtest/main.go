@@ -1,10 +1,10 @@
-// soundtest — verification binary for the theboringoffice sound layer.
+// soundtest — verification binary for the theboringfloor sound layer.
 //
-//	theboringoffice-soundtest                   play every sound serially (350ms gaps)
-//	theboringoffice-soundtest --only queued,done
+//	theboringfloor-soundtest                   play every sound serially (350ms gaps)
+//	theboringfloor-soundtest --only queued,done
 //	                                    play just these sounds
-//	theboringoffice-soundtest --bell-mode       bell mode: print \a per sound, no files
-//	theboringoffice-soundtest --list            list name/wav size only, no playback
+//	theboringfloor-soundtest --bell-mode       bell mode: print \a per sound, no files
+//	theboringfloor-soundtest --list            list name/wav size only, no playback
 //
 // Exit code is 0 even when no player exists (prints
 // "player: none — file check only"); this is a verification harness, not a
@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/sound"
 )
 
@@ -30,11 +31,8 @@ func main() {
 	)
 	flag.Parse()
 
-	// THEBORINGOFFICE_HOME canonical, pre-rename GRAFEIO_HOME fallback.
-	home := os.Getenv("THEBORINGOFFICE_HOME")
-	if home == "" {
-		home = os.Getenv("GRAFEIO_HOME")
-	}
+	// THEFLOOR_HOME canonical, with the legacy prefix accepted by config.Env.
+	home := config.Env("HOME")
 	if home == "" {
 		home = os.Getenv("HOME")
 	}

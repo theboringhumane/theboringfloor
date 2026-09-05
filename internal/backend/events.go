@@ -51,7 +51,7 @@ type ocMessage struct {
 	// Cost/Tokens — the AssistantMessage usage counters. REQUIRED fields on
 	// the wire (opencode serve 1.18.19 GET /doc, AssistantMessage schema:
 	// required [..., "cost", "tokens"]): cost is the message's USD total as
-	// computed by opencode ITSELF — theboringoffice never prices anything. Numbers
+	// computed by opencode ITSELF — theboringfloor never prices anything. Numbers
 	// decode as float64 (the wire type is "number"); token counters are
 	// integral in practice and convert at emit time.
 	Cost   float64  `json:"cost"`
@@ -221,7 +221,7 @@ type normCtx struct {
 	// cfg.Roles[<rolekey>].NamePrefix replaces the stock Greek base when
 	// set. RoleConfig.Model is intentionally NOT applied here:
 	// per-sub-agent model dispatch is decided by opencode (the agent that
-	// spawned the child session), theboringoffice cannot override it — it is
+	// spawned the child session), theboringfloor cannot override it — it is
 	// documented as best-effort in internal/config.
 	cfg              *config.Config
 	employees        map[string]state.Employee // child session id -> employee

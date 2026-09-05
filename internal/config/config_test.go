@@ -9,15 +9,15 @@ import (
 	"testing"
 )
 
-// useHome redirects THEBORINGOFFICE_HOME (and therefore Path) into a fresh temp dir.
+// useHome redirects THEFLOOR_HOME (and therefore Path) into a fresh temp dir.
 func useHome(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", dir)
+	t.Setenv("THEFLOOR_HOME", dir)
 	return dir
 }
 
-// writeBrain plants a brain.json fixture under the given THEBORINGOFFICE_HOME.
+// writeBrain plants a brain.json fixture under the given THEFLOOR_HOME.
 func writeBrain(t *testing.T, home, content string) string {
 	t.Helper()
 	p := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
@@ -31,7 +31,7 @@ func writeBrain(t *testing.T, home, content string) string {
 }
 
 func TestPath(t *testing.T) {
-	t.Run("honors THEBORINGOFFICE_HOME", func(t *testing.T) {
+	t.Run("honors THEFLOOR_HOME", func(t *testing.T) {
 		home := useHome(t)
 		want := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
 		if got := Path(); got != want {
@@ -41,7 +41,7 @@ func TestPath(t *testing.T) {
 
 	t.Run("falls back to HOME", func(t *testing.T) {
 		home := t.TempDir()
-		t.Setenv("THEBORINGOFFICE_HOME", "")
+		t.Setenv("THEFLOOR_HOME", "")
 		t.Setenv("HOME", home)
 		want := filepath.Join(home, ".theboringfloor", "configs", "brain.json")
 		if got := Path(); got != want {
@@ -50,180 +50,21 @@ func TestPath(t *testing.T) {
 	})
 }
 
-// TestHomeOverride pins the rename-era env contract: THEBORINGOFFICE_HOME
-// wins when both are exported; the pre-rename GRAFEIO_HOME still works when
-// it is the only one.
 func TestHomeOverride(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_HOME", "/new")
-	t.Setenv("GRAFEIO_HOME", "/old")
-	if got := HomeOverride(); got != "/new" {
-		t.Errorf("HomeOverride() = %q, want THEBORINGOFFICE_HOME \"/new\"", got)
-	}
-	t.Setenv("THEBORINGOFFICE_HOME", "")
-	if got := HomeOverride(); got != "/old" {
-		t.Errorf("HomeOverride() = %q, want GRAFEIO_HOME fallback \"/old\"", got)
-	}
-}
+	t.Run("canonical", func(t *testing.T) {
+		t.Setenv("THEFLOOR_HOME", "/new")
+		if got := HomeOverride(); got != "/new" {
+			t.Errorf("HomeOverride() = %q, want THEFLOOR_HOME \"/new\"", got)
+		}
+	})
 
-func TestMigrateHome_RenamesOfficeDir(t *testing.T) {
-	home := useHome(t)
-	src := filepath.Join(home, ".theboringoffice", "configs")
-	if err := os.MkdirAll(src, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	oldBrain := filepath.Join(src, "brain.json")
-	if err := os.WriteFile(oldBrain, []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.UI.Theme != "nord" {
-		t.Fatalf("Load after migrate: theme=%q", cfg.UI.Theme)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".theboringoffice")); !os.IsNotExist(err) {
-		t.Fatalf("old dir must be gone after rename, stat err=%v", err)
-	}
-	if _, err := os.Stat(Path()); err != nil {
-		t.Fatalf("brain.json must live at new path: %v", err)
-	}
-}
-
-func TestMigrateHome_ReplacesNewDirWithOffice(t *testing.T) {
-	home := useHome(t)
-	writeBrain(t, home, `{"ui": {"theme": "mono"}}`)
-	extra := filepath.Join(home, ".theboringfloor", "sounds", "keep.wav")
-	if err := os.MkdirAll(filepath.Dir(extra), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(extra, []byte("wav"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	old := filepath.Join(home, ".theboringoffice", "configs")
-	if err := os.MkdirAll(old, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(old, "brain.json"), []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.UI.Theme != "nord" {
-		t.Fatalf("office dir must overwrite new brain.json: theme=%q", cfg.UI.Theme)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".theboringoffice")); !os.IsNotExist(err) {
-		t.Fatalf("old dir must be gone, stat err=%v", err)
-	}
-	if b, err := os.ReadFile(extra); err != nil || string(b) != "wav" {
-		t.Fatalf("files only in the new dir must stay: %q err=%v", b, err)
-	}
-}
-
-func TestMigrateHome_MergesGrafeioThenOffice(t *testing.T) {
-	home := useHome(t)
-	g := filepath.Join(home, ".grafeio", "sessions", "h", "session.json")
-	if err := os.MkdirAll(filepath.Dir(g), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(g, []byte(`{"dir":"/x"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(home, ".grafeio", "configs"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".grafeio", "configs", "brain.json"), []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	o := filepath.Join(home, ".theboringoffice", "configs")
-	if err := os.MkdirAll(o, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(o, "brain.json"), []byte(`{"ui": {"theme": "mono"}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.UI.Theme != "mono" {
-		t.Fatalf("office brain must beat grafeio: theme=%q", cfg.UI.Theme)
-	}
-	moved := filepath.Join(home, ".theboringfloor", "sessions", "h", "session.json")
-	if b, err := os.ReadFile(moved); err != nil || string(b) != `{"dir":"/x"}` {
-		t.Fatalf("grafeio-only files must merge in: %q err=%v", b, err)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".grafeio")); !os.IsNotExist(err) {
-		t.Fatalf("grafeio dir must be gone, stat=%v", err)
-	}
-}
-
-func TestMigrateThemeDirs(t *testing.T) {
-	xdg := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", xdg)
-	if err := os.MkdirAll(filepath.Join(xdg, "grafeio"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(xdg, "grafeio", "theme"), []byte("dracula\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(xdg, "theboringoffice"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(xdg, "theboringoffice", "theme"), []byte("paper\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	MigrateThemeDirs()
-	b, err := os.ReadFile(filepath.Join(xdg, "theboringfloor", "theme"))
-	if err != nil || string(b) != "paper\n" {
-		t.Fatalf("office theme must overwrite grafeio: %q err=%v", b, err)
-	}
-	if _, err := os.Stat(filepath.Join(xdg, "grafeio")); !os.IsNotExist(err) {
-		t.Fatalf("grafeio theme dir must be gone")
-	}
-	if _, err := os.Stat(filepath.Join(xdg, "theboringoffice")); !os.IsNotExist(err) {
-		t.Fatalf("office theme dir must be gone")
-	}
-}
-
-// TestLoad_LegacyPathFallback: only ~/.grafeio exists → merged onto the new path.
-func TestLoad_LegacyPathFallback(t *testing.T) {
-	home := useHome(t)
-	legacy := filepath.Join(home, ".grafeio", "configs", "brain.json")
-	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
-		t.Fatalf("mkdir legacy: %v", err)
-	}
-	if err := os.WriteFile(legacy, []byte(`{"ui": {"theme": "nord"}}`), 0o644); err != nil {
-		t.Fatalf("write legacy: %v", err)
-	}
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() with only a legacy fixture: %v", err)
-	}
-	if cfg.UI.Theme != "nord" {
-		t.Errorf("Load() must read the legacy brain.json: UI.Theme = %q, want \"nord\"", cfg.UI.Theme)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".grafeio")); !os.IsNotExist(err) {
-		t.Fatalf("grafeio must be merged away, stat=%v", err)
-	}
-	if b, err := os.ReadFile(Path()); err != nil || !strings.Contains(string(b), "nord") {
-		t.Fatalf("brain.json must live at the new path: %q err=%v", b, err)
-	}
-
-	cfg.UI.Theme = "mono"
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save(): %v", err)
-	}
-	got, err := Load()
-	if err != nil {
-		t.Fatalf("Load() after Save: %v", err)
-	}
-	if got.UI.Theme != "mono" {
-		t.Errorf("after Save the new path wins: UI.Theme = %q, want \"mono\"", got.UI.Theme)
-	}
+	t.Run("legacy", func(t *testing.T) {
+		t.Setenv("THEFLOOR_HOME", "")
+		t.Setenv(legacyTestEnv("HOME"), "/legacy")
+		if got := HomeOverride(); got != "/legacy" {
+			t.Errorf("HomeOverride() = %q, want legacy home", got)
+		}
+	})
 }
 
 func TestLoad_MissingFile_CreatesDefaults(t *testing.T) {

@@ -20,8 +20,8 @@ import (
 // wantClaudeCharterFresh is the pinned byte-exact expectation for the
 // created CLAUDE.md (kept as a literal so a drift in the renderer fails
 // loud here, not silently in members' projects).
-const wantClaudeCharterFresh = "<!-- theboringoffice charter -->\n" +
-	"This project is served by theboringoffice: the oikonomos manager protocol imported below is the operating charter.\n" +
+const wantClaudeCharterFresh = "<!-- theboringfloor charter -->\n" +
+	"This project is served by theboringfloor: the oikonomos manager protocol imported below is the operating charter.\n" +
 	"@.opencode/oikonomos.md\n"
 
 func TestEnsureClaudeCharterCreatesFresh(t *testing.T) {
@@ -137,11 +137,11 @@ func TestEnsureClaudeCharterAppendsWhenMissing(t *testing.T) {
 				t.Fatalf("member content clobbered:\n--- got ---\n%q\n--- want prefix ---\n%q", got, tc.body)
 			}
 			// …and the marked block rides below, exactly once.
-			wantTail := "\n\n<!-- theboringoffice charter -->\n@.opencode/oikonomos.md\n<!-- /theboringoffice charter -->\n"
+			wantTail := "\n\n<!-- theboringfloor charter -->\n@.opencode/oikonomos.md\n<!-- /theboringfloor charter -->\n"
 			if !strings.HasSuffix(string(got), wantTail) {
 				t.Fatalf("appended file does not end on the marked block:\n--- got ---\n%q\n--- want tail ---\n%q", got, wantTail)
 			}
-			if n := strings.Count(string(got), "<!-- theboringoffice charter -->"); n != 1 {
+			if n := strings.Count(string(got), "<!-- theboringfloor charter -->"); n != 1 {
 				t.Fatalf("begin marker appears %d times, want 1", n)
 			}
 			if n := strings.Count(string(got), claudeCharterImportLine); n != 1 {
@@ -192,7 +192,7 @@ func TestEnsureClaudeCharterIdempotent(t *testing.T) {
 	if string(got1) != string(got2) {
 		t.Fatal("append run 2 moved bytes")
 	}
-	if n := strings.Count(string(got2), "<!-- theboringoffice charter -->"); n != 1 {
+	if n := strings.Count(string(got2), "<!-- theboringfloor charter -->"); n != 1 {
 		t.Fatalf("begin marker appears %d times after two runs, want 1", n)
 	}
 }
@@ -212,13 +212,13 @@ func TestEnsureClaudeCharterMissingDir(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterEnvOptOut(t *testing.T) {
-	t.Setenv("THEBORINGOFFICE_NO_AUTOCHARTER", "1")
+	t.Setenv("THEFLOOR_NO_AUTOCHARTER", "1")
 	dir := t.TempDir()
 	changed, notes := EnsureClaudeCharter(dir)
 	if changed {
 		t.Fatalf("opted-out: changed=true, want false (notes %v)", notes)
 	}
-	if !containsNote(notes, "claude charter: disabled (THEBORINGOFFICE_NO_AUTOCHARTER)") {
+	if !containsNote(notes, "claude charter: disabled (THEFLOOR_NO_AUTOCHARTER)") {
 		t.Fatalf("notes missing the disabled line: %v", notes)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "CLAUDE.md")); !os.IsNotExist(err) {
@@ -276,5 +276,25 @@ func TestEnsureClaudeCharterPayloadFreshIsSilent(t *testing.T) {
 	}
 	if _, notes := EnsureClaudeCharter(dir); containsNote(notes, "seeded .opencode/oikonomos.md") || containsNote(notes, "refreshed .opencode/oikonomos.md") {
 		t.Fatalf("a fresh payload must not be (re)seeded or refreshed: %v", notes)
+	}
+}
+
+func TestEnsureClaudeCharterRefreshesRenamedStarter(t *testing.T) {
+	dir := t.TempDir()
+	legacyName := "theboring" + "office"
+	legacy := "<!-- " + legacyName + " charter -->\n" +
+		"This project is served by " + legacyName + ": the oikonomos manager protocol imported below is the operating charter.\n" +
+		claudeCharterImportLine + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte(legacy), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, notes := EnsureClaudeCharter(dir)
+	if !changed || !containsNote(notes, "refreshed (CLAUDE.md drifted from the office starter)") {
+		t.Fatalf("a renamed office starter must refresh, changed=%v notes=%v", changed, notes)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
+	if err != nil || string(got) != wantClaudeCharterFresh {
+		t.Fatalf("refreshed starter = %q, %v; want %q", got, err, wantClaudeCharterFresh)
 	}
 }

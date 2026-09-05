@@ -34,7 +34,7 @@
 //
 // The policy (Decide): localhost/127.0.0.1/::1 always; https:// to any
 // host by default; plain http:// to any other host refused unless
-// THEBORINGOFFICE_BROWSER_ALLOW_HTTP=1 (read AT USE TIME, never
+// THEFLOOR_BROWSER_ALLOW_HTTP=1 (read AT USE TIME, never
 // latched); every other scheme refused. This gates the AGENT's request
 // only — the browser PANE's own fetch guard (internal/panels) is a
 // second, stricter, member-owned network layer reading the same flag;
@@ -43,11 +43,11 @@ package browsertools
 
 import (
 	"net/url"
-	"os"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -107,7 +107,10 @@ const MaxRequestsPerReply = 3
 
 // AllowHTTPEnv — the member's outbound-http flag (THE name the browser
 // pane's own fetch guard reads too: one flag, two independent layers).
-const AllowHTTPEnv = "THEBORINGOFFICE_BROWSER_ALLOW_HTTP"
+const (
+	AllowHTTPEnv    = "THEFLOOR_BROWSER_ALLOW_HTTP"
+	allowHTTPSuffix = "BROWSER_ALLOW_HTTP"
+)
 
 // markerLineRe builds ONE whole-line directive matcher (multiline):
 // optional surrounding whitespace, the URL as the first run of
@@ -176,7 +179,7 @@ var blankCollapseRe = regexp.MustCompile(`\n{3,}`)
 // never quote a marker as prose). The browser-policy paragraph is
 // intentionally first, before directive syntax, and the full byte contract
 // is pinned by browsertools and both backend first-prompt tests.
-const PromptPreamble = "[theboringoffice harness — browser tool]\n" +
+const PromptPreamble = "[theboringfloor harness — browser tool]\n" +
 	"Browser policy: prefer the office's built-in browser directives for every URL, including localhost and external pages. " +
 	"Use open-browser to show a page, browser-screenshot to capture it for the member, and browser-snapshot to read text/links yourself. " +
 	"Do not launch Chrome, Chromium, Playwright, Puppeteer, terminal-browser, or another browser process unless the member explicitly asks for an external browser or the built-in directive fails; if it fails, explain why before falling back. " +
@@ -226,8 +229,9 @@ var localhostHosts = map[string]bool{
 	"::1":       true,
 }
 
-// Decide runs the URL policy for ONE agent request. getenv is the env
-// seam (os.Getenv in prod — read AT USE TIME, never latched).
+// Decide runs the URL policy for ONE agent request. A non-nil getenv is the
+// test seam; production callers pass nil, which reads config.EnvBool at use
+// time so canonical and legacy member settings both work.
 func Decide(rawurl string, getenv func(string) string) Decision {
 	u := strings.TrimSpace(rawurl)
 	if u == "" {
@@ -244,7 +248,7 @@ func Decide(rawurl string, getenv func(string) string) Decision {
 	if parsed.Scheme == "https" {
 		return Decision{URL: u, Allowed: true}
 	}
-	if getenv != nil && getenv(AllowHTTPEnv) == "1" {
+	if (getenv != nil && getenv(AllowHTTPEnv) == "1") || (getenv == nil && config.EnvBool(allowHTTPSuffix)) {
 		return Decision{URL: u, Allowed: true}
 	}
 	return Decision{URL: u, Reason: "plain http to " + host + " refused — export " + AllowHTTPEnv + "=1 to allow outbound http pages"}
@@ -299,9 +303,11 @@ type Bridge struct {
 	Getenv func(string) string
 }
 
-// NewBridge wires the prod bridge (os.Getenv).
+// NewBridge wires the prod bridge; Decide reads config.EnvBool when its env
+// seam is nil so canonical and legacy member settings retain their documented
+// precedence and fallback behavior.
 func NewBridge(emit func(state.Event)) *Bridge {
-	return &Bridge{Emit: emit, Getenv: os.Getenv}
+	return &Bridge{Emit: emit}
 }
 
 // eventKind maps a directive kind to its state event kind (the app's

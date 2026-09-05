@@ -85,9 +85,9 @@ func (t *terminalPanelStub) View() string {
 		return s
 	}
 	lines := []string{
-		"$ echo theboringoffice",
-		"theboringoffice",
-		"(uisshot STUB shell — the real panels.TermPanel is wired by cmd/theboringoffice)",
+		"$ echo theboringfloor",
+		"theboringfloor",
+		"(uisshot STUB shell — the real panels.TermPanel is wired by cmd/theboringfloor)",
 		fmt.Sprintf("$ keys received: %d · pastes: %d █", t.received, len(t.pastes)),
 	}
 	for i := range lines {

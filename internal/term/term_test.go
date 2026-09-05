@@ -115,7 +115,7 @@ func TestSpawnMajdoorAuthorEnv(t *testing.T) {
 	t.Setenv("GIT_AUTHOR_NAME", "Boss Person")
 
 	t.Run("flag off passes the parent value through", func(t *testing.T) {
-		t.Setenv("THEBORINGOFFICE_AUTO_COMMIT", "")
+		t.Setenv("THEFLOOR_AUTO_COMMIT", "")
 		s, err := Spawn(TermConfig{Shell: "/bin/sh", Cols: 80, Rows: 24})
 		if err != nil {
 			t.Fatalf("spawn: %v", err)
@@ -129,7 +129,7 @@ func TestSpawnMajdoorAuthorEnv(t *testing.T) {
 	})
 
 	t.Run("flag on overrides with the majdoor", func(t *testing.T) {
-		t.Setenv("THEBORINGOFFICE_AUTO_COMMIT", "true")
+		t.Setenv("THEFLOOR_AUTO_COMMIT", "true")
 		s, err := Spawn(TermConfig{Shell: "/bin/sh", Cols: 80, Rows: 24})
 		if err != nil {
 			t.Fatalf("spawn: %v", err)

@@ -286,7 +286,7 @@ func newShotRig(t *testing.T, kitty bool, available bool) *shotRig {
 	t.Helper()
 	pinLaneDetectEnv(t, kitty) // BEFORE the pane builds (the creation pin)
 	t.Setenv(BrowserLaneOffEnv, "1")
-	t.Setenv("THEBORINGOFFICE_HOME", t.TempDir())
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	e := pinShotEngine(t, available)
 	b := NewBrowser()
 	b.SetSize(64, 16)

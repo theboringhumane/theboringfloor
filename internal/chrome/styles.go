@@ -1,4 +1,4 @@
-// Package chrome — the central lipgloss style registry for the theboringoffice v2
+// Package chrome — the central lipgloss style registry for the theboringfloor v2
 // UI: theme colors, bar/border/tab styles, and the per-role color/glyph maps.
 //
 // Ports nameColor + ROLE_GLYPH from node-legacy/src/office/{roster,sprites}.ts
@@ -25,7 +25,6 @@ import (
 	glst "charm.land/glamour/v2/styles"
 	"charm.land/lipgloss/v2"
 
-	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/office"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
@@ -265,7 +264,7 @@ const (
 )
 
 // pinned latches once SetTheme applies an explicit user choice (--theme
-// flag, THEBORINGOFFICE_THEME (GRAFEIO_THEME fallback), brain.json ui.theme,
+// flag, THEFLOOR_THEME, brain.json ui.theme,
 // the persisted theme file, or a /themes pick). While pinned, device
 // light/dark auto switching
 // (SetThemeAuto) stays out of the way — the user's word wins.
@@ -312,23 +311,12 @@ func SetThemeAuto(dark bool) string {
 }
 
 // ThemeConfigPath is the persisted theme file
-// ($XDG_CONFIG_HOME/theboringoffice/theme, falling back to ~/.config/theboringoffice/theme).
+// ($XDG_CONFIG_HOME/theboringfloor/theme, falling back to ~/.config/theboringfloor/theme).
 func ThemeConfigPath() string {
 	return filepath.Join(themeConfigDir(), "theboringfloor", "theme")
 }
 
-func officeThemeConfigPath() string {
-	return filepath.Join(themeConfigDir(), "theboringoffice", "theme")
-}
-
-// legacyThemeConfigPath is the pre-rename ("grafeio") persisted theme file.
-// Read fallback only (see LoadPersistedTheme): a user's pinned theme
-// survives the rename; PersistTheme writes the NEW path only.
-func legacyThemeConfigPath() string {
-	return filepath.Join(themeConfigDir(), "grafeio", "theme")
-}
-
-// themeConfigDir — the XDG config root both theme paths live under.
+// themeConfigDir — the XDG config root for the theme path.
 func themeConfigDir() string {
 	dir := os.Getenv("XDG_CONFIG_HOME")
 	if dir == "" {
@@ -342,20 +330,11 @@ func themeConfigDir() string {
 }
 
 // LoadPersistedTheme returns the persisted theme name, or "" when absent
-// or unreadable. Callers (main) decide to SetTheme on it. Rename-era
-// fallback: when the new file is absent the pre-rename
-// ~/.config/grafeio/theme is read (never written).
+// or unreadable. Callers (main) decide to SetTheme on it.
 func LoadPersistedTheme() string {
-	config.MigrateThemeDirs()
 	b, err := os.ReadFile(ThemeConfigPath())
 	if err != nil {
-		b, err = os.ReadFile(officeThemeConfigPath())
-		if err != nil {
-			b, err = os.ReadFile(legacyThemeConfigPath())
-			if err != nil {
-				return ""
-			}
-		}
+		return ""
 	}
 	return strings.TrimSpace(string(b))
 }

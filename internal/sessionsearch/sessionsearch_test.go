@@ -50,27 +50,59 @@ func TestLoadMissingCorruptAndNullCollections(t *testing.T) {
 	}
 }
 
-func TestLoadFallbackRootsAndPrecedence(t *testing.T) {
-	roots := []string{".theboringfloor/projects", ".theboringoffice/projects", ".theboringfloor/sessions", ".theboringoffice/sessions", ".grafeio/sessions"}
-	for i, root := range roots {
-		t.Run(root, func(t *testing.T) {
+func TestLoadCanonicalRootOnly(t *testing.T) {
+	home := fakeHome(t)
+	dir := filepath.Join(home, "work")
+	writeSession(t, home, ".theboringfloor/projects", dir, sessionFixture{Dir: dir, PrimaryID: "canonical"})
+	loaded, ok := Load(dir)
+	if !ok || loaded.PrimaryID != "canonical" {
+		t.Fatalf("Load() = %#v, %v", loaded, ok)
+	}
+}
+
+func TestLoadReadRoots(t *testing.T) {
+	cases := []struct {
+		name      string
+		canonical bool
+		fallback  bool
+		want      string
+	}{
+		{name: "canonical only", canonical: true, want: "canonical"},
+		{name: "fallback only", fallback: true, want: "fallback"},
+		{name: "both present", canonical: true, fallback: true, want: "canonical"},
+		{name: "neither present"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
 			home := fakeHome(t)
 			dir := filepath.Join(home, "work")
-			writeSession(t, home, root, dir, sessionFixture{Dir: dir, PrimaryID: "root-" + string(rune('a'+i))})
+			if tt.canonical {
+				writeSession(t, home, ".theboringfloor/projects", dir, sessionFixture{Dir: dir, PrimaryID: "canonical"})
+			}
+			if tt.fallback {
+				writeSession(t, home, ".theboringfloor/sessions", dir, sessionFixture{Dir: dir, PrimaryID: "fallback"})
+			}
 			loaded, ok := Load(dir)
-			if !ok || loaded.PrimaryID != "root-"+string(rune('a'+i)) {
-				t.Fatalf("Load() = %#v, %v", loaded, ok)
+			if tt.want == "" {
+				if ok || loaded != nil {
+					t.Fatalf("Load() = %#v, %v; want no session", loaded, ok)
+				}
+				return
+			}
+			if !ok || loaded.PrimaryID != tt.want {
+				t.Fatalf("Load() = %#v, %v; want primary %q", loaded, ok, tt.want)
 			}
 		})
 	}
+}
+
+func TestLoadCorruptCanonicalDoesNotFallBack(t *testing.T) {
 	home := fakeHome(t)
-	dir := filepath.Join(home, "precedence")
-	for i, root := range roots {
-		writeSession(t, home, root, dir, sessionFixture{Dir: dir, PrimaryID: "root-" + string(rune('a'+i))})
-	}
-	loaded, ok := Load(dir)
-	if !ok || loaded.PrimaryID != "root-a" {
-		t.Fatalf("precedence Load() = %#v, %v", loaded, ok)
+	dir := filepath.Join(home, "work")
+	writeSession(t, home, ".theboringfloor/sessions", dir, sessionFixture{Dir: dir, PrimaryID: "fallback"})
+	writeFile(t, sessionPath(home, ".theboringfloor/projects", dir), "{")
+	if got, ok := Load(dir); ok || got != nil {
+		t.Fatalf("corrupt canonical Load() = %#v, %v; must not use fallback", got, ok)
 	}
 }
 
@@ -169,8 +201,7 @@ type sessionFixture struct {
 func fakeHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("THEBORINGOFFICE_HOME", home)
-	t.Setenv("GRAFEIO_HOME", "")
+	t.Setenv("THEFLOOR_HOME", home)
 	return home
 }
 

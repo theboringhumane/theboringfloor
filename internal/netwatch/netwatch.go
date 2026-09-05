@@ -1,5 +1,5 @@
 // Package netwatch — pure-stdlib internet connectivity watching for the
-// theboringoffice office. When connectivity drops the office enters OFFLINE mode:
+// theboringfloor office. When connectivity drops the office enters OFFLINE mode:
 // the live backend parks its network loops (no reconnect churn) and the
 // floor shows an "[offline]" badge; when connectivity returns the office
 // resumes on its own. NO third-party reachability libraries, NO cgo — the
