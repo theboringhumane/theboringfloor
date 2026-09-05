@@ -86,6 +86,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 - [Backends](https://boringfloor.com/docs/backends) — opencode or claudecode, both primed with the same manager charter
 - [Chat & work threads](https://boringfloor.com/docs/chat-and-threads)
 - [Plan mode](https://boringfloor.com/docs/plan-mode)
+- [MCP server](https://boringfloor.com/docs/mcp-server) — let your configured agent read the office and present plan drafts
 
 **Workflow**
 - [Permissions & questions](https://boringfloor.com/docs/permissions-and-questions)
@@ -145,6 +146,31 @@ Once you have approved a plan, the office keeps that approved version across ses
 ```
 
 The office sends the latest approved plan back to the boss. If there is no approved plan yet, it does not substitute a draft.
+
+### MCP server and office control
+
+`thefloor_mcp` is the MCP server for the office. It ships in the same release archive as `theboringfloor` and is registered automatically in your global OpenCode configuration; when the Claude CLI is present, it is also registered for Claude Code at user scope. It gives your configured agent a first-class path alongside the plan markers above — the markers still work.
+
+| Tool | Args | What it does | Needs live office? |
+|---|---|---|---|
+| `plan_present` | `{text}` | presents a plan draft in the plan pane | yes |
+| `plan_update` | `{text}` | updates the plan draft in the plan pane | yes |
+| `plan_get_approved` | `{}` | reads the member-approved plan | no — live or on-disk |
+| `transcript_read` | `{limit?}` | reads recent office transcript messages | no — live or on-disk |
+| `transcript_search` | `{query, limit?}` | searches this project's recent transcript tail | no — on-disk, current project only |
+| `office_status` | `{}` | reports whether the office is live, its backend, and message counts | no |
+
+`plan_present` and `plan_update` only present drafts: they never execute work. Review or edit the draft, then press `ctrl+x` twice to approve it for the build agent. If the office is not running, these write tools return an error; they have no offline fallback.
+
+The on-disk transcript is capped to its most recent 200 messages per project, so `transcript_search` searches that recent tail rather than complete history. It is scoped to the current project and cannot read another project's transcript.
+
+| Environment variable | Effect |
+|---|---|
+| `THEBORINGOFFICE_NO_CONTROL=1` | disables the office control API |
+| `THEBORINGOFFICE_NO_MCP_INSTALL=1` | disables automatic MCP registration |
+| `THEFLOOR_PROJECT_DIR` | overrides the project directory that `thefloor_mcp` binds to |
+
+The office control API listens only on loopback (`127.0.0.1`) on an ephemeral port and requires a bearer token. Its discovery file is `~/.theboringfloor/projects/<dirhash>/control.json`, mode `0600`; it holds the port and token for the current project.
 
 | Key | Does |
 |---|---|

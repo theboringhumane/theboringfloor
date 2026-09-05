@@ -3327,7 +3327,7 @@ func (m Model) LayoutInfo() (width, height, sidebar, floor int) {
 // inbound boss-turn image payloads and fires the lazy rasterize cmd —
 // model-owned UI state, exactly like the permission/question holds.
 func (m *Model) applyEvent(ev state.Event) tea.Cmd {
-	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.applyRecentMessages(ev), m.applyPlanTools(ev), m.bypassLatchKick(ev))
+	return tea.Batch(m.pagerKick(ev), m.applyMedia(ev), m.applyEventCore(ev), m.applyBrowserOpen(ev), m.applyRecentMessages(ev), m.applyPlanTools(ev), m.applyControl(ev), m.bypassLatchKick(ev))
 }
 
 // bypassLatchKick remains in the event batch for compatibility with backends

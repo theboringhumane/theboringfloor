@@ -179,8 +179,19 @@ export default function PlanModePage() {
               <span className="font-mono text-foreground">plan-update</span> block to refresh its
               draft. Ordinary chat stays in chat. These are agent-only protocol markers: they make a
               draft visible for your review; they do not execute work and they do not approve it.
-            </p>
-            <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
+             </p>
+             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+               Configured agents can also use the{' '}
+               <Link
+                 href="/docs/mcp-server"
+                 className="text-foreground/90 underline underline-offset-4 transition-colors hover:text-accent"
+               >
+                 MCP plan tools
+               </Link>{' '}
+               to present or update drafts. They are an additional path: the markers above still work,
+               and both paths only present drafts for your review and approval.
+             </p>
+             <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
 # Goal
 Add the requested capability.
 

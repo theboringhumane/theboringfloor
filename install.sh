@@ -23,11 +23,11 @@
 #                        Deprecated no-op guard: terminal-browser is opt-in
 #                        (--with-terminal-browser) since the default-off
 #                        pivot, so a plain run already skips it
-#   --uninstall          Remove the theboringfloor binary, shims, the agentmemory
+#   --uninstall          Remove the theboringfloor and thefloor_mcp binaries, shims, the agentmemory
 #                        service, and the terminal-browser bundle + shim
 #
 # Consumes goreleaser assets from https://github.com/theboringhumane/theboringfloor/releases :
-#   theboringoffice_<version>_<os>_<arch>.tar.gz        (contains a single binary: theboringoffice)
+#   theboringoffice_<version>_<os>_<arch>.tar.gz        (contains theboringfloor plus thefloor_mcp)
 #   theboringoffice_<version>_checksums.txt
 # Fallback when the GitHub API can't resolve a version:
 #   .../releases/latest/download/theboringoffice_<os>_<arch>.tar.gz   (checksums skipped, loudly)
@@ -73,6 +73,7 @@ TMPWORK=""
 AM_BIN=""
 AM_SERVICE_STATE="not attempted"
 TB_STATE="not attempted"
+MCP_BINARY="not included in this archive"
 
 # ---------------------------------------------------------------- utilities
 
@@ -150,7 +151,7 @@ Usage:
 
 Flags:
   --dry-run            Print every action without executing anything
-  --prefix DIR         Install prefix for the theboringoffice binary
+   --prefix DIR         Install prefix for the theboringfloor and thefloor_mcp binaries
                        (default: /usr/local/bin if writable, else ~/.local/bin)
   --skip-agentmemory   Do not install/start the agentmemory background service
   --with-terminal-browser
@@ -166,7 +167,7 @@ Flags:
                        hook into the repo at DIR — meant for repos the office
                        never boots in (it auto-installs into its boot repo
                        when attribution is on, the default)
-  --uninstall          Remove the theboringoffice binary, the tbo shim, the
+   --uninstall          Remove the theboringfloor and thefloor_mcp binaries, the tbo shim, the
                        agentmemory service, and the terminal-browser bundle + shim
 USAGE
 }
@@ -375,13 +376,13 @@ install_binary() {
     run mkdir -p "$PREFIX"
     if [ "$DRY_RUN" -eq 1 ]; then
         info "  [dry-run] tar extract theboringfloor (or theboringoffice) → ${PREFIX}/theboringfloor"
+        info "  [dry-run] install optional thefloor_mcp → ${PREFIX}/thefloor_mcp"
         info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/tbo"
         info "  [dry-run] ln -sfn theboringfloor ${PREFIX}/theboringoffice"
+        MCP_BINARY="${PREFIX}/thefloor_mcp (if present in archive)"
         return 0
     fi
-    tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringfloor 2>/dev/null \
-        || tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK" theboringoffice 2>/dev/null \
-        || tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK"
+    tar -xzf "${TMPWORK}/${TARBALL}" -C "$TMPWORK"
     src=""
     if [ -f "${TMPWORK}/theboringfloor" ]; then
         src="${TMPWORK}/theboringfloor"
@@ -400,7 +401,62 @@ install_binary() {
     mv -f "$tmp_dest" "${PREFIX}/theboringfloor"
     trap cleanup EXIT
     info "    installed: ${PREFIX}/theboringfloor"
+    if [ -f "${TMPWORK}/thefloor_mcp" ]; then
+        if [ -e "${PREFIX}/thefloor_mcp" ] && [ ! -w "${PREFIX}/thefloor_mcp" ]; then
+            die "${PREFIX}/thefloor_mcp is not writable — re-run with --prefix ~/.local/bin"
+        fi
+        tmp_mcp_dest="${PREFIX}/.thefloor_mcp.tmp.$$"
+        trap 'rm -f "$tmp_mcp_dest" 2>/dev/null; cleanup' EXIT
+        cp "${TMPWORK}/thefloor_mcp" "$tmp_mcp_dest"
+        chmod 755 "$tmp_mcp_dest"
+        mv -f "$tmp_mcp_dest" "${PREFIX}/thefloor_mcp"
+        trap cleanup EXIT
+        MCP_BINARY="${PREFIX}/thefloor_mcp"
+        info "    installed: ${MCP_BINARY}"
+    else
+        info "    optional binary not present: thefloor_mcp"
+    fi
     install_cli_shims
+    write_binary_manifest
+}
+
+# sha256_file — emit a portable SHA-256 fingerprint, or nothing when this
+# machine has no SHA-256 utility. Both utilities are already used by the
+# installer checksum verifier above.
+sha256_file() { # $1 = file
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$1" 2>/dev/null | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$1" 2>/dev/null | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+# write_binary_manifest records the exact installed bytes rather than trusting
+# a filename. Uninstall removes a binary only when its current SHA-256 still
+# matches this manifest, so a member's replacement is left alone.
+write_binary_manifest() {
+    manifest="${PREFIX}/.theboringfloor-manifest"
+    manifest_tmp="${manifest}.tmp.$$"
+    main_hash=$(sha256_file "${PREFIX}/theboringfloor" || true)
+    if [ -z "$main_hash" ]; then
+        warn "could not fingerprint ${PREFIX}/theboringfloor — uninstall will leave it in place"
+        return 0
+    fi
+    {
+        printf '%s\n' '# Written by theboringoffice installer; SHA-256 binary ownership records.'
+        printf '%s %s\n' 'theboringfloor' "$main_hash"
+        if [ "$MCP_BINARY" = "${PREFIX}/thefloor_mcp" ]; then
+            mcp_hash=$(sha256_file "$MCP_BINARY" || true)
+            if [ -z "$mcp_hash" ]; then
+                warn "could not fingerprint ${MCP_BINARY} — uninstall will leave it in place"
+            else
+                printf '%s %s\n' 'thefloor_mcp' "$mcp_hash"
+            fi
+        fi
+    } >"$manifest_tmp" && chmod 644 "$manifest_tmp" && mv -f "$manifest_tmp" "$manifest" \
+        || { rm -f "$manifest_tmp"; warn "could not write ${manifest} — uninstall will leave binaries in place"; }
 }
 
 # tbo + theboringoffice — same binary. Leave a real (non-symlink) name untouched.
@@ -772,6 +828,102 @@ setup_terminal_browser() {
 
 # ---------------------------------------------------------------- uninstall
 
+manifest_hash_for() { # $1 = binary basename
+    awk -v name="$1" '$1 == name && $2 ~ /^[[:xdigit:]]{64}$/ { print $2; exit }' \
+        "${PREFIX}/.theboringfloor-manifest" 2>/dev/null
+}
+
+# version_probe_owns_binary recognizes the version line emitted by
+# internal/version.String for released builds. It deliberately only accepts
+# stamped releases (not a tree-build's "theboringoffice dev"), and runs the
+# candidate in a short, bounded subprocess so an old or hostile file cannot
+# stall uninstall. Stderr is intentionally discarded: a failed probe is not an
+# installer error and should not make uninstall noisy.
+version_probe_owns_binary() { # $1 = candidate path
+    probe_output=$(mktemp "${TMPDIR:-/tmp}/theboringoffice-version.XXXXXX" 2>/dev/null || true)
+    if [ -z "$probe_output" ]; then
+        return 1
+    fi
+    "$1" --version >"$probe_output" 2>/dev/null &
+    probe_pid=$!
+    probe_seconds=0
+    while kill -0 "$probe_pid" 2>/dev/null; do
+        if [ "$probe_seconds" -ge 5 ]; then
+            kill "$probe_pid" 2>/dev/null || true
+            wait "$probe_pid" 2>/dev/null || true
+            rm -f "$probe_output"
+            return 1
+        fi
+        sleep 1
+        probe_seconds=$((probe_seconds + 1))
+    done
+    wait "$probe_pid" 2>/dev/null || true
+    if awk '
+        NR == 1 && /^theboringoffice v[0-9][0-9A-Za-z._+-]*( \([^)]*\))?$/ { valid = 1; next }
+        { valid = 0; exit }
+        END { exit valid ? 0 : 1 }
+    ' "$probe_output"; then
+        rm -f "$probe_output"
+        return 0
+    fi
+    rm -f "$probe_output"
+    return 1
+}
+
+# remove_managed_binary prefers the byte-for-byte installer manifest. Older
+# installations predate that manifest, so a missing manifest entry falls back
+# to the released binary's bounded --version probe. A mismatched manifest is
+# never weakened by the fallback: it proves that the installed bytes changed.
+remove_managed_binary() { # $1 = binary basename
+    binary_name="$1"
+    binary_path="${PREFIX}/${binary_name}"
+    manifest="${PREFIX}/.theboringfloor-manifest"
+    if [ ! -f "$binary_path" ]; then
+        info "    no binary at ${binary_path} — nothing to do"
+        return 0
+    fi
+    expected_hash=""
+    manifest_state=""
+    if [ ! -f "$manifest" ]; then
+        manifest_state="no installer manifest"
+    else
+        expected_hash=$(manifest_hash_for "$binary_name")
+        if [ -z "$expected_hash" ]; then
+            manifest_state="not listed in installer manifest"
+        fi
+    fi
+    if [ -n "$expected_hash" ]; then
+        actual_hash=$(sha256_file "$binary_path" || true)
+        if [ -z "$actual_hash" ]; then
+            info "    left ${binary_path} in place (ownership could not be verified: no SHA-256 tool available)"
+            return 0
+        fi
+        if [ "$actual_hash" != "$expected_hash" ]; then
+            info "    left ${binary_path} in place (ownership could not be verified: contents differ from installer manifest)"
+            return 0
+        fi
+        ownership_check="matching installer manifest"
+    else
+        if [ "$DRY_RUN" -eq 1 ]; then
+            info "    [dry-run] ${binary_path}: ${manifest_state}; would use bounded --version ownership probe (not executed in dry-run)"
+            info "    [dry-run] ${binary_path}: would remove only if it prints a released 'theboringoffice v…' version line"
+            return 0
+        fi
+        if version_probe_owns_binary "$binary_path"; then
+            ownership_check="released --version probe (${manifest_state})"
+        else
+            info "    left ${binary_path} in place (ownership could not be verified: ${manifest_state}; --version probe did not match a released theboringoffice version)"
+            return 0
+        fi
+    fi
+    run rm -f "$binary_path"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        info "    would remove: ${binary_path} (${ownership_check})"
+    else
+        info "    removed: ${binary_path} (${ownership_check})"
+    fi
+}
+
 do_uninstall() {
     s=$(uname -s)
     case "$s" in
@@ -780,7 +932,7 @@ do_uninstall() {
         *)      OS="other" ;;
     esac
 
-    stage "Remove theboringoffice binary"
+    stage "Remove theboringfloor binaries"
     if [ -n "$PREFIX" ]; then
         expand_prefix
     elif [ -d /usr/local/bin ] && [ -w "/usr/local/bin" ]; then
@@ -788,12 +940,8 @@ do_uninstall() {
     else
         PREFIX="${HOME}/.local/bin"
     fi
-    if [ -f "${PREFIX}/theboringfloor" ] || [ -f "${PREFIX}/theboringoffice" ] || [ "$DRY_RUN" -eq 1 ]; then
-        run rm -f "${PREFIX}/theboringfloor"
-        info "    removed: ${PREFIX}/theboringfloor"
-    else
-        info "    no binary at ${PREFIX}/theboringfloor — nothing to do"
-    fi
+    remove_managed_binary theboringfloor
+    remove_managed_binary thefloor_mcp
     for name in tbo theboringoffice; do
         if [ -L "${PREFIX}/${name}" ] || [ "$DRY_RUN" -eq 1 ]; then
             tgt=""
@@ -1047,6 +1195,7 @@ print_install_summary() {
     fi
     box_hr
     box_row "  binary  : ${PREFIX}/theboringfloor"
+    box_row "  companion: ${MCP_BINARY}"
     box_row "  run it  : theboringfloor   (shims: tbo, theboringoffice)"
     if [ -n "$VERSION" ]; then
         box_row "  release : v${VERSION}"
@@ -1078,7 +1227,7 @@ print_uninstall_summary() {
         box_row 'theboringoffice uninstalled'
     fi
     box_hr
-    box_row "  binary  : ${PREFIX}/theboringoffice removed"
+    box_row "  binaries: ${PREFIX}/theboringfloor and ${PREFIX}/thefloor_mcp removed (when installer-owned)"
     box_row "  shim    : ${PREFIX}/tbo removed (if it pointed at theboringoffice)"
     box_row "  service : ${PLIST_LABEL} / agentmemory.service removed"
     box_row "  terminal-browser: shim + bundle removed (only files this script wrote)"

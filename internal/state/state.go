@@ -533,6 +533,14 @@ const (
 	EvPlanPresent     EventKind = "plan-present"
 	EvPlanUpdate      EventKind = "plan-update"
 	EvPlanGetApproved EventKind = "plan-get-approved"
+	// EvControlQuery — a loopback control-API request that must be answered
+	// from LIVE ui state (plan buffers, transcript, backend identity). It is
+	// strictly read-only: it never mutates office state. ControlReqID
+	// correlates the answer back to the waiting HTTP handler through
+	// internal/control's pending-request registry, because the model is only
+	// safe to read on the tea Update goroutine. Control-API WRITES do not use
+	// this kind — they reuse EvPlanPresent/EvPlanUpdate.
+	EvControlQuery EventKind = "control-query"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -645,6 +653,13 @@ type Event struct {
 	// PlanToolText carries trimmed, head-capped markdown for EvPlanPresent and
 	// EvPlanUpdate. It is empty for EvPlanGetApproved.
 	PlanToolText string `json:"planToolText,omitempty"`
+	// ControlReqID, ControlQuery and ControlLimit are meaningful only for
+	// EvControlQuery. ControlReqID is the registry key the UI goroutine
+	// fulfills; ControlQuery names the projection ("plan"|"transcript"|
+	// "status"); ControlLimit bounds returned transcript rows (0 = default).
+	ControlReqID string `json:"controlReqId,omitempty"`
+	ControlQuery string `json:"controlQuery,omitempty"`
+	ControlLimit int    `json:"controlLimit,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

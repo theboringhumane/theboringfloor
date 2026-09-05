@@ -104,20 +104,32 @@ try {
     $extractDir = Join-Path $tempDir 'extract'
     Write-Stage 'Extracting the release archive'
     Expand-Archive -LiteralPath $archivePath -DestinationPath $extractDir -Force
-    $binaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${App}.exe")
-    if ($binaries.Count -ne 1) {
-        $binaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${AssetApp}.exe")
+    $primaryBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${App}.exe")
+    if ($primaryBinaries.Count -ne 1) {
+        $primaryBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter "${AssetApp}.exe")
     }
-    if ($binaries.Count -ne 1) {
-        Stop-Install "expected one $App.exe or $AssetApp.exe in $archiveName, found $($binaries.Count)."
+    if ($primaryBinaries.Count -ne 1) {
+        Stop-Install "expected one $App.exe or $AssetApp.exe in $archiveName, found $($primaryBinaries.Count)."
+    }
+    $mcpBinaries = @(Get-ChildItem -LiteralPath $extractDir -Recurse -File -Filter 'thefloor_mcp.exe')
+    if ($mcpBinaries.Count -gt 1) {
+        Stop-Install "expected at most one thefloor_mcp.exe in $archiveName, found $($mcpBinaries.Count)."
     }
 
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
     $destination = Join-Path $InstallDir "${App}.exe"
+    $mcpDestination = Join-Path $InstallDir 'thefloor_mcp.exe'
     Write-Stage "Installing ${App}.exe to $InstallDir"
     try {
-        Copy-Item -LiteralPath $binaries[0].FullName -Destination $destination -Force
+        Copy-Item -LiteralPath $primaryBinaries[0].FullName -Destination $destination -Force
         Copy-Item -LiteralPath $destination -Destination (Join-Path $InstallDir 'tbo.exe') -Force
+        if ($mcpBinaries.Count -eq 1) {
+            Copy-Item -LiteralPath $mcpBinaries[0].FullName -Destination $mcpDestination -Force
+            Write-Host "Installed thefloor_mcp.exe to $InstallDir"
+        }
+        else {
+            Write-Host 'thefloor_mcp.exe was not included in this archive; continuing with theboringfloor.exe only.'
+        }
     }
     catch {
         Stop-Install "could not replace $destination. Close a running theboringoffice process and try again. $($_.Exception.Message)"
@@ -138,6 +150,7 @@ try {
     Write-Host ''
     Write-Host 'theboringfloor installed successfully.'
     Write-Host 'Run: theboringfloor --demo   (or tbo --demo)'
+    Write-Host 'Companion: thefloor_mcp'
 }
 finally {
     if (Test-Path -LiteralPath $tempDir) {

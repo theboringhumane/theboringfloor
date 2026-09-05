@@ -52,6 +52,11 @@ const groups: { title: string; items: DocLink[] }[] = [
         name: 'Plan mode',
         promise: 'Talk the plan out, edit the draft yourself, approve it — then the crew builds.',
       },
+      {
+        href: '/docs/mcp-server',
+        name: 'MCP server',
+        promise: 'The local MCP bridge for plan drafts, approved plans, and the current project transcript.',
+      },
     ],
   },
   {

@@ -20,9 +20,28 @@ builds:
         -X github.com/theboringhumane/theboringfloor/internal/version.Version={{ .Version }}
         -X github.com/theboringhumane/theboringfloor/internal/version.Commit={{ .Commit }}
         -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
+  - id: thefloor_mcp
+    main: ./cmd/thefloor_mcp
+    binary: thefloor_mcp
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/theboringhumane/theboringfloor/internal/version.Version={{ .Version }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Commit={{ .Commit }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
 
 archives:
   - id: theboringoffice
+    ids:
+      - theboringoffice
+      - thefloor_mcp
     formats:
       - tar.gz
     format_overrides:

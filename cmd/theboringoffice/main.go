@@ -36,6 +36,9 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/cellmetrics"
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
 	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/control"
+	"github.com/theboringhumane/theboringfloor/internal/controlsrv"
+	"github.com/theboringhumane/theboringfloor/internal/mcpinstall"
 	"github.com/theboringhumane/theboringfloor/internal/notify"
 	"github.com/theboringhumane/theboringfloor/internal/office"
 	"github.com/theboringhumane/theboringfloor/internal/panels"
@@ -214,6 +217,66 @@ func main() {
 	// the very same lane, so its events arrive exactly like the boot's.
 	sink := func(e state.Event) { p.Send(e) }
 	model.SetEventSink(sink)
+	// THEBORINGOFFICE_NO_CONTROL=1 disables the optional loopback control API:
+	// no listener is bound and no discovery file is written. Its normal path
+	// stays outside the model so HTTP handlers only enqueue state.Events and
+	// the Bubble Tea goroutine remains the sole reader of live UI state.
+	var controlServer *controlsrv.Server
+	controlDir := mustGetwd()
+	if os.Getenv("THEBORINGOFFICE_NO_CONTROL") != "1" {
+		token, tokenErr := control.NewToken()
+		if tokenErr != nil {
+			go p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] control API disabled: " + tokenErr.Error()})
+		} else {
+			registry := control.NewRegistry()
+			app.SetControlRegistry(registry)
+			candidate := controlsrv.New(controlsrv.Options{
+				Dir: controlDir, Version: version.String(), Sink: sink, Token: token, Registry: registry,
+			})
+			if startErr := candidate.Start(); startErr != nil {
+				go p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] control API disabled: " + startErr.Error()})
+			} else if discoveryErr := control.WriteDiscovery(controlDir, control.Discovery{
+				PID: os.Getpid(), Port: candidate.Port(), Token: token, Dir: controlDir,
+				StartedAt: time.Now().UnixMilli(), Version: version.String(),
+			}); discoveryErr != nil {
+				_ = candidate.Close()
+				go p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] control API disabled: " + discoveryErr.Error()})
+			} else {
+				controlServer = candidate
+			}
+		}
+	}
+	stopControl := func() {
+		if controlServer == nil {
+			return
+		}
+		if err := control.RemoveDiscovery(controlDir); err != nil {
+			fmt.Fprintf(os.Stderr, "[theboringfloor] control discovery cleanup: %v\n", err)
+		}
+		if err := controlServer.Close(); err != nil {
+			fmt.Fprintf(os.Stderr, "[theboringfloor] control server cleanup: %v\n", err)
+		}
+	}
+	// Register thefloor_mcp with the host agents once per boot. This runs OFF
+	// the critical path and is never fatal: a missing companion binary, an
+	// unparseable host config, or an absent claude CLI all degrade to a status
+	// line. THEBORINGOFFICE_NO_MCP_INSTALL=1 opts out entirely.
+	go func() {
+		binPath, ok := mcpinstall.ResolveBinary()
+		if !ok {
+			return
+		}
+		res, err := mcpinstall.Ensure(binPath)
+		if err != nil {
+			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] mcp register: " + err.Error()})
+			return
+		}
+		// Only speak up when something actually changed — an already-present
+		// registration must stay silent on every subsequent boot.
+		if res.OpenCode.Status == "installed" || res.Claude.Status == "installed" {
+			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] thefloor_mcp registered — opencode: " + res.OpenCode.Status + ", claude: " + res.Claude.Status})
+		}
+	}()
 	go func() {
 		if err := b.Start(sink); err != nil {
 			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend failed: " + err.Error()})
@@ -246,6 +309,7 @@ func main() {
 	if err != nil {
 		fm.CloseTerminal() // external p.Quit() bypasses Update — reap the PTY
 		fm.PersistSession()
+		stopControl()
 		stopBounded(b) // the serve child dies with us — never leaked on fatal
 		fmt.Fprintf(os.Stderr, "[theboringfloor] fatal: %v\n", err)
 		os.Exit(1)
@@ -258,6 +322,7 @@ func main() {
 	// (the alt screen long restored, the member staring at a dead prompt).
 	fm.CloseTerminal()
 	fm.PersistSession()
+	stopControl()
 	stopBounded(b)
 
 	// /session picker accept = quit + exec-replace (the app recorded the
