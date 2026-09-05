@@ -61,12 +61,14 @@ export const metadata: Metadata = {
     url: SITE_URL,
     type: 'website',
     locale: 'en_US',
+    images: ['/opengraph-image'],
   },
   twitter: {
     card: 'summary_large_image',
     title: `${SITE_NAME} — ${SITE_TAGLINE}`,
     description:
       'Watch your opencode or Claude Code sub-agents walk the floor, claim tasks off the board, and answer for their work — chat, terminal, agents, board, mail, and activity, all in one office.',
+    images: ['/opengraph-image'],
   },
   manifest: '/favicon_io/site.webmanifest',
   icons: {

@@ -7,6 +7,48 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-05 · Fix attachment path collision (@developer sub... — tekton-39 (developer) · `done`
+- summary: Moved the Claude MCP prompt attachment to `<dir>/.claude/mcp-servers.md`.
+- files: `internal/backend/charter_claude_mcp.go`, `internal/backend/charter_claude_mcp_test.go`, `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`
+- verify: The final grep has **no `.opencode/mcp-servers.md` path** in either Claude-owned implementation file. The sole match is the deliberately rec
+- proof: *Claude attachment path**
+- ledgerId: led-1788631960891-61a0572d
+
+### 2026-09-05 · Fix stale MCP listing race (@developer subagent) — tekton-37 (developer) · `issues`
+- summary: **Root cause diagnosed:** a same-boot ordering race, not an MCP config parser/enumerator drop. `cmd/theboringfloor/main.go:267` launched `mcpinstall.Ensure` asy
+- files: `cmd/theboringfloor/main.go`, `internal/backend/charter_mcp_test.go`
+- verify: ```
+- proof: *Root-cause evidence**
+- ledgerId: led-1788631740781-e18c3ecf
+
+### 2026-09-05 · Claude Code MCP awareness (@developer subagent) — tekton-38 (developer) · `issues`
+- summary: Added Claude Code MCP discovery from `$CLAUDE_CONFIG_DIR/.claude.json` (or `~/.claude.json`), matching `projects` entries, and `<project>/.mcp.json`.
+- files: `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/charter_claude_mcp.go`, `internal/backend/charter_claude_mcp_test.go`
+- verify: ```
+- proof: ```md
+- ledgerId: led-1788631729521-e5c660ed
+
+### 2026-09-05 · Add Open Graph images (@developer subagent) — tekton-36 (developer) · `issues`
+- summary: Added build-time `ImageResponse` Open Graph images for the homepage and every statically generated blog post.
+- files: `website/app/opengraph-image.tsx`, `website/app/blog/[slug]/opengraph-image.tsx`, `website/app/layout.tsx`, `website/app/blog/[slug]/page.tsx`
+- verify: ```
+- proof: *Approach: dynamic `ImageResponse`, statically emitted at build time.** Next.js 16.3.0 successfully exported the root and all per-blog-post
+- ledgerId: led-1788630881006-50b19428
+
+### 2026-09-05 · Fix footer dead links (@developer subagent) — tekton-35 (developer) · `issues`
+- summary: Added the exact approved footer destination map for all navigable labels.
+- files: `website/components/site-footer.tsx`
+- verify: ```
+- proof: ### Features
+- ledgerId: led-1788630768192-46d94fd1
+
+### 2026-09-05 · Rename WhyComposio component (@developer suba... — tekton-34 (developer) · `done`
+- summary: Renamed the homepage floor-tour component from `WhyComposio` to `FloorTour`.
+- files: `website/components/home/why-composio.tsx` → `website/components/home/floor-tour.tsx`, `website/app/page.tsx`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788630737993-76bdf84c
+
 ### 2026-09-05 · Review MCP claim accuracy (@reviewer subagent) — theboringcto-4 (cto) · `done`
 - summary: ## VERDICT
 - files: (none)
@@ -314,46 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: read-only inspection; no commands run
 - proof: No ambient HTTP server exists.
 - ledgerId: led-1788619817699-0983ee85
-
-### 2026-09-03 · Write BTW hide/resume tests (@developer subag... — tekton-3 (developer) · `done`
-- summary: Added regression coverage for BTW hide, resume, permanent exit, `/new` cleanup, invalid-state notices, and the complete `/btw → Esc → /btw → /done` lifecycle.
-- files: `internal/app/btw_hide_test.go`
-- verify: ```
-- proof: `TestBtwHidePreservesSessionAndPinsMainChat`
-- ledgerId: led-1788454375559-c1810436
-
-### 2026-09-03 · Review BTW hide/resume diff (@reviewer subagent) — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788454280607-280b2bb9
-
-### 2026-09-03 · Panel: BTW pin bubble render (@developer suba... — tekton-2 (developer) · `issues`
-- summary: Added block-local `btwPin` hit maps and transcript-level `btwPinRows` aggregation.
-- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`
-- verify: ```
-- proof: Rendered transcript bubble:
-- ledgerId: led-1788453886770-e624a327
-
-### 2026-09-03 · App state: BTW hide/resume (@developer subagent) — tekton-1 (developer) · `issues`
-- summary: Added hidden BTW-session state (`btwHiddenSnap`) and pinned-bubble ID tracking (`btwPinMsgID`) to `Model`.
-- files: `internal/app/model.go`
-- verify: ```
-- proof: ```go
-- ledgerId: led-1788453828341-4cc750ba
-
-### 2026-09-03 · Scout /btw UI code (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: ## `/btw` recon report
-- files: (none)
-- verify: Read-only reconnaissance only. No commands or files were modified.
-- proof: ```text
-- ledgerId: led-1788453452610-e3c67fb7
-
-### 2026-09-03 · Pin approved plan value (@developer subagent) — tekton-8 (developer) · `done`
-- summary: Captured a rune-capped approved-plan snapshot once at approval command creation.
-- files: `internal/app/plan_mode.go`, `internal/app/model.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools_test.go`
-- verify: ```
-- proof: *Worked oversized multibyte approval**
-- ledgerId: led-1788435150629-b1136ea0
 

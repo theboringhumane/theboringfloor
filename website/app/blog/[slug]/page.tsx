@@ -35,11 +35,13 @@ export async function generateMetadata({
       publishedTime: post.date,
       authors: [post.author],
       tags: post.categories,
+      images: [`/blog/${post.slug}/opengraph-image`],
     },
     twitter: {
       card: 'summary_large_image',
       title: post.title,
       description: post.description,
+      images: [`/blog/${post.slug}/opengraph-image`],
     },
     robots: {
       index: true,

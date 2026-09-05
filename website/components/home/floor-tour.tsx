@@ -76,7 +76,7 @@ const tabs = [
   },
 ]
 
-export function WhyComposio() {
+export function FloorTour() {
   const [active, setActive] = useState(0)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const pinRef = useRef<HTMLDivElement>(null)
@@ -126,6 +126,7 @@ export function WhyComposio() {
   }, [active])
 
   return (
+    // Stable public anchor; do not rename.
     <section id="toolkits" className="border-b border-border">
       <div ref={wrapperRef} className="relative lg:h-[280vh]">
         <div ref={pinRef} className="mx-auto max-w-7xl px-6 py-20 lg:py-0 lg:min-h-svh lg:flex lg:flex-col lg:justify-center">

@@ -8,7 +8,7 @@ import { McpServer } from '@/components/home/mcp-server'
 import { ShoulderTap } from '@/components/home/shoulder-tap'
 import { ContextModel } from '@/components/home/context-model'
 import { UnderTheHood } from '@/components/home/under-the-hood'
-import { WhyComposio } from '@/components/home/why-composio'
+import { FloorTour } from '@/components/home/floor-tour'
 import { OpenSource } from '@/components/home/open-source'
 import { Community } from '@/components/home/community'
 import { ProductPlatform } from '@/components/home/product-platform'
@@ -29,7 +29,7 @@ export default function Page() {
           <ShoulderTap />
           <ContextModel />
           <UnderTheHood />
-          <WhyComposio />
+          <FloorTour />
           <OpenSource />
           <Community />
           <ProductPlatform />

@@ -45,8 +45,20 @@ const columns = [
   // },
 ];
 
-// Real routes for the footer entries that have one; the rest stay "#".
+// Real routes for the footer entries that have one; the rest render as plain text.
 const linkHrefs: Record<string, string> = {
+  "The Office": "/#toolkits",
+  "Work Threads": "/docs/chat-and-threads",
+  "Permission Queue": "/docs/permissions-and-questions",
+  Concierge: "/docs/queue-board-memory",
+  CLI: "/docs/getting-started",
+  opencode: "/docs/backends",
+  "Claude Code": "/docs/backends",
+  Docs: "/docs",
+  Blog: "/blog",
+  "Floor Plan": "/docs/layout-themes-power",
+  Vision: "/vision",
+  "Setup Guides": "/get-started",
   Sounds: "/sounds",
 };
 
@@ -92,16 +104,26 @@ export function SiteFooter() {
                   {col.title}
                 </p>
                 <ul className="mt-4 flex flex-col gap-3">
-                  {col.links.map((link) => (
-                    <li key={link}>
-                      <Link
-                        href={linkHrefs[link] ?? "#"}
-                        className="font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
-                      >
-                        {link}
-                      </Link>
-                    </li>
-                  ))}
+                  {col.links.map((link) => {
+                    const href = linkHrefs[link];
+
+                    return (
+                      <li key={link}>
+                        {href ? (
+                          <Link
+                            href={href}
+                            className="font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:text-foreground"
+                          >
+                            {link}
+                          </Link>
+                        ) : (
+                          <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                            {link}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ))}
