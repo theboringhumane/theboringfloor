@@ -37,6 +37,7 @@ bun run deploy:prod    # Pages, main
 |---|---|
 | [`/docs/getting-started`](https://boringfloor.com/docs/getting-started) | install |
 | [`/docs/backends`](https://boringfloor.com/docs/backends) | transports |
+| [`/docs/mcp-server`](https://boringfloor.com/docs/mcp-server) | MCP server |
 | [`/docs/chat-and-threads`](https://boringfloor.com/docs/chat-and-threads) | chat |
 | [`/docs/plan-mode`](https://boringfloor.com/docs/plan-mode) | plan |
 | [`/docs/permissions-and-questions`](https://boringfloor.com/docs/permissions-and-questions) | gates |

@@ -7,6 +7,62 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-05 · Review MCP claim accuracy (@reviewer subagent) — theboringcto-4 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: 4. Move, revert, or explicitly separate the four out-of-scope working-tree changes from this marketing-copy delivery.
+- proof: (none)
+- ledgerId: led-1788630372983-f0fe5d9f
+
+### 2026-09-05 · Scout prefill reply errors (@explore subagent) — skopos-8 (scout) · `issues`
+- summary: Performed read-only repo reconnaissance; made no edits.
+- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/model.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/plan_mode.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/recent_messages.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/opencode.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/parts.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/models_live.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/cmd/theboringfloor/main.go`
+- verify: ```
+- proof: ## Error origins
+- ledgerId: led-1788630347611-4c6d5614
+
+### 2026-09-05 · MCP discoverability surfaces (@developer suba... — tekton-33 (developer) · `done`
+- summary: Added `/docs/mcp-server` and the pre-existing omitted `/changelog` route to the static sitemap.
+- files: `website/app/sitemap.ts`, `website/app/llms.txt/route.ts`, `website/README.md`
+- verify: ```
+- proof: ```md
+- ledgerId: led-1788630139200-be1e34f2
+
+### 2026-09-05 · Homepage MCP section (@developer subagent) — tekton-31 (developer) · `issues`
+- summary: Added the `McpServer` homepage section with a six-tool responsive card grid, an agent-tools panel, live-office constraints, and MCP docs link.
+- files: `website/components/home/mcp-server.tsx`, `website/app/page.tsx`
+- verify: ```
+- proof: ### The office MCP server
+- ledgerId: led-1788630118543-fc4bef2d
+
+### 2026-09-05 · MCP launch blog post (@developer subagent) — tekton-32 (developer) · `issues`
+- summary: Added a 1,817-word engineering blog post announcing `thefloor_mcp` through the honest tension between prompt markers and a typed tool protocol.
+- files: `website/content/blog/prompt-markers-are-not-a-protocol.md`
+- verify: ```
+- proof: ```md
+- ledgerId: led-1788630109481-407aa1ba
+
+### 2026-09-05 · Scout blog and voice (@general subagent) — skopos-7 (scout) · `issues`
+- summary: Determined that blog posts are Markdown files in `website/content/blog/`, loaded directly from the filesystem. A new post requires one new `<slug>.md` file; its
+- files: `website/lib/blog.ts`, `website/lib/blog-types.ts`, `website/app/blog/page.tsx`, `website/components/blog/blog-filter-list.tsx`, `website/app/blog/[slug]/page.tsx`, `website/app/globals.css`, `website/content/blog/WRITING.md`, `website/content/blog/universal-cli.md`, `website/content/blog/watching-subagent-work.md`, `website/content/blog/a-permission-is-not-a-question.md`, `website/content/blog/claude-code-support.md`, `website/content/blog/running-multiple-coding-agents.md`
+- verify: No build was run; this was read-only reconnaissance.
+- proof: ### Content system and new-post requirements
+- ledgerId: led-1788629884252-a06f4d20
+
+### 2026-09-05 · Scout homepage structure (@general subagent) — skopos-5 (scout) · `issues`
+- summary: Determined the homepage is assembled in a single ordered list in `website/app/page.tsx:16-39`; it renders 12 marketing sections between the shared header and fo
+- files: `website/app/page.tsx`, `website/app/globals.css`, `website/app/layout.tsx`, `website/package.json`, `website/lib/gsap.ts`, `website/components/theme-provider.tsx`, `website/components/section-tag.tsx`, `website/components/scroll-reveal.tsx`, `website/components/site-header.tsx`, `website/components/ui/button.tsx`, `website/components/ui/light-blue-plasma-shader-w-grain-interactive.tsx`, `website/components/home/hero.tsx`
+- verify: ```
+- proof: ### Homepage Sections In Order
+- ledgerId: led-1788629850851-851d9e58
+
+### 2026-09-05 · Scout nav SEO and llms (@general subagent) — skopos-6 (scout) · `issues`
+- summary: **Top navigation is hardcoded, not filesystem-derived.** Desktop links are individual `<Link>` elements in `website/components/site-header.tsx:104-121`; mobile 
+- files: `website/components/site-header.tsx`, `website/components/site-footer.tsx`, `website/app/docs/page.tsx`, `website/app/docs/mcp-server/page.tsx`, `website/app/layout.tsx`, `website/app/get-started/page.tsx`, `website/app/blog/page.tsx`, `website/app/blog/[slug]/page.tsx`, `website/lib/site.ts`, `website/lib/blog.ts`, `website/app/llms.txt/route.ts`, `website/app/sitemap.ts`
+- verify: ```
+- proof: | Surface | File | Manual or automatic | Edit needed to register a new page |
+- ledgerId: led-1788629846384-1c3fb967
+
 ### 2026-09-05 · Restore sessions fallback (@developer subagent) — tekton-30 (developer) · `done`
 - summary: Restored the same-product `sessions/<dirhash>/session.json` read fallback in `app.LoadSession`, after the canonical `projects/` path.
 - files: `internal/app/sessions.go`, `internal/app/sessions_test.go`, `internal/sessionsearch/sessionsearch.go`, `internal/sessionsearch/sessionsearch_test.go`
@@ -300,60 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *Worked oversized multibyte approval**
 - ledgerId: led-1788435150629-b1136ea0
-
-### 2026-09-03 · Final plan tools signoff (@reviewer subagent) — theboringcto-2 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788434756483-097a2700
-
-### 2026-09-03 · Add install.ps1 checksum tests (@developer su... — tekton-7 (developer) · `issues`
-- summary: Added a repository-root Go regression test for `install.ps1`’s `Get-Checksum` match expression.
-- files: `install_ps1_test.go`
-- verify: ```
-- proof: | Input line | Expected match |
-- ledgerId: led-1788434233704-a1ba9673
-
-### 2026-09-03 · Fix install.ps1 checksum (@developer subagent) — tekton-6 (developer) · `issues`
-- summary: Replaced `Get-Checksum`’s composite-format (`-f`) regex construction with string concatenation.
-- files: `install.ps1`
-- verify: ```
-- proof: ```powershell
-- ledgerId: led-1788433994550-eaa676c7
-
-### 2026-09-03 · Scout install.ps1 checksum (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: Confirmed the reported failure is caused by the format operator (`-f`) in `Get-Checksum`, not by parsing the downloaded checksum file.
-- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.ps1`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/README.md`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/app/docs/getting-started/page.tsx`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/README.md`, No dedicated installer/checksum test file exists in the repository.
-- verify: ```
-- proof: ### Broken function — `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/install.ps1`
-- ledgerId: led-1788433807440-4622233e
-
-### 2026-09-03 · Cap approved plan persistence (@developer sub... — tekton-5 (developer) · `done`
-- summary: Added a central rune-safe approved-plan cap of 20,000 runes with the exact visible suffix `… [approved plan truncated]`.
-- files: `internal/app/plan_mode.go`, `internal/app/plan_tools.go`, `internal/app/sessions.go`, `internal/app/plan_mode_test.go`, `internal/app/plan_tools_test.go`
-- verify: ```
-- proof: *Worked oversized multibyte approval**
-- ledgerId: led-1788433458614-21f2223a
-
-### 2026-09-03 · Harden plan marker overlaps (@developer subag... — tekton-4 (developer) · `issues`
-- summary: Made valid `plan-present` and `plan-update` blocks opaque during extraction: an own-line `⟦plan-get-approved⟧` inside either block is retained as plan body text
-- files: `internal/plantools/plantools.go`, `internal/plantools/plantools_test.go`
-- verify: ```
-- proof: ### Valid present block containing an approval marker
-- ledgerId: led-1788433367856-2182a00f
-
-### 2026-09-03 · Review plan tools end-to-end (@reviewer subag... — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788432981454-b93fae9a
-
-### 2026-09-03 · Build plan tool protocol (@developer subagent) — tekton-1 (developer) · `issues`
-- summary: Added backend-neutral `internal/plantools` parsing and scrubbing for strict plan-present, plan-update, and own-line plan-get-approved directives.
-- files: `internal/plantools/plantools.go`, `internal/plantools/plantools_test.go`, `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/plan_tools_test.go`, `internal/backend/browser_open_test.go`, `internal/backend/claude_spawn_test.go`, `internal/backend/claude_office_swap_test.go`, `internal/backend/claude_attachment_test.go`
-- verify: ```
-- proof: ### Agent first-prompt harness preamble
-- ledgerId: led-1788429772606-0c38e556
 

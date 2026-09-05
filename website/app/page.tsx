@@ -4,6 +4,7 @@ import { Hero } from '@/components/home/hero'
 import { StatsStrip } from '@/components/home/stats-strip'
 import { FeatureGrid } from '@/components/home/feature-grid'
 import { PlanThenBuild } from '@/components/home/plan-then-build'
+import { McpServer } from '@/components/home/mcp-server'
 import { ShoulderTap } from '@/components/home/shoulder-tap'
 import { ContextModel } from '@/components/home/context-model'
 import { UnderTheHood } from '@/components/home/under-the-hood'
@@ -24,6 +25,7 @@ export default function Page() {
           <AgentsNeedAction />
           <FeatureGrid />
           <PlanThenBuild />
+          <McpServer />
           <ShoulderTap />
           <ContextModel />
           <UnderTheHood />
