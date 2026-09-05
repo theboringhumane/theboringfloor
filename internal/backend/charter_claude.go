@@ -35,7 +35,8 @@
 //     claude-only offices current on upgrades, and a drift-free file
 //     costs zero writes and zero boot notes. Without this half the
 //     import dangles on claude-backed offices, where EnsureCharter
-//     never runs (it is wired from opencode.go's Start only).
+//     never runs (it is wired from opencode.go's Start only). When Claude
+//     has MCP servers, CLAUDE.md imports the prompt-safe server list directly.
 //  2. The memory file: create <dir>/CLAUDE.md when absent (office-
 //     branded comment line + one line of intent + the import line);
 //     no-op when it already references oikonomos.md in ANY form (a
@@ -87,20 +88,26 @@ const claudeCharterRefNeedle = "oikonomos.md"
 // comment line, one line of intent, the import line. LF-only, ASCII,
 // ends on a newline — the same determinism discipline as every
 // prompt-visible artifact here.
-func renderClaudeCharterFile() []byte {
+func renderClaudeCharterFile(hasMCPAttachment bool) []byte {
 	var b strings.Builder
 	b.WriteString(claudeCharterBeginMarker + "\n")
 	b.WriteString("This project is served by theboringfloor: the oikonomos manager protocol imported below is the operating charter.\n")
 	b.WriteString(claudeCharterImportLine + "\n")
+	if hasMCPAttachment {
+		b.WriteString(claudeMCPAttachmentImport + "\n")
+	}
 	return []byte(b.String())
 }
 
 // renderClaudeCharterBlock is the marked append block for an existing
 // CLAUDE.md: begin marker, import, end marker, trailing newline.
-func renderClaudeCharterBlock() []byte {
+func renderClaudeCharterBlock(hasMCPAttachment bool) []byte {
 	var b strings.Builder
 	b.WriteString(claudeCharterBeginMarker + "\n")
 	b.WriteString(claudeCharterImportLine + "\n")
+	if hasMCPAttachment {
+		b.WriteString(claudeMCPAttachmentImport + "\n")
+	}
 	b.WriteString(claudeCharterEndMarker + "\n")
 	return []byte(b.String())
 }
@@ -128,7 +135,13 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		return false, []string{"[theboringfloor] claude charter: failed (not a directory: " + dir + ")"}
 	}
 
-	// 1. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
+	// 1. Discover and refresh the prompt-safe MCP attachment before writing
+	//    the office-owned payload and its CLAUDE.md import.
+	mcpChanged, hasMCPAttachment, mcpNotes := ensureClaudeMCPAttachment(dir)
+	changed = changed || mcpChanged
+	notes = append(notes, mcpNotes...)
+
+	// 2. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
 	//    (same discipline as the opencode charter pass) — refresh it to
 	//    the embedded charter bytes whenever it drifts: absent, stale
 	//    (office upgrade), or hand-edited. Members edit CLAUDE.md, never
@@ -137,9 +150,10 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	//    notes (no boot noise).
 	ocDir := filepath.Join(dir, ".opencode")
 	payloadPath := filepath.Join(ocDir, "oikonomos.md")
+	wantPayload := renderClaudeCharterPayload()
 	existing, statErr := os.ReadFile(payloadPath)
 	switch {
-	case statErr == nil && string(existing) == charter.Text:
+	case statErr == nil && bytes.Equal(existing, wantPayload):
 		// fresh — nothing to do
 	case statErr != nil && !os.IsNotExist(statErr):
 		return changed, append(notes, "[theboringfloor] claude charter: failed (read "+payloadPath+": "+statErr.Error()+")")
@@ -147,7 +161,7 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		if err := os.MkdirAll(ocDir, 0o755); err != nil {
 			return changed, append(notes, "[theboringfloor] claude charter: failed (mkdir "+ocDir+": "+err.Error()+")")
 		}
-		if err := os.WriteFile(payloadPath, []byte(charter.Text), 0o644); err != nil {
+		if err := os.WriteFile(payloadPath, wantPayload, 0o644); err != nil {
 			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+payloadPath+": "+err.Error()+")")
 		}
 		changed = true
@@ -163,7 +177,7 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	raw, err := os.ReadFile(mdPath)
 	switch {
 	case os.IsNotExist(err):
-		if err := os.WriteFile(mdPath, renderClaudeCharterFile(), 0o644); err != nil {
+		if err := os.WriteFile(mdPath, renderClaudeCharterFile(hasMCPAttachment), 0o644); err != nil {
 			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
 		}
 		changed = true
@@ -171,12 +185,20 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	case err != nil:
 		return changed, append(notes, "[theboringfloor] claude charter: failed (read "+mdPath+": "+err.Error()+")")
 	default:
-		if isClaudeCharterStarter(raw) && !bytes.Equal(raw, renderClaudeCharterFile()) {
-			if err := os.WriteFile(mdPath, renderClaudeCharterFile(), 0o644); err != nil {
+		if isClaudeCharterStarter(raw) && !bytes.Equal(raw, renderClaudeCharterFile(hasMCPAttachment)) {
+			if err := os.WriteFile(mdPath, renderClaudeCharterFile(hasMCPAttachment), 0o644); err != nil {
 				return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
 			}
 			changed = true
 			notes = append(notes, "[theboringfloor] claude charter: refreshed (CLAUDE.md drifted from the office starter)")
+			break
+		}
+		if migrated, ok := migrateClaudeCharterBlock(raw, hasMCPAttachment); ok {
+			if err := os.WriteFile(mdPath, migrated, 0o644); err != nil {
+				return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
+			}
+			changed = true
+			notes = append(notes, "[theboringfloor] claude charter: refreshed (CLAUDE.md office import block migrated)")
 			break
 		}
 		if strings.Contains(string(raw), claudeCharterRefNeedle) {
@@ -195,7 +217,7 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 			}
 			out = append(out, '\n')
 		}
-		out = append(out, renderClaudeCharterBlock()...)
+		out = append(out, renderClaudeCharterBlock(hasMCPAttachment)...)
 		if err := os.WriteFile(mdPath, out, 0o644); err != nil {
 			return changed, append(notes, "[theboringfloor] claude charter: failed (write "+mdPath+": "+err.Error()+")")
 		}
@@ -206,16 +228,44 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 	return changed, notes
 }
 
+func renderClaudeCharterPayload() []byte {
+	return []byte(charter.Text)
+}
+
 // isClaudeCharterStarter identifies the three-line, office-owned starter
 // generated by renderClaudeCharterFile. The marker text itself may differ
 // after a product rename, so retain the structural test to refresh a stale
 // generated file without touching a member-authored CLAUDE.md.
 func isClaudeCharterStarter(raw []byte) bool {
 	lines := bytes.Split(raw, []byte("\n"))
-	return len(lines) == 4 &&
-		bytes.HasPrefix(lines[0], []byte("<!-- ")) &&
+	if len(lines) != 4 && len(lines) != 5 {
+		return false
+	}
+	if len(lines) == 5 && string(lines[3]) != claudeMCPAttachmentImport {
+		return false
+	}
+	return bytes.HasPrefix(lines[0], []byte("<!-- ")) &&
 		bytes.HasSuffix(lines[0], []byte(" charter -->")) &&
 		bytes.HasPrefix(lines[1], []byte("This project is served by ")) &&
 		string(lines[2]) == claudeCharterImportLine &&
-		len(lines[3]) == 0
+		len(lines[len(lines)-1]) == 0
+}
+
+// migrateClaudeCharterBlock replaces only the exact, trailing office-owned
+// append block. It leaves every member byte above the block untouched while
+// moving any former MCP attachment import to Claude's private directory.
+func migrateClaudeCharterBlock(raw []byte, hasMCPAttachment bool) ([]byte, bool) {
+	want := renderClaudeCharterBlock(hasMCPAttachment)
+	if bytes.HasSuffix(raw, want) {
+		return nil, false
+	}
+	for _, old := range [][]byte{
+		[]byte(claudeCharterBeginMarker + "\n" + claudeCharterImportLine + "\n" + claudeCharterEndMarker + "\n"),
+		[]byte(claudeCharterBeginMarker + "\n" + claudeCharterImportLine + "\n@mcp-servers.md\n" + claudeCharterEndMarker + "\n"),
+	} {
+		if bytes.HasSuffix(raw, old) {
+			return append(raw[:len(raw)-len(old):len(raw)-len(old)], want...), true
+		}
+	}
+	return nil, false
 }

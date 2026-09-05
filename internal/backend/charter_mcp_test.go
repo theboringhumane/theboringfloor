@@ -99,6 +99,51 @@ func TestDiscoverMCPServersUnionAndPrecedence(t *testing.T) {
 	}
 }
 
+func TestEnsureMCPAttachmentIncludesThefloorMCPAcrossGlobalSpellings(t *testing.T) {
+	// This mirrors the split global configuration the installer and a member's
+	// JSONC settings can create. Both roots are explicitly pinned so no test
+	// reads the member's real OpenCode configuration.
+	configHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configHome)
+	t.Setenv("HOME", t.TempDir())
+	writeMCPConfig(t, configHome, "opencode", ".json", `{"mcp":{
+		"agentmemory": {"type": "local"},
+		"thefloor_mcp": {"type": "local", "command": ["/private/path/thefloor_mcp"], "environment": {"TOKEN": "secret"}}
+	}}`)
+	writeMCPConfig(t, configHome, "opencode", ".jsonc", `{
+		// Members may keep their other host integrations in JSONC.
+		"mcp": {
+			"workspace-mcp": {"type": "local"},
+			"mcp-server-firecrawl": {"type": "remote", "url": "https://private.example/mcp"},
+		},
+	}`)
+
+	dir := t.TempDir()
+	if changed, notes := EnsureCharter(dir); !changed || !containsNote(notes, "4 servers") {
+		t.Fatalf("the deterministic post-registration charter pass must wire four servers: changed=%v notes=%v", changed, notes)
+	}
+	attachment := mustRead(t, filepath.Join(dir, ".opencode", "mcp-servers.md"))
+	want := []string{
+		"- `agentmemory` (local) — configured in global opencode config",
+		"- `mcp-server-firecrawl` (remote) — configured in global opencode config",
+		"- `thefloor_mcp` (local) — configured in global opencode config",
+		"- `workspace-mcp` (local) — configured in global opencode config",
+	}
+	for _, line := range want {
+		if !strings.Contains(attachment, line) {
+			t.Fatalf("attachment must include %q:\n%s", line, attachment)
+		}
+	}
+	if strings.Contains(attachment, "/private/path") || strings.Contains(attachment, "secret") || strings.Contains(attachment, "private.example") {
+		t.Fatalf("attachment must preserve its no-secrets contract:\n%s", attachment)
+	}
+	if strings.Index(attachment, "`agentmemory`") > strings.Index(attachment, "`mcp-server-firecrawl`") ||
+		strings.Index(attachment, "`mcp-server-firecrawl`") > strings.Index(attachment, "`thefloor_mcp`") ||
+		strings.Index(attachment, "`thefloor_mcp`") > strings.Index(attachment, "`workspace-mcp`") {
+		t.Fatalf("attachment names must be stably sorted:\n%s", attachment)
+	}
+}
+
 func TestDiscoverMCPServersDegradesAlone(t *testing.T) {
 	pinGlobalConfig(t)
 	dir := t.TempDir()

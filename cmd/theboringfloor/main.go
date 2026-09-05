@@ -255,11 +255,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "[theboringfloor] control server cleanup: %v\n", err)
 		}
 	}
-	// Register thefloor_mcp with the host agents once per boot. This runs OFF
-	// the critical path and is never fatal: a missing companion binary, an
+	// Register thefloor_mcp with the host agents once per boot. This begins off
+	// the UI path and is never fatal: a missing companion binary, an
 	// unparseable host config, or an absent claude CLI all degrade to a status
-	// line. THEFLOOR_NO_MCP_INSTALL=1 opts out entirely.
+	// line. But the OpenCode backend's charter pass discovers MCP servers at
+	// Start, so Start MUST wait for this write to finish; otherwise a first-boot
+	// attachment can permanently miss the server that this same boot adds.
+	// THEFLOOR_NO_MCP_INSTALL=1 opts out entirely.
+	mcpInstallDone := make(chan struct{})
 	go func() {
+		defer close(mcpInstallDone)
 		binPath, ok := mcpinstall.ResolveBinary()
 		if !ok {
 			return
@@ -276,6 +281,11 @@ func main() {
 		}
 	}()
 	go func() {
+		// Establish the registration -> charter happens-before edge. In
+		// particular, liveBackend.Start calls EnsureCharter before spawning
+		// OpenCode, and its MCP attachment must discover the just-registered
+		// thefloor_mcp rather than a stale pre-registration config snapshot.
+		<-mcpInstallDone
 		if err := b.Start(sink); err != nil {
 			p.Send(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend failed: " + err.Error()})
 		}

@@ -17,6 +17,14 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/charter"
 )
 
+// pinClaudeMCPConfig keeps every charter test hermetic: the Claude-side MCP
+// pass must never inspect a member's real user configuration.
+func pinClaudeMCPConfig(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+}
+
 // wantClaudeCharterFresh is the pinned byte-exact expectation for the
 // created CLAUDE.md (kept as a literal so a drift in the renderer fails
 // loud here, not silently in members' projects).
@@ -25,6 +33,7 @@ const wantClaudeCharterFresh = "<!-- theboringfloor charter -->\n" +
 	"@.opencode/oikonomos.md\n"
 
 func TestEnsureClaudeCharterCreatesFresh(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	dir := t.TempDir()
 	changed, notes := EnsureClaudeCharter(dir)
 	if !changed {
@@ -64,6 +73,7 @@ func TestEnsureClaudeCharterCreatesFresh(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterNoopWhenReferenced(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	// "Any form" — an import, a differently-spelled import, a prose
 	// mention: each counts as wired, no bytes move.
 	for _, body := range []string{
@@ -105,6 +115,7 @@ func TestEnsureClaudeCharterNoopWhenReferenced(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterAppendsWhenMissing(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	// Two member shapes: a normal LF-terminated file and one whose tail
 	// lacks the newline — the append must normalize to exactly one blank
 	// line of separation in both.
@@ -152,6 +163,7 @@ func TestEnsureClaudeCharterAppendsWhenMissing(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterIdempotent(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	// Create path: run twice, second run writes nothing and every byte
 	// (memory file + payload) is identical.
 	dir := t.TempDir()
@@ -198,6 +210,7 @@ func TestEnsureClaudeCharterIdempotent(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterMissingDir(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	missing := filepath.Join(t.TempDir(), "no-such-project")
 	changed, notes := EnsureClaudeCharter(missing)
 	if changed {
@@ -212,6 +225,7 @@ func TestEnsureClaudeCharterMissingDir(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterEnvOptOut(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	t.Setenv("THEFLOOR_NO_AUTOCHARTER", "1")
 	dir := t.TempDir()
 	changed, notes := EnsureClaudeCharter(dir)
@@ -227,6 +241,7 @@ func TestEnsureClaudeCharterEnvOptOut(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterPayloadRefreshed(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	// The payload is office-owned: a stale or hand-edited file refreshes
 	// to the embedded charter bytes (byte-exact freshness for claude-only
 	// offices), while a fresh file costs zero writes and zero notes.
@@ -265,6 +280,7 @@ func TestEnsureClaudeCharterPayloadRefreshed(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterPayloadFreshIsSilent(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	// A fresh payload: no write, no seed/refresh note.
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, ".opencode"), 0o755); err != nil {
@@ -280,6 +296,7 @@ func TestEnsureClaudeCharterPayloadFreshIsSilent(t *testing.T) {
 }
 
 func TestEnsureClaudeCharterRefreshesRenamedStarter(t *testing.T) {
+	pinClaudeMCPConfig(t)
 	dir := t.TempDir()
 	legacyName := "theboring" + "office"
 	legacy := "<!-- " + legacyName + " charter -->\n" +
@@ -296,5 +313,32 @@ func TestEnsureClaudeCharterRefreshesRenamedStarter(t *testing.T) {
 	got, err := os.ReadFile(filepath.Join(dir, "CLAUDE.md"))
 	if err != nil || string(got) != wantClaudeCharterFresh {
 		t.Fatalf("refreshed starter = %q, %v; want %q", got, err, wantClaudeCharterFresh)
+	}
+}
+
+func TestEnsureClaudeCharterMigratesOfficeMCPImport(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	writeClaudeConfig(t, filepath.Join(configDir, ".claude.json"), `{"mcpServers":{"thefloor_mcp":{"type":"stdio"}}}`)
+	memberPrefix := "# Team rules\n\nKeep this text unchanged.\n\n"
+	legacyBlock := "<!-- theboringfloor charter -->\n@.opencode/oikonomos.md\n@mcp-servers.md\n<!-- /theboringfloor charter -->\n"
+	mdPath := filepath.Join(dir, "CLAUDE.md")
+	if err := os.WriteFile(mdPath, []byte(memberPrefix+legacyBlock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, notes := EnsureClaudeCharter(dir)
+	if !changed || !containsNote(notes, "office import block migrated") {
+		t.Fatalf("legacy import block was not migrated: changed=%v notes=%v", changed, notes)
+	}
+	got, err := os.ReadFile(mdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := memberPrefix + "<!-- theboringfloor charter -->\n@.opencode/oikonomos.md\n@.claude/mcp-servers.md\n<!-- /theboringfloor charter -->\n"
+	if string(got) != want {
+		t.Fatalf("migrated CLAUDE.md = %q, want %q", got, want)
 	}
 }
