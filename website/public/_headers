@@ -1,0 +1,13 @@
+# Next.js static export writes the generated Open Graph images WITHOUT a file
+# extension (out/opengraph-image, out/blog/<slug>/opengraph-image), so Cloudflare
+# Pages cannot infer a MIME type and falls back to application/octet-stream.
+# Slack, X, LinkedIn and Discord commonly refuse to render an og:image whose
+# served Content-Type is not an image type, so the preview silently stays blank
+# even though the bytes are a valid PNG. Declare it explicitly.
+/opengraph-image
+  Content-Type: image/png
+  Cache-Control: public, max-age=3600
+
+/blog/*/opengraph-image
+  Content-Type: image/png
+  Cache-Control: public, max-age=3600
