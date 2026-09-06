@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 
 	"github.com/theboringhumane/theboringfloor/internal/brand"
 )
@@ -152,6 +154,33 @@ func ValidBackendName(name string) bool {
 	return name == BackendNameDefault || name == BackendNameClaude
 }
 
+// ValidAgentName reports whether name is a safe opencode agent-name key.
+// Known agent names pass directly; arbitrary additional names are also
+// permitted because opencode accepts any agent key, provided they use only
+// letters, digits, hyphens, and underscores.
+func ValidAgentName(name string) bool {
+	switch name {
+	case "explore", "developer", "general", "plan", "build", "title", "summary", "compaction":
+		return true
+	}
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidModelRef reports whether ref is a non-empty provider/model reference
+// with exactly one slash and no whitespace.
+func ValidModelRef(ref string) bool {
+	provider, model, ok := strings.Cut(ref, "/")
+	return ok && provider != "" && model != "" && !strings.Contains(model, "/") && !strings.ContainsFunc(ref, unicode.IsSpace)
+}
+
 // ResolvedName normalizes the selected transport: "" (and any omission)
 // means the default. Callers that only DISPLAY the name use this; the
 // constructor gate (ValidBackendName) validates the non-empty case.
@@ -174,6 +203,10 @@ type Config struct {
 	Roles       map[string]RoleConfig `json:"roles"` // developer|scout|reviewer|runner|hr
 	UI          UIConfig              `json:"ui"`
 	Backend     BackendConfig         `json:"backend"`
+	// AgentModels is keyed by OPENCODE agent name (not a theboringfloor roster
+	// role) and is applied by writing agent.<name>.model into the project's
+	// .opencode/opencode.json.
+	AgentModels map[string]ModelRef `json:"agentModels"`
 }
 
 // Default returns the stock config (also the file skeleton written on first boot).
@@ -206,6 +239,7 @@ func Default() *Config {
 			Server:           "",
 			AgentmemoryPollS: 5,
 		},
+		AgentModels: map[string]ModelRef{},
 	}
 }
 
@@ -255,6 +289,9 @@ func Load() (*Config, error) {
 	if !ValidAttribution(cfg.Attribution) {
 		cfg.Attribution = AttributionDefault
 	}
+	if cfg.AgentModels == nil {
+		cfg.AgentModels = map[string]ModelRef{}
+	}
 	return cfg, nil
 }
 
@@ -271,5 +308,29 @@ func save(path string, cfg *Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o644)
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".brain-*.json")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	defer func() {
+		if tmpPath != "" {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmp.Write(append(b, '\n')); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	tmpPath = ""
+	return nil
 }

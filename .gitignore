@@ -3,6 +3,9 @@ dist/
 *.tgz
 .DS_Store
 
+# Machine-local agent settings
+.claude/settings.local.json
+
 # Built Go harness binaries (go build ./cmd/... produces these at repo root)
 /headless
 /uishot

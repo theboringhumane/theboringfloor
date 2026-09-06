@@ -70,6 +70,7 @@ var slashCommands = []slashCommand{
 	{"/power", "power governor", "/power auto|performance|saver"},
 	{"/notify", "desktop notifications while unfocused", "/notify on|off"},
 	{"/model", "boss model", "/model provider/model"},
+	{"/submodel", "sub-agent model", "/submodel <agent> provider/model"},
 	{"/compact", "compact layout this session", "/compact on|off"},
 	{"/mode", "layout mode (persists)", "/mode normal|compact"},
 	{"/wide", "sidebar width (0 = default)", "/wide 26..100"},

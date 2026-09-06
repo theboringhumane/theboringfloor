@@ -8,7 +8,9 @@ below configured. Their tools are callable as `<server>_<tool>`
 - `arize-phoenix` (local) — configured in global opencode config
 - `composio` (remote) — configured in global opencode config
 - `mcp-server-firecrawl` (local) — configured in global opencode config
+- `sentry` (remote) — configured in global opencode config
 - `synehq-kole` (local) — configured in global opencode config
+- `thefloor_mcp` (local) — configured in global opencode config
 - `watch-skill` (local) — configured in global opencode config
 - `workspace-mcp` (local) — configured in global opencode config
 

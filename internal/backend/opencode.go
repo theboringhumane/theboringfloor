@@ -265,6 +265,13 @@ func (b *liveBackend) SetBypassPermissions(on bool) error {
 	return nil
 }
 
+// ApplyAgentModels writes the saved per-agent model choices into the local
+// OpenCode project config, which OpenCode reads when it dispatches an agent.
+func (b *liveBackend) ApplyAgentModels(models map[string]string) error {
+	_, err := ensureAgentModels(b.directory, models)
+	return err
+}
+
 // ---------------------------------------------------------------- start
 
 func (b *liveBackend) Start(emit func(state.Event)) error {
@@ -280,6 +287,15 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// reading its project config. A degradation never blocks the boot —
 	// failures surface on the status line only.
 	charterNotes := emitCharterNotes(emit, b.directory)
+	if len(b.cfg.AgentModels) > 0 {
+		models := make(map[string]string, len(b.cfg.AgentModels))
+		for name, ref := range b.cfg.AgentModels {
+			models[name] = string(ref)
+		}
+		if err := b.ApplyAgentModels(models); err != nil {
+			return err
+		}
+	}
 
 	// Bypass permissions are an owned-process environment override. Unlike
 	// the charter pass above, this never writes the member's config: the
@@ -1511,6 +1527,21 @@ func (b *liveBackend) SwapPrimary(id string) error {
 	return nil
 }
 
+// SwapSafeMidTurn reports that an opencode primary swap preserves an
+// in-flight boss turn: the per-directory SSE stream and server-side session
+// remain alive, so the completed reply is re-readable through ReconcileBoss.
+func (b *liveBackend) SwapSafeMidTurn() bool { return true }
+
+// ReconcileBoss re-reads sessionID and emits a boss completion that arrived
+// while that session was unseated. An empty or already-gone session is a safe
+// no-op; transport and read failures are returned to the caller.
+func (b *liveBackend) ReconcileBoss(sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	return b.reconcileBossCompletion(sessionID)
+}
+
 // ---------------------------------------------------------------- office session seams (ADDITIVE)
 
 // PrimaryOverride pins the boss-session id Start should resume (the app
@@ -2330,7 +2361,7 @@ func (b *liveBackend) sseRecovered() {
 	if had != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] event stream: reconnected"})
 	}
-	b.reconcileBossCompletion()
+	_ = b.reconcileBossCompletion("")
 }
 
 // reconcileBossCompletion (W3) — post-reattach truth pass for the boss
@@ -2348,21 +2379,28 @@ func (b *liveBackend) sseRecovered() {
 // already-pinned history (or a boot-resumed session's past — bossCompleted
 // starts empty each run, so WITHOUT this bound a first reattach would
 // replay the session's whole history as fresh bubbles).
-func (b *liveBackend) reconcileBossCompletion() {
+func (b *liveBackend) reconcileBossCompletion(sessionID string) error {
 	b.mu.Lock()
 	n := len(b.pendingBoss)
-	primaryID := b.primaryID
+	if sessionID == "" {
+		sessionID = b.primaryID
+	}
 	started := b.baseURL != "" && !b.fl.isStopped()
 	b.mu.Unlock()
-	if n == 0 || primaryID == "" || !started {
-		return
+	if n == 0 || sessionID == "" || !started {
+		return nil
 	}
 	var rows []struct {
 		Info  ocMessage `json:"info"`
 		Parts []ocPart  `json:"parts"`
 	}
-	if err := b.doJSON(http.MethodGet, "/session/"+primaryID+"/message", nil, &rows); err != nil {
-		return
+	ctx, cancel := context.WithTimeout(context.Background(), abortCallTimeout)
+	defer cancel()
+	if err := b.doJSONCtx(ctx, http.MethodGet, "/session/"+sessionID+"/message", nil, &rows); err != nil {
+		if strings.Contains(err.Error(), "status 404") {
+			return nil
+		}
+		return err
 	}
 	bound := int64(0)
 	haveBound := false
@@ -2378,15 +2416,16 @@ func (b *liveBackend) reconcileBossCompletion() {
 		}
 	}
 	if !haveBound {
-		return // outstanding placeholder patrons not found — mint nothing
+		return nil // outstanding placeholder patrons not found — mint nothing
 	}
 	for _, row := range rows {
 		info := row.Info
 		if info.Role != "assistant" || info.Time.Completed == 0 || info.Time.Created < bound {
 			continue
 		}
-		b.maybeBossCompleted(info) // dedupe + abort window + fetch live inside
+		b.maybeBossCompletedForSession(info, sessionID) // dedupe + abort window + fetch live inside
 	}
+	return nil
 }
 
 // sseErrClass buckets an SSE failure for the dedupe latch: the same outage
@@ -2884,16 +2923,43 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 		b.mu.Unlock()
 		return
 	}
+	sessionID := b.primaryID
+	b.markBossCompletedLocked(info)
+	b.mu.Unlock()
+	b.emitBossCompletion(info, sessionID)
+}
+
+// maybeBossCompletedForSession is reconcileBossCompletion's explicit-session
+// counterpart. Unlike the live SSE path, it deliberately does not compare the
+// session with primaryID: ReconcileBoss exists to recover a completion from a
+// session that was unseated when its SSE event arrived.
+func (b *liveBackend) maybeBossCompletedForSession(info ocMessage, sessionID string) {
+	b.mu.Lock()
+	if info.SessionID != sessionID || info.Role != "assistant" || info.Time.Completed == 0 || b.bossCompleted[info.ID] {
+		b.mu.Unlock()
+		return
+	}
+	b.markBossCompletedLocked(info)
+	b.mu.Unlock()
+	b.emitBossCompletion(info, sessionID)
+}
+
+// markBossCompletedLocked starts the shared live-SSE/reconcile completion
+// path. The caller holds b.mu; the later network reads and event emission run
+// unlocked so neither can stall the SSE pump.
+func (b *liveBackend) markBossCompletedLocked(info ocMessage) {
 	b.bossCompleted[info.ID] = true
 	// Stop the delta stream for this message: unregister its text parts,
 	// free the accumulator, and drop any coalesced trailing update still
 	// in flight — the pinned text below replaces the growing bubble.
 	unregisterTextStream(b.ctx, info.ID)
 	delete(b.chatSlots, "bossmsg-"+info.ID)
-	primaryID := b.primaryID
-	b.mu.Unlock()
+}
 
-	text, finish, media, err := b.messageText(primaryID, info.ID)
+// emitBossCompletion finishes the common live-SSE/reconcile completion path.
+// It intentionally retains maybeBossCompleted's event order and FIFO effects.
+func (b *liveBackend) emitBossCompletion(info ocMessage, sessionID string) {
+	text, finish, media, err := b.messageText(sessionID, info.ID)
 	if err != nil {
 		text = "[theboringfloor] could not read reply (msg " + info.ID + ")"
 	} else if text == "" {
@@ -2932,7 +2998,7 @@ func (b *liveBackend) maybeBossCompleted(info ocMessage) {
 	text = plantools.Scrub(text, b.planToolBridge)
 	text = browsertools.Scrub(text, b.browserBridge)
 	// Boss edits surface as diff events on message completion.
-	b.fetchDiffAndEmit(primaryID)
+	b.fetchDiffAndEmit(sessionID)
 
 	b.mu.Lock()
 	if len(b.pendingBoss) > 0 {

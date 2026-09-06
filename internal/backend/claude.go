@@ -299,6 +299,15 @@ func (b *liveClaudeBackend) SwapPrimary(id string) error {
 	return nil
 }
 
+// SwapSafeMidTurn reports false because SwapPrimary tears down the active
+// claude subprocess through teardownProc's SIGTERM/SIGKILL ladder, so an
+// in-flight turn cannot survive the swap.
+func (b *liveClaudeBackend) SwapSafeMidTurn() bool { return false }
+
+// ReconcileBoss is a no-op for Claude: its CLI subprocess has no server-side
+// session message history to re-read after a swap tears the process down.
+func (b *liveClaudeBackend) ReconcileBoss(sessionID string) error { return nil }
+
 // SetBypassPermissions — the office's bypass-permissions toggle (an
 // ADDITIVE seam the app type-asserts, same convention as
 // ConciergeCapable/SessionAborter in internal/state: never folded into

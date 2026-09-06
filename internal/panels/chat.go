@@ -489,6 +489,12 @@ type Chat struct {
 	userExpanded map[string]bool
 	userFoldRows map[int]string
 	btwPinRows   map[int]string
+	// btwSticky reserves one fixed footer row for the hidden-BTW pin while
+	// there is enough panel height to keep a transcript row above it. The
+	// transcript's ordinary pin bubble and its absolute hit-map stay intact;
+	// this is the scroll-independent counterpart the app can ask about using
+	// the same content coordinates.
+	btwSticky bool
 
 	// toolExpanded / toolRows / toolOutputs — the per-call tool-output
 	// triple, twins of userExpanded/userFoldRows (chat_toolrow.go):
@@ -875,9 +881,12 @@ func (c *Chat) ThreadRowAt(x, y int) (string, bool) {
 }
 
 // BtwPinRowAt reports whether the chat-content point's row is a hidden-BTW
-// pin bubble. The app uses this read-only lookup to resume the hidden session
-// before ClickRow claims the pin row from transcript selection.
+// pin bubble or its fixed footer. The app uses this read-only lookup to resume
+// the hidden session before ClickRow claims the pin row from selection.
 func (c *Chat) BtwPinRowAt(x, y int) bool {
+	if c.btwSticky && y == c.vp.Height() {
+		return true
+	}
 	if y < 0 || y >= c.vp.Height() {
 		return false
 	}
@@ -909,6 +918,9 @@ func (c *Chat) BtwPinRowAt(x, y int) bool {
 func (c *Chat) ClickRow(x, y int) bool {
 	if c.cardClaims(x, y) {
 		return true // the floating card swallows every click in its frame
+	}
+	if c.btwSticky && y == c.vp.Height() {
+		return true // claimed — the app routes the sticky btw-pin click
 	}
 	if y < 0 || y >= c.vp.Height() {
 		return false
@@ -1441,6 +1453,14 @@ func (c *Chat) SetSize(w, h int) {
 		ldH = 1
 	}
 	vpH := h - regionH - 1 /* divider */ - spH - ldH
+	// A hidden BTW session gets a fixed footer row immediately below the
+	// transcript. Reserve it only when the natural transcript budget can
+	// still host one row: tiny panels keep their historical clamped viewport
+	// rather than creating a negative or zero-sized projection.
+	c.btwSticky = c.btwPinMessage() != nil && vpH >= 2
+	if c.btwSticky {
+		vpH--
+	}
 	if vpH < 1 {
 		vpH = 1
 	}
@@ -1482,11 +1502,21 @@ func cellWidth(s string) int { return len([]rune(s)) }
 // viewport keeps its right gutter.
 func (c *Chat) contentW() int { return c.w - chatPadL - chatPadR }
 
+// renderBtwPin is shared by the chronological marker bubble and the fixed
+// hidden-session footer, so both surfaces carry the marker's own text and
+// exactly the same visual affordance.
+func (c *Chat) renderBtwPin(text string) string {
+	prefix := chrome.OnPanel(chrome.Accent, "↩ ")
+	textW := c.contentW() - cellWidth("↩ ")
+	return prefix + chrome.OnPanelBold(chrome.White, clipPlain(text, textW))
+}
+
 // SetState implements Tab: keeps the latest chat slice, re-renders the
 // conversation when it changed, and keeps scroll pinned to the bottom.
 // Also captures the roster rollup (workers-thread decoration) and the
 // delegation state (P3 spinner-row swap) from the incoming state.
 func (c *Chat) SetState(st state.OfficeState) {
+	hadBtwPin := c.btwPinMessage() != nil
 	c.tick = st.Tick
 	agents := make(map[string]agentView, len(st.Employees))
 	busy := 0
@@ -1591,6 +1621,9 @@ func (c *Chat) SetState(st state.OfficeState) {
 	}
 	if c.pendingSpin != wasSpin {
 		c.SetSize(c.w, c.h) // typing row appears/disappears
+	}
+	if (c.btwPinMessage() != nil) != hadBtwPin {
+		c.SetSize(c.w, c.h) // reserve/release the sticky hidden-BTW footer
 	}
 
 	if c.deferRender {
@@ -2027,6 +2060,13 @@ func (c *Chat) View() string {
 	c.syncWindow()
 	var b strings.Builder
 	b.WriteString(c.vp.View())
+	if c.btwSticky {
+		// SetSize reserved exactly this row, outside the scrollable viewport.
+		// The message remains in the transcript too; this fixed copy keeps its
+		// affordance visible while a reader is at the top of long history.
+		b.WriteString("\n")
+		b.WriteString(c.renderBtwPin(c.btwPinMessage().Text))
+	}
 	b.WriteString("\n")
 	// live worker threads → the colorful "team is working" row, glued to
 	// the input right above the divider; "" (self-hidden) when idle and
@@ -2400,9 +2440,7 @@ func (c *Chat) renderMsgBlock(m state.ChatMsg, gen uint64) *chatBlock {
 		// INFO "office ›" case above renderNotice's dim-office line
 		c.renderOffice(&b, m)
 	case m.From == officeFrom && m.Meta == "btw-pin":
-		prefix := chrome.OnPanel(chrome.Accent, "↩ ")
-		textW := c.contentW() - cellWidth("↩ ")
-		b.WriteString(prefix + chrome.OnPanelBold(chrome.White, clipPlain(m.Text, textW)))
+		b.WriteString(c.renderBtwPin(m.Text))
 		hits.btwPin = map[int]string{0: m.ID}
 	case m.From == officeFrom:
 		c.renderNotice(&b, m)

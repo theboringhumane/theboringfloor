@@ -53,6 +53,23 @@ func TestSessionRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSessionFileWithoutBtwFieldsLoads documents backward compatibility: /btw
+// remains an in-memory lifecycle, so pre-/btw session.json files retain their
+// original JSON shape and decode normally.
+func TestSessionFileWithoutBtwFieldsLoads(t *testing.T) {
+	scratchHome(t)
+	dir := t.TempDir()
+	writeLoadSessionRaw(t, SessionPath(dir), `{"dir":"`+dir+`","primaryID":"legacy-primary","chat":[{"id":"legacy-chat","from":"user","text":"legacy conversation"}],"savedAt":1}`)
+
+	got, ok := LoadSession(dir)
+	if !ok {
+		t.Fatal("LoadSession rejected legacy session file")
+	}
+	if got.PrimaryID != "legacy-primary" || len(got.Chat) != 1 || got.Chat[0].ID != "legacy-chat" {
+		t.Fatalf("legacy session load = %+v, want primary and chat preserved", got)
+	}
+}
+
 // TestSessionPathProjectsLayout pins the canonical on-disk shape after the
 // projects/<hash> migration:
 // <home>/.theboringfloor/projects/<dirhash>/session.json.

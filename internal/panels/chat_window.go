@@ -114,6 +114,19 @@ type blockHits struct {
 	btwPin   map[int]string // hidden-BTW pin bubble rows → message ID
 }
 
+// btwPinMessage returns the current hidden-BTW marker, if any. A session
+// creates one marker; walking from the tail also keeps a future replacement
+// marker's visible copy aligned with the newest transcript state.
+func (c *Chat) btwPinMessage() *state.ChatMsg {
+	for i := len(c.chat) - 1; i >= 0; i-- {
+		m := &c.chat[i]
+		if m.From == officeFrom && m.Meta == "btw-pin" {
+			return m
+		}
+	}
+	return nil
+}
+
 // chatBlock — one timeline ITEM's cached render: the exact text the old
 // monolithic builder wrote for it at this generation, the PADDED row slice
 // (the cache payload — padding happens ONCE per render, here, instead of a

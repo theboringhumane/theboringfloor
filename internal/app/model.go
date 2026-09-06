@@ -1185,7 +1185,11 @@ type btwOfficeMsg struct {
 // doneOfficeMsg ferries the async /done SwapPrimary result back to the UI
 // goroutine: same pattern as btwOfficeMsg — the teardown+spawn never parks
 // the input.
-type doneOfficeMsg struct{ err error }
+type doneOfficeMsg struct {
+	err          error
+	reconcileErr error
+	returning    bool
+}
 
 // backendBuildMsg lands after a potentially slow BackendFactory call. The
 // UI loop installs the completed transport in one short holder operation.
@@ -2194,15 +2198,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the /btw backend spawn landed back on the UI goroutine.
 		if msg.err != nil {
 			qdebugf("/btw: NewOffice failed: %v", msg.err)
-			m.noticeErr("/btw: " + msg.err.Error())
 			// Restore on failure.
 			if m.btwSaved != nil {
 				m.st.Chat = m.btwSaved.chat
 				m.st.Tasks = m.btwSaved.tasks
 				m.st.Mails = m.btwSaved.mails
 				m.btwSaved = nil
+				m.tabs.SetState(m.st)
 			}
-		} else {
+			m.noticeErr("/btw: " + msg.err.Error())
+		} else if m.btwSaved != nil {
+			// Esc can hide the pending side session while NewOffice is still
+			// in flight. Its completion must not resurrect a visible btw notice
+			// or send the trailing prompt into the now-current main session.
 			m.tabs.SetState(m.st)
 			m.notice("btw session — esc or /done to return")
 			if msg.trailing != "" {
@@ -2217,7 +2225,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			qdebugf("/done: SwapPrimary failed: %v", msg.err)
 			m.noticeErr("/done: " + msg.err.Error())
-		} else if m.btwSaved != nil {
+			break
+		}
+		if msg.returning {
+			m.finishExitBtw()
+		}
+		if msg.reconcileErr != nil {
+			qdebugf("/btw: ReconcileBoss failed: %v", msg.reconcileErr)
+			m.noticeErr("/btw: reconcile boss: " + msg.reconcileErr.Error())
+		}
+		if m.btwSaved != nil {
 			// resumed INTO a btw session — the entry notice is already up
 			m.notice("btw session — esc or /done to return")
 		} else {
@@ -5591,6 +5608,28 @@ func hasPendingBoss(st state.OfficeState) bool {
 	return false
 }
 
+const btwMidTurnBlocked = "/btw: boss is mid-turn and this backend would lose the reply — wait for it, or /stop first"
+
+// btwBlockedReason reports whether a /btw lifecycle swap may proceed. A
+// wedged turn is a known-stale UI placeholder, while an in-flight turn may be
+// moved only by a backend that explicitly keeps it alive during a primary swap.
+func btwBlockedReason(m *Model) string {
+	if !hasPendingBoss(m.st) || m.wedgeNoted {
+		return ""
+	}
+	if b, ok := m.backend.(btwSwapSafetyBackend); ok && b.SwapSafeMidTurn() {
+		return ""
+	}
+	return btwMidTurnBlocked
+}
+
+func reconcileBtwBoss(backend state.Backend, sessionID string) error {
+	if b, ok := backend.(btwReconcileBackend); ok {
+		return b.ReconcileBoss(sessionID)
+	}
+	return nil
+}
+
 // --- chat send path ---------------------------------------------------------
 
 var msgSeq atomic.Int64
@@ -6005,8 +6044,8 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		if m.btwHidden() {
 			return m.resumeBtw()
 		}
-		if hasPendingBoss(m.st) {
-			m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+		if reason := btwBlockedReason(m); reason != "" {
+			m.noticeErr(reason)
 			return nil
 		}
 		// Save current state.
@@ -6035,13 +6074,9 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		// parks the UI goroutine.
 		if ob, ok := m.backend.(officeSpawnBackend); ok && m.st.Mode == state.ModeLive {
 			trailing := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/btw"))
-			tb, hasTB := m.team()
 			m.tabs.SetState(m.st)
 			m.notice("starting btw session…")
 			return func() tea.Msg {
-				if hasTB {
-					_ = tb.ResetPrimary(true)
-				}
 				_, err := ob.NewOffice()
 				return btwOfficeMsg{err: err, trailing: trailing}
 			}
@@ -6066,10 +6101,29 @@ func (m *Model) exitBtw() tea.Cmd {
 		m.noticeErr("not in a btw session (/btw starts one)")
 		return nil
 	}
-	if hasPendingBoss(m.st) {
-		m.noticeErr("/done: boss is mid-turn — wait for it to finish or /stop first")
+	if reason := btwBlockedReason(m); reason != "" {
+		m.noticeErr(reason)
 		return nil
 	}
+	saved := m.btwSaved
+	if saved.primaryID != "" {
+		if sb, ok := m.backend.(btwSwapBackend); ok {
+			m.notice("returning from btw…")
+			return func() tea.Msg {
+				err := sb.SwapPrimary(saved.primaryID)
+				if err != nil {
+					return doneOfficeMsg{err: err, returning: true}
+				}
+				return doneOfficeMsg{reconcileErr: reconcileBtwBoss(m.backend, saved.primaryID), returning: true}
+			}
+		}
+	}
+	m.finishExitBtw()
+	m.notice("back from btw")
+	return nil
+}
+
+func (m *Model) finishExitBtw() {
 	saved := m.btwSaved
 	m.btwSaved = nil
 	m.btwHiddenSnap = nil
@@ -6085,17 +6139,6 @@ func (m *Model) exitBtw() tea.Cmd {
 		m.chat.ClearAttachments()
 	}
 	m.tabs.SetState(m.st)
-	if saved.primaryID != "" {
-		if sb, ok := m.backend.(btwSwapBackend); ok {
-			m.notice("returning from btw…")
-			return func() tea.Msg {
-				err := sb.SwapPrimary(saved.primaryID)
-				return doneOfficeMsg{err: err}
-			}
-		}
-	}
-	m.notice("back from btw")
-	return nil
 }
 
 // btwHidden reports whether Esc has hidden a side session behind its pinned
@@ -6109,8 +6152,8 @@ func (m *Model) hideBtw() tea.Cmd {
 		m.noticeErr("not in a btw session (/btw starts one)")
 		return nil
 	}
-	if hasPendingBoss(m.st) {
-		m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+	if reason := btwBlockedReason(m); reason != "" {
+		m.noticeErr(reason)
 		return nil
 	}
 
@@ -6149,7 +6192,10 @@ func (m *Model) hideBtw() tea.Cmd {
 		if sb, ok := m.backend.(btwSwapBackend); ok {
 			return func() tea.Msg {
 				err := sb.SwapPrimary(saved.primaryID)
-				return doneOfficeMsg{err: err}
+				if err != nil {
+					return doneOfficeMsg{err: err}
+				}
+				return doneOfficeMsg{reconcileErr: reconcileBtwBoss(m.backend, saved.primaryID)}
 			}
 		}
 	}
@@ -6161,8 +6207,8 @@ func (m *Model) resumeBtw() tea.Cmd {
 		m.noticeErr("no hidden btw session (/btw starts one)")
 		return nil
 	}
-	if hasPendingBoss(m.st) {
-		m.noticeErr("/btw: boss is mid-turn — wait for it to finish or /stop first")
+	if reason := btwBlockedReason(m); reason != "" {
+		m.noticeErr(reason)
 		return nil
 	}
 

@@ -98,7 +98,10 @@ func main() {
 
 	z := zlibRGBA()
 	p := pngRGBA()
-	type t struct{ name, keys string; payload []byte }
+	type t struct {
+		name, keys string
+		payload    []byte
+	}
 	tests := []t{
 		{"A f=32 o=z (child verbatim)", "a=T,t=d,f=32,o=z,s=1,v=1,q=1,i=9101", z},
 		{"B f=32 o=z + c/r", "a=T,t=d,f=32,o=z,s=1,v=1,q=1,c=10,r=5,i=9102", z},

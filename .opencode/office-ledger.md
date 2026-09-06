@@ -7,6 +7,125 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-06 · Fix btw swap failure paths (@developer subagent) — tekton-12 (developer) · `done`
+- summary: Made `/btw` startup transactional by removing the pre-spawn `ResetPrimary(true)` call. `NewOffice()` now runs while the original primary remains seated; if spaw
+- files: `internal/app/model.go`, `internal/app/btw_guard_test.go`, `internal/app/btw_swap_failure_test.go`
+- verify: ```
+- proof: *`/btw` startup failure path — before:**
+- ledgerId: led-1788723543051-05b14dcc
+
+### 2026-09-06 · Fix gofmt in cmd packages (@developer subagent) — tekton-14 (developer) · `done`
+- summary: Applied `gofmt -w` to the three assigned pre-existing formatting-drift files only.
+- files: `cmd/kittyprobe/main.go`, `cmd/thefloor_mcp/mcp.go`, `cmd/thefloor_mcp/office.go`
+- verify: ```
+- proof: ```diff
+- ledgerId: led-1788723411448-5eb631af
+
+### 2026-09-06 · Make config save atomic (@developer subagent) — tekton-13 (developer) · `done`
+- summary: Replaced `brain.json`’s direct `os.WriteFile` with same-directory temp-file writing followed by `os.Rename`.
+- files: `internal/config/config.go`, `internal/config/config_test.go`
+- verify: ```
+- proof: *Before**
+- ledgerId: led-1788723407771-3017fa06
+
+### 2026-09-06 · Verify backend changes pre-release (@develope... — tekton-10 (developer) · `done`
+- summary: Fixed `/submodel` backend plumbing: `liveBackend.ApplyAgentModels` now writes the OpenCode agent configuration, and `Start` applies persisted `Config.AgentModel
+- files: `internal/backend/opencode.go`, `internal/backend/charter_agentmodel.go`, `internal/backend/charter_agentmodel_test.go`
+- verify: ```
+- proof: `charter_agentmodel.go` now does plumb the override into the OpenCode agent harness: `ApplyAgentModels` writes `.opencode/opencode.json`, an
+- ledgerId: led-1788723224478-a559a2e4
+
+### 2026-09-06 · Review release diff blast radius (@reviewer s... — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788723048616-a041d146
+
+### 2026-09-06 · Pre-release hygiene and secret scan (@develop... — tekton-11 (developer) · `issues`
+- summary: Added a targeted ignore rule for the machine-local `.claude/settings.local.json`.
+- files: `.gitignore`
+- verify: Literal `sk-` false-positive locations were limited to normal code/docs/dependency content: `.opencode/opencode-video-analysis.md:46`; `cmd/
+- proof: ```gitignore
+- ledgerId: led-1788723001966-d818b2d3
+
+### 2026-09-06 · Scout release mechanics (@explore subagent) — skopos-5 (scout) · `issues`
+- summary: # Read-Only Reconnaissance: Release Cut Process for v0.3.31
+- files: | Path | Why inspected |, |---|---|, | `.goreleaser.yaml` | Build IDs, binaries, archive naming, ldflags, | `internal/version/version.go` | Confirm version is stamped, not hardcoded, | `.github/workflows/release.yml` | Only CI workflow; confirms tag-push → goreleaser, | `.gitignore` | Check for `.claude`/`.opencode` ignore rules, | `website/app/changelog/page.tsx` | Changelog surface, | `website/lib/changelog.ts` | Confirms GitHub API fetch, no hardcoded version, | `install.sh` | Grep for hardcoded version strings, | `install.ps1` | Grep for hardcoded version strings, | (git only, no files) | `git config`, `git status -sb`, `git log`, `git tag`, `git show`, `git rev-
+- verify: Convention: **lowercase conventional-commit-style prefixes** — `feat:`, `feat(scope):`, `fix:`, `refactor:`, `site:` (website-only changes)
+- proof: ```bash
+- ledgerId: led-1788722801372-6cbcab36
+
+### 2026-09-06 · Close out submodel + btw work (@developer sub... — tekton-9 (developer) · `issues`
+- summary: Formatted the pre-existing `internal/panels/chat_attach_ignore_test.go` source so the required repository-wide `gofmt -l` check is clean.
+- files: `internal/panels/chat_attach_ignore_test.go`, `internal/app/btw_orphan_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788722521120-dbaa8991
+
+### 2026-09-06 · Add submodel slash command (@developer subagent) — tekton-8 (developer) · `issues`
+- summary: Added `applySubmodel(fields []string) tea.Cmd`, validating agent names and model references, persisting valid overrides to `brain.json`, and emitting the requir
+- files: `internal/app/submodel.go`, `internal/app/submodel_test.go`, `internal/panels/popover.go`, `internal/panels/popover_cmds_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788719627750-61aa4350
+
+### 2026-09-06 · Fix btw session persistence (@developer subag... — tekton-4 (developer) · `issues`
+- summary: `hydrateSession` now removes persisted `Meta == "btw-pin"` rows, with a comment explaining that their hidden side-session snapshots are memory-only and cannot b
+- files: `internal/app/sessions.go`, `internal/app/sessions_test.go`, `internal/app/btw_persist_test.go`
+- verify: ```
+- proof: *`session.json` persisted while inside an active `/btw` side session:**
+- ledgerId: led-1788717123453-3ff0f73f
+
+### 2026-09-06 · Add agent model config storage (@developer su... — tekton-6 (developer) · `done`
+- summary: Added `Config.AgentModels map[string]ModelRef` with the `json:"agentModels"` tag and documentation distinguishing OPENCODE agent names from theboringfloor roste
+- files: `internal/config/config.go`, `internal/config/config_test.go`
+- verify: ```
+- proof: ```json
+- ledgerId: led-1788716975353-15ba95ae
+
+### 2026-09-06 · Scout swap routing and agent model (@explore... — skopos-4 (scout) · `issues`
+- summary: # READ-ONLY RECONNAISSANCE — /btw safety + per-sub-agent model config
+- files: | Path | Why |, |---|---|, | `internal/app/sessions.go:337-361` | `officeSpawnBackend`/`btwSwapBackend`/`primarySeamBackend` in, | `internal/app/model.go:5585-5592,6000-6099` | `hasPendingBoss` guard + the actual `/btw` start, | `internal/app/btw_busy_test.go` | Existing characterization tests documenting the guard as "CURREN, | `internal/backend/opencode.go:1474-1574,2251-2430,2627-2679,2881-2947` | `SwapPrimary`/`NewOffice`, | `internal/backend/events.go:205-234,1463-1612` | `mapOCEvent`'s primaryID-gated classification, th, | `internal/backend/claude.go:200-330,920-989` | Claude `NewOffice`/`SwapPrimary`, `teardownProc`, | `internal/config/config.go:67-91,165-204` | `RoleConfig.Model` field + `Roles` default map, | `internal/backend/charter.go:165-212` | `mergeInstruction`'s "never clobber a hand-shaped config" , | `~/.config/opencode/opencode.json`, `opencode.jsonc`, `.opencode/opencode.json`, `~/.config/openco, | `https://opencode.ai/config.json` | Live first-party JSON Schema fetch |
+- verify: ```
+- proof: (none)
+- ledgerId: led-1788716642557-db88cd51
+
+### 2026-09-06 · Always-visible btw return bubble (@developer... — tekton-1 (developer) · `done`
+- summary: Added a fixed hidden-BTW footer row below the scrollable transcript whenever a `btw-pin` message exists and the panel has enough room.
+- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/btw_pin_sticky_test.go`
+- verify: ```
+- proof: *Hidden BTW session, even after scrolling transcript history to the top:**
+- ledgerId: led-1788716618819-849f315a
+
+### 2026-09-06 · Characterize btw busy and orphan bugs (@devel... — tekton-2 (developer) · `issues`
+- summary: Added two hermetic characterization tests for `/btw` refusal when any boss chat message is pending, including a stale turn after the wedge watchdog fires.
+- files: `internal/app/btw_busy_test.go`, `internal/app/btw_orphan_test.go`
+- verify: ```
+- proof: *`TestBtwStartRefusedWhileBossPending`** — Locks in that a pending boss bubble prevents `/btw` and appends the mid-turn error; once concurre
+- ledgerId: led-1788716616609-cbb09535
+
+### 2026-09-06 · Scout BTW session lifecycle (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: I now have complete evidence for all 7 requirements. Let me finalize the report.
+- files: | Path | Why inspected |, |---|---|, | `internal/app/model.go` | Owns `btwSaved`/`btwHiddenSnap`/`btwPinMsgID` fields, `/btw`/`/done` sla, | `internal/app/sessions.go` | `btwSwapBackend`/`officeSpawnBackend`/`primarySeamBackend` interfaces, | `internal/app/btw_hide_test.go` | The only app-level btw lifecycle tests, | `internal/panels/chat.go` | `btwPinRows` hit-map, `BtwPinRowAt`, `ClickRow`, rendering of the `btw, | `internal/panels/chat_window.go` | `hitSpans.btwPin` field backing the hit-map |, | `internal/panels/popover.go` | `/btw`/`/done` help-popover copy only |, | `internal/panels/popover_cmds_test.go` | Confirms `/btw`/`/done` are registered as real slash comm, | `internal/backend/opencode.go` | `liveBackend.NewOffice`/`SwapPrimary`/`PrimaryID`/`ResetPrimary`,, | `internal/backend/claude.go` | `liveClaudeBackend.NewOffice`/`SwapPrimary`, `EvChatBoss` Pending e, | `internal/backend/claude_office_swap_test.go` | Backend-level `/btw`/`/done`/`/new` coverage on th
+- verify: ```
+- proof: (none)
+- ledgerId: led-1788716230839-b493c711
+
+### 2026-09-06 · Scout model picker slash command (@explore su... — skopos-3 (scout) · `issues`
+- summary: Read-only recon complete: traced the slash-command registry/dispatch, the full `/model` (boss model) flow end-to-end, the model listing source, how sub-agent mo
+- files: `internal/panels/popover.go`, `internal/app/model.go`, `internal/app/model_picker.go`, `internal/panels/model_picker.go`, `internal/backend/models_live.go`, `internal/backend/demo.go`, `internal/backend/opencode.go` (~1660–1810), `internal/backend/claude.go`, `internal/backend/events.go` (~214–226), `internal/backend/claude_events.go` (~435–500), `internal/config/config.go`, `internal/backend/charter.go`
+- verify: Clean build, no errors, no output (after dependency download on first run).
+- proof: (none)
+- ledgerId: led-1788716149469-dd31b95f
+
+### 2026-09-06 · Scout transcript clickable bubbles (@explore... — skopos-2 (scout) · `issues`
+- summary: Read-only reconnaissance of the transcript rendering + mouse-click pipeline in the Go TUI. **No files edited.** Found that a directly-analogous feature — a clic
+- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/chat_selection.go`, `internal/panels/perm_modal.go`, `internal/panels/question_modal.go`, `internal/panels/links.go`, `internal/app/model.go`, `internal/app/selection.go`, `internal/app/btw_hide_test.go`, --, # FINDINGS, ## 1. Where the transcript is rendered, The transcript is built by a **per-block render cache + windowed viewport**, not a single monolithic
+- verify: ```
+- proof: (none)
+- ledgerId: led-1788716148776-d9bbc016
+
 ### 2026-09-05 · Fix attachment path collision (@developer sub... — tekton-39 (developer) · `done`
 - summary: Moved the Claude MCP prompt attachment to `<dir>/.claude/mcp-servers.md`.
 - files: `internal/backend/charter_claude_mcp.go`, `internal/backend/charter_claude_mcp_test.go`, `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`
@@ -237,123 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ```json
 - ledgerId: led-1788622341438-38ea2e3e
-
-### 2026-09-05 · Fix uninstall ownership (@developer subagent) — tekton-12 (developer) · `issues`
-- summary: Added an installer-owned SHA-256 manifest at `${PREFIX}/.theboringfloor-manifest` after binary installation.
-- files: `install.sh`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788622331259-c74341f3
-
-### 2026-09-05 · Fix config merge safety (@developer subagent) — tekton-9 (developer) · `done`
-- summary: Switched OpenCode config decoding to `json.Decoder.UseNumber()` so existing JSON number literals—including integers above `2^53`—are retained losslessly when th
-- files: `internal/mcpinstall/mcpinstall.go`, `internal/mcpinstall/mcpinstall_test.go`
-- verify: ```
-- proof: *Before registration**
-- ledgerId: led-1788622266449-d3ab97aa
-
-### 2026-09-05 · Blast radius review (@reviewer subagent) — theboringcto-3 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: Return to developer: (1) preserve JSON numbers with `json.Decoder.UseNumber()` or use a lossless JSON edit strategy, and add a regression ca
-- proof: (none)
-- ledgerId: led-1788622033491-0011c5f3
-
-### 2026-09-05 · Security review control API (@reviewer subagent) — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: Return to developer: redesign discovery/auth so an arbitrary same-UID process cannot recover a reusable bearer capability from a predictable
-- proof: (none)
-- ledgerId: led-1788621988061-6b87074a
-
-### 2026-09-05 · Concurrency review (@reviewer subagent) — theboringcto-2 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788621980727-e8109dc3
-
-### 2026-09-05 · thefloor_mcp binary (@developer subagent) — tekton-5 (developer) · `issues`
-- summary: Added the dependency-free `thefloor_mcp` stdio MCP server under `cmd/thefloor_mcp`.
-- files: `cmd/thefloor_mcp/main.go`, `cmd/thefloor_mcp/mcp.go`, `cmd/thefloor_mcp/office.go`, `cmd/thefloor_mcp/mcp_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788621571738-3cad5ffc
-
-### 2026-09-05 · Document thefloor_mcp (@developer subagent) — tekton-8 (developer) · `done`
-- summary: Added a README section for `thefloor_mcp`: release packaging, automatic registration, all six tools, live/offline behavior, transcript limits, environment varia
-- files: `README.md`, `website/app/docs/mcp-server/page.tsx`, `website/app/docs/page.tsx`, `website/app/docs/plan-mode/page.tsx`
-- verify: ```
-- proof: ### README — MCP server and office control
-- ledgerId: led-1788621533250-c2ca5aa9
-
-### 2026-09-05 · MCP config auto-install (@developer subagent) — tekton-6 (developer) · `done`
-- summary: Added `internal/mcpinstall` with a non-fatal, idempotent `Ensure(binPath)` registration pass for OpenCode and Claude Code.
-- files: `internal/mcpinstall/mcpinstall.go`, `internal/mcpinstall/mcpinstall_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788621516211-0a3d7a1f
-
-### 2026-09-05 · App control wiring (@developer subagent) — tekton-3 (developer) · `issues`
-- summary: Added the read-only `Model.applyControl` projection handler for plan, transcript, status, and unknown control queries.
-- files: `internal/app/control.go`, `internal/app/control_test.go`, `cmd/theboringoffice/main.go`
-- verify: ```
-- proof: Sample Model state for plan projection:
-- ledgerId: led-1788621495460-434ae9cb
-
-### 2026-09-05 · Release plumbing second binary (@developer su... — tekton-7 (developer) · `issues`
-- summary: Added the `thefloor_mcp` GoReleaser build for the same macOS/Linux/Windows amd64+arm64 matrix and matching version metadata ldflags.
-- files: `.goreleaser.yaml`, `install.sh`, `install.ps1`
-- verify: ```
-- proof: ```yaml
-- ledgerId: led-1788621491302-edce56a9
-
-### 2026-09-05 · Control HTTP server (@developer subagent) — tekton-2 (developer) · `issues`
-- summary: Added `internal/controlsrv`, a loopback-only, bearer-token-protected HTTP control server that bridges requests exclusively through `state.Event` sink emissions.
-- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
-- verify: ```
-- proof: ```http
-- ledgerId: led-1788621478620-ed046d20
-
-### 2026-09-05 · Session search package (@developer subagent) — tekton-4 (developer) · `issues`
-- summary: Added the read-only, current-project-scoped `internal/sessionsearch` package.
-- files: `internal/sessionsearch/sessionsearch.go`, `internal/sessionsearch/sessionsearch_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788621473137-0574530a
-
-### 2026-09-05 · Control protocol package (@developer subagent) — tekton-1 (developer) · `done`
-- summary: Added dependency-light `internal/control` shared contract package for the office control server and `thefloor_mcp` client.
-- files: `internal/control/control.go`, `internal/control/control_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788621402385-f67cad24
-
-### 2026-09-05 · Scout MCP config injection (@general subagent) — skopos-3 (scout) · `issues`
-- summary: **Existing injection precedent**
-- files: `internal/backend/charter.go`, `internal/backend/charter_claude.go`, `internal/backend/charter_mcp.go`, `internal/backend/opencode.go`, `.opencode/mcp-servers.md`, `~/.config/opencode/opencode.json`, `~/.config/opencode/opencode.jsonc`, `~/.claude.json`, `<repo>/.mcp.json`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788619865338-5f58033c
-
-### 2026-09-05 · Scout session search corpus (@general subagent) — skopos-2 (scout) · `issues`
-- summary: `session.json` is the per-working-directory office snapshot defined by `internal/app/sessions.go:82-112`. Its canonical write location is `~/.theboringfloor/pro
-- files: `internal/app/sessions.go`, `internal/state/state.go`, `internal/app/model.go`, `internal/app/session_picker.go`, `internal/panels/session_picker.go`, `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/backend.go`, Corpus measured: `~/.theboringfloor/projects/**/session.json`., Temporary-file corpus measured: `~/.theboringfloor/projects/**/.session-*.tmp`., Read fallback roots confirmed in `LoadSession`: `~/.theboringoffice/projects`, `~/.theboringfloor/se
-- verify: ```
-- proof: `searchable?` below means that the field contains text or stable metadata which exists in the snapshot; it does **not** indicate an existing
-- ledgerId: led-1788619861391-19e1dcd4
-
-### 2026-09-05 · Scout build and MCP overlap (@general subagent) — skopos-4 (scout) · `issues`
-- summary: `cmd/` contains **nine** Go command packages. Only `cmd/theboringoffice` is shipped by the current GoReleaser configuration, as the executable `theboringfloor`;
-- files: `.goreleaser.yaml`, `.github/workflows/release.yml`, `go.mod`, `install.sh`, `install.ps1`, `cmd/README.md`, `cmd/theboringoffice/main.go`, `cmd/headless/main.go`, `cmd/uishot/main.go`, `cmd/floorshot/main.go`, `cmd/termshot/main.go`, `cmd/soundtest/main.go`
-- verify: ```
-- proof: | capability | already covered by | verdict: duplicate/partial/new |
-- ledgerId: led-1788619841031-c5bd4f28
-
-### 2026-09-05 · Scout office IPC seam (@general subagent) — skopos-1 (scout) · `issues`
-- summary: **1. Ambient local HTTP server:** No. The running `theboringoffice` binary does not start an HTTP listener, bind a port, or register HTTP handlers. Repository-w
-- files: `cmd/theboringoffice/main.go`, `internal/app/ambient.go`, `internal/app/browser.go`, `internal/app/browser_open.go`, `internal/app/model.go`, `internal/app/open_url.go`, `internal/app/plan_mode.go`, `internal/app/plan_tools.go`, `internal/app/sessions.go`, `internal/backend/agentmemory.go`, `internal/backend/claude.go`, `internal/backend/opencode.go`
-- verify: read-only inspection; no commands run
-- proof: No ambient HTTP server exists.
-- ledgerId: led-1788619817699-0983ee85
 

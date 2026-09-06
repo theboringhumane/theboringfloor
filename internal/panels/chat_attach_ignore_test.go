@@ -115,24 +115,24 @@ func TestIgnoreDeeperDirWins(t *testing.T) {
 func TestWalkAttachSafeDefaultsOnly(t *testing.T) {
 	root := t.TempDir()
 	for _, rel := range []string{
-		".git/config",               // object store
-		".venv/lib/py.py",           // virtualenv
-		".venv-3.12/bin/tool",       // versioned virtualenv dir
+		".git/config",                // object store
+		".venv/lib/py.py",            // virtualenv
+		".venv-3.12/bin/tool",        // versioned virtualenv dir
 		"node_modules/left-pad/i.js", // package tree
-		"__pycache__/m.cpython.pyc", // bytecode cache
-		"cache.pyc",                 // bare bytecode leaf
-		".DS_Store",                 // finder metadata
-		".pytest_cache/v/cache/n",   // test cache
-		".mypy_cache/3.12/x",        // typechecker cache
-		".ruff_cache/c",             // linter cache
-		".tox/py312/bin/x",          // tox env
-		"dist/bundle.js",            // packaged output
-		"build/app.js",              // compiled output
-		"target/debug/t",            // rust output
-		".next/static/x.js",         // next.js output
-		".turbo/cache/sum",          // turbo cache
-		"out/export/index.html",     // goreleaser/static-export output
-		"internal/vendor/dep.go",    // NESTED vendor: artifact
+		"__pycache__/m.cpython.pyc",  // bytecode cache
+		"cache.pyc",                  // bare bytecode leaf
+		".DS_Store",                  // finder metadata
+		".pytest_cache/v/cache/n",    // test cache
+		".mypy_cache/3.12/x",         // typechecker cache
+		".ruff_cache/c",              // linter cache
+		".tox/py312/bin/x",           // tox env
+		"dist/bundle.js",             // packaged output
+		"build/app.js",               // compiled output
+		"target/debug/t",             // rust output
+		".next/static/x.js",          // next.js output
+		".turbo/cache/sum",           // turbo cache
+		"out/export/index.html",      // goreleaser/static-export output
+		"internal/vendor/dep.go",     // NESTED vendor: artifact
 		// ...and what must SURVIVE:
 		"src/keep.go",
 		"main.go",
@@ -254,8 +254,8 @@ func TestWalkAttachFixtureTree(t *testing.T) {
 	for _, want := range []string{
 		"src/keep.go", "main.go", "sub/keep.go",
 		"sub/nested/only-root-here.txt", // the anchored rule doesn't reach here
-		"other/x.snap", // sub's *.snap must not escape its subtree
-		"sub/.gitignore", // gitignore files themselves are editable sources
+		"other/x.snap",                  // sub's *.snap must not escape its subtree
+		"sub/.gitignore",                // gitignore files themselves are editable sources
 	} {
 		if !saw[want] {
 			t.Errorf("fixture tree: %q must be listed, got %v", want, after)
@@ -263,9 +263,9 @@ func TestWalkAttachFixtureTree(t *testing.T) {
 	}
 	for _, unwanted := range []string{
 		".git/config", ".venv/pkg/tool.py", "node_modules/foo.js", "dist/out.js",
-		"sub/x.snap",                 // nested .gitignore's basename rule
-		"sub/.venv-restore/note.py",  // nested dir rule (and the .venv* default)
-		"sub/only-root-here.txt",     // "/only-root-here.txt" anchored at sub
+		"sub/x.snap",                // nested .gitignore's basename rule
+		"sub/.venv-restore/note.py", // nested dir rule (and the .venv* default)
+		"sub/only-root-here.txt",    // "/only-root-here.txt" anchored at sub
 	} {
 		if saw[unwanted] {
 			t.Errorf("fixture tree: %q must be filtered out, got %v", unwanted, after)

@@ -381,6 +381,12 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 		if c.Pending {
 			continue
 		}
+		// A btw pin targets an in-memory-only hidden side snapshot. That
+		// snapshot is unavailable after a restore, so retaining its bubble
+		// would advertise an affordance that can never resume anything.
+		if c.Meta == "btw-pin" {
+			continue
+		}
 		if c.From == "office" && strings.HasPrefix(c.Text, restoreNoticePrefix) {
 			continue
 		}
@@ -453,8 +459,9 @@ func (m *Model) persistOfficeSession(force bool) {
 	if ps, ok := m.backend.(primarySeamBackend); ok {
 		primaryID = ps.PrimaryID()
 	}
+	st, primaryID := m.officeSessionState(primaryID)
 	dir := m.sessDir
-	sf := Snapshot(dir, primaryID, m.st)
+	sf := Snapshot(dir, primaryID, st)
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
 	sf.ApprovedPlanText = m.approvedPlanText()
 	// Per-backend pins: the active transport's session stamps
@@ -469,6 +476,21 @@ func (m *Model) persistOfficeSession(force bool) {
 	go func() { _ = SaveSession(dir, sf) }() // async — UI never blocks on disk
 }
 
+// officeSessionState returns the state that belongs to the main office for a
+// persistence write. While /btw is active, the live state and backend primary
+// belong to the side session; btwSaved holds the boss surfaces that must
+// survive an autosave, quit, or crash.
+func (m *Model) officeSessionState(primaryID string) (state.OfficeState, string) {
+	st := m.st
+	if m.btwSaved == nil {
+		return st, primaryID
+	}
+	st.Chat = m.btwSaved.chat
+	st.Tasks = m.btwSaved.tasks
+	st.Mails = m.btwSaved.mails
+	return st, m.btwSaved.primaryID
+}
+
 // PersistSession — the exported FINAL-write hook for the runtime shutdown
 // path (the runtime calls it after p.Run() alongside b.Stop; harnesses may
 // call it directly). No-op in demo mode.
@@ -480,14 +502,16 @@ func (m *Model) PersistSession() { m.persistOfficeSession(true) }
 // STILL-current id (nothing moves server-side here — the swap is the
 // relaunched `-s <id>` boot's job); stored id == boot pin is exactly
 // what lets the new process hydrate the transcript (the closing notice
-// row included) straight through the swap. Same guarantees: live-only,
-// sessDir-guarded, synchronous + bounded.
+// row included) straight through the swap. An active /btw side session is
+// the exception: its saved boss snapshot owns both surfaces and primary.
+// Same guarantees: live-only, sessDir-guarded, synchronous + bounded.
 func (m *Model) persistOfficePin(primaryID string) {
 	if m.st.Mode != state.ModeLive || m.sessDir == "" {
 		return
 	}
 	m.sessLast = time.Now()
-	sf := Snapshot(m.sessDir, primaryID, m.st)
+	st, primaryID := m.officeSessionState(primaryID)
+	sf := Snapshot(m.sessDir, primaryID, st)
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
 	sf.ApprovedPlanText = m.approvedPlanText()
 	mergeBackendPins(&sf, m.sessDir, m.backendName(), primaryID)

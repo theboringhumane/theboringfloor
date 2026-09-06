@@ -141,6 +141,9 @@ func TestDefault_Shape(t *testing.T) {
 	if cfg.Backend.AgentmemoryURL != "http://localhost:3111" || cfg.Backend.AgentmemoryPollS != 5 {
 		t.Errorf("Backend = %+v, want agentmemoryUrl http://localhost:3111 / poll 5", cfg.Backend)
 	}
+	if cfg.AgentModels == nil || len(cfg.AgentModels) != 0 {
+		t.Errorf("AgentModels = %#v, want non-nil empty map", cfg.AgentModels)
+	}
 }
 
 func TestLoad_FixtureFieldsMatch(t *testing.T) {
@@ -297,6 +300,145 @@ func TestSave_RoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "\n  \"version\": 1") {
 		t.Errorf("saved file is not two-space-indented JSON; head: %.80q", string(b))
+	}
+}
+
+func TestSave_AtomicWritePreservesContentModeAndCleansTemp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "brain.json")
+	cfg := Default()
+	cfg.AgentModels["developer"] = "openai/gpt-5"
+
+	if err := save(path, cfg); err != nil {
+		t.Fatalf("save(): %v", err)
+	}
+
+	want, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal expected config: %v", err)
+	}
+	want = append(want, '\n')
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read saved config: %v", err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("saved bytes = %q, want %q", got, want)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat saved config: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o644); got != want {
+		t.Errorf("saved mode = %#o, want %#o", got, want)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read config directory: %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != "brain.json" {
+		t.Errorf("config directory entries = %v, want only brain.json", entries)
+	}
+}
+
+func TestAgentModelSaveLoadRoundTrip(t *testing.T) {
+	useHome(t)
+	cfg := Default()
+	cfg.AgentModels["explore"] = "azure/claude-sonnet-5"
+	cfg.AgentModels["developer"] = "openai/gpt-5"
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save(): %v", err)
+	}
+	got, err := Load()
+	if err != nil {
+		t.Fatalf("Load(): %v", err)
+	}
+	if !reflect.DeepEqual(got.AgentModels, cfg.AgentModels) {
+		t.Errorf("AgentModels round trip = %#v, want %#v", got.AgentModels, cfg.AgentModels)
+	}
+
+	// An empty map must serialize as an object and load back non-nil.
+	cfg.AgentModels = map[string]ModelRef{}
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save(empty): %v", err)
+	}
+	got, err = Load()
+	if err != nil {
+		t.Fatalf("Load(empty): %v", err)
+	}
+	if got.AgentModels == nil || len(got.AgentModels) != 0 {
+		t.Errorf("empty AgentModels round trip = %#v, want non-nil empty map", got.AgentModels)
+	}
+}
+
+func TestAgentModelLoadBackfill(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		agentModels string
+	}{
+		{name: "missing key"},
+		{name: "null key", agentModels: `, "agentModels": null`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := useHome(t)
+			writeBrain(t, home, `{"version": 7, "boss": {"name": "chief", "model": "anthropic/claude-sonnet-4", "concierge": false}, "roles": {"developer": {"model": "openai/gpt-5", "namePrefix": "mason"}}, "backend": {"bossModel": "azure/claude-sonnet-5"}`+tc.agentModels+`}`)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			if cfg.AgentModels == nil || len(cfg.AgentModels) != 0 {
+				t.Errorf("AgentModels = %#v, want non-nil empty map", cfg.AgentModels)
+			}
+			if cfg.Version != 7 || cfg.Boss.Name != "chief" || cfg.Boss.Model != "anthropic/claude-sonnet-4" || cfg.Boss.Concierge ||
+				cfg.Roles["developer"].Model != "openai/gpt-5" || cfg.Roles["developer"].NamePrefix != "mason" || cfg.Backend.BossModel != "azure/claude-sonnet-5" {
+				t.Errorf("unrelated fields changed: %+v", cfg)
+			}
+		})
+	}
+}
+
+func TestValidAgentName(t *testing.T) {
+	for _, name := range []string{"explore", "developer", "general", "plan", "build", "title", "summary", "compaction", "custom_agent-2"} {
+		if !ValidAgentName(name) {
+			t.Errorf("ValidAgentName(%q) = false, want true", name)
+		}
+	}
+	for _, name := range []string{"", "has space", "a/b", "../x", `quote"name`} {
+		if ValidAgentName(name) {
+			t.Errorf("ValidAgentName(%q) = true, want false", name)
+		}
+	}
+}
+
+func TestValidModelRef(t *testing.T) {
+	if !ValidModelRef("azure/claude-sonnet-5") {
+		t.Error("ValidModelRef(azure/claude-sonnet-5) = false, want true")
+	}
+	for _, ref := range []string{"", "noslash", "a/", "/b", "a/b/c", "a b/c"} {
+		if ValidModelRef(ref) {
+			t.Errorf("ValidModelRef(%q) = true, want false", ref)
+		}
+	}
+}
+
+func TestAgentModelsLeaveRolesAndBossModelUnchanged(t *testing.T) {
+	cfg := Default()
+	role := cfg.Roles["developer"]
+	role.Model = "openai/gpt-5"
+	cfg.Roles["developer"] = role
+	roles := make(map[string]RoleConfig, len(cfg.Roles))
+	for name, role := range cfg.Roles {
+		roles[name] = role
+	}
+	cfg.Backend.BossModel = "anthropic/claude-sonnet-4"
+	bossModel := cfg.Backend.BossModel
+	cfg.AgentModels["explore"] = "azure/claude-sonnet-5"
+	if !reflect.DeepEqual(cfg.Roles, roles) || cfg.Backend.BossModel != bossModel {
+		t.Errorf("AgentModels mutation changed Roles or BossModel: roles=%#v bossModel=%q", cfg.Roles, cfg.Backend.BossModel)
 	}
 }
 
