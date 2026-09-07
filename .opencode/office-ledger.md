@@ -7,6 +7,27 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-07 · Fix adaptive icon scale (@developer subagent) — tekton-15 (developer) · `issues`
+- summary: Regenerated `assets/logo_foreground.png` with transparent padding reduced from a 50.7% artwork width to **88.3%**, preserving the flower’s aspect ratio and cent
+- files: `mobile/assets/logo_foreground.png`, `mobile/android/app/src/main/res/drawable*/ic_launcher_{foreground,monochrome}.png`, `mobile/android/app/src/main/res/mipmap-*/ic_launcher.png`, `mobile/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`, `mobile/android/app/src/main/res/values/colors.xml`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788770899972-c60597c4
+
+### 2026-09-07 · In-app loading screen (@developer subagent) — tekton-14 (developer) · `issues`
+- summary: Added a theme-aware `SplashView` with the bundled logo and restrained progress indicator.
+- files: `mobile/lib/views/splash_view.dart`, `mobile/lib/main.dart`, `mobile/lib/app.dart`, `mobile/test/splash_view_test.dart`, `mobile/assets/logo.png`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788770416246-626d9f7e
+
+### 2026-09-07 · App icon and native splash (@developer subagent) — tekton-13 (developer) · `issues`
+- summary: Converted `website/public/imgs/logo.jpg` into `mobile/assets/logo.png`: a 1080×1071 PNG with alpha/transparency, declared for `Image.asset('assets/logo.png')`.
+- files: `mobile/assets/logo.png`, `mobile/assets/logo_foreground.png`, `mobile/assets/logo_dark.png`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/flutter_launcher_icons.yaml`, `mobile/flutter_native_splash.yaml`, `mobile/android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`, `mobile/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`, `mobile/android/app/src/main/res/drawable-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/`, `mobile/android/app/src/main/res/drawable/`, `mobile/android/app/src/main/res/drawable-v21/`
+- verify: ```
+- proof: ```xml
+- ledgerId: led-1788770407317-b0e7a4e1
+
 ### 2026-09-07 · Run full Go test suite (@runner subagent) — hemerodromos-1 (runner) · `done`
 - summary: ## RUNS
 - files: (none)
@@ -335,25 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ```
 - ledgerId: led-1788754790329-7bf0655b
-
-### 2026-09-07 · Scout control server surface (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: All evidence gathered. Producing the final report.
-- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `internal/control/control.go`, `internal/control/control_test.go`, `internal/app/control.go`, `internal/app/control_test.go`, `internal/app/plan_tools.go`, `internal/app/model.go` (lines 3335-3349), `internal/state/state.go` (lines 520-663), `cmd/thefloor_mcp/office.go`, `cmd/thefloor_mcp/mcp.go`, `cmd/theboringfloor/main.go` (lines 190-269)
-- verify: `TestControlHelperProcess` — not a real assertion-bearing test; it is the subprocess entry point `startOfficeNamedProcess` `exec.Command`s i
-- proof: ## Current control API contract
-- ledgerId: led-1788754665496-8c68e4fb
-
-### 2026-09-07 · Scout mobile toolchain and net (@explore suba... — skopos-4 (scout) · `issues`
-- summary: All probes complete. Here is the recon report.
-- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.gitignore`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/.gitignore`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/` (dir listing), `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/go.mod` (grep only, line 1 `go` directive), Grep across repo for `website` references
-- verify: *30Gi free** on a 460Gi volume (93% used). The Flutter SDK itself is small (~1-2 GB including Dart), and the Android SDK is **already presen
-- proof: | Tool | Installed? | Version | Ready to build an APK? | Blocking gap |
-- ledgerId: led-1788754652283-cf0652e1
-
-### 2026-09-06 · Fix btw swap failure paths (@developer subagent) — tekton-12 (developer) · `done`
-- summary: Made `/btw` startup transactional by removing the pre-spawn `ResetPrimary(true)` call. `NewOffice()` now runs while the original primary remains seated; if spaw
-- files: `internal/app/model.go`, `internal/app/btw_guard_test.go`, `internal/app/btw_swap_failure_test.go`
-- verify: ```
-- proof: *`/btw` startup failure path — before:**
-- ledgerId: led-1788723543051-05b14dcc
 

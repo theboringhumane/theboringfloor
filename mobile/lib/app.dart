@@ -15,21 +15,105 @@ import 'theme.dart';
 import 'views/project_picker.dart';
 import 'views/session_view.dart';
 import 'views/settings_view.dart';
+import 'views/splash_view.dart';
 import 'views/space_view.dart';
 import 'views/terminal_view.dart';
 
-class TheBoringFloorApp extends StatelessWidget {
-  const TheBoringFloorApp({super.key, required this.settings});
+class AppBootstrap {
+  const AppBootstrap({required this.settings, required this.projects});
+
   final SettingsStore settings;
+  final ProjectsStore projects;
+
+  static Future<AppBootstrap> load() async {
+    final settings = await SettingsStore.load();
+    final projects = ProjectsStore(settings.client());
+    // A first run has no gateway to contact; preserve access to Settings.
+    if (!settings.settings.configured) {
+      return AppBootstrap(settings: settings, projects: projects);
+    }
+    await projects.load();
+    if (projects.error case final error?) {
+      throw error;
+    }
+    return AppBootstrap(settings: settings, projects: projects);
+  }
+}
+
+class TheBoringFloorApp extends StatefulWidget {
+  const TheBoringFloorApp({
+    super.key,
+    this.bootstrap = AppBootstrap.load,
+    this.bootstrapTimeout = defaultBootstrapTimeout,
+  });
+
+  /// Bounds startup work so a failed gateway cannot leave a permanent spinner.
+  static const defaultBootstrapTimeout = Duration(seconds: 15);
+
+  final Future<AppBootstrap> Function() bootstrap;
+  final Duration bootstrapTimeout;
+
+  @override
+  State<TheBoringFloorApp> createState() => _TheBoringFloorAppState();
+}
+
+class _TheBoringFloorAppState extends State<TheBoringFloorApp> {
+  AppBootstrap? _bootstrap;
+  String? _errorMessage;
+  int _attempt = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _startBootstrap();
+  }
+
+  Future<void> _startBootstrap() async {
+    final attempt = ++_attempt;
+    setState(() {
+      _bootstrap = null;
+      _errorMessage = null;
+    });
+    try {
+      final result = await widget.bootstrap().timeout(widget.bootstrapTimeout);
+      if (!mounted || attempt != _attempt) {
+        return;
+      }
+      setState(() => _bootstrap = result);
+    } on TimeoutException {
+      if (!mounted || attempt != _attempt) {
+        return;
+      }
+      setState(
+        () => _errorMessage = 'The app took too long to start. Try again.',
+      );
+    } catch (_) {
+      if (!mounted || attempt != _attempt) {
+        return;
+      }
+      setState(
+        () => _errorMessage = 'We could not finish starting the app. Check your connection and try again.',
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => DynamicColorBuilder(
-    builder: (l, d) => MaterialApp(
-      title: 'theboringfloor',
-      theme: buildLightTheme(l),
-      darkTheme: buildDarkTheme(d),
-      themeMode: ThemeMode.system,
-      home: AppShell(settings: settings),
-    ),
+    builder: (l, d) {
+      final bootstrap = _bootstrap;
+      return MaterialApp(
+        title: 'theboringfloor',
+        theme: buildLightTheme(l),
+        darkTheme: buildDarkTheme(d),
+        themeMode: ThemeMode.system,
+        home: bootstrap == null
+            ? SplashView(errorMessage: _errorMessage, onRetry: _startBootstrap)
+            : AppShell(
+                settings: bootstrap.settings,
+                projects: bootstrap.projects,
+              ),
+      );
+    },
   );
 }
 
@@ -38,6 +122,7 @@ class AppShell extends StatefulWidget {
     super.key,
     required this.settings,
     this.client,
+    this.projects,
     this.readinessPollInterval = defaultReadinessPollInterval,
     this.readinessTimeout = defaultReadinessTimeout,
   });
@@ -50,6 +135,7 @@ class AppShell extends StatefulWidget {
 
   final SettingsStore settings;
   final GatewayClient? client;
+  final ProjectsStore? projects;
   final Duration readinessPollInterval;
   final Duration readinessTimeout;
   @override
@@ -67,8 +153,9 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    client = widget.client ?? widget.settings.client();
-    projects = ProjectsStore(client);
+    client =
+        widget.client ?? widget.projects?.client ?? widget.settings.client();
+    projects = widget.projects ?? ProjectsStore(client);
     terminal = TerminalStore(client);
   }
 
