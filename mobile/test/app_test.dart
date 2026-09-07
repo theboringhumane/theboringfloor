@@ -87,7 +87,7 @@ void main() {
     );
 
     expect(find.byType(NavigationDestination), findsNWidgets(3));
-    expect(find.text('Space'), findsNWidgets(2));
+    expect(find.text('Space'), findsOneWidget);
     await tester.tap(find.text('Terminal'));
     await tester.pumpAndSettle();
     expect(find.text('Terminal'), findsNWidgets(2));
@@ -129,7 +129,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(polls, greaterThanOrEqualTo(2));
-    expect(find.text('Project One'), findsOneWidget);
+    expect(find.byTooltip('More'), findsOneWidget);
   });
 
   testWidgets('shows timeout failure with a retry affordance', (tester) async {
@@ -196,7 +196,7 @@ void main() {
 
       await _openPicker(tester);
       await tester.pumpAndSettle();
-      expect(find.byTooltip('Stop'), findsOneWidget);
+      expect(find.byTooltip('More'), findsOneWidget);
     },
   );
 

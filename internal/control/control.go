@@ -64,9 +64,19 @@ type PlanWriteRequest struct {
 	Text string `json:"text"`
 }
 
-// MessageRequest is the body accepted by the message endpoint.
+// Attachment is one base64-encoded image submitted with a control message.
+// Data must be standard base64 of the raw image bytes.
+type Attachment struct {
+	Name     string `json:"name"`
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
+}
+
+// MessageRequest is the body accepted by the message endpoint. Attachments are
+// optional so the JSON emitted by existing text-only clients is unchanged.
 type MessageRequest struct {
-	Text string `json:"text"`
+	Text        string       `json:"text"`
+	Attachments []Attachment `json:"attachments,omitempty"`
 }
 
 // OKResponse is a successful mutation response.

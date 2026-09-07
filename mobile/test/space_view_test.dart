@@ -99,11 +99,24 @@ Future<void> _pumpSpace(
   await tester.pumpAndSettle();
 }
 
+Future<void> _openSearch(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Search projects'));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _selectFilter(WidgetTester tester, String label) async {
+  await tester.tap(find.byTooltip('Filter projects'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.widgetWithText(FilterChip, label));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('SpaceView', () {
     testWidgets('filters live by project name and directory', (tester) async {
       await _pumpSpace(tester, _store(_ProjectsClient([_running, _stopped])));
 
+      await _openSearch(tester);
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.pump();
       expect(find.text('Alpha Office'), findsOneWidget);
@@ -115,56 +128,29 @@ void main() {
       expect(find.text('Beta Office'), findsOneWidget);
     });
 
-    testWidgets('uses All by default and each liveness chip filters', (
+    testWidgets('uses All by default and each liveness filter works', (
       tester,
     ) async {
       await _pumpSpace(tester, _store(_ProjectsClient([_running, _stopped])));
 
       expect(find.text('Alpha Office'), findsOneWidget);
       expect(find.text('Beta Office'), findsOneWidget);
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'All'))
-            .selected,
-        isTrue,
-      );
+      expect(find.text('RUNNING'), findsOneWidget);
+      expect(find.text('STOPPED'), findsOneWidget);
 
-      await tester.tap(find.text('Running'));
-      await tester.pump();
+      await _selectFilter(tester, 'Running');
       expect(find.text('Alpha Office'), findsOneWidget);
       expect(find.text('Beta Office'), findsNothing);
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Running'))
-            .selected,
-        isTrue,
-      );
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'All'))
-            .selected,
-        isFalse,
-      );
+      expect(find.text('RUNNING'), findsOneWidget);
+      expect(find.text('STOPPED'), findsNothing);
 
-      await tester.tap(find.text('Stopped'));
-      await tester.pump();
+      await _selectFilter(tester, 'Stopped');
       expect(find.text('Alpha Office'), findsNothing);
       expect(find.text('Beta Office'), findsOneWidget);
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Stopped'))
-            .selected,
-        isTrue,
-      );
-      expect(
-        tester
-            .widget<FilterChip>(find.widgetWithText(FilterChip, 'Running'))
-            .selected,
-        isFalse,
-      );
+      expect(find.text('RUNNING'), findsNothing);
+      expect(find.text('STOPPED'), findsOneWidget);
 
-      await tester.tap(find.text('All'));
-      await tester.pump();
+      await _selectFilter(tester, 'All');
       expect(find.text('Alpha Office'), findsOneWidget);
       expect(find.text('Beta Office'), findsOneWidget);
     });
@@ -174,7 +160,8 @@ void main() {
     ) async {
       await _pumpSpace(tester, _store(_ProjectsClient([_running, _stopped])));
 
-      await tester.tap(find.text('Stopped'));
+      await _selectFilter(tester, 'Stopped');
+      await _openSearch(tester);
       await tester.enterText(find.byType(TextField), 'alpha');
       await tester.pump();
 
@@ -182,7 +169,7 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
-    testWidgets('shows liveness badges and opens the tapped project', (
+    testWidgets('shows distinct status dots and opens the tapped project', (
       tester,
     ) async {
       Project? opened;
@@ -192,8 +179,18 @@ void main() {
         onOpen: (project) => opened = project,
       );
 
-      expect(find.text('LIVE'), findsOneWidget);
-      expect(find.text('STOPPED'), findsOneWidget);
+      expect(find.text('LIVE · /work/alpha'), findsOneWidget);
+      expect(find.text('STOPPED · /work/beta'), findsOneWidget);
+      final runningDot = tester.widget<Container>(
+        find.byKey(const Key('status-dot-running')),
+      );
+      final stoppedDot = tester.widget<Container>(
+        find.byKey(const Key('status-dot-stopped')),
+      );
+      expect(
+        (runningDot.decoration! as BoxDecoration).color,
+        isNot((stoppedDot.decoration! as BoxDecoration).color),
+      );
       await tester.tap(find.text('Beta Office'));
       expect(opened?.id, _stopped.id);
     });

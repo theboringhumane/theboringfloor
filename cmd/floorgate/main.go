@@ -56,10 +56,12 @@ func main() {
 		Addr:              listener.Addr().String(),
 		Handler:           gateway,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      125 * time.Second,
-		IdleTimeout:       30 * time.Second,
-		MaxHeaderBytes:    16 << 10,
+		// Image messages can contain up to 16 MiB of decoded attachments. Allow
+		// slow mobile uploads enough time to reach the route's 32 MiB body cap.
+		ReadTimeout:    60 * time.Second,
+		WriteTimeout:   125 * time.Second,
+		IdleTimeout:    30 * time.Second,
+		MaxHeaderBytes: 16 << 10,
 	}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {

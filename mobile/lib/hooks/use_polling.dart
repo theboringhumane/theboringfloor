@@ -18,10 +18,23 @@ class Polling extends StatefulWidget {
 
 class _PollingState extends State<Polling> {
   Timer? timer;
+  bool _ticking = false;
+
   @override
   void initState() {
     super.initState();
-    timer = Timer.periodic(widget.interval, (_) => widget.onTick());
+    timer = Timer.periodic(widget.interval, (_) => _tick());
+  }
+
+  Future<void> _tick() async {
+    if (_ticking) return;
+
+    _ticking = true;
+    try {
+      await widget.onTick();
+    } finally {
+      _ticking = false;
+    }
   }
 
   @override

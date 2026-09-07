@@ -17,6 +17,7 @@ ThemeData buildDarkTheme([ColorScheme? colorScheme]) =>
 ThemeData _buildTheme(ColorScheme colorScheme) => ThemeData(
   colorScheme: colorScheme,
   useMaterial3: true,
+  scaffoldBackgroundColor: colorScheme.surface,
   appBarTheme: AppBarTheme(
     backgroundColor: colorScheme.surface,
     foregroundColor: colorScheme.onSurface,
@@ -28,12 +29,27 @@ ThemeData _buildTheme(ColorScheme colorScheme) => ThemeData(
     color: colorScheme.surfaceContainerLow,
     elevation: 0,
     margin: EdgeInsets.zero,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     surfaceTintColor: Colors.transparent,
   ),
-  dividerTheme: DividerThemeData(color: colorScheme.outlineVariant),
+  dividerTheme: DividerThemeData(
+    color: colorScheme.outlineVariant.withValues(alpha: 0.55),
+    thickness: 1,
+    space: 1,
+  ),
+  chipTheme: ChipThemeData(
+    backgroundColor: colorScheme.surfaceContainerLow,
+    side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
+    shape: const StadiumBorder(),
+  ),
+  textTheme: ThemeData(brightness: colorScheme.brightness).textTheme.apply(
+    bodyColor: colorScheme.onSurface,
+    displayColor: colorScheme.onSurface,
+  ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
-    fillColor: colorScheme.surfaceContainerLow,
+    fillColor: colorScheme.surfaceContainerLow.withValues(alpha: 0.82),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
     border: OutlineInputBorder(
       borderSide: BorderSide(color: colorScheme.outlineVariant),
       borderRadius: BorderRadius.circular(16),

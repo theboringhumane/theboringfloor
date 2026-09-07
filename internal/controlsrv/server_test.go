@@ -2,6 +2,7 @@ package controlsrv
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -9,6 +10,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -96,6 +98,7 @@ func newTestServer(t *testing.T, respond bool, timeout time.Duration) (*Server, 
 
 func newTestServerWithOptions(t *testing.T, respond bool, timeout time.Duration, maxReads int, release <-chan struct{}) (*Server, *fakeSink, string) {
 	t.Helper()
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	registry := control.NewRegistry()
 	fake := &fakeSink{registry: registry, respond: respond, release: release}
 	server := New(Options{
@@ -390,7 +393,6 @@ func TestMessageValidation(t *testing.T) {
 		{"empty", `{"text":" \n\t "}`, `{"error":"empty message text"}`},
 		{"invalid JSON", "not json", `{"error":"invalid JSON"}`},
 		{"trailing JSON", `{"text":"hello"}{}`, `{"error":"invalid JSON"}`},
-		{"oversized", `{"text":"` + string(bytes.Repeat([]byte("x"), maxPlanBodyBytes)) + `"}`, `{"error":"invalid JSON"}`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			status, got := request(t, client, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(test.body), auth)
@@ -402,6 +404,83 @@ func TestMessageValidation(t *testing.T) {
 	}
 	if events := fake.snapshot(); len(events) != 0 {
 		t.Fatalf("invalid messages emitted events = %#v", events)
+	}
+}
+
+func TestMessageAttachments(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	payload := `{"text":"hello","attachments":[{"name":"../../image.png","mimeType":"image/png","data":"cG5n"}]}`
+	status, got := request(t, client, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(payload), auth)
+	if status != http.StatusOK {
+		t.Fatalf("attachment status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"ok":true}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 || events[0].Kind != state.EvControlSend {
+		t.Fatalf("events = %#v", events)
+	}
+	if !strings.Contains(events[0].ControlText, "hello\n\n[[theboringfloor-attachments]]\n") {
+		t.Fatalf("attachment event = %q", events[0].ControlText)
+	}
+	parts := strings.Split(events[0].ControlText, "\n")
+	if len(parts) != 5 {
+		t.Fatalf("attachment event lines = %q", events[0].ControlText)
+	}
+	info, err := os.Stat(parts[3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("attachment mode = %o, want 600", got)
+	}
+
+	status, got = request(t, client, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(`{"text":"","attachments":[{"name":"image.png","mimeType":"image/png","data":"cG5n"}]}`), auth)
+	if status != http.StatusOK {
+		t.Fatalf("empty text attachment status = %d, body = %s", status, got)
+	}
+	if events = fake.snapshot(); len(events) != 2 || !strings.HasPrefix(events[1].ControlText, "[[theboringfloor-attachments]]") {
+		t.Fatalf("empty text attachment events = %#v", events)
+	}
+}
+
+func TestMessageAttachmentValidation(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	for _, test := range []struct {
+		name, body, want string
+		status           int
+	}{
+		{"five", `{"text":"x","attachments":[{"mimeType":"image/png","data":"eA=="},{"mimeType":"image/png","data":"eA=="},{"mimeType":"image/png","data":"eA=="},{"mimeType":"image/png","data":"eA=="},{"mimeType":"image/png","data":"eA=="}]}`, `{"error":"too many attachments"}`, http.StatusBadRequest},
+		{"bad base64", `{"text":"x","attachments":[{"mimeType":"image/png","data":"%%%"}]}`, `{"error":"invalid attachment base64"}`, http.StatusBadRequest},
+		{"bad MIME", `{"text":"x","attachments":[{"mimeType":"text/plain","data":"eA=="}]}`, `{"error":"unsupported attachment MIME type"}`, http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(test.body), auth)
+			if status != test.status {
+				t.Fatalf("status = %d, want %d; body = %s", status, test.status, got)
+			}
+			assertJSONEqual(t, test.want, got)
+		})
+	}
+	if events := fake.snapshot(); len(events) != 0 {
+		t.Fatalf("invalid attachments emitted events = %#v", events)
+	}
+}
+
+func TestMessageOversizeAttachmentReturns413(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	encoded := base64.StdEncoding.EncodeToString(make([]byte, control.MaxAttachmentBytes+1))
+	body := `{"text":"x","attachments":[{"mimeType":"image/png","data":"` + encoded + `"}]}`
+	status, got := request(t, &http.Client{Timeout: 5 * time.Second}, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(body), "Bearer "+testToken)
+	if status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status = %d, want 413; body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"error":"attachment too large"}`, got)
+	if events := fake.snapshot(); len(events) != 0 {
+		t.Fatalf("oversize attachment emitted events = %#v", events)
 	}
 }
 

@@ -136,8 +136,28 @@ class GatewayClient {
     return TranscriptPage(messages: messages, hasMore: data['hasMore'] == true);
   }
 
-  Future<void> message(String id, String text) =>
-      _request('POST', '/api/v1/projects/$id/message', body: {'text': text});
+  Future<void> message(
+    String id,
+    String text, {
+    List<Attachment>? attachments,
+  }) {
+    if (attachments == null || attachments.isEmpty) {
+      return _request(
+        'POST',
+        '/api/v1/projects/$id/message',
+        body: {'text': text},
+      );
+    }
+    AttachmentValidator.validate(attachments);
+    return _request(
+      'POST',
+      '/api/v1/projects/$id/message',
+      body: {
+        'text': text,
+        'attachments': attachments.map((item) => item.toJson()).toList(),
+      },
+    );
+  }
 
   Future<void> stop(String id) => _request('POST', '/api/v1/projects/$id/stop');
 

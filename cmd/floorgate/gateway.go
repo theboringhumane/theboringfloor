@@ -169,6 +169,9 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.transcript(w, r, id)
 	case r.Method == http.MethodPost && suffix == "/message":
 		g.message(w, r, id)
+	case suffix == "/message":
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	case r.Method == http.MethodPost && suffix == "/stop":
 		g.proxy(w, r, id, http.MethodPost, control.RouteStop, nil)
 	case r.Method == http.MethodPost && suffix == "/new":
@@ -230,20 +233,40 @@ func (g *gateway) message(w http.ResponseWriter, r *http.Request, id string) {
 		writeError(w, http.StatusBadRequest, "content type must be application/json")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBodyBytes)
 	defer r.Body.Close()
-	var body control.MessageRequest
+	var body gatewayMessageRequest
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&body); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "message body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid message body")
 		return
 	}
 	if err := rejectTrailingJSON(decoder); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeError(w, http.StatusRequestEntityTooLarge, "message body too large")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "invalid message body")
 		return
 	}
 	body.Text = strings.TrimSpace(body.Text)
-	if body.Text == "" {
+	_, err = validateAttachments(body.Attachments)
+	if err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			writeError(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if body.Text == "" && len(body.Attachments) == 0 {
 		writeError(w, http.StatusBadRequest, "empty message text")
 		return
 	}

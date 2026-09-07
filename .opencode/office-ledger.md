@@ -7,6 +7,83 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-07 · Run full Go test suite (@runner subagent) — hemerodromos-2 (runner) · `done`
+- summary: RESULT — PASS
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788779978974-90e6e641
+
+### 2026-09-07 · Fix failing Flutter tests (@developer subagent) — tekton-21 (developer) · `issues`
+- summary: Updated stale navigation/session-launch assertions to match the intended floating session UI and current tab titles.
+- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/app_test.dart`, `mobile/test/session_view_test.dart`
+- verify: ```
+- proof: | Failing test | Root cause | Classification | What changed |
+- ledgerId: led-1788778845123-5dd4a411
+
+### 2026-09-07 · Flutter image attach + send (@developer subag... — tekton-20 (developer) · `issues`
+- summary: Added the `Attachment` wire model with standard-base64 JSON serialization and client-side image count/type/size validation.
+- files: `mobile/lib/models/attachment.dart`, `mobile/lib/models/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/store/session_store.dart`, `mobile/lib/views/session_view.dart`, `mobile/lib/components/attachment_picker.dart`, `mobile/lib/components/attachment_chip.dart`, `mobile/test/attachment_test.dart`
+- verify: ```
+- proof: *Text-only request — unchanged legacy body**
+- ledgerId: led-1788778591350-9b93f03d
+
+### 2026-09-07 · Flutter markdown message rendering (@develope... — tekton-19 (developer) · `issues`
+- summary: Added `markdown_widget`-backed, selectable `MarkdownBody` rendering for Markdown prose, lists, headings, inline code, fenced code, quotes, links, rules, and tab
+- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/components/markdown_body.dart`, `mobile/lib/components/code_block.dart`, `mobile/lib/utils/markdown_theme.dart`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/test/markdown_body_test.dart`, `mobile/test/message_bubble_test.dart`
+- verify: ```
+- proof: ### Assistant message
+- ledgerId: led-1788778569853-fe6e433e
+
+### 2026-09-07 · Scout message + attachment path (@explore sub... — skopos-3 (scout) · `issues`
+- summary: Now I have a complete, current picture. All files were only read, never edited. Here is the final report.
+- files: | Path | Why read |, |---|---|, | `mobile/lib/models/transcript.dart` | Dart wire model for one transcript message |, | `mobile/lib/components/message_bubble.dart` | Message-rendering widget, | `mobile/lib/views/session_view.dart` | Chat screen: composer, send, transcript list, | `mobile/lib/store/session_store.dart` | Send/refresh/pagination state, | `mobile/lib/api/gateway_client.dart` | HTTP client, `message()` call site, | `mobile/lib/api/endpoints.dart` | Declared gateway route constants |, | `mobile/pubspec.yaml`, | `mobile/lib/models/attachment.dart` | NEW, | `mobile/lib/components/attachment_picker.dart` | NEW, | `mobile/lib/components/markdown_body.dart` | NEW
+- verify: Every `M`/`??` above is **someone else's** in-flight work (other concurrent agents on this office); I made zero edits. All my own commands w
+- proof: ## Req 1 — `ChatMsg` (Go) and control wire type
+- ledgerId: led-1788778506877-301510e6
+
+### 2026-09-07 · Office attachment wire + storage (@developer... — tekton-17 (developer) · `issues`
+- summary: Added `control.Attachment` and optional `MessageRequest.Attachments`; text-only JSON remains `{"text":"hello"}`.
+- files: `internal/control/control.go`, `internal/control/attachments.go`, `internal/control/attachments_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788778429796-7772fa36
+
+### 2026-09-07 · Gateway image message route (@developer subag... — tekton-18 (developer) · `issues`
+- summary: Extended `POST /api/v1/projects/{id}/message` to accept optional base64 image attachments while retaining the existing text-message route.
+- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/attachments.go`, `cmd/floorgate/attachments_test.go`, `cmd/floorgate/main.go`
+- verify: ```
+- proof: | METHOD PATH | auth | request JSON | response JSON | status codes |
+- ledgerId: led-1788778422977-46fdcaa2
+
+### 2026-09-07 · Redesign chat transcript UI (@developer subag... — theboringcto-5 (cto) · `issues`
+- summary: Rebuilt `SessionView` with floating glass back/overflow controls, overflow access to **Stop** and **New session**, and a bottom floating **Follow up…** composer
+- files: `mobile/lib/views/session_view.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/test/session_view_test.dart`
+- verify: The three failing full-suite tests are in `test/app_test.dart`, outside this task’s owned files; their failed expectations concern the concu
+- proof: ```text
+- ledgerId: led-1788778383309-56dc6b83
+
+### 2026-09-07 · Redesign home screen (@developer subagent) — theboringcto-6 (cto) · `issues`
+- summary: Rebuilt `SpaceView` chrome with a large `All Repos` title and floating glass search/filter controls; preserved its constructor signature.
+- files: `mobile/lib/views/space_view.dart`, `mobile/lib/components/project_tile.dart`, `mobile/lib/components/empty_state.dart`, `mobile/test/space_view_test.dart`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788778340540-dbf46501
+
+### 2026-09-07 · Glass design system (@developer subagent) — theboringcto-4 (cto) · `issues`
+- summary: Added reusable frosted-glass components: `GlassSurface`, `GlassPill`, and `GlassIconButton`, with ambient-scheme fills, hairline borders, intensity-specific blu
+- files: `mobile/lib/components/glass.dart`, `mobile/lib/theme.dart`, `mobile/test/glass_test.dart`
+- verify: ```
+- proof: ```dart
+- ledgerId: led-1788778246626-6f896446
+
+### 2026-09-07 · Restore live transcript streaming (@developer... — tekton-16 (developer) · `issues`
+- summary: Added `SessionStore.refresh()` as a silent, overlap-safe newest-page refresh that:
+- files: `mobile/lib/store/session_store.dart`, `mobile/lib/hooks/use_polling.dart`, `mobile/test/session_store_test.dart`
+- verify: ```
+- proof: ```dart
+- ledgerId: led-1788778233017-ddb04eff
+
 ### 2026-09-07 · Fix adaptive icon scale (@developer subagent) — tekton-15 (developer) · `issues`
 - summary: Regenerated `assets/logo_foreground.png` with transparent padding reduced from a 50.7% artwork width to **88.3%**, preserving the flower’s aspect ratio and cent
 - files: `mobile/assets/logo_foreground.png`, `mobile/android/app/src/main/res/drawable*/ic_launcher_{foreground,monochrome}.png`, `mobile/android/app/src/main/res/mipmap-*/ic_launcher.png`, `mobile/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`, `mobile/android/app/src/main/res/values/colors.xml`
@@ -279,81 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ### Office control server authentication
 - ledgerId: led-1788757173123-20cbbbb8
-
-### 2026-09-07 · Sign Android release APK (@developer subagent) — tekton-7 (developer) · `issues`
-- summary: Created a self-signed RSA-2048 JKS release keystore outside the repository at `~/.theboringfloor/android/`, with the required alias, DN, validity, and `0600` pe
-- files: `mobile/android/app/build.gradle.kts`, `mobile/android/key.properties`, `mobile/android/key.properties.example`, `/Users/theboringhumane/.theboringfloor/android/theboringfloor-release.jks`
-- verify: ```
-- proof: *Release keystore password — save this securely:**
-- ledgerId: led-1788756970695-39f78cc0
-
-### 2026-09-07 · Review control plane diff (@reviewer subagent) — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788756828415-bfb1c8c7
-
-### 2026-09-07 · Document APK install and signing (@developer... — tekton-8 (developer) · `issues`
-- summary: Added additive **Install the Android app** and **Signing key** sections immediately before the existing v1 limitations section.
-- files: `website/app/docs/control-plane/page.tsx`
-- verify: ```
-- proof: ### Install the Android app
-- ledgerId: led-1788756786680-908f537e
-
-### 2026-09-07 · Flutter control plane app (@developer subagent) — tekton-5 (developer) · `issues`
-- summary: Installed Flutter **3.47.2** with `brew install --cask flutter`.
-- files: `mobile/.gitignore`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/analysis_options.yaml`, `mobile/.metadata`, `mobile/README.md`, `mobile/lib/main.dart`, `mobile/lib/api/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/settings_store.dart`, `mobile/lib/time.dart`, `mobile/test/models_test.dart`
-- verify: ```
-- proof: ### Projects screen
-- ledgerId: led-1788756143465-8e85f4f5
-
-### 2026-09-07 · Build floorgate API gateway (@developer subag... — tekton-4 (developer) · `done`
-- summary: Added `floorgate`, a stateless authenticated HTTP gateway binary with a stable bind address and persistent gateway bearer token.
-- files: `cmd/floorgate/main.go`, `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
-- verify: ```
-- proof: | METHOD PATH | auth | request | response | error codes |
-- ledgerId: led-1788755508575-bd32973f
-
-### 2026-09-07 · Project enumeration package (@developer subag... — tekton-3 (developer) · `done`
-- summary: Added `internal/projects`, a typed project-discovery package for persisted theboringfloor projects.
-- files: `internal/projects/projects.go`, `internal/projects/projects_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788755335593-10c3bf8f
-
-### 2026-09-07 · Control plane docs and runbook (@developer su... — tekton-6 (developer) · `done`
-- summary: Added `/docs/control-plane`, documenting the `floorgate` gateway, bearer-token setup, Tailscale path, full gateway API, Android client, and v1 limitations.
-- files: `website/app/docs/control-plane/page.tsx`, `website/app/sitemap.ts`, `website/app/llms.txt/route.ts`, `website/app/docs/page.tsx`
-- verify: `bun run build` was used because `website/package.json` declares `bun@1.3.5` as its package manager and `bun.lock` is present.
-- proof: ### Remote control plane
-- ledgerId: led-1788755269201-ded00dad
-
-### 2026-09-07 · Office control app reducers (@developer subag... — tekton-2 (developer) · `done`
-- summary: Added UI-goroutine reducers for remote send, stop, and new-session events.
-- files: `internal/app/control_mutations.go`, `internal/app/control_mutations_test.go`, `internal/app/control.go`, `internal/app/model.go`
-- verify: ```
-- proof: ```go
-- ledgerId: led-1788755216423-13432871
-
-### 2026-09-07 · Office control wire and routes (@developer su... — tekton-1 (developer) · `issues`
-- summary: Added control-wire event kinds `EvControlSend`, `EvControlStop`, and `EvControlNew`, plus `Event.ControlText`.
-- files: `internal/state/state.go`, `internal/control/control.go`, `internal/control/control_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
-- verify: ```
-- proof: | METHOD PATH | request JSON | response JSON | emitted `state.Event` |
-- ledgerId: led-1788755072077-2fee6364
-
-### 2026-09-07 · Scout session control seams (@explore subagent) — skopos-3 (scout) · `issues`
-- summary: I now have complete evidence for all 10 requirements. Producing the final report.
-- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `internal/control/control.go`, `internal/state/state.go` (lines 420-822), `internal/app/control.go`, `internal/app/model.go` (targeted greps + reads: 128-372, 890-990, 1020-1180, 1760-1830, 2030-2170, , `internal/app/sessions.go` (lines 340-573), `internal/app/plan_tools.go`, `internal/app/plan_tools_test.go`, `internal/panels/chat.go` (lines 300-320, 1010-1110, 1850-1910), `internal/backend/backend.go`, `internal/backend/opencode.go` (lines 440-620, 1575-1605, 1925-1975), `internal/backend/claude.go` (lines 200-330, 1040-1090, 1630-1675), `cmd/theboringfloor/main.go` (lines 150-299)
-- verify: `TestControlPlanProjectionAndNilPlan` (line 12) — calls `m.applyControl(state.Event{Kind: state.EvControlQuery, ...})` directly and asserts
-- proof: | Action | Narrowest safe seam (func signature + file:line) | Thread-safety mechanism to use | Exists today? |
-- ledgerId: led-1788754825222-823459d0
-
-### 2026-09-07 · Scout on-disk session storage (@explore subag... — skopos-2 (scout) · `issues`
-- summary: # Read-Only Reconnaissance Report: Session/Project/Transcript Persistence
-- files: | Path | Why inspected |, |---|---|, | `internal/config/config.go` | `Path()`, `Env`/`HomeOverride`, `THEFLOOR_HOME` override, `save()` a, | `internal/config/migrate.go` | Confirms legacy-home migration is a documented no-op today |, | `internal/brand/brand.go` | `DotDir = ".theboringfloor"`, `CLI = "theboringfloor"` |, | `internal/state/state.go` | `ChatMsg`, `Employee`, `BoardTask`, `MailItem`, `Event`/`EventKind` wi, | `internal/app/sessions.go` | `SessionFile`, `SessionPath`, `SessionDirHash`, `LoadSession`, `SaveS, | `internal/sessionsearch/sessionsearch.go` | Read-only session reader; root-resolution; confirms si, | `internal/control/control.go` | `Discovery` struct, `ControlPath`, `WriteDiscovery`/`ReadDiscovery, | `internal/controlsrv/server.go` | Loopback HTTP control server: `/v1/health`, `/v1/transcript`, `/, | `cmd/theboringfloor/main.go`, | `internal/backend/claude.go`
-- verify: ```
-- proof: ```
-- ledgerId: led-1788754790329-7bf0655b
 

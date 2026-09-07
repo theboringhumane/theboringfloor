@@ -4,6 +4,10 @@ import '../api/gateway_client.dart';
 import '../models/project.dart';
 import '../models/session.dart';
 import '../models/transcript.dart';
+import '../models/attachment.dart';
+
+/// How often an open transcript asks the gateway for its newest page.
+const sessionRefreshInterval = Duration(seconds: 3);
 
 class SessionStore extends ChangeNotifier {
   SessionStore(this.client, this.project);
@@ -13,6 +17,10 @@ class SessionStore extends ChangeNotifier {
   Object? error;
   bool loading = true;
   bool loadingOlder = false;
+  bool sending = false;
+  String? sendError;
+  bool _hasPagedOlder = false;
+  bool _refreshing = false;
 
   List<TranscriptMessage> get messages => data?.messages ?? const [];
   bool get hasMore => data?.hasMore ?? false;
@@ -22,6 +30,7 @@ class SessionStore extends ChangeNotifier {
     notifyListeners();
     try {
       data = await client.session(project.id);
+      _hasPagedOlder = false;
     } catch (e) {
       error = e;
     }
@@ -29,9 +38,75 @@ class SessionStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> send(String text) async {
-    await client.message(project.id, text);
-    await load();
+  /// Silently merges the gateway's newest page into the retained transcript.
+  ///
+  /// This deliberately avoids [loading] and preserves paged-in history, so a
+  /// periodic update cannot replace the transcript or move its scroll offset.
+  Future<void> refresh() async {
+    if (_refreshing) return;
+
+    _refreshing = true;
+    try {
+      final latest = await client.session(project.id);
+      final current = data;
+      if (current == null) {
+        data = latest;
+        notifyListeners();
+        return;
+      }
+
+      final mergedMessages = _mergeMessages(current.messages, latest.messages);
+      final hasMore = _hasPagedOlder ? current.hasMore : latest.hasMore;
+      final changed =
+          !_sameMessages(current.messages, mergedMessages) ||
+          !_sameStatus(current.status, latest.status) ||
+          !_sameBusy(current.busy, latest.busy) ||
+          current.hasMore != hasMore;
+      if (!changed) return;
+
+      data = SessionData(
+        status: latest.status,
+        messages: mergedMessages,
+        hasMore: hasMore,
+        busy: latest.busy,
+      );
+      notifyListeners();
+    } catch (_) {
+      // A transient polling failure must not obscure an already usable chat.
+    } finally {
+      _refreshing = false;
+    }
+  }
+
+  Future<bool> send(
+    String text, {
+    List<Attachment> attachments = const [],
+  }) async {
+    if (sending) return false;
+    sending = true;
+    sendError = null;
+    notifyListeners();
+    try {
+      await client.message(project.id, text, attachments: attachments);
+      await load();
+      return true;
+    } on AttachmentValidationException catch (error) {
+      sendError = error.message;
+      return false;
+    } on GatewayException catch (error) {
+      sendError = switch (error.statusCode) {
+        400 => error.message,
+        413 => 'Image too large to send.',
+        _ => 'Couldn’t send message. Try again.',
+      };
+      return false;
+    } catch (_) {
+      sendError = 'Couldn’t send message. Try again.';
+      return false;
+    } finally {
+      sending = false;
+      notifyListeners();
+    }
   }
 
   /// Prepends the page immediately before the oldest retained message.
@@ -61,6 +136,7 @@ class SessionStore extends ChangeNotifier {
         hasMore: page.hasMore,
         busy: current.busy,
       );
+      _hasPagedOlder = true;
     } on GatewayException catch (exception) {
       // A bad or expired opaque cursor cannot be repaired client-side. Stop
       // paging quietly rather than retrying it on every scroll notification.
@@ -77,4 +153,52 @@ class SessionStore extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  List<TranscriptMessage> _mergeMessages(
+    List<TranscriptMessage> retained,
+    List<TranscriptMessage> latest,
+  ) {
+    final byId = <String, TranscriptMessage>{
+      for (final message in retained) message.id: message,
+      for (final message in latest) message.id: message,
+    };
+    final messages = byId.values.toList()
+      ..sort((left, right) => left.at.compareTo(right.at));
+    return messages;
+  }
+
+  bool _sameMessages(
+    List<TranscriptMessage> left,
+    List<TranscriptMessage> right,
+  ) {
+    if (left.length != right.length) return false;
+    for (var index = 0; index < left.length; index += 1) {
+      final a = left[index];
+      final b = right[index];
+      if (a.id != b.id ||
+          a.from != b.from ||
+          a.kind != b.kind ||
+          a.text != b.text ||
+          a.at != b.at ||
+          a.meta != b.meta) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool _sameStatus(Status left, Status right) =>
+      left.dir == right.dir &&
+      left.backend == right.backend &&
+      left.primaryId == right.primaryId &&
+      left.planDraftLen == right.planDraftLen &&
+      left.planApprovedLen == right.planApprovedLen &&
+      left.chatCount == right.chatCount;
+
+  bool _sameBusy(Busy? left, Busy? right) =>
+      left?.busy == right?.busy &&
+      left?.pendingBoss == right?.pendingBoss &&
+      left?.thinking == right?.thinking &&
+      left?.delegating == right?.delegating &&
+      left?.questionParked == right?.questionParked;
 }

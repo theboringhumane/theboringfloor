@@ -28,6 +28,7 @@ import (
 
 const (
 	maxPlanBodyBytes        = 1 << 20
+	maxMessageBodyBytes     = 32 << 20
 	defaultMaxInFlightReads = 16
 	defaultMaxConnections   = 32
 	maxHeaderBytes          = 16 << 10
@@ -382,25 +383,60 @@ func (s *Server) messageWrite(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxPlanBodyBytes)
+	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBodyBytes)
 	defer r.Body.Close()
 	var request control.MessageRequest
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&request); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			s.writeAttachmentError(w, err)
+			return
+		}
 		s.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	if err := ensureEOF(decoder); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			s.writeAttachmentError(w, err)
+			return
+		}
 		s.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 	text := strings.TrimSpace(request.Text)
-	if text == "" {
+	if text == "" && len(request.Attachments) == 0 {
 		s.writeError(w, http.StatusBadRequest, "empty message text")
 		return
 	}
-	s.sink(state.Event{Kind: state.EvControlSend, ControlText: text})
+	paths, err := control.SaveAttachments(s.dir, request.Attachments)
+	if err != nil {
+		s.writeAttachmentError(w, err)
+		return
+	}
+	s.sink(state.Event{Kind: state.EvControlSend, ControlText: control.FormatMessageWithAttachments(text, paths)})
 	s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
+}
+
+func (s *Server) writeAttachmentError(w http.ResponseWriter, err error) {
+	var maxBytesErr *http.MaxBytesError
+	switch {
+	case errors.As(err, &maxBytesErr):
+		s.writeError(w, http.StatusRequestEntityTooLarge, "message body too large")
+	case errors.Is(err, control.ErrTooManyAttachments):
+		s.writeError(w, http.StatusBadRequest, "too many attachments")
+	case errors.Is(err, control.ErrAttachmentTooLarge):
+		s.writeError(w, http.StatusRequestEntityTooLarge, "attachment too large")
+	case errors.Is(err, control.ErrAttachmentsTooLarge):
+		s.writeError(w, http.StatusRequestEntityTooLarge, "attachments too large")
+	case errors.Is(err, control.ErrInvalidAttachmentBase64):
+		s.writeError(w, http.StatusBadRequest, "invalid attachment base64")
+	case errors.Is(err, control.ErrUnsupportedAttachmentMIME):
+		s.writeError(w, http.StatusBadRequest, "unsupported attachment MIME type")
+	default:
+		s.writeError(w, http.StatusInternalServerError, "failed to save attachments")
+	}
 }
 
 func ensureEOF(decoder *json.Decoder) error {
