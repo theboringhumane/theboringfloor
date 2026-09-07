@@ -2,9 +2,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:theboringfloor/store/settings_store.dart';
+import 'package:theboringfloor/utils/typography.dart';
 import 'package:theboringfloor/views/settings_view.dart';
 
 void main() {
+  setUpAll(disableRuntimeFontFetching);
+
+  testWidgets(
+    'uses sanctioned families for settings title, labels, and values',
+    (tester) async {
+      final store = SettingsStore(
+        const GatewaySettings(
+          baseUrl: 'https://gateway.example',
+          token: 'token',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: SettingsView(store: store)),
+        ),
+      );
+
+      final title = tester.widget<Text>(find.text('Settings'));
+      final baseUrlField = tester.widget<TextField>(
+        find.byType(TextField).first,
+      );
+      final baseUrlValue = tester.widget<EditableText>(
+        find.byType(EditableText).first,
+      );
+
+      expect(title.style?.fontFamily, 'Space Grotesk');
+      expect(baseUrlField.decoration?.labelStyle?.fontFamily, 'Inter');
+      expect(baseUrlValue.style.fontFamily, 'JetBrains Mono');
+    },
+  );
+
   testWidgets('masks the token until the member explicitly reveals it', (
     tester,
   ) async {

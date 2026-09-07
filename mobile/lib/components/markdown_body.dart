@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:markdown_widget/markdown_widget.dart';
 
 import '../utils/markdown_theme.dart';
+import '../utils/typography.dart';
 import 'code_block.dart';
 
 enum MarkdownBodyVariant { standard, compact, error }
@@ -29,21 +30,21 @@ class MarkdownBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final base = markdownTheme(theme);
-    final body =
-        theme.textTheme.bodyLarge?.copyWith(
-          color: variant == MarkdownBodyVariant.error
-              ? scheme.error
-              : scheme.onSurface,
-          fontFamily: variant == MarkdownBodyVariant.compact
-              ? 'monospace'
-              : null,
-        ) ??
-        TextStyle(
-          color: variant == MarkdownBodyVariant.error
-              ? scheme.error
-              : scheme.onSurface,
-        );
+    final base = markdownTheme(theme, context: context);
+    final body = AppFonts.body(
+      context,
+      base:
+          theme.textTheme.bodyLarge?.copyWith(
+            color: variant == MarkdownBodyVariant.error
+                ? scheme.error
+                : scheme.onSurface,
+          ) ??
+          TextStyle(
+            color: variant == MarkdownBodyVariant.error
+                ? scheme.error
+                : scheme.onSurface,
+          ),
+    );
     final config = base.copy(
       configs: [
         PConfig(textStyle: body),

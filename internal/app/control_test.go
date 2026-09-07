@@ -41,9 +41,10 @@ func TestControlTranscriptTailAndPendingExclusion(t *testing.T) {
 	var got control.TranscriptResponse
 	controlQuery(t, m, control.QueryTranscript, 2, &got)
 	want := control.TranscriptResponse{Messages: []control.TranscriptMessage{
+		{ID: "one", From: "user", Kind: "user", Text: "first", At: 1},
 		{ID: "two", From: "boss", Kind: "boss", Text: "second", At: 3},
 		{ID: "three", From: "office", Kind: "office", Text: "third", At: 4},
-	}, Truncated: true}
+	}, Truncated: false, Working: true}
 	if fmt.Sprintf("%#v", got) != fmt.Sprintf("%#v", want) {
 		t.Fatalf("tail response = %#v, want %#v", got, want)
 	}
@@ -53,7 +54,7 @@ func TestControlTranscriptDefaultLimit(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	for i := 0; i < 51; i++ {
-		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), Text: fmt.Sprintf("message %d", i), At: int64(i)})
+		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), From: "user", Kind: "user", Text: fmt.Sprintf("message %d", i), At: int64(i)})
 	}
 
 	var got control.TranscriptResponse
@@ -67,13 +68,12 @@ func TestControlTranscriptBackwardPaging(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)
 	for i := 1; i <= 7; i++ {
-		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), Text: fmt.Sprintf("message %d", i), At: int64(i)})
+		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), From: "user", Kind: "user", Text: fmt.Sprintf("message %d", i), At: int64(i)})
 	}
 
 	type page struct {
-		Messages  []control.TranscriptMessage `json:"messages"`
-		Truncated bool                        `json:"truncated"`
-		HasMore   *bool                       `json:"hasMore"`
+		control.TranscriptResponse
+		HasMore *bool `json:"hasMore"`
 	}
 	var all []string
 	before := ""
@@ -106,18 +106,167 @@ func TestControlTranscriptDefaultResponseIsByteCompatibleAndClamp(t *testing.T) 
 	m := New(&agentRecBackend{}, nil)
 	m.st.Chat = []state.ChatMsg{{ID: "one", From: "user", Kind: "user", Text: "first", At: 1}}
 	response, _ := m.controlTranscript(0, "", false)
-	if got := string(marshalControlResponse(response)); got != `{"messages":[{"id":"one","from":"user","kind":"user","text":"first","at":1}],"truncated":false}` {
+	if got := string(marshalControlResponse(response)); got != `{"messages":[{"id":"one","from":"user","kind":"user","text":"first","at":1}],"truncated":false,"working":false}` {
 		t.Fatalf("default response = %s", got)
 	}
 
 	m = New(&agentRecBackend{}, nil)
 	for i := 0; i < controlTranscriptMax+1; i++ {
-		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), At: int64(i)})
+		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), From: "user", Kind: "user", At: int64(i)})
 	}
 	clamped, _ := m.controlTranscript(controlTranscriptMax+1, "", true)
 	if len(clamped.Messages) != controlTranscriptMax || clamped.HasMore == nil || !*clamped.HasMore {
 		t.Fatalf("clamped response = %#v", clamped)
 	}
+}
+
+func TestControlTranscriptWorking(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+
+	tests := []struct {
+		name string
+		set  func(*Model)
+		want bool
+	}{
+		{
+			name: "no session started",
+			want: false,
+		},
+		{
+			name: "session running with output in flight",
+			set: func(m *Model) {
+				m.st.Chat = []state.ChatMsg{{ID: "boss-1", From: "boss", Pending: true}}
+			},
+			want: true,
+		},
+		{
+			name: "session finished idle",
+			set: func(m *Model) {
+				m.st.Chat = []state.ChatMsg{{ID: "boss-1", From: "boss", Pending: false}}
+			},
+			want: false,
+		},
+		{
+			name: "session stopped by user",
+			set: func(m *Model) {
+				m.st.Chat = []state.ChatMsg{{ID: "boss-1", From: "boss", Pending: true}}
+				m.st.BossThinking = true
+				m.stopWork()
+			},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := New(&agentRecBackend{}, nil)
+			if tt.set != nil {
+				tt.set(&m)
+			}
+			got, found := m.controlTranscript(0, "", false)
+			if !found || got.Working != tt.want {
+				t.Fatalf("working = %v, found = %v; want %v", got.Working, found, tt.want)
+			}
+		})
+	}
+}
+
+func TestControlTranscriptPagesCountOnlyUserMessages(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+
+	tests := []struct {
+		name     string
+		chat     []state.ChatMsg
+		limit    int
+		before   string
+		wantIDs  []string
+		wantMore bool
+	}{
+		{
+			name:     "activity does not consume user limit",
+			chat:     transcriptRows("u1", "t1", "k1", "a1", "u2", "t2", "k2", "a2", "u3", "a3"),
+			limit:    2,
+			wantIDs:  []string{"u2", "t2", "k2", "a2", "u3", "a3"},
+			wantMore: true,
+		},
+		{
+			name:     "zero user messages returns all activity",
+			chat:     transcriptRows("t1", "k1", "a1"),
+			limit:    2,
+			wantIDs:  []string{"t1", "k1", "a1"},
+			wantMore: false,
+		},
+		{
+			name:     "exact user boundary has no more history",
+			chat:     transcriptRows("u1", "a1", "u2", "t2", "a2"),
+			limit:    2,
+			wantIDs:  []string{"u1", "a1", "u2", "t2", "a2"},
+			wantMore: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := New(&agentRecBackend{}, nil)
+			m.st.Chat = tt.chat
+			got, found := m.controlTranscript(tt.limit, tt.before, true)
+			if !found || got.HasMore == nil {
+				t.Fatalf("page = %#v, found = %v", got, found)
+			}
+			if ids := transcriptIDs(got.Messages); fmt.Sprint(ids) != fmt.Sprint(tt.wantIDs) || *got.HasMore != tt.wantMore {
+				t.Fatalf("page IDs = %v, hasMore = %v; want IDs = %v, hasMore = %v", ids, *got.HasMore, tt.wantIDs, tt.wantMore)
+			}
+		})
+	}
+}
+
+func TestControlTranscriptTwoPageWalkHasNoGapsOrDuplicates(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	m := New(&agentRecBackend{}, nil)
+	m.st.Chat = transcriptRows("u1", "t1", "a1", "u2", "k2", "a2", "u3", "t3", "a3")
+
+	var gotIDs []string
+	before := ""
+	for {
+		page, found := m.controlTranscript(2, before, true)
+		if !found || page.HasMore == nil || len(page.Messages) == 0 {
+			t.Fatalf("page = %#v, found = %v", page, found)
+		}
+		gotIDs = append(gotIDs, transcriptIDs(page.Messages)...)
+		if !*page.HasMore {
+			break
+		}
+		before = page.Messages[0].ID
+	}
+	wantIDs := []string{"u2", "k2", "a2", "u3", "t3", "a3", "u1", "t1", "a1"}
+	if fmt.Sprint(gotIDs) != fmt.Sprint(wantIDs) {
+		t.Fatalf("walk IDs = %v, want %v", gotIDs, wantIDs)
+	}
+}
+
+func transcriptRows(ids ...string) []state.ChatMsg {
+	rows := make([]state.ChatMsg, 0, len(ids))
+	for i, id := range ids {
+		from, kind := "boss", "assistant"
+		switch id[0] {
+		case 'u':
+			from, kind = "user", "user"
+		case 't':
+			kind = "wtool"
+		case 'k':
+			kind = "wthink"
+		}
+		rows = append(rows, state.ChatMsg{ID: id, From: from, Kind: kind, At: int64(i)})
+	}
+	return rows
+}
+
+func transcriptIDs(messages []control.TranscriptMessage) []string {
+	ids := make([]string, len(messages))
+	for i, message := range messages {
+		ids[i] = message.ID
+	}
+	return ids
 }
 
 func TestControlTranscriptUnknownBeforeCursor(t *testing.T) {

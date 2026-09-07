@@ -5,6 +5,7 @@ import '../components/glass.dart';
 import '../components/project_tile.dart';
 import '../models/project.dart';
 import '../store/projects_store.dart';
+import '../utils/typography.dart';
 
 class SpaceView extends StatefulWidget {
   const SpaceView({super.key, required this.store, required this.onOpen});
@@ -62,7 +63,10 @@ class _SpaceViewState extends State<SpaceView> {
             children: [
               Text(
                 'Show projects',
-                style: Theme.of(context).textTheme.titleMedium,
+                style: AppFonts.heading(
+                  context,
+                  base: Theme.of(context).textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 16),
               Wrap(
@@ -93,10 +97,13 @@ class _SpaceViewState extends State<SpaceView> {
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
         child: Text(
           label,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.1,
+          style: AppFonts.heading(
+            context,
+            base: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.1,
+            ),
           ),
         ),
       ),
@@ -147,7 +154,10 @@ class _SpaceViewState extends State<SpaceView> {
                 ),
                 Text(
                   'All Repos',
-                  style: Theme.of(context).textTheme.displaySmall,
+                  style: AppFonts.serif(
+                    context,
+                    base: Theme.of(context).textTheme.displaySmall,
+                  ),
                 ),
                 if (_searching) ...[
                   const SizedBox(height: 16),
@@ -178,7 +188,11 @@ class _SpaceViewState extends State<SpaceView> {
                     onRefresh: widget.store.load,
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.only(
+                        bottom: 24,
+                        left: 8,
+                        right: 8,
+                      ),
                       children: [
                         ..._section('RUNNING', running),
                         ..._section('STOPPED', stopped),

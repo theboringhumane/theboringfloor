@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:theboringfloor/api/gateway_client.dart';
 import 'package:theboringfloor/models/project.dart';
 import 'package:theboringfloor/store/projects_store.dart';
+import 'package:theboringfloor/utils/typography.dart';
 import 'package:theboringfloor/views/space_view.dart';
 
 class _ProjectsClient extends http.BaseClient {
@@ -112,7 +113,18 @@ Future<void> _selectFilter(WidgetTester tester, String label) async {
 }
 
 void main() {
+  setUpAll(disableRuntimeFontFetching);
+
   group('SpaceView', () {
+    testWidgets('renders the home hero title in Playfair Display', (
+      tester,
+    ) async {
+      await _pumpSpace(tester, _store(_ProjectsClient([_running])));
+
+      final title = tester.widget<Text>(find.text('All Repos'));
+      expect(title.style?.fontFamily, 'Playfair Display');
+    });
+
     testWidgets('filters live by project name and directory', (tester) async {
       await _pumpSpace(tester, _store(_ProjectsClient([_running, _stopped])));
 

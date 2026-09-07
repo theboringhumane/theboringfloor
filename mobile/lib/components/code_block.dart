@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../utils/typography.dart';
+
 /// A horizontally scrollable, selectable fenced-code presentation.
 class MessageCodeBlock extends StatelessWidget {
   const MessageCodeBlock({
@@ -42,8 +44,11 @@ class MessageCodeBlock extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
+                  style: AppFonts.mono(
+                    context,
+                    base: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
                 const Spacer(),
@@ -61,9 +66,11 @@ class MessageCodeBlock extends StatelessWidget {
             child: SelectionArea(
               child: Text(
                 code.trimRight(),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurface,
-                  fontFamily: 'monospace',
+                style: AppFonts.mono(
+                  context,
+                  base: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurface,
+                  ),
                 ),
               ),
             ),

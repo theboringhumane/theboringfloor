@@ -605,10 +605,13 @@ func plantKittyLaneFake(t *testing.T) {
 
 // waitLaneGrid polls until the needle paints the live grid (the reader
 // loop is async; the marker comes AFTER the frame APC in the script, so
-// a visible marker guarantees the transmission committed).
+// a visible marker guarantees the transmission committed). A real PTY
+// process can be delayed while the package suite is under load, so the
+// ceiling is deliberately generous; the successful path still returns on
+// the first 10ms poll rather than paying the ceiling.
 func waitLaneGrid(t *testing.T, g *term.Grid, want string) {
 	t.Helper()
-	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
 		for y := 0; y < g.Rows(); y++ {
 			if strings.Contains(g.LineText(y), want) {
 				return

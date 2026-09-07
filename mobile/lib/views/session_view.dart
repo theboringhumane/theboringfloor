@@ -4,7 +4,9 @@ import '../components/attachment_chip.dart';
 import '../components/attachment_picker.dart';
 import '../components/glass.dart';
 import '../components/message_bubble.dart';
-import '../models/attachment.dart';
+import '../components/working_chip.dart';
+import '../hooks/use_polling.dart';
+import '../models/models.dart';
 import '../store/session_store.dart';
 
 class SessionView extends StatefulWidget {
@@ -20,8 +22,13 @@ class _SessionViewState extends State<SessionView> {
   final scrollController = ScrollController();
   final expandedActivityIds = <String>{};
   final attachments = <Attachment>[];
-  bool initiallyAnchored = false;
   String? attachmentError;
+  static const _newestEndThreshold = 80.0;
+  bool _atNewestEnd = true;
+  bool _hasNewerContent = false;
+  bool _scrollAnimationInFlight = false;
+  bool _scrollAgain = false;
+  int _seenNewestMessageGeneration = 0;
 
   AttachmentPicker get _attachmentPicker =>
       widget.attachmentPicker ?? ImagePickerAttachmentPicker();
@@ -30,6 +37,7 @@ class _SessionViewState extends State<SessionView> {
   void initState() {
     super.initState();
     widget.store.addListener(_changed);
+    _seenNewestMessageGeneration = widget.store.newestMessageGeneration;
     scrollController.addListener(_onScroll);
     widget.store.load();
   }
@@ -48,43 +56,85 @@ class _SessionViewState extends State<SessionView> {
     if (!mounted) {
       return;
     }
-    setState(() {});
-    if (!initiallyAnchored && widget.store.data != null) {
-      initiallyAnchored = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && scrollController.hasClients) {
-          scrollController.jumpTo(scrollController.position.maxScrollExtent);
-        }
-      });
+    final newestContentArrived =
+        widget.store.newestMessageGeneration != _seenNewestMessageGeneration;
+    if (newestContentArrived) {
+      _seenNewestMessageGeneration = widget.store.newestMessageGeneration;
+      // The store notifies before this rebuild inserts the new content, so this
+      // remains the member's pre-insert position.
+      if (_atNewestEnd) {
+        _hasNewerContent = false;
+        _scrollToLatest();
+      } else {
+        _hasNewerContent = true;
+      }
     }
+    setState(() {});
   }
 
   void _onScroll() {
-    if (scrollController.hasClients && scrollController.position.pixels <= 48) {
-      _loadOlderKeepingPosition();
+    if (!scrollController.hasClients) {
+      return;
+    }
+    final atNewestEnd = scrollController.offset <= _newestEndThreshold;
+    if (_atNewestEnd != atNewestEnd || (atNewestEnd && _hasNewerContent)) {
+      setState(() {
+        _atNewestEnd = atNewestEnd;
+        if (atNewestEnd) {
+          _hasNewerContent = false;
+        }
+      });
+    }
+    if (scrollController.hasClients &&
+        scrollController.position.maxScrollExtent -
+                scrollController.position.pixels <=
+            48) {
+      _loadOlder();
     }
   }
 
-  Future<void> _loadOlderKeepingPosition() async {
+  Future<void> _scrollToLatest() async {
+    if (!scrollController.hasClients) {
+      return;
+    }
+    if (_scrollAnimationInFlight) {
+      _scrollAgain = true;
+      return;
+    }
+
+    _scrollAnimationInFlight = true;
+    try {
+      await scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+      );
+    } finally {
+      _scrollAnimationInFlight = false;
+      final scrollAgain = _scrollAgain;
+      _scrollAgain = false;
+      if (mounted && scrollController.hasClients && scrollAgain) {
+        await _scrollToLatest();
+      }
+    }
+  }
+
+  void _jumpToLatest() {
+    if (!scrollController.hasClients) {
+      return;
+    }
+    setState(() => _hasNewerContent = false);
+    _scrollToLatest();
+  }
+
+  Future<void> _loadOlder() async {
     final store = widget.store;
     if (store.loadingOlder || !store.hasMore || !scrollController.hasClients) {
       return;
     }
-    final position = scrollController.position;
-    final beforeOffset = position.pixels;
-    final beforeExtent = position.maxScrollExtent;
+    // In a reversed list, older pages grow at the far end. The framework keeps
+    // the current viewport stable, so no offset compensation is necessary.
     await store.loadOlder();
-    if (!mounted || !scrollController.hasClients) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !scrollController.hasClients) {
-        return;
-      }
-      final next = scrollController.position;
-      final delta = next.maxScrollExtent - beforeExtent;
-      next.jumpTo((beforeOffset + delta).clamp(0.0, next.maxScrollExtent));
-    });
   }
 
   void _toggleActivity(String id) {
@@ -169,177 +219,215 @@ class _SessionViewState extends State<SessionView> {
   @override
   Widget build(BuildContext context) {
     final store = widget.store;
-    return Scaffold(
-      body: store.loading
-          ? const Center(child: CircularProgressIndicator())
-          : store.error != null
-          ? Center(child: Text('${store.error}'))
-          : SafeArea(
-              child: Stack(
-                children: [
-                  Column(
-                    children: [
-                      Expanded(
-                        child: ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.only(top: 64, bottom: 96),
-                          itemCount:
-                              store.messages.length +
-                              (store.loadingOlder ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (store.loadingOlder && index == 0) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 8),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
-                            final messageIndex =
-                                index - (store.loadingOlder ? 1 : 0);
-                            final message = store.messages[messageIndex];
-                            final isActivity =
-                                message.kind == 'wthink' ||
-                                message.kind == 'wtool';
-                            return MessageBubble(
-                              message: message,
-                              expanded:
-                                  isActivity &&
-                                  expandedActivityIds.contains(message.id),
-                              onToggle: isActivity
-                                  ? () => _toggleActivity(message.id)
-                                  : () {},
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 12,
-                    child: GlassIconButton(
-                      icon: Icons.chevron_left,
-                      tooltip: 'Back',
-                      intensity: GlassIntensity.regular,
-                      onPressed: () => Navigator.maybePop(context),
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 12,
-                    child: GlassIconButton(
-                      icon: Icons.more_horiz,
-                      tooltip: 'More',
-                      intensity: GlassIntensity.regular,
-                      onPressed: _showOverflowMenu,
-                    ),
-                  ),
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 12,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+    // Keep the store and grouping algorithm chronological; reverse only this
+    // presentation list so index zero is the newest transcript entry.
+    final entries = groupTranscript(store.messages).reversed
+        .toList(growable: false);
+    return Polling(
+      interval: sessionRefreshInterval,
+      enabled: store.isWorking && TickerMode.valuesOf(context).enabled,
+      restartToken: store.pollGeneration,
+      onTick: store.refresh,
+      child: Scaffold(
+        body: store.loading
+            ? const Center(child: CircularProgressIndicator())
+            : store.error != null
+            ? Center(child: Text('${store.error}'))
+            : SafeArea(
+                child: Stack(
+                  children: [
+                    Column(
                       children: [
-                        if (attachments.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: SizedBox(
-                              height: 58,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: attachments.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: 8),
-                                itemBuilder: (context, index) => AttachmentChip(
-                                  attachment: attachments[index],
-                                  onRemove: widget.store.sending
-                                      ? () {}
-                                      : () => setState(
-                                          () => attachments.removeAt(index),
-                                        ),
-                                ),
-                              ),
+                        Expanded(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            reverse: true,
+                            padding: const EdgeInsets.only(
+                              top: 64,
+                              bottom: 96,
+                              right: 10,
                             ),
-                          ),
-                        if (attachmentError != null || store.sendError != null)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    attachmentError ?? store.sendError!,
-                                  ),
-                                ),
-                                if (store.sendError != null)
-                                  TextButton(
-                                    onPressed: store.sending ? null : _send,
-                                    child: const Text('Try again'),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        GlassPill(
-                          intensity: GlassIntensity.strong,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          child: Row(
-                            children: [
-                              IconButton(
-                                tooltip: 'Add attachment',
-                                onPressed: widget.store.sending
-                                    ? null
-                                    : _chooseAttachmentSource,
-                                icon: const Icon(Icons.add_circle_outline),
-                              ),
-                              Expanded(
-                                child: TextField(
-                                  controller: composer,
-                                  enabled: !widget.store.sending,
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    hintText: 'Follow up…',
-                                  ),
-                                  onChanged: (_) => setState(() {}),
-                                  onSubmitted: (_) => _send(),
-                                ),
-                              ),
-                              widget.store.sending
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                            itemCount:
+                                entries.length + (store.loadingOlder ? 1 : 0),
+                            itemBuilder: (context, index) {
+                              if (store.loadingOlder &&
+                                  index == entries.length) {
+                                return const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  child: Center(
+                                    child: SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
-                                    )
-                                  : IconButton(
-                                      tooltip: 'Send follow-up',
-                                      onPressed: _canSend ? _send : null,
-                                      icon: const Icon(Icons.send_outlined),
                                     ),
-                            ],
+                                  ),
+                                );
+                              }
+                              final entry = entries[index];
+                              return switch (entry) {
+                                MessageEntry(:final message) => MessageBubble(
+                                  message: message,
+                                  expanded: false,
+                                  onToggle: () {},
+                                ),
+                                ActivityEntry(:final group) => ActivityGroupRow(
+                                  group: group,
+                                  expanded: expandedActivityIds.contains(
+                                    group.messages.first.id,
+                                  ),
+                                  onToggle: () =>
+                                      _toggleActivity(group.messages.first.id),
+                                ),
+                              };
+                            },
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ],
+                    Positioned(
+                      top: 8,
+                      left: 12,
+                      child: GlassIconButton(
+                        icon: Icons.chevron_left,
+                        tooltip: 'Back',
+                        intensity: GlassIntensity.regular,
+                        onPressed: () => Navigator.maybePop(context),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 12,
+                      child: GlassIconButton(
+                        icon: Icons.more_horiz,
+                        tooltip: 'More',
+                        intensity: GlassIntensity.regular,
+                        onPressed: _showOverflowMenu,
+                      ),
+                    ),
+                    Positioned(
+                      left: 16,
+                      bottom: 92,
+                      child: WorkingChip(working: store.isWorking),
+                    ),
+                    if (_hasNewerContent && !_atNewestEnd)
+                      Positioned(
+                        right: 16,
+                        bottom: 148,
+                        child: FilledButton.icon(
+                          key: const Key('jump-to-latest'),
+                          onPressed: _jumpToLatest,
+                          icon: const Icon(Icons.arrow_downward),
+                          label: const Text('Jump to latest'),
+                        ),
+                      ),
+                    Positioned(
+                      left: 16,
+                      right: 16,
+                      bottom: 12,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (attachments.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: SizedBox(
+                                height: 58,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  itemCount: attachments.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(width: 8),
+                                  itemBuilder: (context, index) =>
+                                      AttachmentChip(
+                                        attachment: attachments[index],
+                                        onRemove: widget.store.sending
+                                            ? () {}
+                                            : () => setState(
+                                                () =>
+                                                    attachments.removeAt(index),
+                                              ),
+                                      ),
+                                ),
+                              ),
+                            ),
+                          if (attachmentError != null ||
+                              store.sendError != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      attachmentError ?? store.sendError!,
+                                    ),
+                                  ),
+                                  if (store.sendError != null)
+                                    TextButton(
+                                      onPressed: store.sending ? null : _send,
+                                      child: const Text('Try again'),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          GlassPill(
+                            intensity: GlassIntensity.strong,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              children: [
+                                IconButton(
+                                  tooltip: 'Add attachment',
+                                  onPressed: widget.store.sending
+                                      ? null
+                                      : _chooseAttachmentSource,
+                                  icon: const Icon(Icons.add_circle_outline),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: composer,
+                                    enabled: !widget.store.sending,
+                                    decoration: const InputDecoration(
+                                      border: InputBorder.none,
+                                      hintText: 'Follow up…',
+                                    ),
+                                    onChanged: (_) => setState(() {}),
+                                    onSubmitted: (_) => _send(),
+                                  ),
+                                ),
+                                widget.store.sending
+                                    ? const Padding(
+                                        padding: EdgeInsets.all(12),
+                                        child: SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                      )
+                                    : IconButton(
+                                        tooltip: 'Send follow-up',
+                                        onPressed: _canSend ? _send : null,
+                                        icon: Icon(
+                                          Icons.arrow_circle_right_rounded,
+                                          color: _canSend ? Colors.blue : null,
+                                        ),
+                                      ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 

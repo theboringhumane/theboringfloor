@@ -11,7 +11,7 @@ import (
 
 func TestSaveAttachmentsPersistsAllowedImages(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
-	paths, err := SaveAttachments("/workspace/project", []Attachment{
+	saved, err := SaveAttachments("/workspace/project", []Attachment{
 		{Name: "photo.png", MimeType: "image/png", Data: base64.StdEncoding.EncodeToString([]byte("png"))},
 		{Name: "photo.jpeg", MimeType: "image/jpeg", Data: base64.StdEncoding.EncodeToString([]byte("jpeg"))},
 		{Name: "animation.gif", MimeType: "image/gif", Data: base64.StdEncoding.EncodeToString([]byte("gif"))},
@@ -20,11 +20,17 @@ func TestSaveAttachmentsPersistsAllowedImages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 4 {
-		t.Fatalf("paths = %d, want 4", len(paths))
+	if len(saved) != 4 {
+		t.Fatalf("saved = %d, want 4", len(saved))
 	}
-	for index, path := range paths {
-		info, err := os.Stat(path)
+	for index, attachment := range saved {
+		if attachment.Name != []string{"photo.png", "photo.jpeg", "animation.gif", "art.webp"}[index] {
+			t.Fatalf("attachment[%d] name = %q", index, attachment.Name)
+		}
+		if attachment.Mime != []string{"image/png", "image/jpeg", "image/gif", "image/webp"}[index] {
+			t.Fatalf("attachment[%d] MIME = %q", index, attachment.Mime)
+		}
+		info, err := os.Stat(attachment.Path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,23 +98,17 @@ func TestSaveAttachmentsSanitizesTraversalNames(t *testing.T) {
 	data := base64.StdEncoding.EncodeToString([]byte("png"))
 	for _, name := range []string{"../../etc/passwd", "..", "/abs/path", "a/b/c.png", ""} {
 		t.Run(name, func(t *testing.T) {
-			paths, err := SaveAttachments(dir, []Attachment{{Name: name, MimeType: "image/png", Data: data}})
+			saved, err := SaveAttachments(dir, []Attachment{{Name: name, MimeType: "image/png", Data: data}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(paths) != 1 {
-				t.Fatalf("paths = %v", paths)
+			if len(saved) != 1 {
+				t.Fatalf("saved = %v", saved)
 			}
-			rel, err := filepath.Rel(filepath.Clean(uploads), filepath.Clean(paths[0]))
+			rel, err := filepath.Rel(filepath.Clean(uploads), filepath.Clean(saved[0].Path))
 			if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
-				t.Fatalf("saved path %q escapes uploads directory %q", paths[0], uploads)
+				t.Fatalf("saved path %q escapes uploads directory %q", saved[0].Path, uploads)
 			}
 		})
-	}
-}
-
-func TestFormatMessageWithAttachments(t *testing.T) {
-	if got, want := FormatMessageWithAttachments("", []string{"/tmp/image.png"}), "[[theboringfloor-attachments]]\n/tmp/image.png\n[[/theboringfloor-attachments]]"; got != want {
-		t.Fatalf("FormatMessageWithAttachments() = %q, want %q", got, want)
 	}
 }

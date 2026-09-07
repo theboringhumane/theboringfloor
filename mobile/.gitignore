@@ -46,6 +46,8 @@ app.*.map.json
 
 # Machine-local Android configuration and generated packages
 android/.gradle/
+# Gradle-generated Android build reports and intermediates
+/android/build/
 android/local.properties
 android/key.properties
 *.apk

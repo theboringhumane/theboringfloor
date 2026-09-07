@@ -670,6 +670,10 @@ type Event struct {
 	ControlLimit int    `json:"controlLimit,omitempty"`
 	// ControlText carries trimmed message text for EvControlSend.
 	ControlText string `json:"controlText,omitempty"`
+	// ControlAttachments carries images that arrived with a control-plane message.
+	// It is only meaningful when Kind is EvControlSend. Paths are absolute and the
+	// files are already persisted by the control server before the event is emitted.
+	ControlAttachments []Attachment `json:"controlAttachments,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

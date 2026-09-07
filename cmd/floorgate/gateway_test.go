@@ -116,7 +116,7 @@ func TestGatewayProxiesOfficeResponsesOverRealListeners(t *testing.T) {
 			gotMessage = string(contents)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false}`))
+		_, _ = w.Write([]byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false,"working":true}`))
 	}))
 	defer office.Close()
 	fixtureDiscovery(t, projectID, projectDir, office.URL, officeToken)
@@ -126,7 +126,7 @@ func TestGatewayProxiesOfficeResponsesOverRealListeners(t *testing.T) {
 
 	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/"+projectID+"/transcript?limit=12&before=m-12", http.MethodGet, nil, "gate-token")
 	body := responseBody(t, response)
-	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/json" || body != `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false}` {
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/json" || body != `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false,"working":true}` {
 		t.Fatalf("transcript status/content-type/body = %d %q %q", response.StatusCode, response.Header.Get("Content-Type"), body)
 	}
 	if gotAuthorization != "Bearer "+officeToken || gotPath != "/v1/transcript?before=m-12&limit=12" {

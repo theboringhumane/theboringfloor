@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/attachment.dart';
+import '../utils/typography.dart';
 
 class AttachmentChip extends StatelessWidget {
   const AttachmentChip({
@@ -49,7 +50,10 @@ class AttachmentChip extends StatelessWidget {
                   attachment.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelSmall,
+                  style: AppFonts.mono(
+                    context,
+                    base: theme.textTheme.labelSmall,
+                  ),
                 ),
                 Text(
                   _sizeLabel(attachment.sizeInBytes),

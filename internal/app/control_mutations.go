@@ -18,7 +18,7 @@ func (m *Model) applyControlMutations(ev state.Event) tea.Cmd {
 		if text == "" {
 			return nil
 		}
-		return currentBackendSend(m.currentBackend, m.plan, text, nil)
+		return currentBackendSend(m.currentBackend, m.plan, text, ev.ControlAttachments)
 	case state.EvControlStop:
 		cmd := m.stopWork()
 		m.notice("remote: stopped current work")

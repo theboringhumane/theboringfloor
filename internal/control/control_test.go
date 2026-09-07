@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -231,6 +232,20 @@ func TestMessageAndBusyJSONShape(t *testing.T) {
 	}
 	if got, want := string(busy), `{"busy":true,"pendingBoss":true,"thinking":true,"delegating":true,"questionParked":true}`; got != want {
 		t.Fatalf("BusyResponse JSON = %s, want %s", got, want)
+	}
+}
+
+func TestTranscriptMessageWithoutAttachmentsJSONShape(t *testing.T) {
+	message, err := json.Marshal(TranscriptMessage{ID: "m1", From: "boss", Kind: "chat", Text: "hello", At: 42})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}`
+	if got := string(message); got != want {
+		t.Fatalf("TranscriptMessage JSON = %s, want %s", got, want)
+	}
+	if strings.Contains(string(message), `"attachments"`) {
+		t.Fatalf("TranscriptMessage JSON unexpectedly contains attachments: %s", message)
 	}
 }
 

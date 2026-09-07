@@ -56,6 +56,14 @@ Map<String, Object?> _status() => {
   'chatCount': 0,
 };
 
+Map<String, Object?> _busy(bool value) => {
+  'busy': value,
+  'pendingBoss': false,
+  'thinking': value,
+  'delegating': false,
+  'questionParked': false,
+};
+
 SessionStore _store(
   Future<http.StreamedResponse> Function(http.BaseRequest) handler,
 ) => SessionStore(
@@ -69,22 +77,152 @@ SessionStore _store(
 
 Future<void> _pumpSession(WidgetTester tester, SessionStore store) async {
   await tester.pumpWidget(MaterialApp(home: SessionView(store: store)));
-  await tester.pumpAndSettle();
+  // A working chip deliberately has a perpetual word-rotation animation, so
+  // settling is not a valid way to await the initial asynchronous load.
+  await tester.pump();
+  await tester.pump();
 }
 
 void main() {
-  testWidgets('opens at the newest message without hiding its full text', (
+  testWidgets('polls a visible working session and stops after dispose', (
     tester,
   ) async {
+    var transcriptRequests = 0;
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(true));
+      }
+      transcriptRequests += 1;
+      return _response(200, {
+        'messages': [
+          _message('one', 'assistant', 'message', 'Working answer', 1),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    expect(transcriptRequests, 1);
+
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(transcriptRequests, 2);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 6));
+    expect(transcriptRequests, 2);
+  });
+
+  testWidgets('does not poll an idle session', (tester) async {
+    var transcriptRequests = 0;
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(false));
+      }
+      transcriptRequests += 1;
+      return _response(200, {'messages': [], 'hasMore': false});
+    });
+
+    await _pumpSession(tester, store);
+    await tester.pump(const Duration(seconds: 20));
+
+    expect(transcriptRequests, 1);
+  });
+
+  testWidgets('does not queue a second poll while the first is in flight', (
+    tester,
+  ) async {
+    final pendingRefresh = Completer<http.StreamedResponse>();
+    var transcriptRequests = 0;
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(true));
+      }
+      transcriptRequests += 1;
+      if (transcriptRequests == 1) {
+        return _response(200, {'messages': [], 'hasMore': false});
+      }
+      return pendingRefresh.future;
+    });
+
+    await _pumpSession(tester, store);
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    expect(transcriptRequests, 2);
+
+    await tester.pump(const Duration(seconds: 9));
+    expect(transcriptRequests, 2);
+    pendingRefresh.complete(_response(200, {'messages': [], 'hasMore': false}));
+    await tester.pump();
+  });
+
+  testWidgets(
+    'opens at the newest message by construction and keeps it through layout',
+    (tester) async {
+      final messages = List.generate(
+        55,
+        (index) => _message(
+          'm-$index',
+          index == 54 ? 'assistant' : 'user',
+          index == 53 ? 'wthink' : 'message',
+          index == 54
+              ? 'The final answer is completely visible'
+              : 'Earlier message $index',
+          index,
+        ),
+      );
+      final store = _store((request) async {
+        if (request.url.path.endsWith('/status')) {
+          return _response(200, _status());
+        }
+        if (request.url.path.endsWith('/busy')) {
+          return _response(404, {'error': 'missing'});
+        }
+        return _response(200, {'messages': messages, 'hasMore': true});
+      });
+
+      await _pumpSession(tester, store);
+
+      final transcript = tester.widget<ListView>(find.byType(ListView));
+      expect(transcript.reverse, isTrue);
+      expect(
+        find.text('The final answer is completely visible'),
+        findsOneWidget,
+      );
+      expect(find.text('Earlier message 0'), findsNothing);
+      expect(find.text('1 thought'), findsOneWidget);
+
+      // Markdown and other content may finish sizing after the initial frame.
+      // A reversed transcript remains at offset zero without an anchoring jump.
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('The final answer is completely visible'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('a refresh keeps a history reader in place and offers latest', (
+    tester,
+  ) async {
+    var refreshed = false;
     final messages = List.generate(
       55,
       (index) => _message(
-        'm-$index',
-        index == 54 ? 'assistant' : 'user',
-        index == 53 ? 'wthink' : 'message',
-        index == 54
-            ? 'The final answer is completely visible'
-            : 'Earlier message $index',
+        'message-$index',
+        'user',
+        'message',
+        'History message $index',
         index,
       ),
     );
@@ -95,72 +233,224 @@ void main() {
       if (request.url.path.endsWith('/busy')) {
         return _response(404, {'error': 'missing'});
       }
-      return _response(200, {'messages': messages, 'hasMore': true});
+      return _response(200, {
+        'messages': [
+          ...messages,
+          if (refreshed)
+            _message(
+              'latest',
+              'assistant',
+              'message',
+              'Fresh newest answer',
+              56,
+            ),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    await tester.drag(find.byType(ListView), const Offset(0, 10000));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).controller!.offset,
+      greaterThan(0),
+    );
+    expect(find.text('History message 0'), findsOneWidget);
+
+    refreshed = true;
+    await store.refresh();
+    await tester.pumpAndSettle();
+
+    // A reader remains at their history, with an explicit escape hatch.
+    expect(find.text('History message 0'), findsOneWidget);
+    expect(find.text('Fresh newest answer'), findsNothing);
+    expect(find.byKey(const Key('jump-to-latest')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('jump-to-latest')));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).controller!.offset,
+      0,
+    );
+    expect(find.byKey(const Key('jump-to-latest')), findsNothing);
+    expect(find.text('Fresh newest answer'), findsOneWidget);
+  });
+
+  testWidgets('a live arrival follows the newest end smoothly', (tester) async {
+    var refreshed = false;
+    final messages = List.generate(
+      55,
+      (index) => _message(
+        'message-$index',
+        'user',
+        'message',
+        'Message $index',
+        index,
+      ),
+    );
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(false));
+      }
+      return _response(200, {
+        'messages': [
+          ...messages,
+          if (refreshed)
+            _message('latest', 'assistant', 'message', 'Live arrival', 56),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).controller!.offset,
+      0,
+    );
+
+    refreshed = true;
+    await store.refresh();
+    await tester.pump(const Duration(milliseconds: 120));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).controller!.offset,
+      0,
+    );
+    expect(find.text('Live arrival'), findsOneWidget);
+  });
+
+  testWidgets('rapid live arrivals coalesce scroll animations', (tester) async {
+    var refreshCount = 0;
+    final messages = List.generate(
+      55,
+      (index) => _message(
+        'message-$index',
+        'user',
+        'message',
+        'Message $index',
+        index,
+      ),
+    );
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(false));
+      }
+      refreshCount += 1;
+      return _response(200, {
+        'messages': [
+          ...messages,
+          if (refreshCount >= 2)
+            _message('first', 'assistant', 'message', 'First arrival', 56),
+          if (refreshCount >= 3)
+            _message('second', 'assistant', 'message', 'Second arrival', 57),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    final controller = tester
+        .widget<ListView>(find.byType(ListView))
+        .controller!;
+    controller.jumpTo(40);
+    await store.refresh();
+    await tester.pump();
+    await store.refresh();
+    await tester.pump(const Duration(milliseconds: 240));
+    await tester.pumpAndSettle();
+
+    expect(
+      tester.widget<ListView>(find.byType(ListView)).controller!.offset,
+      0,
+    );
+    expect(find.text('First arrival'), findsOneWidget);
+    expect(find.text('Second arrival'), findsOneWidget);
+  });
+
+  testWidgets('a refresh after the transcript is disposed is safe', (
+    tester,
+  ) async {
+    var refreshed = false;
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(false));
+      }
+      return _response(200, {
+        'messages': [
+          _message('one', 'assistant', 'message', 'One', 1),
+          if (refreshed) _message('two', 'assistant', 'message', 'Two', 2),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    await tester.pumpWidget(const SizedBox());
+    refreshed = true;
+
+    await expectLater(store.refresh(), completes);
+  });
+
+  testWidgets('groups consecutive activity into one expandable quiet row', (
+    tester,
+  ) async {
+    const member = 'Can you review this change?';
+    const olderAssistant = 'Older assistant answer with all of its detail.';
+    const newerAssistant = 'Newer assistant answer with all of its detail.';
+    const thinking = 'I should inspect the test coverage before responding.';
+    const tool = 'bash · gofmt -l internal/backend';
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(404, {'error': 'missing'});
+      }
+      return _response(200, {
+        'messages': [
+          _message('member', 'user', 'message', member, 1),
+          _message('older', 'assistant', 'message', olderAssistant, 2),
+          _message('thinking', 'worker', 'wthink', thinking, 3),
+          _message('tool', 'worker', 'wtool', tool, 4),
+          _message('thinking-2', 'worker', 'wthink', 'I should run it.', 5),
+          _message('tool-2', 'worker', 'wtool', 'bash · go test ./...', 6),
+          _message('newer', 'boss', 'message', newerAssistant, 7),
+        ],
+        'hasMore': false,
+      });
     });
 
     await _pumpSession(tester, store);
 
-    expect(find.text('The final answer is completely visible'), findsOneWidget);
-    expect(find.text('Earlier message 0'), findsNothing);
-    expect(find.text('Thinking · Earlier message 53'), findsOneWidget);
+    expect(find.text(member), findsOneWidget);
+    expect(find.text(olderAssistant), findsOneWidget);
+    expect(find.text(newerAssistant), findsOneWidget);
+    expect(find.text('2 thoughts · 2 bashes'), findsOneWidget);
+    expect(find.text(thinking), findsNothing);
+    expect(find.text(tool), findsNothing);
+    expect(find.byIcon(Icons.copy_outlined), findsNothing);
+
+    await tester.tap(find.byKey(const Key('activity-thinking')));
+    await tester.pump();
+    expect(find.text(thinking), findsOneWidget);
+    expect(find.text(tool), findsOneWidget);
+    await tester.tap(find.byKey(const Key('activity-thinking')));
+    await tester.pump();
+    expect(find.text(thinking), findsNothing);
+    expect(find.text(tool), findsNothing);
   });
-
-  testWidgets(
-    'keeps member and every assistant message readable while activity toggles',
-    (tester) async {
-      const member = 'Can you review this change?';
-      const olderAssistant = 'Older assistant answer with all of its detail.';
-      const newerAssistant = 'Newer assistant answer with all of its detail.';
-      const thinking = 'I should inspect the test coverage before responding.';
-      const tool = 'bash · gofmt -l internal/backend';
-      final store = _store((request) async {
-        if (request.url.path.endsWith('/status')) {
-          return _response(200, _status());
-        }
-        if (request.url.path.endsWith('/busy')) {
-          return _response(404, {'error': 'missing'});
-        }
-        return _response(200, {
-          'messages': [
-            _message('member', 'user', 'message', member, 1),
-            _message('older', 'assistant', 'message', olderAssistant, 2),
-            _message('thinking', 'worker', 'wthink', thinking, 3),
-            _message('tool', 'worker', 'wtool', tool, 4),
-            _message('newer', 'boss', 'message', newerAssistant, 5),
-          ],
-          'hasMore': false,
-        });
-      });
-
-      await _pumpSession(tester, store);
-
-      expect(find.text(member), findsOneWidget);
-      expect(find.text(olderAssistant), findsOneWidget);
-      expect(find.text(newerAssistant), findsOneWidget);
-      expect(find.text('Thinking · $thinking'), findsOneWidget);
-      expect(find.text(tool), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('activity-thinking')));
-      await tester.pump();
-      expect(find.text(thinking), findsOneWidget);
-      await tester.tap(find.byKey(const Key('activity-thinking')));
-      await tester.pump();
-      expect(find.text('Thinking · $thinking'), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('activity-tool')));
-      await tester.pump();
-      expect(find.text(tool), findsOneWidget);
-      await tester.tap(find.byKey(const Key('activity-tool')));
-      await tester.pump();
-      expect(find.text(tool), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('message-member')));
-      await tester.tap(find.byKey(const Key('message-older')));
-      await tester.pump();
-      expect(find.text(member), findsOneWidget);
-      expect(find.text(olderAssistant), findsOneWidget);
-    },
-  );
 
   testWidgets('member messages offer read more while short messages do not', (
     tester,
@@ -205,7 +495,7 @@ void main() {
   });
 
   testWidgets(
-    'messages keep selectable Markdown and offer explicit full copy',
+    'member and assistant messages copy their full raw text on long press',
     (tester) async {
       const member = 'A full member message that is copied exactly.';
       const assistant = 'Full assistant text remains copyable.';
@@ -239,20 +529,91 @@ void main() {
       });
 
       await _pumpSession(tester, store);
-      // Markdown selection owns the long press; whole-message copy is explicit.
       await tester.longPress(find.byKey(const Key('message-member')));
-      await tester.pump();
-      expect(clipboard, isNull);
-      expect(find.byType(SelectableRegion), findsNWidgets(2));
-      await tester.tap(find.byTooltip('Copy message').at(0));
       await tester.pump();
       expect(clipboard, member);
       expect(find.text('Copied message'), findsOneWidget);
-      await tester.tap(find.byTooltip('Copy message').at(1));
+      await tester.longPress(find.byKey(const Key('message-assistant')));
       await tester.pump();
       expect(clipboard, assistant);
     },
   );
+
+  testWidgets('activity rows do not copy on long press', (tester) async {
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(404, {'error': 'missing'});
+      }
+      return _response(200, {
+        'messages': [
+          _message('thought', 'worker', 'wthink', 'Inspect the code.', 1),
+          _message('tool', 'worker', 'wtool', 'read · session_view.dart', 2),
+        ],
+        'hasMore': false,
+      });
+    });
+    String? clipboard;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
+          if (call.method == 'Clipboard.setData') {
+            clipboard =
+                (call.arguments as Map<Object?, Object?>)['text'] as String?;
+          }
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null);
+    });
+
+    await _pumpSession(tester, store);
+    await tester.longPress(find.byKey(const Key('activity-thought')));
+    await tester.pump();
+
+    expect(clipboard, isNull);
+    expect(find.text('Copied message'), findsNothing);
+  });
+
+  testWidgets('an expanded activity group remains open after refresh', (
+    tester,
+  ) async {
+    var refreshed = false;
+    final activity = [
+      _message('thought', 'worker', 'wthink', 'Inspect the code.', 1),
+      _message('tool', 'worker', 'wtool', 'read · session_view.dart', 2),
+    ];
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(404, {'error': 'missing'});
+      }
+      return _response(200, {
+        'messages': [
+          ...activity,
+          if (refreshed)
+            _message('answer', 'assistant', 'message', 'New answer', 3),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+    await tester.tap(find.byKey(const Key('activity-thought')));
+    await tester.pump();
+    expect(find.text('Inspect the code.'), findsOneWidget);
+
+    refreshed = true;
+    await store.refresh();
+    await tester.pump();
+
+    expect(find.text('Inspect the code.'), findsOneWidget);
+    expect(find.text('New answer'), findsOneWidget);
+  });
 
   testWidgets('prepends older pages without losing the retained viewport', (
     tester,
@@ -289,7 +650,17 @@ void main() {
     await _pumpSession(tester, store);
     await tester.drag(find.byType(ListView), const Offset(0, 10000));
     await tester.pump();
+    // Further scroll notifications while the older page is pending must not
+    // issue another request for the same opaque cursor.
+    await tester.drag(find.byType(ListView), const Offset(0, 10000));
+    await tester.pump();
+    // The reversed list's far end is the conversation's visual top.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      requests.where((uri) => uri.queryParameters['before'] != null),
+      hasLength(1),
+    );
+    expect(find.text('New 0'), findsOneWidget);
     olderResponse.complete(
       _response(200, {'messages': older, 'hasMore': false}),
     );

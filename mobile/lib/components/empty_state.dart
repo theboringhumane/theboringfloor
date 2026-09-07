@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../utils/typography.dart';
+
 class EmptyState extends StatelessWidget {
   const EmptyState(this.message, {super.key});
   final String message;
@@ -12,8 +14,11 @@ class EmptyState extends StatelessWidget {
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+          style: AppFonts.heading(
+            context,
+            base: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       ),

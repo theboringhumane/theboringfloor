@@ -50,7 +50,9 @@ done
 		"[attached file: " + strconv.Quote(txt) + "] Read it with your file tools.",
 		"[attached file: " + strconv.Quote(png) + "] Read it with your file tools.",
 		"[attached file: " + strconv.Quote(pdf) + "] Read it with your file tools.",
-	}, "\n")
+	}, "\n") + "\n\n" +
+		// Claude now explicitly discloses that image data was not inlined.
+		"[theboringfloor] Image files are attached by path because this Claude backend cannot receive image data; image data was not inlined."
 	want := string(claudeUserLineFor(wireText))
 	if got != want {
 		t.Fatalf("Claude SendWith stdin mismatch:\n got  %s\n want %s", got, want)

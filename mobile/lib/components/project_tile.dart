@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/project.dart';
+import '../utils/typography.dart';
 
 class ProjectTile extends StatelessWidget {
   const ProjectTile({
@@ -22,54 +23,52 @@ class ProjectTile extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(bottom: BorderSide(color: colors.outlineVariant)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: Row(
-            children: [
-              Semantics(
-                label: '$status status',
-                child: Container(
-                  key: Key('status-dot-${project.id}'),
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: project.live ? colors.primary : colors.outline,
-                    shape: BoxShape.circle,
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Row(
+          children: [
+            Semantics(
+              label: '$status status',
+              child: Container(
+                key: Key('status-dot-${project.id}'),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: project.live ? colors.primary : colors.outline,
+                  shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      project.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.titleMedium?.copyWith(
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    project.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppFonts.heading(
+                      context,
+                      base: text.titleMedium?.copyWith(
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$status · ${project.dir}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$status · ${project.dir}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodyMedium?.copyWith(
+                      color: colors.onSurfaceVariant,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-            ],
-          ),
+            ),
+            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+          ],
         ),
       ),
     );

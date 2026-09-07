@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../components/empty_state.dart';
 import '../components/project_tile.dart';
 import '../models/project.dart';
+import '../utils/typography.dart';
 
 class ProjectPicker extends StatefulWidget {
   const ProjectPicker({
@@ -38,7 +39,10 @@ class _ProjectPickerState extends State<ProjectPicker> {
           children: [
             Text(
               'Start a new session',
-              style: Theme.of(context).textTheme.headlineSmall,
+              style: AppFonts.heading(
+                context,
+                base: Theme.of(context).textTheme.headlineSmall,
+              ),
             ),
             const SizedBox(height: 12),
             TextField(

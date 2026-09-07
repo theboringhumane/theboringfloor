@@ -49,12 +49,19 @@ func AttachmentUploadsDir(dir string) (string, error) {
 	return path, nil
 }
 
+// SavedAttachment identifies one validated, persisted attachment.
+type SavedAttachment struct {
+	Name string
+	Mime string
+	Path string
+}
+
 // SaveAttachments validates and persists image attachments for project dir.
 // Files are written under the THEFLOOR_HOME-aware per-project uploads directory
-// with 0700 directory and 0600 file modes. It returns absolute paths in request
-// order and removes every file written by this call if any validation or write
-// fails.
-func SaveAttachments(dir string, atts []Attachment) ([]string, error) {
+// with 0700 directory and 0600 file modes. It returns original names, validated
+// MIME types, and absolute paths in request order, and removes every file written
+// by this call if any validation or write fails.
+func SaveAttachments(dir string, atts []Attachment) ([]SavedAttachment, error) {
 	if len(atts) > MaxAttachmentsPerMessage {
 		return nil, ErrTooManyAttachments
 	}
@@ -99,10 +106,10 @@ func SaveAttachments(dir string, atts []Attachment) ([]string, error) {
 		return nil, err
 	}
 
-	paths := make([]string, 0, len(decoded))
+	saved := make([]SavedAttachment, 0, len(decoded))
 	cleanup := func() {
-		for _, path := range paths {
-			_ = os.Remove(path)
+		for _, attachment := range saved {
+			_ = os.Remove(attachment.Path)
 		}
 	}
 	for _, att := range decoded {
@@ -125,23 +132,13 @@ func SaveAttachments(dir string, atts []Attachment) ([]string, error) {
 			cleanup()
 			return nil, err
 		}
-		paths = append(paths, path)
+		saved = append(saved, SavedAttachment{
+			Name: att.attachment.Name,
+			Mime: att.attachment.MimeType,
+			Path: path,
+		})
 	}
-	return paths, nil
-}
-
-// FormatMessageWithAttachments adds persisted attachment paths to control text
-// without changing state.Event. The delimited block is a temporary transport
-// until EvControlSend has a first-class attachment-path field.
-func FormatMessageWithAttachments(text string, paths []string) string {
-	if len(paths) == 0 {
-		return text
-	}
-	block := "[[theboringfloor-attachments]]\n" + strings.Join(paths, "\n") + "\n[[/theboringfloor-attachments]]"
-	if text == "" {
-		return block
-	}
-	return text + "\n\n" + block
+	return saved, nil
 }
 
 func attachmentExtension(mimeType string) (string, bool) {

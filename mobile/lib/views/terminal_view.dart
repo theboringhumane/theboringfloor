@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/gateway_client.dart';
 import '../store/terminal_store.dart';
+import '../utils/typography.dart';
 
 class TerminalView extends StatefulWidget {
   const TerminalView({super.key, required this.store, required this.cwd});
@@ -33,15 +34,19 @@ class _TerminalViewState extends State<TerminalView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final codeStyle = theme.textTheme.bodyMedium?.copyWith(
-      fontFamily: 'monospace',
-    );
+    final codeStyle = AppFonts.mono(context, base: theme.textTheme.bodyMedium);
     return SafeArea(
       child: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(20),
-            child: Text('Terminal', style: theme.textTheme.headlineLarge),
+            child: Text(
+              'Terminal',
+              style: AppFonts.heading(
+                context,
+                base: theme.textTheme.headlineLarge,
+              ),
+            ),
           ),
           Expanded(
             child: ListView(
@@ -71,10 +76,13 @@ class _TerminalViewState extends State<TerminalView> {
                       if (result != null) ...[
                         Text(
                           'exit ${result.exitCode} · ${result.durationMs}ms',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: result.exitCode == 0
-                                ? theme.colorScheme.primary
-                                : theme.colorScheme.error,
+                          style: AppFonts.mono(
+                            context,
+                            base: theme.textTheme.bodyMedium?.copyWith(
+                              color: result.exitCode == 0
+                                  ? theme.colorScheme.primary
+                                  : theme.colorScheme.error,
+                            ),
                           ),
                         ),
                         if (result.stdout.isNotEmpty)
@@ -82,11 +90,12 @@ class _TerminalViewState extends State<TerminalView> {
                         if (result.stderr.isNotEmpty)
                           Text(
                             result.stderr,
-                            style: codeStyle?.copyWith(
+                            style: codeStyle.copyWith(
                               color: theme.colorScheme.error,
                             ),
                           ),
-                        if (result.truncated) const Text('Output truncated'),
+                        if (result.truncated)
+                          Text('Output truncated', style: codeStyle),
                       ],
                     ],
                   ),
@@ -102,6 +111,10 @@ class _TerminalViewState extends State<TerminalView> {
                   child: TextField(
                     controller: command,
                     enabled: !widget.store.running,
+                    style: AppFonts.mono(
+                      context,
+                      base: theme.textTheme.bodyLarge,
+                    ),
                     onSubmitted: (_) => _run(),
                     decoration: const InputDecoration(
                       hintText: 'Enter command',
@@ -123,9 +136,9 @@ class _TerminalViewState extends State<TerminalView> {
             ),
           ),
           if (widget.store.running)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('Running…'),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text('Running…', style: codeStyle),
             ),
         ],
       ),

@@ -78,13 +78,13 @@ func cannedPayload(query string) []byte {
 		if strings.Contains(query, "before=unknown") {
 			return []byte(`{"error":"unknown before cursor"}`)
 		}
-		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`)
+		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"working":true,"hasMore":true}`)
 	}
 	switch query {
 	case control.QueryPlan:
 		return []byte(`{"draft":"draft plan","approved":"approved plan","hasApproved":true}`)
 	case control.QueryTranscript:
-		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false}`)
+		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"working":false}`)
 	case control.QueryBusy:
 		return []byte(`{"busy":true,"pendingBoss":true,"thinking":true,"delegating":false,"questionParked":false}`)
 	default:
@@ -149,7 +149,7 @@ func TestRoutesHappyPath(t *testing.T) {
 		{"plan", http.MethodGet, control.RoutePlan, "", `{"draft":"draft plan","approved":"approved plan","hasApproved":true}`},
 		{"plan present", http.MethodPost, control.RoutePlanPresent, `{"text":"  proposed plan  "}`, `{"ok":true}`},
 		{"plan update", http.MethodPost, control.RoutePlanUpdate, `{"text":"  revised plan  "}`, `{"ok":true}`},
-		{"transcript", http.MethodGet, control.RouteTranscript + "?limit=12", "", `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`},
+		{"transcript", http.MethodGet, control.RouteTranscript + "?limit=12", "", `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"working":true,"hasMore":true}`},
 		{"status", http.MethodGet, control.RouteStatus, "", `{"dir":"/workspace","backend":"opencode","primaryId":"ses_1","planDraftLen":10,"planApprovedLen":13,"chatCount":1}`},
 	}
 	for _, test := range tests {
@@ -421,14 +421,25 @@ func TestMessageAttachments(t *testing.T) {
 	if len(events) != 1 || events[0].Kind != state.EvControlSend {
 		t.Fatalf("events = %#v", events)
 	}
-	if !strings.Contains(events[0].ControlText, "hello\n\n[[theboringfloor-attachments]]\n") {
-		t.Fatalf("attachment event = %q", events[0].ControlText)
+	if events[0].ControlText != "hello" || strings.Contains(events[0].ControlText, "[[theboringfloor-attachments]]") {
+		t.Fatalf("attachment event text = %q, want raw text", events[0].ControlText)
 	}
-	parts := strings.Split(events[0].ControlText, "\n")
-	if len(parts) != 5 {
-		t.Fatalf("attachment event lines = %q", events[0].ControlText)
+	if len(events[0].ControlAttachments) != 1 {
+		t.Fatalf("attachment event attachments = %#v", events[0].ControlAttachments)
 	}
-	info, err := os.Stat(parts[3])
+	attachment := events[0].ControlAttachments[0]
+	if attachment.Name != "../../image.png" || attachment.Mime != "image/png" || attachment.Temp != "" {
+		t.Fatalf("attachment = %#v", attachment)
+	}
+	uploads, err := control.AttachmentUploadsDir("/workspace")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel, err := filepath.Rel(filepath.Clean(uploads), filepath.Clean(attachment.Path))
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		t.Fatalf("saved path %q escapes uploads directory %q", attachment.Path, uploads)
+	}
+	info, err := os.Stat(attachment.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +451,7 @@ func TestMessageAttachments(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("empty text attachment status = %d, body = %s", status, got)
 	}
-	if events = fake.snapshot(); len(events) != 2 || !strings.HasPrefix(events[1].ControlText, "[[theboringfloor-attachments]]") {
+	if events = fake.snapshot(); len(events) != 2 || events[1].ControlText != "" || len(events[1].ControlAttachments) != 1 {
 		t.Fatalf("empty text attachment events = %#v", events)
 	}
 }
@@ -570,7 +581,7 @@ func TestTranscriptBeforeValidationAndForwarding(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("valid cursor status = %d, body = %s", status, got)
 	}
-	assertJSONEqual(t, `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`, got)
+	assertJSONEqual(t, `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"working":true,"hasMore":true}`, got)
 	events := fake.snapshot()
 	if len(events) != 1 || events[0].ControlQuery != "transcript?page=1&before=m-12" || events[0].ControlLimit != 12 {
 		t.Fatalf("valid cursor event = %#v", events)

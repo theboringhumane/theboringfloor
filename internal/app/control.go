@@ -76,7 +76,7 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 	case control.QueryBusy:
 		pendingBoss := hasPendingBoss(m.st)
 		payload = marshalControlResponse(control.BusyResponse{
-			Busy:           pendingBoss || m.st.BossThinking || m.st.BossDelegating || m.questionParked,
+			Busy:           m.controlWorking(),
 			PendingBoss:    pendingBoss,
 			Thinking:       m.st.BossThinking,
 			Delegating:     m.st.BossDelegating,
@@ -111,11 +111,11 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 
 // controlTranscript converts only completed chat rows, then keeps their tail:
 // control clients receive chronological messages without observing a partial
-// incoming bubble as if it were a completed transcript record.
+// incoming bubble as if it were a completed transcript record. Its limit is a
+// count of user turns; assistant activity following those turns rides along.
 type controlTranscriptResponse struct {
-	Messages  []control.TranscriptMessage `json:"messages"`
-	Truncated bool                        `json:"truncated"`
-	HasMore   *bool                       `json:"hasMore,omitempty"`
+	control.TranscriptResponse
+	HasMore *bool `json:"hasMore,omitempty"`
 }
 
 func (m *Model) controlTranscript(limit int, before string, paged bool) (controlTranscriptResponse, bool) {
@@ -132,7 +132,7 @@ func (m *Model) controlTranscript(limit int, before string, paged bool) (control
 		}
 		messages = append(messages, control.TranscriptMessage{
 			ID: message.ID, From: message.From, Kind: message.Kind,
-			Text: message.Text, At: message.At,
+			Text: message.Text, At: message.At, Attachments: controlTranscriptAttachments(message.Meta),
 		})
 	}
 	end := len(messages)
@@ -149,17 +149,61 @@ func (m *Model) controlTranscript(limit int, before string, paged bool) (control
 			return controlTranscriptResponse{}, false
 		}
 	}
-	start := end - limit
-	if start < 0 {
-		start = 0
+	// Count user turns while walking back. Starting at the user that fills the
+	// page means activity after that turn remains with it, while older activity
+	// remains for the preceding page instead of becoming an orphaned prefix.
+	start := 0
+	users := 0
+	for i := end - 1; i >= 0; i-- {
+		if messages[i].From != "user" {
+			continue
+		}
+		users++
+		if users == limit {
+			start = i
+			break
+		}
 	}
 	page := messages[start:end]
 	truncated := start > 0
-	response := controlTranscriptResponse{Messages: page, Truncated: truncated}
+	response := controlTranscriptResponse{TranscriptResponse: control.TranscriptResponse{
+		Messages:  page,
+		Truncated: truncated,
+		Working:   m.controlWorking(),
+	}}
 	if paged {
 		response.HasMore = &truncated
 	}
 	return response, true
+}
+
+// controlWorking is the same busy predicate exposed by the control busy
+// projection and rendered by the TUI: a primary turn is pending, thinking,
+// delegating, or parked awaiting completion.
+func (m *Model) controlWorking() bool {
+	return hasPendingBoss(m.st) || m.st.BossThinking || m.st.BossDelegating || m.questionParked
+}
+
+// controlTranscriptAttachments projects the compact attachment metadata that
+// chat rows persist. AttachMeta carries outbound filenames only, while
+// MediaMeta carries inbound image filenames and MIME types; neither carrier
+// contains filesystem paths or image payload bytes.
+func controlTranscriptAttachments(meta string) []control.TranscriptAttachment {
+	var attachments []control.TranscriptAttachment
+	if names, ok := state.ParseAttachMeta(meta); ok {
+		for _, name := range names {
+			attachments = append(attachments, control.TranscriptAttachment{Name: name})
+		}
+	}
+	if items, ok := state.ParseMediaMeta(meta); ok {
+		for _, item := range items {
+			attachments = append(attachments, control.TranscriptAttachment{
+				Name: item.Filename,
+				Mime: item.Mime,
+			})
+		}
+	}
+	return attachments
 }
 
 func marshalControlResponse(response any) []byte {

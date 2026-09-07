@@ -160,10 +160,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('attachment-chip-one.png')), findsOneWidget);
       final sendButton = find.ancestor(
-        of: find.byIcon(Icons.send_outlined),
+        of: find.byTooltip('Send follow-up'),
         matching: find.byType(IconButton),
       );
       expect(tester.widget<IconButton>(sendButton).onPressed, isNotNull);
+      await tester.enterText(find.byType(TextField), 'Keep this draft');
       await tester.tap(find.byTooltip('Send follow-up'));
       await tester.pump();
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
@@ -173,6 +174,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('attachment rejected'), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
+      expect(find.text('Keep this draft'), findsOneWidget);
       expect(find.byKey(const Key('attachment-chip-one.png')), findsOneWidget);
     },
   );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:theboringfloor/utils/typography.dart';
 
 const appSeedColor = Color(0xFF3F5F5B);
 
@@ -42,9 +43,11 @@ ThemeData _buildTheme(ColorScheme colorScheme) => ThemeData(
     side: BorderSide(color: colorScheme.outlineVariant.withValues(alpha: 0.6)),
     shape: const StadiumBorder(),
   ),
-  textTheme: ThemeData(brightness: colorScheme.brightness).textTheme.apply(
-    bodyColor: colorScheme.onSurface,
-    displayColor: colorScheme.onSurface,
+  textTheme: buildAppTextTheme(
+    ThemeData(brightness: colorScheme.brightness).textTheme.apply(
+      bodyColor: colorScheme.onSurface,
+      displayColor: colorScheme.onSurface,
+    ),
   ),
   inputDecorationTheme: InputDecorationTheme(
     filled: true,

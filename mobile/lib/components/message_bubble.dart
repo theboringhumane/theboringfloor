@@ -1,11 +1,22 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../models/activity_group.dart';
 import '../models/transcript.dart';
+import '../utils/typography.dart';
 import 'glass.dart';
+import 'activity_bubble.dart';
 import 'markdown_body.dart';
+import 'transcript_attachment_chip.dart';
 
 enum MessageKind { assistant, user, tool, error }
+
+/// How far a finger may drift during a press-and-hold before it counts as a
+/// scroll rather than a copy gesture. Matches Flutter's own touch slop.
+const double _copySlop = kTouchSlop;
 
 class MessageBubble extends StatefulWidget {
   const MessageBubble({
@@ -14,6 +25,7 @@ class MessageBubble extends StatefulWidget {
     required this.expanded,
     required this.onToggle,
     this.kind = MessageKind.assistant,
+    this.attachments,
   });
 
   final TranscriptMessage message;
@@ -23,6 +35,9 @@ class MessageBubble extends StatefulWidget {
   /// Additive override for callers that know a richer message classification.
   final MessageKind kind;
 
+  /// Optional caller override while transcript rows migrate to attachment data.
+  final List<TranscriptAttachment>? attachments;
+
   @override
   State<MessageBubble> createState() => _MessageBubbleState();
 }
@@ -30,10 +45,10 @@ class MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<MessageBubble> {
   static const _memberPreviewLines = 5;
   bool _memberExpanded = false;
+  Timer? _copyTimer;
+  Offset? _copyOrigin;
 
   TranscriptMessage get message => widget.message;
-  bool get _isThinking => message.kind == 'wthink';
-
   MessageKind get _kind {
     if (widget.kind != MessageKind.assistant) return widget.kind;
     if (message.kind == 'wtool') return MessageKind.tool;
@@ -48,17 +63,25 @@ class _MessageBubbleState extends State<MessageBubble> {
         .showSnackBar(const SnackBar(content: Text('Copied message')));
   }
 
+  void _startCopyTimer(BuildContext context) {
+    _copyTimer?.cancel();
+    _copyTimer = Timer(kLongPressTimeout, () => _copy(context));
+  }
+
+  void _cancelCopyTimer() {
+    _copyTimer?.cancel();
+    _copyTimer = null;
+    _copyOrigin = null;
+  }
+
+  @override
+  void dispose() {
+    _cancelCopyTimer();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_isThinking ||
-        (message.kind == 'wtool' && widget.kind == MessageKind.assistant)) {
-      return _ActivityRow(
-        message: message,
-        expanded: widget.expanded,
-        onToggle: widget.onToggle,
-      );
-    }
-
     final kind = _kind;
     final child = switch (kind) {
       MessageKind.user => _MemberMessage(
@@ -70,8 +93,27 @@ class _MessageBubbleState extends State<MessageBubble> {
       MessageKind.tool => _ToolMessage(text: message.text),
       MessageKind.error => _ErrorMessage(text: message.text),
     };
+    final attachments = widget.attachments ?? message.attachments;
+    final messageContent = attachments.isEmpty
+        ? child
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final attachment in attachments)
+                    TranscriptAttachmentChip(attachment: attachment),
+                ],
+              ),
+              const SizedBox(height: 8),
+              child,
+            ],
+          );
 
-    return Align(
+    final messageRow = Align(
       alignment: kind == MessageKind.user
           ? Alignment.centerRight
           : Alignment.centerLeft,
@@ -91,7 +133,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
                 borderRadius: BorderRadius.circular(22),
                 intensity: GlassIntensity.regular,
-                child: child,
+                child: messageContent,
               ),
               MessageKind.tool || MessageKind.error => Padding(
                 padding: const EdgeInsets.symmetric(
@@ -100,7 +142,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 520),
-                  child: child,
+                  child: messageContent,
                 ),
               ),
               MessageKind.assistant => Padding(
@@ -108,17 +150,32 @@ class _MessageBubbleState extends State<MessageBubble> {
                   horizontal: 20,
                   vertical: 6,
                 ),
-                child: child,
+                child: messageContent,
               ),
             },
-            IconButton(
-              tooltip: 'Copy message',
-              onPressed: () => _copy(context),
-              icon: const Icon(Icons.copy_outlined),
-            ),
           ],
         ),
       ),
+    );
+
+    if (kind != MessageKind.user && kind != MessageKind.assistant) {
+      return messageRow;
+    }
+    return Listener(
+      onPointerDown: (event) {
+        _copyOrigin = event.position;
+        _startCopyTimer(context);
+      },
+      // A finger that travels is a scroll, not a long press. Without this the
+      // copy fires mid-scroll whenever a drag outlasts kLongPressTimeout.
+      onPointerMove: (event) {
+        final origin = _copyOrigin;
+        if (origin == null) return;
+        if ((event.position - origin).distance > _copySlop) _cancelCopyTimer();
+      },
+      onPointerUp: (_) => _cancelCopyTimer(),
+      onPointerCancel: (_) => _cancelCopyTimer(),
+      child: messageRow,
     );
   }
 }
@@ -190,10 +247,12 @@ class _ToolMessage extends StatelessWidget {
         children: [
           Text(
             'tool',
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w700,
+            style: AppFonts.heading(
+              context,
+              base: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(height: 6),
@@ -240,60 +299,26 @@ class _ErrorMessage extends StatelessWidget {
   }
 }
 
-class _ActivityRow extends StatelessWidget {
-  const _ActivityRow({
-    required this.message,
+/// A quiet disclosure row for a consecutive run of agent work.
+class ActivityGroupRow extends StatelessWidget {
+  const ActivityGroupRow({
+    super.key,
+    required this.group,
     required this.expanded,
     required this.onToggle,
+    this.running = false,
   });
-  final TranscriptMessage message;
+
+  final ActivityGroup group;
   final bool expanded;
   final VoidCallback onToggle;
+  final bool running;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final summary = message.text.trim().replaceAll(RegExp(r'\s+'), ' ');
-    final isThinking = message.kind == 'wthink';
-    final compact = isThinking
-        ? (summary.isEmpty ? 'Thinking' : 'Thinking · $summary')
-        : (summary.isEmpty ? 'Tool activity' : summary);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 5),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                IconButton(
-                  key: Key('activity-${message.id}'),
-                  tooltip: expanded ? 'Collapse activity' : 'Expand activity',
-                  onPressed: onToggle,
-                  visualDensity: VisualDensity.compact,
-                  icon: Icon(
-                    expanded ? Icons.expand_more : Icons.chevron_right,
-                    size: 18,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                if (!expanded)
-                  Expanded(
-                    child: Text(
-                      compact,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
-                    ),
-                  ),
-              ],
-            ),
-            if (expanded) MarkdownBody(markdown: message.text),
-          ],
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => ActivityBubble(
+    group: group,
+    expanded: expanded,
+    onToggle: onToggle,
+    running: running,
+  );
 }

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:theboringfloor/api/gateway_client.dart';
 import 'package:theboringfloor/store/terminal_store.dart';
+import 'package:theboringfloor/utils/typography.dart';
 import 'package:theboringfloor/views/terminal_view.dart';
 
 class _Client extends http.BaseClient {
@@ -25,6 +26,8 @@ http.StreamedResponse _response(int status, Map<String, Object?> body) =>
     );
 
 void main() {
+  setUpAll(disableRuntimeFontFetching);
+
   testWidgets('disables command input while a command is running', (
     tester,
   ) async {
@@ -98,6 +101,10 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('hello'), findsOneWidget);
     expect(find.text('exit 0 · 4ms'), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('hello')).style?.fontFamily,
+      'JetBrains Mono',
+    );
 
     await tester.enterText(find.byType(TextField), 'bad-command');
     await tester.tap(find.byTooltip('Run command'));

@@ -2,6 +2,7 @@
 package backend
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -102,6 +103,83 @@ func TestPayloadTextOnly(t *testing.T) {
 	parts, skipped := payloadParts("ship it", nil)
 	if len(skipped) != 0 || len(parts) != 1 || textPart(t, parts) != "ship it" {
 		t.Fatalf("text-only payload = %#v, skipped %v", parts, skipped)
+	}
+}
+
+// TestPayloadPartsUploadsPNGDataURLs proves the marshaled prompt_async body
+// carries attachment bytes as OpenCode's real file parts, not merely path
+// references or data-URL-shaped placeholders.
+func TestPayloadPartsUploadsPNGDataURLs(t *testing.T) {
+	dir := t.TempDir()
+	fileBytes := []byte("\x89PNG\r\n\x1a\n")
+	path := writeAttachmentBytes(t, dir, "small.png", fileBytes)
+	first := writeAttachmentBytes(t, dir, "first.png", []byte("\x89PNG\r\n\x1a\nfirst"))
+	second := writeAttachmentBytes(t, dir, "second.png", []byte("\x89PNG\r\n\x1a\nsecond"))
+	for _, tc := range []struct {
+		name          string
+		text          string
+		attachments   []state.Attachment
+		wantFilenames []string
+		wantURLs      []string
+	}{
+		{
+			name: "one real PNG has an exact data URL", text: "describe this image",
+			attachments:   []state.Attachment{{Name: "small.png", Mime: "image/png", Path: path}},
+			wantFilenames: []string{"small.png"},
+			wantURLs:      []string{"data:image/png;base64," + base64.StdEncoding.EncodeToString(fileBytes)},
+		},
+		{
+			name: "two PNGs retain attachment order", text: "two",
+			attachments: []state.Attachment{
+				{Name: "first.png", Mime: "image/png", Path: first},
+				{Name: "second.png", Mime: "image/png", Path: second},
+			},
+			wantFilenames: []string{"first.png", "second.png"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			parts, skipped := payloadParts(tc.text, tc.attachments)
+			if len(skipped) != 0 || len(parts) != 1+len(tc.wantFilenames) {
+				t.Fatalf("PNG payload = %#v, skipped %v", parts, skipped)
+			}
+			if got := textPart(t, parts); got != tc.text {
+				t.Fatalf("text part = %q, want %q", got, tc.text)
+			}
+			for i, name := range tc.wantFilenames {
+				file := parts[i+1]
+				if file["type"] != "file" || file["mime"] != "image/png" || file["filename"] != name {
+					t.Fatalf("file part %d metadata = %#v", i, file)
+				}
+				if len(tc.wantURLs) > i && file["url"] != tc.wantURLs[i] {
+					t.Fatalf("file part %d URL = %q, want exact %q", i, file["url"], tc.wantURLs[i])
+				}
+			}
+			if tc.name == "one real PNG has an exact data URL" {
+				body, err := json.Marshal(map[string]any{"parts": parts})
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("OpenCode prompt_async body: %s", body)
+			}
+		})
+	}
+}
+
+func TestClaudeAttachmentPromptDisclosesPathOnlyImages(t *testing.T) {
+	dir := t.TempDir()
+	path := writeAttachmentBytes(t, dir, "image.png", []byte("\x89PNG\r\n\x1a\n"))
+	prepared, skipped := prepareAttachments([]state.Attachment{{
+		Name: "image.png", Mime: "image/png", Path: path,
+	}})
+	if len(skipped) != 0 || len(prepared) != 1 {
+		t.Fatalf("prepared = %#v, skipped = %v", prepared, skipped)
+	}
+	prompt := claudeAttachmentPrompt("inspect this", prepared)
+	if !strings.Contains(prompt, strconv.Quote(path)) {
+		t.Fatalf("Claude prompt omitted attachment path: %q", prompt)
+	}
+	if !strings.Contains(prompt, "cannot receive image data") || !strings.Contains(prompt, "was not inlined") {
+		t.Fatalf("Claude prompt did not disclose path-only image handling: %q", prompt)
 	}
 }
 

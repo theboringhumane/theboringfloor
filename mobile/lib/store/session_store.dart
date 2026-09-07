@@ -21,10 +21,21 @@ class SessionStore extends ChangeNotifier {
   String? sendError;
   bool _hasPagedOlder = false;
   bool _refreshing = false;
+  int _pollGeneration = 0;
+  int _newestMessageGeneration = 0;
 
   List<TranscriptMessage> get messages => data?.messages ?? const [];
   bool get hasMore => data?.hasMore ?? false;
+  int get pollGeneration => _pollGeneration;
+
+  /// Advances only when a refresh brings a previously unseen newest message.
+  ///
+  /// Views use this to distinguish live arrivals from older-page merges,
+  /// without coupling transcript rendering to pagination state.
+  int get newestMessageGeneration => _newestMessageGeneration;
+  bool get isWorking => data?.busy?.busy == true;
   Future<void> load() async {
+    _pollGeneration += 1;
     loading = true;
     error = null;
     notifyListeners();
@@ -42,8 +53,10 @@ class SessionStore extends ChangeNotifier {
   ///
   /// This deliberately avoids [loading] and preserves paged-in history, so a
   /// periodic update cannot replace the transcript or move its scroll offset.
-  Future<void> refresh() async {
-    if (_refreshing) return;
+  Future<bool> refresh() async {
+    // A newest-page request and an older-page request cannot safely race: the
+    // latter's opaque cursor is based on the currently retained oldest item.
+    if (_refreshing || loadingOlder) return true;
 
     _refreshing = true;
     try {
@@ -52,17 +65,21 @@ class SessionStore extends ChangeNotifier {
       if (current == null) {
         data = latest;
         notifyListeners();
-        return;
+        return true;
       }
 
       final mergedMessages = _mergeMessages(current.messages, latest.messages);
+      final currentIds = current.messages.map((message) => message.id).toSet();
+      final hasNewMessages = latest.messages.any(
+        (message) => !currentIds.contains(message.id),
+      );
       final hasMore = _hasPagedOlder ? current.hasMore : latest.hasMore;
       final changed =
           !_sameMessages(current.messages, mergedMessages) ||
           !_sameStatus(current.status, latest.status) ||
           !_sameBusy(current.busy, latest.busy) ||
           current.hasMore != hasMore;
-      if (!changed) return;
+      if (!changed) return true;
 
       data = SessionData(
         status: latest.status,
@@ -70,9 +87,14 @@ class SessionStore extends ChangeNotifier {
         hasMore: hasMore,
         busy: latest.busy,
       );
+      if (hasNewMessages) {
+        _newestMessageGeneration += 1;
+      }
       notifyListeners();
+      return true;
     } catch (_) {
       // A transient polling failure must not obscure an already usable chat.
+      return false;
     } finally {
       _refreshing = false;
     }
@@ -118,7 +140,8 @@ class SessionStore extends ChangeNotifier {
     if (current == null ||
         current.messages.isEmpty ||
         !current.hasMore ||
-        loadingOlder) {
+        loadingOlder ||
+        _refreshing) {
       return;
     }
 
@@ -132,7 +155,10 @@ class SessionStore extends ChangeNotifier {
       );
       data = SessionData(
         status: current.status,
-        messages: [...page.messages, ...current.messages],
+        // The server's limit counts user messages, so a page can overlap the
+        // retained history and contain arbitrarily many activity entries.
+        // Merge by id and timestamp rather than assuming a fixed page shape.
+        messages: _mergeMessages(current.messages, page.messages),
         hasMore: page.hasMore,
         busy: current.busy,
       );

@@ -410,12 +410,23 @@ func (s *Server) messageWrite(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "empty message text")
 		return
 	}
-	paths, err := control.SaveAttachments(s.dir, request.Attachments)
+	saved, err := control.SaveAttachments(s.dir, request.Attachments)
 	if err != nil {
 		s.writeAttachmentError(w, err)
 		return
 	}
-	s.sink(state.Event{Kind: state.EvControlSend, ControlText: control.FormatMessageWithAttachments(text, paths)})
+	var attachments []state.Attachment
+	if len(saved) > 0 {
+		attachments = make([]state.Attachment, 0, len(saved))
+	}
+	for _, attachment := range saved {
+		attachments = append(attachments, state.Attachment{
+			Name: attachment.Name,
+			Mime: attachment.Mime,
+			Path: attachment.Path,
+		})
+	}
+	s.sink(state.Event{Kind: state.EvControlSend, ControlText: text, ControlAttachments: attachments})
 	s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
 }
 

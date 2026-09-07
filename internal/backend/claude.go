@@ -1088,7 +1088,8 @@ func (b *liveClaudeBackend) Send(text string) error {
 // SendWith is the optional attachment seam the app type-asserts. Claude's
 // stream-json media schema has not been verified, so every readable regular
 // attachment rides its safe absolute path reference through the existing
-// text-only user-message flow rather than being silently dropped.
+// text-only user-message flow rather than being silently dropped or falsely
+// represented as inline media.
 func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error {
 	prepared, skipped := prepareAttachments(atts)
 	if len(skipped) > 0 {
@@ -1097,7 +1098,21 @@ func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error
 	}
 	noUpload := func(string) bool { return false }
 	persistPathRefs(prepared, noUpload)
-	return b.send(attachmentPrompt(text, prepared, noUpload), text, preparedAttachmentNames(prepared))
+	return b.send(claudeAttachmentPrompt(text, prepared), text, preparedAttachmentNames(prepared))
+}
+
+// claudeAttachmentPrompt makes Claude's intentionally text-only attachment
+// handling explicit on its wire prompt. Its stream-json media schema remains
+// unverified: paths are useful to a tool-enabled model, but they are not image
+// data and must never be presented as though they were inline media.
+func claudeAttachmentPrompt(text string, prepared []preparedAttachment) string {
+	noUpload := func(string) bool { return false }
+	prompt := attachmentPrompt(text, prepared, noUpload)
+	if len(prepared) == 0 {
+		return prompt
+	}
+	const disclosure = "[theboringfloor] Image files are attached by path because this Claude backend cannot receive image data; image data was not inlined."
+	return prompt + "\n\n" + disclosure
 }
 
 // send owns Claude's existing text-only transport flow. wireText is what

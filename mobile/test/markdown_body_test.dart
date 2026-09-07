@@ -1,10 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:theboringfloor/components/markdown_body.dart';
 import 'package:theboringfloor/utils/markdown_theme.dart';
+import 'package:theboringfloor/utils/typography.dart';
 
 void main() {
+  setUpAll(disableRuntimeFontFetching);
+
+  TextStyle? renderedStyle(WidgetTester tester, String content) {
+    final paragraph = find
+        .byType(RichText)
+        .evaluate()
+        .map((element) => element.renderObject)
+        .whereType<RenderParagraph>()
+        .firstWhere((render) => render.text.toPlainText() == content);
+    TextStyle? style;
+    paragraph.text.visitChildren((span) {
+      if (span is TextSpan && span.style?.fontFamily != null) {
+        style ??= span.style;
+      }
+      return true;
+    });
+    return style;
+  }
+
   Widget subject(String markdown) => MaterialApp(
     home: Scaffold(
       body: SizedBox(width: 320, child: MarkdownBody(markdown: markdown)),
@@ -29,6 +50,7 @@ void main() {
     await tester.pumpWidget(subject('# Heading\n\n- First\n- Second'));
 
     expect(find.text('Heading'), findsOneWidget);
+    expect(renderedStyle(tester, 'Heading')?.fontFamily, 'Space Grotesk');
     expect(find.text('First'), findsOneWidget);
     expect(find.text('Second'), findsOneWidget);
   });
@@ -51,6 +73,17 @@ void main() {
     await tester.pumpWidget(subject('ordinary paragraph text'));
     expect(find.text('ordinary paragraph text'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('markdown prose and fenced code use their assigned families', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      subject('Paragraph text\n\n```dart\nfinal x = 1;\n```'),
+    );
+
+    expect(renderedStyle(tester, 'Paragraph text')?.fontFamily, 'Inter');
+    expect(renderedStyle(tester, 'final x = 1;')?.fontFamily, 'JetBrains Mono');
   });
 
   test('markdown theme follows light and dark colors', () {

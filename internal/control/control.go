@@ -88,6 +88,8 @@ type OKResponse struct {
 type TranscriptResponse struct {
 	Messages  []TranscriptMessage `json:"messages"`
 	Truncated bool                `json:"truncated"`
+	// Working reports whether the primary agent currently has work in flight.
+	Working bool `json:"working"`
 }
 
 // TranscriptMessage is one projected chat message.
@@ -97,6 +99,15 @@ type TranscriptMessage struct {
 	Kind string `json:"kind"`
 	Text string `json:"text"`
 	At   int64  `json:"at"`
+	// Attachments is optional image metadata; it omits image bytes.
+	Attachments []TranscriptAttachment `json:"attachments,omitempty"`
+}
+
+// TranscriptAttachment is metadata for one image attached to a transcript
+// message. Image bytes are not included in transcript responses.
+type TranscriptAttachment struct {
+	Name string `json:"name"`
+	Mime string `json:"mime,omitempty"`
 }
 
 // StatusResponse is the status endpoint response.
