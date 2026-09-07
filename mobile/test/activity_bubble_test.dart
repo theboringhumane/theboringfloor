@@ -9,7 +9,15 @@ TranscriptMessage _message({
   required String id,
   required String kind,
   required String text,
-}) => TranscriptMessage(id: id, from: 'worker', kind: kind, text: text, at: 1);
+  TranscriptActivity? activity,
+}) => TranscriptMessage(
+  id: id,
+  from: 'worker',
+  kind: kind,
+  text: text,
+  at: 1,
+  activity: activity,
+);
 
 ActivityGroup _group({bool withTools = true}) {
   final messages = [
@@ -34,6 +42,7 @@ Future<void> _pump(
   required ActivityGroup group,
   bool expanded = false,
   bool running = false,
+  bool officeWorking = false,
   VoidCallback? onToggle,
   double width = 400,
 }) => tester.pumpWidget(
@@ -48,6 +57,7 @@ Future<void> _pump(
             group: group,
             expanded: expanded,
             running: running,
+            officeWorking: officeWorking,
             onToggle: onToggle ?? () {},
           ),
         ),
@@ -117,5 +127,162 @@ void main() {
     await _pump(tester, group: group, expanded: true, width: 320);
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'structured running activity shows its snake despite false override',
+    (tester) async {
+      final group =
+          (groupTranscript([
+                    _message(
+                      id: 'thought',
+                      kind: 'wthink',
+                      text: 'misleading legacy prose',
+                      activity: const TranscriptActivity(
+                        role: 'developer',
+                        task: 'Structured task',
+                      ),
+                    ),
+                    _message(
+                      id: 'tool',
+                      kind: 'wtool',
+                      text: 'Bash · flutter test',
+                      activity: const TranscriptActivity(state: 'running'),
+                    ),
+                  ]).single
+                  as ActivityEntry)
+              .group;
+
+      await _pump(tester, group: group, running: false, officeWorking: true);
+
+      expect(find.text('Developer Task — Structured task'), findsOneWidget);
+      expect(find.text('@developer'), findsOneWidget);
+      expect(find.byType(LoadingSnake), findsOneWidget);
+    },
+  );
+
+  testWidgets('idle office hides a stale structured running snake', (
+    tester,
+  ) async {
+    final group =
+        (groupTranscript([
+                  _message(
+                    id: 'tool',
+                    kind: 'wtool',
+                    text: 'Bash · stale command',
+                    activity: const TranscriptActivity(state: 'running'),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    await _pump(tester, group: group, running: false, officeWorking: false);
+
+    expect(find.byType(LoadingSnake), findsNothing);
+  });
+
+  testWidgets('working office shows a structured running snake', (
+    tester,
+  ) async {
+    final group =
+        (groupTranscript([
+                  _message(
+                    id: 'tool',
+                    kind: 'wtool',
+                    text: 'Bash · current command',
+                    activity: const TranscriptActivity(state: 'running'),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    await _pump(tester, group: group, running: false, officeWorking: true);
+
+    expect(find.byType(LoadingSnake), findsOneWidget);
+  });
+
+  testWidgets('unknown structured roles render no label or agent chip', (
+    tester,
+  ) async {
+    final group =
+        (groupTranscript([
+                  _message(
+                    id: 'thought',
+                    kind: 'wthink',
+                    text: 'internal task',
+                    activity: const TranscriptActivity(
+                      role: 'quartermaster',
+                      task: 'Unknown role task',
+                    ),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    await _pump(tester, group: group);
+
+    expect(find.text('@quartermaster'), findsNothing);
+    expect(find.text('Quartermaster Task — Unknown role task'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('known structured roles retain their lowercase agent chip', (
+    tester,
+  ) async {
+    final group =
+        (groupTranscript([
+                  _message(
+                    id: 'thought',
+                    kind: 'wthink',
+                    text: 'internal task',
+                    activity: const TranscriptActivity(
+                      role: 'developer',
+                      task: 'Known role task',
+                    ),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    await _pump(tester, group: group);
+
+    expect(find.text('@developer'), findsOneWidget);
+  });
+
+  testWidgets('structured failed tool uses the theme error colour and marker', (
+    tester,
+  ) async {
+    final group =
+        (groupTranscript([
+                  _message(
+                    id: 'tool',
+                    kind: 'wtool',
+                    text: 'Bash · fail loudly',
+                    activity: const TranscriptActivity(state: 'error'),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    await _pump(tester, group: group, expanded: true);
+
+    expect(find.byKey(const Key('activity-tool-failure-Bash')), findsOneWidget);
+    expect(
+      tester.widget<Text>(find.text('↳ Bash')).style?.color,
+      buildLightTheme().colorScheme.error,
+    );
+  });
+
+  testWidgets('legacy activity retains parsed title, chip, and no snake', (
+    tester,
+  ) async {
+    await _pump(tester, group: _group(), running: false);
+
+    expect(
+      find.text('Developer Task — Untrack Gradle build artifact'),
+      findsOneWidget,
+    );
+    expect(find.text('@developer'), findsOneWidget);
+    expect(find.byType(LoadingSnake), findsNothing);
   });
 }

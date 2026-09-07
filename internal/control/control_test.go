@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -246,6 +247,63 @@ func TestTranscriptMessageWithoutAttachmentsJSONShape(t *testing.T) {
 	}
 	if strings.Contains(string(message), `"attachments"`) {
 		t.Fatalf("TranscriptMessage JSON unexpectedly contains attachments: %s", message)
+	}
+	if strings.Contains(string(message), `"activity"`) {
+		t.Fatalf("TranscriptMessage JSON unexpectedly contains activity: %s", message)
+	}
+}
+
+func TestTranscriptMessageActivityJSONShape(t *testing.T) {
+	message, err := json.Marshal(TranscriptMessage{
+		ID:   "m2",
+		From: "worker",
+		Kind: "wtool",
+		Text: "Bash go test ./...",
+		At:   43,
+		Activity: &TranscriptActivity{
+			Role:  "developer",
+			State: "running",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"id":"m2","from":"worker","kind":"wtool","text":"Bash go test ./...","at":43,"activity":{"role":"developer","state":"running"}}`
+	if got := string(message); got != want {
+		t.Fatalf("TranscriptMessage JSON = %s, want %s", got, want)
+	}
+	if strings.Contains(string(message), `"task"`) {
+		t.Fatalf("TranscriptMessage JSON unexpectedly contains task: %s", message)
+	}
+}
+
+func TestTranscriptMessageActivityRoundTrip(t *testing.T) {
+	for _, want := range []TranscriptMessage{
+		{
+			ID:   "m3",
+			From: "worker",
+			Kind: "wthink",
+			Text: "thinking",
+			At:   44,
+			Activity: &TranscriptActivity{
+				Role:  "scout",
+				Task:  "Map activity fields",
+				State: "done",
+			},
+		},
+		{ID: "m4", From: "boss", Kind: "chat", Text: "hello", At: 45},
+	} {
+		encoded, err := json.Marshal(want)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got TranscriptMessage
+		if err := json.Unmarshal(encoded, &got); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("round trip = %#v, want %#v", got, want)
+		}
 	}
 }
 

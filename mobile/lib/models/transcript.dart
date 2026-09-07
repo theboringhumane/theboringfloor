@@ -21,11 +21,13 @@ class TranscriptMessage {
     required this.text,
     required this.at,
     this.meta,
+    this.activity,
     this.attachments = const [],
   });
   final String id, from, kind, text;
   final int at;
   final String? meta;
+  final TranscriptActivity? activity;
   final List<TranscriptAttachment> attachments;
 
   factory TranscriptMessage.fromJson(Map<String, dynamic> json) {
@@ -44,7 +46,31 @@ class TranscriptMessage {
       text: json['text'] as String,
       at: (json['at'] as num).toInt(),
       meta: json['meta'] as String?,
+      activity: TranscriptActivity.fromJson(json['activity']),
       attachments: attachments,
+    );
+  }
+}
+
+/// Optional structured worker activity supplied by newer office servers.
+///
+/// Older offices omit this object entirely, so every field remains nullable.
+class TranscriptActivity {
+  const TranscriptActivity({this.role, this.task, this.state});
+
+  final String? role;
+  final String? task;
+  final String? state;
+
+  static TranscriptActivity? fromJson(Object? json) {
+    if (json is! Map) return null;
+    final role = json['role'];
+    final task = json['task'];
+    final state = json['state'];
+    return TranscriptActivity(
+      role: role is String ? role : null,
+      task: task is String ? task : null,
+      state: state is String ? state : null,
     );
   }
 }

@@ -43,4 +43,50 @@ void main() {
     expect(decoded.attachments[1].name, 'photo.jpg');
     expect(decoded.attachments[1].mime, isNull);
   });
+
+  test('activity decodes optional string fields and ignores extra keys', () {
+    final decoded = TranscriptMessage.fromJson(
+      message({
+        'activity': {
+          'role': 'developer',
+          'task': 'Run checks',
+          'state': 'running',
+          'future': 'ignored',
+        },
+      }),
+    );
+
+    expect(decoded.activity?.role, 'developer');
+    expect(decoded.activity?.task, 'Run checks');
+    expect(decoded.activity?.state, 'running');
+  });
+
+  test('absent, null, and non-map activity decode to null', () {
+    expect(TranscriptMessage.fromJson(message({})).activity, isNull);
+    expect(
+      TranscriptMessage.fromJson(message({'activity': null})).activity,
+      isNull,
+    );
+    expect(
+      TranscriptMessage.fromJson(message({'activity': 'not-a-map'})).activity,
+      isNull,
+    );
+  });
+
+  test('non-string activity field values are ignored without throwing', () {
+    final decoded = TranscriptMessage.fromJson(
+      message({
+        'activity': {
+          'role': 4,
+          'task': false,
+          'state': ['running'],
+        },
+      }),
+    );
+
+    expect(decoded.activity, isNotNull);
+    expect(decoded.activity?.role, isNull);
+    expect(decoded.activity?.task, isNull);
+    expect(decoded.activity?.state, isNull);
+  });
 }

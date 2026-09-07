@@ -12,18 +12,25 @@ class ActivityBubble extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     this.running = false,
+    this.officeWorking = false,
   });
 
   final ActivityGroup group;
   final bool expanded;
   final VoidCallback onToggle;
   final bool running;
+  final bool officeWorking;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final parent = group.taskTitle ?? group.summary;
+    final agentType = group.agentType;
+    final roleLabel = activityRoleLabel(agentType);
+    final parent = group.usesStructuredActivity
+        ? _structuredParent(roleLabel, group.taskTitle, group.summary)
+        : group.taskTitle ?? group.summary;
+    final effectiveRunning = running || (officeWorking && group.hasRunningTool);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
       child: Material(
@@ -57,7 +64,7 @@ class ActivityBubble extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (group.agentType case final agentType?) ...[
+                    if (roleLabel != null && agentType != null) ...[
                       const SizedBox(width: 6),
                       _AgentChip(agentType: agentType),
                     ],
@@ -78,27 +85,43 @@ class ActivityBubble extends StatelessWidget {
                       ),
                     ),
                   ),
-                if (running) ...[
+                if (effectiveRunning) ...[
                   const SizedBox(height: 6),
                   LoadingSnake(height: 2, color: scheme.primary),
                 ],
                 if (expanded &&
                     group.tools.isNotEmpty &&
-                    group.taskTitle != null) ...[
+                    (group.taskTitle != null ||
+                        group.usesStructuredActivity)) ...[
                   const SizedBox(height: 4),
                   for (final tool in group.tools)
                     Padding(
                       padding: const EdgeInsets.only(left: 24, top: 3),
                       child: Row(
                         children: [
-                          Text(
-                            '↳ ${tool.name}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppFonts.mono(
-                              context,
-                              base: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
+                          if (_isFailure(tool.state)) ...[
+                            Icon(
+                              Icons.error_outline,
+                              key: Key('activity-tool-failure-${tool.name}'),
+                              size: 14,
+                              color: scheme.error,
+                              semanticLabel: 'Tool failed',
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Flexible(
+                            fit: FlexFit.loose,
+                            child: Text(
+                              '↳ ${tool.name}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppFonts.mono(
+                                context,
+                                base: theme.textTheme.bodySmall?.copyWith(
+                                  color: _isFailure(tool.state)
+                                      ? scheme.error
+                                      : scheme.onSurfaceVariant,
+                                ),
                               ),
                             ),
                           ),
@@ -112,7 +135,9 @@ class ActivityBubble extends StatelessWidget {
                                 style: AppFonts.mono(
                                   context,
                                   base: theme.textTheme.bodySmall?.copyWith(
-                                    color: scheme.onSurfaceVariant,
+                                    color: _isFailure(tool.state)
+                                        ? scheme.error
+                                        : scheme.onSurfaceVariant,
                                   ),
                                 ),
                               ),
@@ -151,6 +176,14 @@ class ActivityBubble extends StatelessWidget {
     );
   }
 }
+
+String _structuredParent(String? label, String? task, String summary) {
+  if (label != null && task != null) return '$label Task — $task';
+  if (label != null) return '$label Task';
+  return summary;
+}
+
+bool _isFailure(String? state) => state == 'error' || state == 'aborted';
 
 class _AgentChip extends StatelessWidget {
   const _AgentChip({required this.agentType});

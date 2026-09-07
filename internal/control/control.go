@@ -101,6 +101,7 @@ type TranscriptMessage struct {
 	At   int64  `json:"at"`
 	// Attachments is optional image metadata; it omits image bytes.
 	Attachments []TranscriptAttachment `json:"attachments,omitempty"`
+	Activity    *TranscriptActivity    `json:"activity,omitempty"`
 }
 
 // TranscriptAttachment is metadata for one image attached to a transcript
@@ -108,6 +109,21 @@ type TranscriptMessage struct {
 type TranscriptAttachment struct {
 	Name string `json:"name"`
 	Mime string `json:"mime,omitempty"`
+}
+
+// TranscriptActivity carries structured sub-agent activity for a worker
+// message (Kind "wtool" / "wthink"). Every field is optional: a message the
+// office cannot attribute to a known worker carries no activity at all. These
+// fields are advisory presentation metadata; clients must render correctly
+// when they are absent because older offices will not send them.
+type TranscriptActivity struct {
+	// Role is the worker's role as the office knows it: "developer", "scout",
+	// "reviewer", "runner", "cto", "hr", "manager".
+	Role string `json:"role,omitempty"`
+	// Task is the worker's current task title, as dispatched.
+	Task string `json:"task,omitempty"`
+	// State is the tool-call state: "running", "done", "error", "aborted".
+	State string `json:"state,omitempty"`
 }
 
 // StatusResponse is the status endpoint response.

@@ -9,7 +9,15 @@ TranscriptMessage _message({
   required String kind,
   required String text,
   required int at,
-}) => TranscriptMessage(id: id, from: from, kind: kind, text: text, at: at);
+  TranscriptActivity? activity,
+}) => TranscriptMessage(
+  id: id,
+  from: from,
+  kind: kind,
+  text: text,
+  at: at,
+  activity: activity,
+);
 
 void main() {
   test('folds five consecutive activity messages into one entry', () {
@@ -285,5 +293,90 @@ void main() {
     expect(entry.group.taskTitle, raw);
     expect(entry.group.agentType, isNull);
     expect(entry.group.tools, isEmpty);
+  });
+
+  test(
+    'structured activity beats parsed task metadata and preserves tool state',
+    () {
+      final group =
+          (groupTranscript([
+                    _message(
+                      id: 'thought',
+                      from: 'worker',
+                      kind: 'wthink',
+                      text:
+                          'Developer Task — Parsed title (@developer subagent)',
+                      at: 1,
+                      activity: const TranscriptActivity(
+                        role: 'runner',
+                        task: 'Structured title',
+                      ),
+                    ),
+                    _message(
+                      id: 'tool',
+                      from: 'worker',
+                      kind: 'wtool',
+                      text: 'Bash · flutter test',
+                      at: 2,
+                      activity: const TranscriptActivity(state: 'running'),
+                    ),
+                  ]).single
+                  as ActivityEntry)
+              .group;
+
+      expect(group.usesStructuredActivity, isTrue);
+      expect(group.agentType, 'runner');
+      expect(group.taskTitle, 'Structured title');
+      expect(group.tools.single.state, 'running');
+      expect(group.hasRunningTool, isTrue);
+    },
+  );
+
+  test('structured role-only and state-only activity do not parse prose', () {
+    final roleOnly =
+        (groupTranscript([
+                  _message(
+                    id: 'role',
+                    from: 'worker',
+                    kind: 'wthink',
+                    text: 'Developer Task — Parsed title (@developer subagent)',
+                    at: 1,
+                    activity: const TranscriptActivity(role: 'scout'),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+    final stateOnly =
+        (groupTranscript([
+                  _message(
+                    id: 'state',
+                    from: 'worker',
+                    kind: 'wtool',
+                    text: 'Bash · failed command',
+                    at: 1,
+                    activity: const TranscriptActivity(state: 'error'),
+                  ),
+                ]).single
+                as ActivityEntry)
+            .group;
+
+    expect(roleOnly.agentType, 'scout');
+    expect(roleOnly.taskTitle, isNull);
+    expect(stateOnly.agentType, isNull);
+    expect(stateOnly.taskTitle, isNull);
+    expect(stateOnly.tools.single.state, 'error');
+    expect(stateOnly.hasRunningTool, isFalse);
+  });
+
+  test('maps terminal office roles to display labels', () {
+    expect(activityRoleLabel('developer'), 'Developer');
+    expect(activityRoleLabel('scout'), 'Explore');
+    expect(activityRoleLabel('reviewer'), 'Reviewer');
+    expect(activityRoleLabel('runner'), 'Runner');
+    expect(activityRoleLabel('cto'), 'CTO');
+    expect(activityRoleLabel('hr'), 'HR');
+    expect(activityRoleLabel('manager'), 'Manager');
+    expect(activityRoleLabel('unknown'), isNull);
+    expect(activityRoleLabel(null), isNull);
   });
 }

@@ -279,6 +279,8 @@ class _SessionViewState extends State<SessionView> {
                                   ),
                                   onToggle: () =>
                                       _toggleActivity(group.messages.first.id),
+                                  running: store.isWorking && index == 0,
+                                  officeWorking: store.isWorking,
                                 ),
                               };
                             },

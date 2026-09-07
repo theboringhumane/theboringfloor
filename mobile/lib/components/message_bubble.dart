@@ -307,12 +307,14 @@ class ActivityGroupRow extends StatelessWidget {
     required this.expanded,
     required this.onToggle,
     this.running = false,
+    this.officeWorking = false,
   });
 
   final ActivityGroup group;
   final bool expanded;
   final VoidCallback onToggle;
   final bool running;
+  final bool officeWorking;
 
   @override
   Widget build(BuildContext context) => ActivityBubble(
@@ -320,5 +322,6 @@ class ActivityGroupRow extends StatelessWidget {
     expanded: expanded,
     onToggle: onToggle,
     running: running,
+    officeWorking: officeWorking,
   );
 }

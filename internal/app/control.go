@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"unicode/utf8"
@@ -126,6 +127,7 @@ func (m *Model) controlTranscript(limit int, before string, paged bool) (control
 		limit = controlTranscriptMax
 	}
 	messages := make([]control.TranscriptMessage, 0, len(m.st.Chat))
+	employees := controlTranscriptEmployeeIndex(m.st.Employees)
 	for _, message := range m.st.Chat {
 		if message.Pending {
 			continue
@@ -133,6 +135,7 @@ func (m *Model) controlTranscript(limit int, before string, paged bool) (control
 		messages = append(messages, control.TranscriptMessage{
 			ID: message.ID, From: message.From, Kind: message.Kind,
 			Text: message.Text, At: message.At, Attachments: controlTranscriptAttachments(message.Meta),
+			Activity: controlTranscriptActivity(message, employees),
 		})
 	}
 	end := len(messages)
@@ -204,6 +207,57 @@ func controlTranscriptAttachments(meta string) []control.TranscriptAttachment {
 		}
 	}
 	return attachments
+}
+
+// controlTranscriptEmployeeIndex builds the worker lookup once for one
+// transcript projection, keeping activity attribution constant-time per row.
+func controlTranscriptEmployeeIndex(employees []state.Employee) map[string]state.Employee {
+	index := make(map[string]state.Employee, len(employees))
+	for _, employee := range employees {
+		index[employee.Name] = employee
+	}
+	return index
+}
+
+// controlTranscriptActivity projects advisory worker metadata without exposing
+// the private ChatMsg.Meta carrier. Only worker tool and thinking rows qualify.
+func controlTranscriptActivity(message state.ChatMsg, employees map[string]state.Employee) *control.TranscriptActivity {
+	if message.Kind != "wtool" && message.Kind != "wthink" {
+		return nil
+	}
+
+	activity := control.TranscriptActivity{State: controlTranscriptToolState(message.Meta)}
+	if employee, ok := employees[message.From]; ok {
+		activity.Role = string(employee.Role)
+		activity.Task = employee.Task
+	}
+	if activity.Role == "" && activity.Task == "" && activity.State == "" {
+		return nil
+	}
+	return &activity
+}
+
+// controlTranscriptToolState decodes the worker Meta form "state\x1ftick".
+// Attachment carriers and malformed or unknown states intentionally yield no
+// state, so callers never infer activity from unrelated metadata.
+func controlTranscriptToolState(meta string) string {
+	if meta == "" || strings.HasPrefix(meta, state.AttachMetaPrefix+state.AttachMetaSep) ||
+		strings.HasPrefix(meta, state.MediaMetaPrefix+state.MediaMetaSep) {
+		return ""
+	}
+	parts := strings.Split(meta, state.AttachMetaSep)
+	if len(parts) != 2 {
+		return ""
+	}
+	if _, err := strconv.Atoi(parts[1]); err != nil {
+		return ""
+	}
+	switch parts[0] {
+	case "running", "done", "error", "aborted":
+		return parts[0]
+	default:
+		return ""
+	}
 }
 
 func marshalControlResponse(response any) []byte {

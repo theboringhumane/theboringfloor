@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:theboringfloor/api/gateway_client.dart';
+import 'package:theboringfloor/components/loading_snake.dart';
 import 'package:theboringfloor/models/project.dart';
 import 'package:theboringfloor/store/session_store.dart';
 import 'package:theboringfloor/views/session_view.dart';
@@ -450,6 +451,105 @@ void main() {
     await tester.pump();
     expect(find.text(thinking), findsNothing);
     expect(find.text(tool), findsNothing);
+  });
+
+  testWidgets(
+    'shows the running snake only on the newest activity group in a working office',
+    (tester) async {
+      final store = _store((request) async {
+        if (request.url.path.endsWith('/status')) {
+          return _response(200, _status());
+        }
+        if (request.url.path.endsWith('/busy')) {
+          return _response(200, _busy(true));
+        }
+        return _response(200, {
+          'messages': [
+            _message('older-thought', 'worker', 'wthink', 'Older thought.', 1),
+            _message('older-tool', 'worker', 'wtool', 'read · old.dart', 2),
+            _message('divider', 'assistant', 'message', 'Earlier answer.', 3),
+            _message(
+              'newer-thought',
+              'worker',
+              'wthink',
+              'Current thought.',
+              4,
+            ),
+            _message('newer-tool', 'worker', 'wtool', 'read · new.dart', 5),
+          ],
+          'hasMore': false,
+        });
+      });
+
+      await _pumpSession(tester, store);
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('activity-newer-thought')),
+          matching: find.byType(LoadingSnake),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('activity-older-thought')),
+          matching: find.byType(LoadingSnake),
+        ),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets('does not show activity snakes when the office is idle', (
+    tester,
+  ) async {
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(false));
+      }
+      return _response(200, {
+        'messages': [
+          _message('older-thought', 'worker', 'wthink', 'Older thought.', 1),
+          _message('older-tool', 'worker', 'wtool', 'read · old.dart', 2),
+          _message('divider', 'assistant', 'message', 'Earlier answer.', 3),
+          _message('newer-thought', 'worker', 'wthink', 'Newer thought.', 4),
+          _message('newer-tool', 'worker', 'wtool', 'read · new.dart', 5),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+
+    expect(find.byType(LoadingSnake), findsNothing);
+  });
+
+  testWidgets('does not show an activity snake when a message is newest', (
+    tester,
+  ) async {
+    final store = _store((request) async {
+      if (request.url.path.endsWith('/status')) {
+        return _response(200, _status());
+      }
+      if (request.url.path.endsWith('/busy')) {
+        return _response(200, _busy(true));
+      }
+      return _response(200, {
+        'messages': [
+          _message('thought', 'worker', 'wthink', 'Completed thought.', 1),
+          _message('tool', 'worker', 'wtool', 'read · done.dart', 2),
+          _message('answer', 'assistant', 'message', 'Newest answer.', 3),
+        ],
+        'hasMore': false,
+      });
+    });
+
+    await _pumpSession(tester, store);
+
+    expect(find.byType(LoadingSnake), findsNothing);
   });
 
   testWidgets('member messages offer read more while short messages do not', (

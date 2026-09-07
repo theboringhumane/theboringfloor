@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -137,6 +138,49 @@ func TestGatewayProxiesOfficeResponsesOverRealListeners(t *testing.T) {
 	body = responseBody(t, response)
 	if response.StatusCode != http.StatusOK || body == "" || gotMessage != `{"text":"hello"}` {
 		t.Fatalf("message status/body/forward = %d %q %q", response.StatusCode, body, gotMessage)
+	}
+}
+
+func TestGatewayTranscriptPassesActivityAndFutureFieldsThroughUnchanged(t *testing.T) {
+	const transcript = `{"messages":[{"id":"m1","from":"user","kind":"user","text":"ship it","at":1788800000000},{"id":"wtool-tekton-10-abc","from":"tekton-10","kind":"wtool","text":"bash · flutter analyze","at":1788800000001,"activity":{"role":"developer","task":"Untrack Gradle build artifact","state":"running"},"futureField":{"nested":[1,2,3]}}],"hasMore":false,"working":true}`
+
+	office := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != control.RouteTranscript {
+			t.Fatalf("office path = %q, want %q", r.URL.Path, control.RouteTranscript)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(transcript))
+	}))
+	defer office.Close()
+
+	gateway := newTestGateway(t, nil)
+	gateway.discovery = testDiscovery(t, office.URL)
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+
+	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/p/transcript", http.MethodGet, nil, "gate-token")
+	if got := []byte(responseBody(t, response)); response.StatusCode != http.StatusOK || !bytes.Equal(got, []byte(transcript)) {
+		t.Fatalf("status/body = %d %q, want %d %q", response.StatusCode, got, http.StatusOK, transcript)
+	}
+}
+
+func TestGatewayTranscriptPreservesOfficeErrorResponse(t *testing.T) {
+	const officeBody = `{"error":"transcript conflict","details":{"retry":false}}`
+	office := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_, _ = w.Write([]byte(officeBody))
+	}))
+	defer office.Close()
+
+	gateway := newTestGateway(t, nil)
+	gateway.discovery = testDiscovery(t, office.URL)
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+
+	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/p/transcript", http.MethodGet, nil, "gate-token")
+	if got := responseBody(t, response); response.StatusCode != http.StatusConflict || response.Header.Get("Content-Type") != "application/json" || got != officeBody {
+		t.Fatalf("status/content-type/body = %d %q %q, want %d %q %q", response.StatusCode, response.Header.Get("Content-Type"), got, http.StatusConflict, "application/json", officeBody)
 	}
 }
 

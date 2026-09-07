@@ -7,6 +7,7 @@ class ActivityGroup {
     required this.summary,
     this.taskTitle,
     this.agentType,
+    this.usesStructuredActivity = false,
     this.tools = const [],
   });
 
@@ -14,16 +15,34 @@ class ActivityGroup {
   final String summary;
   final String? taskTitle;
   final String? agentType;
+  final bool usesStructuredActivity;
   final List<ActivityTool> tools;
+
+  /// True when at least one member reports an actively running tool.
+  bool get hasRunningTool =>
+      messages.any((message) => message.activity?.state == 'running');
 }
 
 /// A single worker tool invocation shown beneath an activity task.
 class ActivityTool {
-  const ActivityTool({required this.name, required this.arguments});
+  const ActivityTool({required this.name, required this.arguments, this.state});
 
   final String name;
   final String arguments;
+  final String? state;
 }
+
+/// Converts a wire role to the terminal office's display label.
+String? activityRoleLabel(String? role) => switch (role) {
+  'developer' => 'Developer',
+  'scout' => 'Explore',
+  'reviewer' => 'Reviewer',
+  'runner' => 'Runner',
+  'cto' => 'CTO',
+  'hr' => 'HR',
+  'manager' => 'Manager',
+  _ => null,
+};
 
 sealed class TranscriptEntry {
   const TranscriptEntry();
@@ -51,13 +70,23 @@ List<TranscriptEntry> groupTranscript(List<TranscriptMessage> messages) {
   void addActivityRun() {
     if (activityRun.isEmpty) return;
     final groupedMessages = List<TranscriptMessage>.unmodifiable(activityRun);
+    final structuredActivity = groupedMessages
+        .map((message) => message.activity)
+        .whereType<TranscriptActivity>()
+        .firstOrNull;
+    final parsedTask = _taskFor(groupedMessages);
     entries.add(
       ActivityEntry(
         ActivityGroup(
           messages: groupedMessages,
           summary: _summarizeActivity(groupedMessages),
-          taskTitle: _taskFor(groupedMessages).title,
-          agentType: _taskFor(groupedMessages).agentType,
+          taskTitle: structuredActivity != null
+              ? structuredActivity.task
+              : parsedTask.title,
+          agentType: structuredActivity != null
+              ? structuredActivity.role
+              : parsedTask.agentType,
+          usesStructuredActivity: structuredActivity != null,
           tools: List<ActivityTool>.unmodifiable(
             groupedMessages
                 .where((message) => message.kind == 'wtool')
@@ -115,7 +144,13 @@ ActivityTool _toolFor(TranscriptMessage message) {
   if (separator >= 0) {
     final name = text.substring(0, separator).trim();
     final arguments = text.substring(separator + 1).trim();
-    if (name.isNotEmpty) return ActivityTool(name: name, arguments: arguments);
+    if (name.isNotEmpty) {
+      return ActivityTool(
+        name: name,
+        arguments: arguments,
+        state: message.activity?.state,
+      );
+    }
   }
   final match = RegExp(r'^([A-Za-z][A-Za-z0-9_-]*)(?:\s+(.*))?$')
       .firstMatch(text);
@@ -123,9 +158,14 @@ ActivityTool _toolFor(TranscriptMessage message) {
     return ActivityTool(
       name: match.group(1)!,
       arguments: match.group(2)?.trim() ?? '',
+      state: message.activity?.state,
     );
   }
-  return ActivityTool(name: text, arguments: '');
+  return ActivityTool(
+    name: text,
+    arguments: '',
+    state: message.activity?.state,
+  );
 }
 
 class _ActivityTask {

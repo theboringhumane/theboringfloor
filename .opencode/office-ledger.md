@@ -7,6 +7,69 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-07 · Fix activity review findings (@developer suba... — theboringcto-4 (cto) · `issues`
+- summary: Added optional `officeWorking` plumbing from `SessionView` through `ActivityGroupRow` into `ActivityBubble`, defaulting to `false`.
+- files: `mobile/lib/components/activity_bubble.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/activity_bubble_test.dart`
+- verify: ```
+- proof: *Chip gate — before**
+- ledgerId: led-1788802042880-3df3f716
+
+### 2026-09-07 · Draft wave 116 commit message (@general subag... — tekton-27 (developer) · `issues`
+- summary: Confirms the v0.4.1→v0.4.2→v0.4.3→v0.4.4 one-patch-per-wave convention; next is v0.4.5.
+- files: `internal/control/control.go`, `internal/control/control_test.go`, `internal/app/control.go`, `internal/app/control_activity_test.go` (untracked, new), `cmd/floorgate/gateway_test.go`, `mobile/lib/models/transcript.dart`, `mobile/lib/models/activity_group.dart`, `mobile/lib/components/activity_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/activity_bubble_test.dart`, `activity_group_test.dart`, `session_view_test.dart`, `tran, `.opencode/office-ledger.md`, `.claude/settings.json`
+- verify: ```
+- proof: ```
+- ledgerId: led-1788801874490-573ca7bf
+
+### 2026-09-07 · Review structured activity diff (@reviewer su... — theboringcto-3 (cto) · `done`
+- summary: ## VERDICT — FAIL — the new projection can expose a filesystem path through `Employee.Task`, and the client displays unknown roles as chips despite the specifie
+- files: `.claude/settings.json`, `.opencode/office-ledger.md`, `cmd/floorgate/gateway_test.go`, `internal/app/control.go`, `internal/app/control_activity_test.go`, `internal/control/control.go`, `internal/control/control_test.go`, `internal/state/state.go`, `mobile/lib/components/activity_bubble.dart`, `mobile/lib/models/activity_group.dart`, `mobile/lib/models/transcript.dart`, `mobile/lib/views/session_view.dart`
+- verify: Satisfied: aside from the scope violations above, changed runtime code is attributable to structured transcript activity; no changed paginat
+- proof: (none)
+- ledgerId: led-1788801838246-c465fac0
+
+### 2026-09-07 · Full release verification (@runner subagent) — hemerodromos-3 (runner) · `issues`
+- summary: ## VERDICT — RELEASE-READY
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788801778873-a5de4947
+
+### 2026-09-07 · Project activity onto transcript (@developer... — tekton-23 (developer) · `done`
+- summary: Added O(1) employee-roster indexing per transcript projection.
+- files: `internal/app/control.go`, `internal/app/control_activity_test.go`
+- verify: ```
+- proof: `state.Employee` read before implementation:
+- ledgerId: led-1788800188989-09496523
+
+### 2026-09-07 · Wire running state into transcript (@develope... — tekton-26 (developer) · `issues`
+- summary: Passed the positional running signal to each activity row: only index `0` (the newest entry in the reversed transcript) receives it, and only while `store.isWor
+- files: `mobile/lib/views/session_view.dart`, `mobile/test/session_view_test.dart`, `mobile/lib/components/activity_bubble.dart`, `mobile/lib/models/activity_group.dart`, `mobile/test/activity_group_test.dart`, `mobile/test/transcript_attachment_test.dart`
+- verify: ```
+- proof: ```dart
+- ledgerId: led-1788800027217-78228487
+
+### 2026-09-07 · Structured activity in mobile models (@develo... — tekton-25 (developer) · `done`
+- summary: Added optional, defensively decoded `TranscriptActivity` data (`role`, `task`, `state`) to transcript messages.
+- files: `mobile/lib/models/transcript.dart`, `mobile/lib/models/activity_group.dart`, `mobile/lib/components/activity_bubble.dart`, `mobile/test/transcript_attachment_test.dart`, `mobile/test/activity_group_test.dart`, `mobile/test/activity_bubble_test.dart`
+- verify: ```
+- proof: ```dart
+- ledgerId: led-1788799955375-1bfe6fd7
+
+### 2026-09-07 · Transcript activity wire fields (@developer s... — tekton-22 (developer) · `done`
+- summary: Added the additive `TranscriptActivity` control-plane wire type with optional `role`, `task`, and `state` JSON fields.
+- files: `internal/control/control.go`, `internal/control/control_test.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788799865182-dc67011e
+
+### 2026-09-07 · Gateway activity passthrough test (@developer... — tekton-24 (developer) · `done`
+- summary: Added `TestGatewayTranscriptPassesActivityAndFutureFieldsThroughUnchanged`, a hermetic gateway-to-fake-office test that compares the raw transcript response byt
+- files: `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: Successful office responses travel as a byte stream, with no transcript JSON struct, decode, validation, or re-encode in the gateway:
+- ledgerId: led-1788799841402-129cf909
+
 ### 2026-09-07 · Fix two failing Flutter tests (@developer sub... — tekton-21 (developer) · `issues`
 - summary: **WorkingChip failure — stale test expectation corrected.** `WorkingChip` rotates only when its four-second `AnimationController` completes; the initial frame m
 - files: `mobile/test/working_chip_test.dart`
@@ -293,67 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *Text-only request — unchanged legacy body**
 - ledgerId: led-1788778591350-9b93f03d
-
-### 2026-09-07 · Flutter markdown message rendering (@develope... — tekton-19 (developer) · `issues`
-- summary: Added `markdown_widget`-backed, selectable `MarkdownBody` rendering for Markdown prose, lists, headings, inline code, fenced code, quotes, links, rules, and tab
-- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/components/markdown_body.dart`, `mobile/lib/components/code_block.dart`, `mobile/lib/utils/markdown_theme.dart`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/test/markdown_body_test.dart`, `mobile/test/message_bubble_test.dart`
-- verify: ```
-- proof: ### Assistant message
-- ledgerId: led-1788778569853-fe6e433e
-
-### 2026-09-07 · Scout message + attachment path (@explore sub... — skopos-3 (scout) · `issues`
-- summary: Now I have a complete, current picture. All files were only read, never edited. Here is the final report.
-- files: | Path | Why read |, |---|---|, | `mobile/lib/models/transcript.dart` | Dart wire model for one transcript message |, | `mobile/lib/components/message_bubble.dart` | Message-rendering widget, | `mobile/lib/views/session_view.dart` | Chat screen: composer, send, transcript list, | `mobile/lib/store/session_store.dart` | Send/refresh/pagination state, | `mobile/lib/api/gateway_client.dart` | HTTP client, `message()` call site, | `mobile/lib/api/endpoints.dart` | Declared gateway route constants |, | `mobile/pubspec.yaml`, | `mobile/lib/models/attachment.dart` | NEW, | `mobile/lib/components/attachment_picker.dart` | NEW, | `mobile/lib/components/markdown_body.dart` | NEW
-- verify: Every `M`/`??` above is **someone else's** in-flight work (other concurrent agents on this office); I made zero edits. All my own commands w
-- proof: ## Req 1 — `ChatMsg` (Go) and control wire type
-- ledgerId: led-1788778506877-301510e6
-
-### 2026-09-07 · Office attachment wire + storage (@developer... — tekton-17 (developer) · `issues`
-- summary: Added `control.Attachment` and optional `MessageRequest.Attachments`; text-only JSON remains `{"text":"hello"}`.
-- files: `internal/control/control.go`, `internal/control/attachments.go`, `internal/control/attachments_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
-- verify: ```
-- proof: ```go
-- ledgerId: led-1788778429796-7772fa36
-
-### 2026-09-07 · Gateway image message route (@developer subag... — tekton-18 (developer) · `issues`
-- summary: Extended `POST /api/v1/projects/{id}/message` to accept optional base64 image attachments while retaining the existing text-message route.
-- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/attachments.go`, `cmd/floorgate/attachments_test.go`, `cmd/floorgate/main.go`
-- verify: ```
-- proof: | METHOD PATH | auth | request JSON | response JSON | status codes |
-- ledgerId: led-1788778422977-46fdcaa2
-
-### 2026-09-07 · Redesign chat transcript UI (@developer subag... — theboringcto-5 (cto) · `issues`
-- summary: Rebuilt `SessionView` with floating glass back/overflow controls, overflow access to **Stop** and **New session**, and a bottom floating **Follow up…** composer
-- files: `mobile/lib/views/session_view.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/test/session_view_test.dart`
-- verify: The three failing full-suite tests are in `test/app_test.dart`, outside this task’s owned files; their failed expectations concern the concu
-- proof: ```text
-- ledgerId: led-1788778383309-56dc6b83
-
-### 2026-09-07 · Redesign home screen (@developer subagent) — theboringcto-6 (cto) · `issues`
-- summary: Rebuilt `SpaceView` chrome with a large `All Repos` title and floating glass search/filter controls; preserved its constructor signature.
-- files: `mobile/lib/views/space_view.dart`, `mobile/lib/components/project_tile.dart`, `mobile/lib/components/empty_state.dart`, `mobile/test/space_view_test.dart`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788778340540-dbf46501
-
-### 2026-09-07 · Glass design system (@developer subagent) — theboringcto-4 (cto) · `issues`
-- summary: Added reusable frosted-glass components: `GlassSurface`, `GlassPill`, and `GlassIconButton`, with ambient-scheme fills, hairline borders, intensity-specific blu
-- files: `mobile/lib/components/glass.dart`, `mobile/lib/theme.dart`, `mobile/test/glass_test.dart`
-- verify: ```
-- proof: ```dart
-- ledgerId: led-1788778246626-6f896446
-
-### 2026-09-07 · Restore live transcript streaming (@developer... — tekton-16 (developer) · `issues`
-- summary: Added `SessionStore.refresh()` as a silent, overlap-safe newest-page refresh that:
-- files: `mobile/lib/store/session_store.dart`, `mobile/lib/hooks/use_polling.dart`, `mobile/test/session_store_test.dart`
-- verify: ```
-- proof: ```dart
-- ledgerId: led-1788778233017-ddb04eff
-
-### 2026-09-07 · Fix adaptive icon scale (@developer subagent) — tekton-15 (developer) · `issues`
-- summary: Regenerated `assets/logo_foreground.png` with transparent padding reduced from a 50.7% artwork width to **88.3%**, preserving the flower’s aspect ratio and cent
-- files: `mobile/assets/logo_foreground.png`, `mobile/android/app/src/main/res/drawable*/ic_launcher_{foreground,monochrome}.png`, `mobile/android/app/src/main/res/mipmap-*/ic_launcher.png`, `mobile/android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`, `mobile/android/app/src/main/res/values/colors.xml`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788770899972-c60597c4
 
