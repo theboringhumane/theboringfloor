@@ -145,6 +145,23 @@ func TestReadDiscoveryLegacyBootID(t *testing.T) {
 	}
 }
 
+func TestMessageAndBusyJSONShape(t *testing.T) {
+	message, err := json.Marshal(MessageRequest{Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(message), `{"text":"hello"}`; got != want {
+		t.Fatalf("MessageRequest JSON = %s, want %s", got, want)
+	}
+	busy, err := json.Marshal(BusyResponse{Busy: true, PendingBoss: true, Thinking: true, Delegating: true, QuestionParked: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(busy), `{"busy":true,"pendingBoss":true,"thinking":true,"delegating":true,"questionParked":true}`; got != want {
+		t.Fatalf("BusyResponse JSON = %s, want %s", got, want)
+	}
+}
+
 func TestRegistryFulfillBeforeAndAfterWait(t *testing.T) {
 	controlTestHome(t)
 	r := NewRegistry()

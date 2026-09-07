@@ -54,6 +54,8 @@ func cannedPayload(query string) []byte {
 		return []byte(`{"draft":"draft plan","approved":"approved plan","hasApproved":true}`)
 	case control.QueryTranscript:
 		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false}`)
+	case control.QueryBusy:
+		return []byte(`{"busy":true,"pendingBoss":true,"thinking":true,"delegating":false,"questionParked":false}`)
 	default:
 		return []byte(`{"dir":"/workspace","backend":"opencode","primaryId":"ses_1","planDraftLen":10,"planApprovedLen":13,"chatCount":1}`)
 	}
@@ -203,6 +205,134 @@ func TestPlanWriteValidationAndFireAndForget(t *testing.T) {
 	if len(events) != 2 || events[0].Kind != state.EvPlanPresent || events[0].PlanToolText != "now" ||
 		events[1].Kind != state.EvPlanUpdate || events[1].PlanToolText != "later" {
 		t.Fatalf("events = %#v, want two trimmed fire-and-forget plan events", events)
+	}
+}
+
+func TestControlMutationRoutes(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	for _, test := range []struct {
+		name, path, body string
+		want             state.Event
+	}{
+		{"message", control.RouteMessage, `{"text":"  hello office  "}`, state.Event{Kind: state.EvControlSend, ControlText: "hello office"}},
+		{"stop", control.RouteStop, "", state.Event{Kind: state.EvControlStop}},
+		{"session new", control.RouteSessionNew, "", state.Event{Kind: state.EvControlNew}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var body io.Reader
+			if test.body != "" {
+				body = bytes.NewBufferString(test.body)
+			}
+			status, got := request(t, client, http.MethodPost, baseURL+test.path, body, auth)
+			if status != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", status, got)
+			}
+			assertJSONEqual(t, `{"ok":true}`, got)
+		})
+	}
+	events := fake.snapshot()
+	if len(events) != 3 {
+		t.Fatalf("event count = %d, want 3", len(events))
+	}
+	for index, want := range []state.Event{
+		{Kind: state.EvControlSend, ControlText: "hello office"},
+		{Kind: state.EvControlStop},
+		{Kind: state.EvControlNew},
+	} {
+		if got := events[index]; got.Kind != want.Kind || got.ControlText != want.ControlText {
+			t.Fatalf("event[%d] = %#v, want %#v", index, got, want)
+		}
+	}
+}
+
+func TestBusyRouteHappyPath(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, true, time.Second)
+	status, got := request(t, &http.Client{Timeout: time.Second}, http.MethodGet, baseURL+control.RouteBusy, nil, "Bearer "+testToken)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"busy":true,"pendingBoss":true,"thinking":true,"delegating":false,"questionParked":false}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("event count = %d, want 1", len(events))
+	}
+	assertQuery(t, events[0], control.QueryBusy, 0)
+}
+
+func TestMessageValidation(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	for _, test := range []struct {
+		name, body, want string
+	}{
+		{"empty", `{"text":" \n\t "}`, `{"error":"empty message text"}`},
+		{"invalid JSON", "not json", `{"error":"invalid JSON"}`},
+		{"trailing JSON", `{"text":"hello"}{}`, `{"error":"invalid JSON"}`},
+		{"oversized", `{"text":"` + string(bytes.Repeat([]byte("x"), maxPlanBodyBytes)) + `"}`, `{"error":"invalid JSON"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, http.MethodPost, baseURL+control.RouteMessage, bytes.NewBufferString(test.body), auth)
+			if status != http.StatusBadRequest {
+				t.Fatalf("status = %d, body = %s", status, got)
+			}
+			assertJSONEqual(t, test.want, got)
+		})
+	}
+	if events := fake.snapshot(); len(events) != 0 {
+		t.Fatalf("invalid messages emitted events = %#v", events)
+	}
+}
+
+func TestNewControlRoutesAuthAndMethodErrors(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	for _, test := range []struct {
+		name, method, path, auth string
+		want                     int
+	}{
+		{"message auth", http.MethodPost, control.RouteMessage, "", http.StatusUnauthorized},
+		{"stop auth", http.MethodPost, control.RouteStop, "", http.StatusUnauthorized},
+		{"session new auth", http.MethodPost, control.RouteSessionNew, "", http.StatusUnauthorized},
+		{"busy auth", http.MethodGet, control.RouteBusy, "", http.StatusUnauthorized},
+		{"message method", http.MethodGet, control.RouteMessage, "Bearer " + testToken, http.StatusMethodNotAllowed},
+		{"stop method", http.MethodGet, control.RouteStop, "Bearer " + testToken, http.StatusMethodNotAllowed},
+		{"session new method", http.MethodGet, control.RouteSessionNew, "Bearer " + testToken, http.StatusMethodNotAllowed},
+		{"busy method", http.MethodPost, control.RouteBusy, "Bearer " + testToken, http.StatusMethodNotAllowed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, test.method, baseURL+test.path, nil, test.auth)
+			if status != test.want {
+				t.Fatalf("status = %d, want %d; body = %s", status, test.want, got)
+			}
+		})
+	}
+}
+
+func TestBusyReadAdmissionRejectsAtCapacity(t *testing.T) {
+	release := make(chan struct{})
+	_, fake, baseURL := newTestServerWithOptions(t, true, time.Second, 1, release)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	response := make(chan int, 1)
+	go func() {
+		status, _ := request(t, client, http.MethodGet, baseURL+control.RouteStatus, nil, auth)
+		response <- status
+	}()
+	waitForEventCount(t, fake, 1)
+	status, got := request(t, client, http.MethodGet, baseURL+control.RouteBusy, nil, auth)
+	if status != http.StatusServiceUnavailable {
+		t.Fatalf("saturated status = %d, want 503; body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"error":"office busy"}`, got)
+	if events := fake.snapshot(); len(events) != 1 {
+		t.Fatalf("saturated busy request created %d events, want 1", len(events))
+	}
+	close(release)
+	if status := <-response; status != http.StatusOK {
+		t.Fatalf("drained request status = %d, want 200", status)
 	}
 }
 
@@ -358,8 +488,21 @@ func TestNewPanicsForNilSink(t *testing.T) {
 	New(Options{})
 }
 
+func TestNewPanicsForEmptyToken(t *testing.T) {
+	for _, token := range []string{"", " \t\n "} {
+		t.Run(strconv.Quote(token), func(t *testing.T) {
+			defer func() {
+				if got := recover(); got != "controlsrv: empty Token" {
+					t.Fatalf("panic = %v, want controlsrv: empty Token", got)
+				}
+			}()
+			New(Options{Sink: func(state.Event) {}, Token: token})
+		})
+	}
+}
+
 func TestNewAppliesAdmissionDefaultsAndHeaderLimit(t *testing.T) {
-	server := New(Options{Sink: func(state.Event) {}})
+	server := New(Options{Sink: func(state.Event) {}, Token: testToken})
 	if got := cap(server.readSlots); got != defaultMaxInFlightReads {
 		t.Fatalf("default read slots = %d, want %d", got, defaultMaxInFlightReads)
 	}

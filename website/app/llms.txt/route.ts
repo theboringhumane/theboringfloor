@@ -21,6 +21,7 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 - [Get started](${SITE_URL}/get-started): install CLI, demo mode, live office
 - [Docs](${SITE_URL}/docs): how the office works
 - [MCP server](${SITE_URL}/docs/mcp-server): \`thefloor_mcp\` setup and tools
+- [Remote control plane](${SITE_URL}/docs/control-plane): floorgate, Tailscale setup, Android app, and gateway API
 - [Vision](${SITE_URL}/vision): why a virtual office for agents
 - [Blog](${SITE_URL}/blog): product and engineering posts
 - [RSS](${SITE_URL}/rss.xml): full post feed

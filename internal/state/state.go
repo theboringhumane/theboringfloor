@@ -541,6 +541,12 @@ const (
 	// safe to read on the tea Update goroutine. Control-API WRITES do not use
 	// this kind — they reuse EvPlanPresent/EvPlanUpdate.
 	EvControlQuery EventKind = "control-query"
+	// EvControlSend carries a remote-control message for the current boss turn.
+	EvControlSend EventKind = "control-send"
+	// EvControlStop requests that the current boss turn stop.
+	EvControlStop EventKind = "control-stop"
+	// EvControlNew requests a new boss session.
+	EvControlNew EventKind = "control-new"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -660,6 +666,8 @@ type Event struct {
 	ControlReqID string `json:"controlReqId,omitempty"`
 	ControlQuery string `json:"controlQuery,omitempty"`
 	ControlLimit int    `json:"controlLimit,omitempty"`
+	// ControlText carries trimmed message text for EvControlSend.
+	ControlText string `json:"controlText,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

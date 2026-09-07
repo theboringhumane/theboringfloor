@@ -71,6 +71,9 @@ func New(opts Options) *Server {
 	if opts.Sink == nil {
 		panic("controlsrv: nil Sink")
 	}
+	if strings.TrimSpace(opts.Token) == "" {
+		panic("controlsrv: empty Token")
+	}
 	if opts.Registry == nil {
 		opts.Registry = control.NewRegistry()
 	}
@@ -199,6 +202,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.read(w, control.QueryStatus, 0)
+	case control.RouteMessage:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.messageWrite(w, r)
+	case control.RouteStop:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.sink(state.Event{Kind: state.EvControlStop})
+		s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
+	case control.RouteSessionNew:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.sink(state.Event{Kind: state.EvControlNew})
+		s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
+	case control.RouteBusy:
+		if !s.requireMethod(w, r, http.MethodGet) {
+			return
+		}
+		s.read(w, control.QueryBusy, 0)
 	default:
 		s.writeError(w, http.StatusNotFound, "not found")
 	}
@@ -206,11 +231,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) authorized(r *http.Request) bool {
 	const prefix = "Bearer "
+	if strings.TrimSpace(s.token) == "" {
+		return false
+	}
 	authorization := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authorization, prefix) {
 		return false
 	}
 	provided := authorization[len(prefix):]
+	if strings.TrimSpace(provided) == "" {
+		return false
+	}
 	if len(provided) != len(s.token) {
 		return false
 	}
@@ -315,6 +346,33 @@ func (s *Server) planWrite(w http.ResponseWriter, r *http.Request, kind state.Ev
 		return
 	}
 	s.sink(state.Event{Kind: kind, PlanToolText: text})
+	s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
+}
+
+func (s *Server) messageWrite(w http.ResponseWriter, r *http.Request) {
+	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || contentType != "application/json" {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPlanBodyBytes)
+	defer r.Body.Close()
+	var request control.MessageRequest
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := ensureEOF(decoder); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	text := strings.TrimSpace(request.Text)
+	if text == "" {
+		s.writeError(w, http.StatusBadRequest, "empty message text")
+		return
+	}
+	s.sink(state.Event{Kind: state.EvControlSend, ControlText: text})
 	s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
 }
 

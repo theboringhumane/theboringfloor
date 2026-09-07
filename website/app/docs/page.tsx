@@ -57,6 +57,11 @@ const groups: { title: string; items: DocLink[] }[] = [
         name: 'MCP server',
         promise: 'The local MCP bridge for plan drafts, approved plans, and the current project transcript.',
       },
+      {
+        href: '/docs/control-plane',
+        name: 'Remote control plane',
+        promise: 'floorgate, Tailscale, the Android app, and one authenticated API for live offices.',
+      },
     ],
   },
   {

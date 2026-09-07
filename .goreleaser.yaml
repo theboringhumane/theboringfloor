@@ -36,12 +36,29 @@ builds:
         -X github.com/theboringhumane/theboringfloor/internal/version.Version={{ .Version }}
         -X github.com/theboringhumane/theboringfloor/internal/version.Commit={{ .Commit }}
         -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
+  - id: floorgate
+    main: ./cmd/floorgate
+    binary: floorgate
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X github.com/theboringhumane/theboringfloor/internal/version.Version={{ .Version }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Commit={{ .Commit }}
+        -X github.com/theboringhumane/theboringfloor/internal/version.Date={{ .Date }}
 
 archives:
   - id: theboringfloor
     ids:
       - theboringfloor
       - thefloor_mcp
+      - floorgate
     formats:
       - tar.gz
     format_overrides:

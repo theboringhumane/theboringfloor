@@ -68,6 +68,15 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 			PlanApprovedLen: utf8.RuneCountInString(approved),
 			ChatCount:       len(m.st.Chat),
 		})
+	case control.QueryBusy:
+		pendingBoss := hasPendingBoss(m.st)
+		payload = marshalControlResponse(control.BusyResponse{
+			Busy:           pendingBoss || m.st.BossThinking || m.st.BossDelegating || m.questionParked,
+			PendingBoss:    pendingBoss,
+			Thinking:       m.st.BossThinking,
+			Delegating:     m.st.BossDelegating,
+			QuestionParked: m.questionParked,
+		})
 	default:
 		payload = marshalControlResponse(control.ErrorResponse{
 			Error: fmt.Sprintf("unknown control query %q", ev.ControlQuery),

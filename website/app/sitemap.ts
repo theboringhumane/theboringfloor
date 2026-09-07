@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/docs/getting-started', priority: 0.8, changeFrequency: 'weekly' as const },
     { path: '/docs/backends', priority: 0.8, changeFrequency: 'weekly' as const },
     { path: '/docs/mcp-server', priority: 0.7, changeFrequency: 'weekly' as const },
+    { path: '/docs/control-plane', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/chat-and-threads', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/permissions-and-questions', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/plan-mode', priority: 0.7, changeFrequency: 'weekly' as const },

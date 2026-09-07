@@ -7,6 +7,111 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-07 · Fail-closed release signing (@developer subag... — tekton-9 (developer) · `done`
+- summary: Replaced the unsafe debug-signing fallback with release-task-graph validation that fails closed when `key.properties` is missing, required properties are blank,
+- files: `mobile/android/app/build.gradle.kts`, `mobile/android/.gitignore`
+- verify: ```
+- proof: ```kotlin
+- ledgerId: led-1788757244310-bbf30ac6
+
+### 2026-09-07 · Reject empty bearer tokens (@developer subagent) — tekton-10 (developer) · `done`
+- summary: Rejected empty and whitespace-only office control tokens during `controlsrv.New`, with the same panic-at-construction pattern used for a nil sink.
+- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: ### Office control server authentication
+- ledgerId: led-1788757173123-20cbbbb8
+
+### 2026-09-07 · Sign Android release APK (@developer subagent) — tekton-7 (developer) · `issues`
+- summary: Created a self-signed RSA-2048 JKS release keystore outside the repository at `~/.theboringfloor/android/`, with the required alias, DN, validity, and `0600` pe
+- files: `mobile/android/app/build.gradle.kts`, `mobile/android/key.properties`, `mobile/android/key.properties.example`, `/Users/theboringhumane/.theboringfloor/android/theboringfloor-release.jks`
+- verify: ```
+- proof: *Release keystore password — save this securely:**
+- ledgerId: led-1788756970695-39f78cc0
+
+### 2026-09-07 · Review control plane diff (@reviewer subagent) — theboringcto-1 (cto) · `done`
+- summary: ## VERDICT
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788756828415-bfb1c8c7
+
+### 2026-09-07 · Document APK install and signing (@developer... — tekton-8 (developer) · `issues`
+- summary: Added additive **Install the Android app** and **Signing key** sections immediately before the existing v1 limitations section.
+- files: `website/app/docs/control-plane/page.tsx`
+- verify: ```
+- proof: ### Install the Android app
+- ledgerId: led-1788756786680-908f537e
+
+### 2026-09-07 · Flutter control plane app (@developer subagent) — tekton-5 (developer) · `issues`
+- summary: Installed Flutter **3.47.2** with `brew install --cask flutter`.
+- files: `mobile/.gitignore`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/analysis_options.yaml`, `mobile/.metadata`, `mobile/README.md`, `mobile/lib/main.dart`, `mobile/lib/api/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/settings_store.dart`, `mobile/lib/time.dart`, `mobile/test/models_test.dart`
+- verify: ```
+- proof: ### Projects screen
+- ledgerId: led-1788756143465-8e85f4f5
+
+### 2026-09-07 · Build floorgate API gateway (@developer subag... — tekton-4 (developer) · `done`
+- summary: Added `floorgate`, a stateless authenticated HTTP gateway binary with a stable bind address and persistent gateway bearer token.
+- files: `cmd/floorgate/main.go`, `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: | METHOD PATH | auth | request | response | error codes |
+- ledgerId: led-1788755508575-bd32973f
+
+### 2026-09-07 · Project enumeration package (@developer subag... — tekton-3 (developer) · `done`
+- summary: Added `internal/projects`, a typed project-discovery package for persisted theboringfloor projects.
+- files: `internal/projects/projects.go`, `internal/projects/projects_test.go`
+- verify: ```
+- proof: ```json
+- ledgerId: led-1788755335593-10c3bf8f
+
+### 2026-09-07 · Control plane docs and runbook (@developer su... — tekton-6 (developer) · `done`
+- summary: Added `/docs/control-plane`, documenting the `floorgate` gateway, bearer-token setup, Tailscale path, full gateway API, Android client, and v1 limitations.
+- files: `website/app/docs/control-plane/page.tsx`, `website/app/sitemap.ts`, `website/app/llms.txt/route.ts`, `website/app/docs/page.tsx`
+- verify: `bun run build` was used because `website/package.json` declares `bun@1.3.5` as its package manager and `bun.lock` is present.
+- proof: ### Remote control plane
+- ledgerId: led-1788755269201-ded00dad
+
+### 2026-09-07 · Office control app reducers (@developer subag... — tekton-2 (developer) · `done`
+- summary: Added UI-goroutine reducers for remote send, stop, and new-session events.
+- files: `internal/app/control_mutations.go`, `internal/app/control_mutations_test.go`, `internal/app/control.go`, `internal/app/model.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788755216423-13432871
+
+### 2026-09-07 · Office control wire and routes (@developer su... — tekton-1 (developer) · `issues`
+- summary: Added control-wire event kinds `EvControlSend`, `EvControlStop`, and `EvControlNew`, plus `Event.ControlText`.
+- files: `internal/state/state.go`, `internal/control/control.go`, `internal/control/control_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
+- verify: ```
+- proof: | METHOD PATH | request JSON | response JSON | emitted `state.Event` |
+- ledgerId: led-1788755072077-2fee6364
+
+### 2026-09-07 · Scout session control seams (@explore subagent) — skopos-3 (scout) · `issues`
+- summary: I now have complete evidence for all 10 requirements. Producing the final report.
+- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `internal/control/control.go`, `internal/state/state.go` (lines 420-822), `internal/app/control.go`, `internal/app/model.go` (targeted greps + reads: 128-372, 890-990, 1020-1180, 1760-1830, 2030-2170, , `internal/app/sessions.go` (lines 340-573), `internal/app/plan_tools.go`, `internal/app/plan_tools_test.go`, `internal/panels/chat.go` (lines 300-320, 1010-1110, 1850-1910), `internal/backend/backend.go`, `internal/backend/opencode.go` (lines 440-620, 1575-1605, 1925-1975), `internal/backend/claude.go` (lines 200-330, 1040-1090, 1630-1675), `cmd/theboringfloor/main.go` (lines 150-299)
+- verify: `TestControlPlanProjectionAndNilPlan` (line 12) — calls `m.applyControl(state.Event{Kind: state.EvControlQuery, ...})` directly and asserts
+- proof: | Action | Narrowest safe seam (func signature + file:line) | Thread-safety mechanism to use | Exists today? |
+- ledgerId: led-1788754825222-823459d0
+
+### 2026-09-07 · Scout on-disk session storage (@explore subag... — skopos-2 (scout) · `issues`
+- summary: # Read-Only Reconnaissance Report: Session/Project/Transcript Persistence
+- files: | Path | Why inspected |, |---|---|, | `internal/config/config.go` | `Path()`, `Env`/`HomeOverride`, `THEFLOOR_HOME` override, `save()` a, | `internal/config/migrate.go` | Confirms legacy-home migration is a documented no-op today |, | `internal/brand/brand.go` | `DotDir = ".theboringfloor"`, `CLI = "theboringfloor"` |, | `internal/state/state.go` | `ChatMsg`, `Employee`, `BoardTask`, `MailItem`, `Event`/`EventKind` wi, | `internal/app/sessions.go` | `SessionFile`, `SessionPath`, `SessionDirHash`, `LoadSession`, `SaveS, | `internal/sessionsearch/sessionsearch.go` | Read-only session reader; root-resolution; confirms si, | `internal/control/control.go` | `Discovery` struct, `ControlPath`, `WriteDiscovery`/`ReadDiscovery, | `internal/controlsrv/server.go` | Loopback HTTP control server: `/v1/health`, `/v1/transcript`, `/, | `cmd/theboringfloor/main.go`, | `internal/backend/claude.go`
+- verify: ```
+- proof: ```
+- ledgerId: led-1788754790329-7bf0655b
+
+### 2026-09-07 · Scout control server surface (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: All evidence gathered. Producing the final report.
+- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `internal/control/control.go`, `internal/control/control_test.go`, `internal/app/control.go`, `internal/app/control_test.go`, `internal/app/plan_tools.go`, `internal/app/model.go` (lines 3335-3349), `internal/state/state.go` (lines 520-663), `cmd/thefloor_mcp/office.go`, `cmd/thefloor_mcp/mcp.go`, `cmd/theboringfloor/main.go` (lines 190-269)
+- verify: `TestControlHelperProcess` — not a real assertion-bearing test; it is the subprocess entry point `startOfficeNamedProcess` `exec.Command`s i
+- proof: ## Current control API contract
+- ledgerId: led-1788754665496-8c68e4fb
+
+### 2026-09-07 · Scout mobile toolchain and net (@explore suba... — skopos-4 (scout) · `issues`
+- summary: All probes complete. Here is the recon report.
+- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.gitignore`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.goreleaser.yaml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/.github/workflows/release.yml`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/.gitignore`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/website/` (dir listing), `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/go.mod` (grep only, line 1 `go` directive), Grep across repo for `website` references
+- verify: *30Gi free** on a 460Gi volume (93% used). The Flutter SDK itself is small (~1-2 GB including Dart), and the Android SDK is **already presen
+- proof: | Tool | Installed? | Version | Ready to build an APK? | Blocking gap |
+- ledgerId: led-1788754652283-cf0652e1
+
 ### 2026-09-06 · Fix btw swap failure paths (@developer subagent) — tekton-12 (developer) · `done`
 - summary: Made `/btw` startup transactional by removing the pre-spawn `ResetPrimary(true)` call. `NewOffice()` now runs while the original primary remains seated; if spaw
 - files: `internal/app/model.go`, `internal/app/btw_guard_test.go`, `internal/app/btw_swap_failure_test.go`
@@ -251,109 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ### Session-search root resolution
 - ledgerId: led-1788624478363-7707bc21
-
-### 2026-09-05 · Rename internal/panels (@developer subagent) — tekton-22 (developer) · `done`
-- summary: Removed all case-insensitive `theboringoffice` references from `internal/panels`.
-- files: `internal/panels/browser.go`, `internal/panels/browser_lane.go`, `internal/panels/links.go`, `internal/panels/browser_lane_kitty.go`, `internal/panels/browser_lane_test.go`, `internal/panels/browser_panel_lane_test.go`, `internal/panels/browser_test.go`, `internal/panels/chat_attach.go`, `internal/panels/chat_attach_test.go`, `internal/panels/chat_loading.go`, `internal/panels/popover.go`
-- verify: ```
-- proof: | Constant / read | Old value | New value | Suffix passed to `config` |
-- ledgerId: led-1788624458336-fe1e0e8d
-
-### 2026-09-05 · Fix headless and chrome (@developer subagent) — tekton-23 (developer) · `done`
-- summary: Repaired `internal/headless` build by replacing removed `brand.Get("HOME")` with `config.Env("HOME")`.
-- files: `internal/headless/headless.go`, `internal/headless/cache.go`, `internal/headless/cache_test.go`, `internal/headless/headless_test.go`, `internal/headless/live_test.go`, `internal/headless/testdata/fixture.html`, `internal/chrome/styles.go`, `internal/chrome/styles_test.go`, `internal/chrome/topbar.go`, `internal/chrome/topbar_test.go`, `internal/chrome/statusbar.go`
-- verify: ```
-- proof: | Constant | Old value | New value | Suffix passed to accessor |
-- ledgerId: led-1788624317569-245b94bc
-
-### 2026-09-05 · Rename scripts and docs (@developer subagent) — tekton-27 (developer) · `issues`
-- summary: Renamed helper-script product references, GitHub raw URLs, and auto-commit environment variables to `theboringfloor` / `THEFLOOR_AUTO_COMMIT`.
-- files: `scripts/README.md`, `scripts/install-majdoor-hook.sh`, `scripts/majdoor-commit-msg-hook.sh`, `scripts/majdoor-env.sh`, `docs/architecture.md`, `docs/shots/cabins-3000.svg`, `docs/shots/grafeio-1000.svg`, `docs/shots/grafeio-2500.svg`, `docs/shots/grafeio-4000.svg`
-- verify: ```
-- proof: | File | Old command/path/variable | Final command/path/variable |
-- ledgerId: led-1788624281238-d74741d9
-
-### 2026-09-05 · Fix sound notify term (@developer subagent) — tekton-24 (developer) · `issues`
-- summary: Replaced all three deleted `brand.Get` call sites with `internal/config` accessors:
-- files: `internal/sound/player.go`, `internal/sound/sound.go`, `internal/sound/sound_test.go`, `internal/notify/notify.go`, `internal/notify/notify_test.go`, `internal/term/term.go`, `internal/term/term_test.go`, `internal/netwatch/netwatch.go`
-- verify: ```
-- proof: ```go
-- ledgerId: led-1788624269210-b075fe8b
-
-### 2026-09-05 · Rename internal/backend (@developer subagent) — tekton-16 (developer) · `issues`
-- summary: Removed every case-insensitive `theboringoffice` trace from `internal/backend` and `internal/charter`.
-- files: `internal/backend/agentmemory.go`, `internal/backend/backend.go`, `internal/backend/browser_open_test.go`, `internal/backend/bypass_permissions_test.go`, `internal/backend/cfg_test.go`, `internal/backend/charter.go`, `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/charter_test.go`, `internal/backend/claude.go`, `internal/backend/claude_dialog_kinds_test.go`, `internal/backend/claude_events.go`
-- verify: ```
-- proof: | Previous environment access | Final access |
-- ledgerId: led-1788623912251-c3ab7f37
-
-### 2026-09-05 · Version and installers (@developer subagent) — tekton-17 (developer) · `issues`
-- summary: Renamed `internal/version.String()` output and documentation to `theboringfloor`.
-- files: `internal/version/version.go`, `internal/version/version_test.go`, `install.sh`, `install.ps1`, `install_ps1_test.go`
-- verify: ```
-- proof: *New stamped version line**
-- ledgerId: led-1788623722715-5f55b1ec
-
-### 2026-09-05 · Rename cmd packages (@developer subagent) — tekton-18 (developer) · `issues`
-- summary: Renamed the main command package directory with `git mv`: `cmd/theboringoffice` → `cmd/theboringfloor`.
-- files: `cmd/README.md`, `cmd/claudestub/main.go`, `cmd/headless/main.go`, `cmd/soundtest/main.go`, `cmd/theboringoffice/main.go` → `cmd/theboringfloor/main.go`, `cmd/theboringoffice/main_test.go` → `cmd/theboringfloor/main_test.go`, `cmd/thefloor_mcp/main.go`, `cmd/thefloor_mcp/mcp_test.go`, `cmd/uishot/claude_proof.go`, `cmd/uishot/main.go`, `cmd/uishot/terminal_panel_stub.go`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788623708644-7ba5b142
-
-### 2026-09-05 · Brand and env foundation (@developer subagent) — tekton-14 (developer) · `done`
-- summary: Added canonical `config.Env`, `config.EnvBool`, and `config.LookupEnv` accessors with silent legacy fallback and canonical precedence semantics.
-- files: `internal/brand/brand.go`, `internal/config/config.go`, `internal/config/migrate.go`, `internal/config/config_test.go`, `internal/config/env_test.go`
-- verify: The two surviving lines are the intentional, silent legacy fallback reads in `Env` and `LookupEnv`; no old product, environment, or state-di
-- proof: ```go
-- ledgerId: led-1788623551002-f54ac3bf
-
-### 2026-09-05 · Rename website (@developer subagent) — tekton-20 (developer) · `issues`
-- summary: Replaced all legacy `THEBORINGOFFICE_*` documentation with canonical `THEFLOOR_*` variables.
-- files: `website/app/docs/browser-tab/page.tsx`, `website/app/docs/getting-started/page.tsx`, `website/app/docs/mcp-server/page.tsx`, `website/app/layout.tsx`, `website/components/home/context-model.tsx`, `website/components/theme-provider.tsx`, `website/public/_redirects`, `website/public/favicon_io/site.webmanifest`
-- verify: ```
-- proof: | file:line | string | why it must stay |
-- ledgerId: led-1788623541114-1f1163df
-
-### 2026-09-05 · Rename internal/app (@developer subagent) — tekton-15 (developer) · `issues`
-- summary: Removed every `theboringoffice` reference from `internal/app`, including comments, notices, status text, chat markers, fixtures, and test expectations.
-- files: `internal/app/attribution.go`, `internal/app/backend_switch_test.go`, `internal/app/browser_frame_test.go`, `internal/app/browser_open.go`, `internal/app/browser_open_test.go`, `internal/app/browser_test.go`, `internal/app/control_test.go`, `internal/app/mcp_cmd_test.go`, `internal/app/memory_test.go`, `internal/app/model.go`, `internal/app/model_image_test.go`, `internal/app/notify_hook_test.go`
-- verify: ```
-- proof: ### Product-prefixed environment call sites changed
-- ledgerId: led-1788623481541-0890e2a1
-
-### 2026-09-05 · Rename docs and charter (@developer subagent) — tekton-21 (developer) · `issues`
-- summary: Renamed remaining active root documentation references, badges, Go install path, environment variables, and release archive wording to `theboringfloor`.
-- files: `README.md`, `.opencode/oikonomos.md`, `.opencode/opencode-video-analysis.md`, `.gitignore`
-- verify: ```
-- proof: ### README install section
-- ledgerId: led-1788623457944-d05ef7d2
-
-### 2026-09-05 · Release config rename (@developer subagent) — tekton-19 (developer) · `issues`
-- summary: Renamed the GoReleaser project, primary build ID, and archive ID to `theboringfloor`.
-- files: `.goreleaser.yaml`
-- verify: ```
-- proof: ```yaml
-- ledgerId: led-1788623380395-c6821a37
-
-### 2026-09-05 · Fix uninstall regression (@developer subagent) — tekton-13 (developer) · `done`
-- summary: Added a bounded (5-second), stderr-silent `--version` ownership probe for legacy installations without a manifest entry.
-- files: `install.sh`
-- verify: ```
-- proof: ### 1. Manifest present and matching
-- ledgerId: led-1788622496263-5095481c
-
-### 2026-09-05 · Bound control admission (@developer subagent) — tekton-11 (developer) · `issues`
-- summary: Added immediate buffered-channel admission control for read projection requests, defaulting to 16 in-flight requests and configurable through `Options.MaxInFlig
-- files: `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`
-- verify: ```
-- proof: ```http
-- ledgerId: led-1788622365860-df6c5536
-
-### 2026-09-05 · Harden stale discovery (@developer subagent) — tekton-10 (developer) · `issues`
-- summary: Added `bootId` to control discovery records, automatically generated with cryptographic randomness when absent before atomic persistence.
-- files: `internal/control/control.go`, `internal/control/control_test.go`, `cmd/thefloor_mcp/office.go`, `cmd/thefloor_mcp/mcp_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788622341438-38ea2e3e
 

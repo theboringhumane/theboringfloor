@@ -1,0 +1,6 @@
+# The real key.properties is gitignored. The release keystore lives outside this
+# repository at ~/.theboringfloor/android/theboringfloor-release.jks.
+storePassword=REPLACE_WITH_STORE_PASSWORD
+keyPassword=REPLACE_WITH_KEY_PASSWORD
+keyAlias=theboringfloor
+storeFile=/absolute/path/to/.theboringfloor/android/theboringfloor-release.jks

@@ -32,10 +32,15 @@ const (
 	RoutePlanUpdate  = "/v1/plan/update"
 	RouteTranscript  = "/v1/transcript"
 	RouteStatus      = "/v1/status"
+	RouteMessage     = "/v1/message"
+	RouteStop        = "/v1/stop"
+	RouteSessionNew  = "/v1/session/new"
+	RouteBusy        = "/v1/busy"
 
 	QueryPlan       = "plan"
 	QueryTranscript = "transcript"
 	QueryStatus     = "status"
+	QueryBusy       = "busy"
 
 	ReplyDeadline = 2 * time.Second
 )
@@ -57,6 +62,11 @@ type PlanResponse struct {
 
 // PlanWriteRequest is the body accepted by plan present and update endpoints.
 type PlanWriteRequest struct {
+	Text string `json:"text"`
+}
+
+// MessageRequest is the body accepted by the message endpoint.
+type MessageRequest struct {
 	Text string `json:"text"`
 }
 
@@ -88,6 +98,15 @@ type StatusResponse struct {
 	PlanDraftLen    int    `json:"planDraftLen"`
 	PlanApprovedLen int    `json:"planApprovedLen"`
 	ChatCount       int    `json:"chatCount"`
+}
+
+// BusyResponse is the busy endpoint response.
+type BusyResponse struct {
+	Busy           bool `json:"busy"`
+	PendingBoss    bool `json:"pendingBoss"`
+	Thinking       bool `json:"thinking"`
+	Delegating     bool `json:"delegating"`
+	QuestionParked bool `json:"questionParked"`
 }
 
 // ErrorResponse is the body used for control API errors.
