@@ -9,13 +9,12 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -127,6 +126,11 @@ type Discovery struct {
 
 var discoveryMu sync.Mutex
 
+// ErrLiveDiscovery is returned when another live office owns a project's
+// discovery record. Callers can use errors.Is to distinguish this refusal
+// from filesystem failures.
+var ErrLiveDiscovery = errors.New("control: live discovery already exists")
+
 // NewToken returns a 32-byte cryptographically random token encoded as hex.
 func NewToken() (string, error) {
 	b := make([]byte, 32)
@@ -162,7 +166,8 @@ func ControlPath(dir string) string {
 	return filepath.Join(home(), brand.DotDir, "projects", DirHash(dir), "control.json")
 }
 
-// WriteDiscovery atomically writes d to dir's project discovery file.
+// WriteDiscovery atomically writes d to dir's project discovery file. It
+// refuses to replace a live record owned by another process.
 func WriteDiscovery(dir string, d Discovery) error {
 	discoveryMu.Lock()
 	defer discoveryMu.Unlock()
@@ -176,6 +181,9 @@ func WriteDiscovery(dir string, d Discovery) error {
 	path := ControlPath(dir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
+	}
+	if current, ok := ReadDiscovery(dir); ok && current.PID != os.Getpid() && !current.Stale() {
+		return ErrLiveDiscovery
 	}
 	b, err := json.Marshal(d)
 	if err != nil {
@@ -273,15 +281,11 @@ func processExecutableName(pid int) (name string, known bool) {
 		}
 		return filepath.Base(path), true
 	case "darwin", "freebsd":
-		output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "comm=").Output()
-		if err != nil {
-			return "", false
-		}
-		path := strings.TrimSpace(string(output))
-		if path == "" {
-			return "", false
-		}
-		return filepath.Base(path), true
+		// Avoid spawning ps on the boot path. These platforms do not expose a
+		// portable process-executable lookup through the standard library, so
+		// Stale preserves its PID-liveness behavior when the executable is
+		// unavailable.
+		return "", false
 	default:
 		return "", false
 	}

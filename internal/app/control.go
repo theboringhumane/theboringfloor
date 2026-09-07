@@ -3,6 +3,8 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"unicode/utf8"
 
@@ -14,7 +16,9 @@ import (
 
 const (
 	controlTranscriptDefault = 50
-	controlTranscriptMax     = 500
+	// controlTranscriptMax bounds a single UI-goroutine transcript projection.
+	// Larger requests are clamped rather than rejected so clients can recover.
+	controlTranscriptMax = 500
 )
 
 // controlReplies is deliberately process-wide: the HTTP server and Bubble Tea
@@ -52,8 +56,9 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 		payload = marshalControlResponse(control.PlanResponse{
 			Draft: draft, Approved: approved, HasApproved: approved != "",
 		})
-	case control.QueryTranscript:
-		payload = marshalControlResponse(m.controlTranscript(ev.ControlLimit))
+	case control.QueryTranscript, control.QueryTranscript + "?page=1":
+		response, _ := m.controlTranscript(ev.ControlLimit, "", ev.ControlQuery != control.QueryTranscript)
+		payload = marshalControlResponse(response)
 	case control.QueryStatus:
 		draft := ""
 		if m.plan != nil {
@@ -78,6 +83,20 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 			QuestionParked: m.questionParked,
 		})
 	default:
+		if strings.HasPrefix(ev.ControlQuery, control.QueryTranscript+"?page=1&before=") {
+			before, err := url.QueryUnescape(strings.TrimPrefix(ev.ControlQuery, control.QueryTranscript+"?page=1&before="))
+			if err != nil || before == "" {
+				payload = marshalControlResponse(control.ErrorResponse{Error: "invalid before cursor"})
+			} else {
+				response, found := m.controlTranscript(ev.ControlLimit, before, true)
+				if !found {
+					payload = marshalControlResponse(control.ErrorResponse{Error: "unknown before cursor"})
+				} else {
+					payload = marshalControlResponse(response)
+				}
+			}
+			break
+		}
 		payload = marshalControlResponse(control.ErrorResponse{
 			Error: fmt.Sprintf("unknown control query %q", ev.ControlQuery),
 		})
@@ -93,7 +112,13 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 // controlTranscript converts only completed chat rows, then keeps their tail:
 // control clients receive chronological messages without observing a partial
 // incoming bubble as if it were a completed transcript record.
-func (m *Model) controlTranscript(limit int) control.TranscriptResponse {
+type controlTranscriptResponse struct {
+	Messages  []control.TranscriptMessage `json:"messages"`
+	Truncated bool                        `json:"truncated"`
+	HasMore   *bool                       `json:"hasMore,omitempty"`
+}
+
+func (m *Model) controlTranscript(limit int, before string, paged bool) (controlTranscriptResponse, bool) {
 	if limit <= 0 {
 		limit = controlTranscriptDefault
 	}
@@ -110,11 +135,31 @@ func (m *Model) controlTranscript(limit int) control.TranscriptResponse {
 			Text: message.Text, At: message.At,
 		})
 	}
-	truncated := len(messages) > limit
-	if truncated {
-		messages = messages[len(messages)-limit:]
+	end := len(messages)
+	if before != "" {
+		found := false
+		for i, message := range messages {
+			if message.ID == before {
+				end = i
+				found = true
+				break
+			}
+		}
+		if !found {
+			return controlTranscriptResponse{}, false
+		}
 	}
-	return control.TranscriptResponse{Messages: messages, Truncated: truncated}
+	start := end - limit
+	if start < 0 {
+		start = 0
+	}
+	page := messages[start:end]
+	truncated := start > 0
+	response := controlTranscriptResponse{Messages: page, Truncated: truncated}
+	if paged {
+		response.HasMore = &truncated
+	}
+	return response, true
 }
 
 func marshalControlResponse(response any) []byte {

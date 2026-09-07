@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,10 +55,53 @@ func Root() string {
 	return filepath.Join(home, brand.DotDir, "projects")
 }
 
-// List enumerates every project directory under Root. Projects with a live
-// office are probed concurrently, with each probe bounded by timeout. Results
-// are sorted with live projects first, then newest saved snapshots, then ID.
+// IsSystemDir reports whether dir is an ephemeral system location that should
+// normally be excluded from project lists. It recognizes /var, /private/var,
+// /tmp, and /private/tmp, including their descendants.
+func IsSystemDir(dir string) bool {
+	cleaned := path.Clean(filepath.ToSlash(dir))
+	if !path.IsAbs(cleaned) {
+		return false
+	}
+	segments := strings.Split(strings.TrimPrefix(cleaned, "/"), "/")
+	for _, root := range [][]string{
+		{"var"},
+		{"private", "var"},
+		{"tmp"},
+		{"private", "tmp"},
+	} {
+		if len(segments) < len(root) {
+			continue
+		}
+		matches := true
+		for i, segment := range root {
+			if segments[i] != segment {
+				matches = false
+				break
+			}
+		}
+		if matches {
+			return true
+		}
+	}
+	return false
+}
+
+// List enumerates non-system project directories under Root. Projects with a
+// live office are probed concurrently, with each probe bounded by timeout.
+// Results are sorted with live projects first, then newest saved snapshots,
+// then ID. Use ListAll to include projects rooted in ephemeral system paths.
 func List(ctx context.Context, timeout time.Duration) ([]Project, error) {
+	return list(ctx, timeout, true)
+}
+
+// ListAll enumerates every project directory under Root, including projects
+// rooted in ephemeral system paths. Most callers should use List.
+func ListAll(ctx context.Context, timeout time.Duration) ([]Project, error) {
+	return list(ctx, timeout, false)
+}
+
+func list(ctx context.Context, timeout time.Duration, filterSystemDirs bool) ([]Project, error) {
 	entries, err := os.ReadDir(Root())
 	if errors.Is(err, os.ErrNotExist) {
 		return []Project{}, nil
@@ -70,7 +115,11 @@ func List(ctx context.Context, timeout time.Duration) ([]Project, error) {
 		if !entry.IsDir() || entry.Name() == "" || entry.Name()[0] == '.' {
 			continue
 		}
-		projects = append(projects, readProject(entry.Name()))
+		project := readProject(entry.Name())
+		if filterSystemDirs && IsSystemDir(project.Dir) {
+			continue
+		}
+		projects = append(projects, project)
 	}
 
 	probeProjects(ctx, projects, timeout)

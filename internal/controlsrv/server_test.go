@@ -3,11 +3,17 @@ package controlsrv
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +23,23 @@ import (
 )
 
 const testToken = "test-control-token"
+
+type routeCoverageCase struct {
+	name, method, wrongMethod, path, body string
+}
+
+var controlRouteCoverageCases = []routeCoverageCase{
+	{"RouteHealth", http.MethodGet, http.MethodPost, control.RouteHealth, ""},
+	{"RoutePlan", http.MethodGet, http.MethodPost, control.RoutePlan, ""},
+	{"RoutePlanPresent", http.MethodPost, http.MethodGet, control.RoutePlanPresent, `{"text":"plan"}`},
+	{"RoutePlanUpdate", http.MethodPost, http.MethodGet, control.RoutePlanUpdate, `{"text":"plan"}`},
+	{"RouteTranscript", http.MethodGet, http.MethodPost, control.RouteTranscript, ""},
+	{"RouteStatus", http.MethodGet, http.MethodPost, control.RouteStatus, ""},
+	{"RouteMessage", http.MethodPost, http.MethodGet, control.RouteMessage, `{"text":"message"}`},
+	{"RouteStop", http.MethodPost, http.MethodGet, control.RouteStop, ""},
+	{"RouteSessionNew", http.MethodPost, http.MethodGet, control.RouteSessionNew, ""},
+	{"RouteBusy", http.MethodGet, http.MethodPost, control.RouteBusy, ""},
+}
 
 type fakeSink struct {
 	mu       sync.Mutex
@@ -49,6 +72,12 @@ func (f *fakeSink) snapshot() []state.Event {
 }
 
 func cannedPayload(query string) []byte {
+	if strings.HasPrefix(query, control.QueryTranscript+"?page=1") {
+		if strings.Contains(query, "before=unknown") {
+			return []byte(`{"error":"unknown before cursor"}`)
+		}
+		return []byte(`{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`)
+	}
 	switch query {
 	case control.QueryPlan:
 		return []byte(`{"draft":"draft plan","approved":"approved plan","hasApproved":true}`)
@@ -117,7 +146,7 @@ func TestRoutesHappyPath(t *testing.T) {
 		{"plan", http.MethodGet, control.RoutePlan, "", `{"draft":"draft plan","approved":"approved plan","hasApproved":true}`},
 		{"plan present", http.MethodPost, control.RoutePlanPresent, `{"text":"  proposed plan  "}`, `{"ok":true}`},
 		{"plan update", http.MethodPost, control.RoutePlanUpdate, `{"text":"  revised plan  "}`, `{"ok":true}`},
-		{"transcript", http.MethodGet, control.RouteTranscript + "?limit=12", "", `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false}`},
+		{"transcript", http.MethodGet, control.RouteTranscript + "?limit=12", "", `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`},
 		{"status", http.MethodGet, control.RouteStatus, "", `{"dir":"/workspace","backend":"opencode","primaryId":"ses_1","planDraftLen":10,"planApprovedLen":13,"chatCount":1}`},
 	}
 	for _, test := range tests {
@@ -146,7 +175,9 @@ func TestRoutesHappyPath(t *testing.T) {
 	if events[3].Kind != state.EvPlanUpdate || events[3].PlanToolText != "revised plan" {
 		t.Fatalf("update event = %#v", events[3])
 	}
-	assertQuery(t, events[4], control.QueryTranscript, 12)
+	if events[4].ControlQuery != control.QueryTranscript+"?page=1" || events[4].ControlLimit != 12 {
+		t.Fatalf("transcript query event = %#v", events[4])
+	}
 	assertQuery(t, events[5], control.QueryStatus, 0)
 }
 
@@ -170,6 +201,94 @@ func TestAuthNotFoundAndMethodErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEveryDeclaredControlRouteIsServed(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+
+	declared := declaredControlRoutes(t)
+	described := make(map[string]struct{}, len(controlRouteCoverageCases))
+	for _, route := range controlRouteCoverageCases {
+		if _, duplicate := described[route.name]; duplicate {
+			t.Fatalf("route coverage contains duplicate descriptor for control.%s", route.name)
+		}
+		described[route.name] = struct{}{}
+	}
+	for name := range declared {
+		if _, ok := described[name]; !ok {
+			t.Fatalf("route coverage is missing descriptor for control.%s", name)
+		}
+	}
+	for name := range described {
+		if !declared[name] {
+			t.Fatalf("route coverage descriptor control.%s has no matching declared route constant", name)
+		}
+	}
+
+	for _, route := range controlRouteCoverageCases {
+		t.Run(route.name, func(t *testing.T) {
+			var body io.Reader
+			if route.body != "" {
+				body = bytes.NewBufferString(route.body)
+			}
+			status, got := request(t, client, route.method, baseURL+route.path, body, auth)
+			if status == http.StatusNotFound {
+				t.Fatalf("route coverage: control.%s %s %s returned 404; add a handler to controlsrv.Server.ServeHTTP; body = %s", route.name, route.method, route.path, got)
+			}
+		})
+	}
+}
+
+func TestEveryDeclaredControlRouteRejectsWrongMethod(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+
+	for _, route := range controlRouteCoverageCases {
+		t.Run(route.name, func(t *testing.T) {
+			status, got := request(t, client, route.wrongMethod, baseURL+route.path, nil, auth)
+			if status != http.StatusMethodNotAllowed {
+				t.Fatalf("control.%s wrong-method status = %d, want 405; body = %s", route.name, status, got)
+			}
+		})
+	}
+}
+
+func declaredControlRoutes(t *testing.T) map[string]bool {
+	t.Helper()
+	_, testFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("route coverage: unable to locate server_test.go")
+	}
+	controlFile := filepath.Join(filepath.Dir(testFile), "..", "control", "control.go")
+	file, err := parser.ParseFile(token.NewFileSet(), controlFile, nil, 0)
+	if err != nil {
+		t.Fatalf("route coverage: parse %s: %v", controlFile, err)
+	}
+	routes := make(map[string]bool)
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.CONST {
+			continue
+		}
+		for _, specification := range general.Specs {
+			value, ok := specification.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for _, name := range value.Names {
+				if strings.HasPrefix(name.Name, "Route") {
+					routes[name.Name] = true
+				}
+			}
+		}
+	}
+	if len(routes) == 0 {
+		t.Fatalf("route coverage: no control.Route* constants found in %s", controlFile)
+	}
+	return routes
 }
 
 func TestPlanWriteValidationAndFireAndForget(t *testing.T) {
@@ -340,24 +459,55 @@ func TestTranscriptLimitValidation(t *testing.T) {
 	_, fake, baseURL := newTestServer(t, true, time.Second)
 	client := &http.Client{Timeout: time.Second}
 	auth := "Bearer " + testToken
-	for _, path := range []string{control.RouteTranscript + "?limit=-1", control.RouteTranscript + "?limit=501"} {
+	for _, path := range []string{control.RouteTranscript + "?limit=-1"} {
 		status, _ := request(t, client, http.MethodGet, baseURL+path, nil, auth)
 		if status != http.StatusBadRequest {
 			t.Fatalf("%s: status = %d, want 400", path, status)
 		}
 	}
-	for _, path := range []string{control.RouteTranscript, control.RouteTranscript + "?limit=not-a-number"} {
+	for _, path := range []string{control.RouteTranscript, control.RouteTranscript + "?limit=not-a-number", control.RouteTranscript + "?limit=501"} {
 		status, _ := request(t, client, http.MethodGet, baseURL+path, nil, auth)
 		if status != http.StatusOK {
 			t.Fatalf("%s: status = %d, want 200", path, status)
 		}
 	}
 	events := fake.snapshot()
-	if len(events) != 2 {
-		t.Fatalf("events = %d, want 2", len(events))
+	if len(events) != 3 {
+		t.Fatalf("events = %d, want 3", len(events))
 	}
-	for _, event := range events {
-		assertQuery(t, event, control.QueryTranscript, 0)
+	assertQuery(t, events[0], control.QueryTranscript, 0)
+	assertQuery(t, events[1], control.QueryTranscript, 0)
+	if events[2].ControlQuery != control.QueryTranscript+"?page=1" || events[2].ControlLimit != 501 {
+		t.Fatalf("clamped limit event = %#v", events[2])
+	}
+}
+
+func TestTranscriptBeforeValidationAndForwarding(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+
+	status, got := request(t, client, http.MethodGet, baseURL+control.RouteTranscript+"?limit=12&before=m-12", nil, auth)
+	if status != http.StatusOK {
+		t.Fatalf("valid cursor status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":42}],"truncated":false,"hasMore":true}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 || events[0].ControlQuery != "transcript?page=1&before=m-12" || events[0].ControlLimit != 12 {
+		t.Fatalf("valid cursor event = %#v", events)
+	}
+
+	for _, path := range []string{
+		control.RouteTranscript + "?before=%",
+		control.RouteTranscript + "?before=unknown",
+	} {
+		status, got = request(t, client, http.MethodGet, baseURL+path, nil, auth)
+		if status != http.StatusBadRequest {
+			t.Fatalf("%s: status = %d, want 400; body = %s", path, status, got)
+		}
+		if !strings.Contains(got, `"error":`) {
+			t.Fatalf("%s: non-JSON error = %s", path, got)
+		}
 	}
 }
 

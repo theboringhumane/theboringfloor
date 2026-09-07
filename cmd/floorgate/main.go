@@ -20,6 +20,7 @@ import (
 
 func main() {
 	bind := flag.String("bind", "", "HTTP listen address")
+	enableExec := flag.Bool("exec", false, "enable remote shell command execution")
 	printToken := flag.Bool("print-token", false, "print the gateway bearer token and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
@@ -49,12 +50,14 @@ func main() {
 		fmt.Fprint(os.Stderr, warning)
 	}
 
+	gateway := newGateway(token)
+	gateway.exec = *enableExec || config.Env("FLOORGATE_EXEC") == "1"
 	server := &http.Server{
 		Addr:              listener.Addr().String(),
-		Handler:           newGateway(token),
+		Handler:           gateway,
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
+		WriteTimeout:      125 * time.Second,
 		IdleTimeout:       30 * time.Second,
 		MaxHeaderBytes:    16 << 10,
 	}

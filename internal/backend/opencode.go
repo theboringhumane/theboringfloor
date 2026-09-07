@@ -71,6 +71,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/theboringhumane/theboringfloor/internal/browsertools"
@@ -320,7 +321,7 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 			// the server is not ours to restart — the note stands and the
 			// charter applies from the server's next boot.
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] manager charter: restarting serve so it picks up the config"})
-			_ = proc.Process.Kill()
+			_ = signalProcessGroup(proc.Process, syscall.SIGKILL)
 			<-exit.done // reap via the scan-era reaper (never a second cmd.Wait)
 			spawnedURL, proc, exit, err = spawnServe(b.directory, bypass)
 		}
@@ -860,7 +861,7 @@ func (b *liveBackend) Stop() error {
 		// spawnServe's reaper is the sole cmd.Wait owner. Ask the child to
 		// leave cleanly first, then escalate to SIGKILL if it ignores the
 		// bounded grace period; both waits observe that reaper's done channel.
-		_ = proc.Process.Signal(os.Interrupt)
+		_ = signalProcessGroup(proc.Process, syscall.SIGINT)
 		if exit != nil {
 			select {
 			case <-exit.done:
@@ -868,7 +869,7 @@ func (b *liveBackend) Stop() error {
 			case <-time.After(stopKillGrace):
 			}
 		}
-		_ = proc.Process.Kill()
+		_ = signalProcessGroup(proc.Process, syscall.SIGKILL)
 		if exit != nil {
 			select {
 			case <-exit.done:
@@ -907,8 +908,8 @@ var (
 // swap b.proc before their kill lands — so the stopping guard is the
 // pair (proc still current AND flow not stopped). On a real death: flip
 // the serveDied latch (the next Send respawns — never auto-respawn an
-// idle office) and print ONE status row carrying the app's serve-died
-// marker (F5a-style escalation mints the red transcript row app-side).
+// idle office), settles every in-flight bubble and modal as failed, then
+// prints ONE status row carrying the app's serve-died marker.
 func (b *liveBackend) watchServe(proc *exec.Cmd, exit <-chan error) {
 	b.handleServeExit(proc, <-exit)
 }
@@ -918,6 +919,7 @@ func (b *liveBackend) watchServeExit(proc *exec.Cmd, exit *serveExit) {
 }
 
 func (b *liveBackend) handleServeExit(proc *exec.Cmd, err error) {
+	note := "[theboringfloor] opencode process exited before this turn completed"
 	b.mu.Lock()
 	current := b.proc == proc
 	if current {
@@ -928,9 +930,31 @@ func (b *liveBackend) handleServeExit(proc *exec.Cmd, err error) {
 	if current && !stopped {
 		b.serveDied = true
 	}
+	var streamEvs, dialogEvs []state.Event
+	var pendingBoss []string
+	if current && !stopped {
+		streamEvs = interruptedStreamEvents(b.ctx, note)
+		dialogEvs = interruptedDialogEvents(b.ctx, note)
+		pendingBoss = b.pendingBoss
+		b.pendingBoss = nil
+		for id := range b.chatSlots {
+			delete(b.chatSlots, id)
+		}
+	}
 	b.mu.Unlock()
 	if !current || stopped || b.fl.isStopped() {
 		return // Stop()-initiated, or superseded before the exit landed
+	}
+	for _, e := range streamEvs {
+		b.fl.emit(e)
+	}
+	for _, id := range pendingBoss {
+		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+			ID: id, From: "boss", Text: note, At: nowMs(), Pending: false,
+		}})
+	}
+	for _, e := range dialogEvs {
+		b.fl.emit(e)
 	}
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[theboringfloor] opencode serve died (exited: %v) — your next send will spawn a fresh one", err)})
@@ -1011,6 +1035,7 @@ func (e *serveExit) wait() error {
 // callers must never re-Wait the command.
 func spawnServe(directory string, bypass bool) (string, *exec.Cmd, *serveExit, error) {
 	cmd := exec.Command("opencode", "serve", "--port", "0", "--hostname", "127.0.0.1")
+	isolateProcessGroup(cmd)
 	if directory != "" {
 		cmd.Dir = directory
 	}
@@ -1083,7 +1108,7 @@ func spawnServe(directory string, bypass bool) (string, *exec.Cmd, *serveExit, e
 		outMu.Unlock()
 		return "", nil, nil, fmt.Errorf("opencode serve exited before printing a URL: %v: %s", exit.err, trimTo(snap, 200))
 	case <-time.After(10 * time.Second):
-		_ = cmd.Process.Kill()
+		_ = signalProcessGroup(cmd.Process, syscall.SIGKILL)
 		<-exit.done
 		return "", nil, nil, errors.New("opencode serve: no listening URL within 10s")
 	}
@@ -1407,6 +1432,25 @@ func (b *liveBackend) saveLedgerAsync(key string, e LedgerEntry) {
 	b.ledgerDone[key] = true
 	b.mu.Unlock()
 	b.saveLedgerLanes(e)
+}
+
+// saveReturnAsync latches and records a child return off the emit hot path.
+// The backend-agnostic recordReturn seam owns return parsing, entry shaping,
+// the agentmemory mirror, and the file append; this method owns only the
+// OpenCode lifecycle latch and goroutine tracking.
+func (b *liveBackend) saveReturnAsync(key string, in ReturnRecordInput) {
+	b.mu.Lock()
+	if b.ledgerDone[key] {
+		b.mu.Unlock()
+		return
+	}
+	b.ledgerDone[key] = true
+	b.mu.Unlock()
+	b.ledgerWG.Add(1)
+	go func() {
+		defer b.ledgerWG.Done()
+		recordReturn(in)
+	}()
 }
 
 // saveLedgerLanes writes one completed-dispatch record to BOTH memory
@@ -2857,7 +2901,32 @@ func (b *liveBackend) maybeChildReturned(sessionID string) {
 	// NEXT session's boss knows this work is done before re-dispatching.
 	// Async + best-effort + deduped (the key latch AND the file's
 	// ledgerId): memory never stalls the return, never double-records.
-	b.saveLedgerAsync("child:"+sessionID, b.ledgerEntryForReturn(sessionID, prev.Title, emp, text, nowMs()))
+	b.mu.Lock()
+	am := b.am
+	dir := b.directory
+	b.mu.Unlock()
+	b.saveReturnAsync("child:"+sessionID, ReturnRecordInput{
+		ProjectDir:    dir,
+		PrimaryID:     b.PrimaryID(),
+		WorkerSession: sessionID,
+		DispatchTitle: prev.Title,
+		WorkerName:    emp.Name,
+		WorkerRole:    string(emp.Role),
+		ReturnText:    text,
+		CompletedAt:   nowMs(),
+		Mirror: func(e LedgerEntry) error {
+			if am == nil {
+				return nil
+			}
+			return am.SaveWork(e)
+		},
+		OnMirrorError: func(err error) {
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory lane: agentmemory observe failed (" + shortTitle(err.Error(), 80) + ") — the file ledger still records it"})
+		},
+		OnAppendError: func(err error) {
+			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] memory lane: office ledger append failed (" + shortTitle(err.Error(), 80) + ")"})
+		},
+	})
 
 	// Tidy the org chart: delete the child 10s later (best effort).
 	b.fl.at(10*time.Second, func() { b.deleteChild(sessionID) })

@@ -239,6 +239,8 @@ const (
 	TaskPending    TaskStatus = "pending"
 	TaskInProgress TaskStatus = "in-progress"
 	TaskDone       TaskStatus = "done"
+	// TaskStalled was owned by a process that died before it could finish.
+	TaskStalled TaskStatus = "stalled"
 )
 
 type BoardTask struct {

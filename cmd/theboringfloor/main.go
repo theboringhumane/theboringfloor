@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 	"time"
 
@@ -199,7 +200,6 @@ func main() {
 			return msg
 		}),
 	)
-
 	// theme auto mode: with nothing pinned anywhere, ask the terminal for
 	// its background color (OSC 11) — the reply lands in app.Update as
 	// tea.BackgroundColorMsg, which chrome.SetThemeAuto answers, and later
@@ -255,6 +255,18 @@ func main() {
 			fmt.Fprintf(os.Stderr, "[theboringfloor] control server cleanup: %v\n", err)
 		}
 	}
+	// Trap termination before Run begins: a signal in the small boot window
+	// still takes the bounded fallback rather than orphaning the backend.
+	shutdownSignals := make(chan os.Signal, 2)
+	signal.Notify(shutdownSignals, os.Interrupt, syscall.SIGTERM)
+	runDone := make(chan struct{})
+	go awaitSignalShutdown(shutdownSignals, runDone, signalShutdownDeadline, p.Quit, func() {
+		p.Kill()
+		model.CloseTerminal()
+		model.PersistSession()
+		stopControl()
+		stopBounded(b)
+	}, os.Exit)
 	// Register thefloor_mcp with the host agents once per boot. This begins off
 	// the UI path and is never fatal: a missing companion binary, an
 	// unparseable host config, or an absent claude CLI all degrade to a status
@@ -299,6 +311,8 @@ func main() {
 	}
 
 	finalModel, err := p.Run()
+	close(runDone)
+	signal.Stop(shutdownSignals)
 	// Sweep the premium lane's terminal-side images BEFORE anything else:
 	// the clean quit paths already deleted through the lane Close (these
 	// are hushed dupes), but a FATAL exit skips Update — the a=d sweep
@@ -373,6 +387,45 @@ func main() {
 	// with none) prints NOTHING — an id is never invented.
 	if id := fm.PrimarySessionID(); id != "" {
 		fmt.Printf("session %s — resume: theboringfloor -s %s\n", id, id)
+	}
+}
+
+// signalShutdownDeadline is the longest an orderly signal-triggered quit may
+// wait for Bubble Tea before the process persists and stops the backend itself.
+const signalShutdownDeadline = 3 * time.Second
+
+// awaitSignalShutdown asks the TUI to quit on the first termination signal. If
+// its normal teardown does not finish promptly, it falls back to direct cleanup.
+// A second signal always exits immediately, including while fallback cleanup runs.
+func awaitSignalShutdown(signals <-chan os.Signal, runDone <-chan struct{}, deadline time.Duration, quit, fallback func(), exit func(int)) {
+	select {
+	case <-runDone:
+		return
+	case <-signals:
+	}
+
+	quit()
+	timer := time.NewTimer(deadline)
+	defer timer.Stop()
+	select {
+	case <-runDone:
+		return
+	case <-signals:
+		exit(1)
+		return
+	case <-timer.C:
+	}
+
+	fallbackDone := make(chan struct{})
+	go func() {
+		fallback()
+		close(fallbackDone)
+	}()
+	select {
+	case <-signals:
+		exit(1)
+	case <-fallbackDone:
+		exit(1)
 	}
 }
 

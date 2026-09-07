@@ -860,20 +860,24 @@ func mapMediaPart(part ocPart, ctx *normCtx) (state.Event, bool) {
 // unaffected: their state was already freed by unregisterTextStream.
 func interruptedStreamEvents(ctx *normCtx, note string) []state.Event {
 	var ids []string
-	for msgID, accum := range ctx.textAccum {
-		if strings.TrimSpace(accum) != "" {
-			ids = append(ids, msgID)
-		}
+	for msgID := range ctx.textAccum {
+		ids = append(ids, msgID)
 	}
 	sort.Strings(ids) // deterministic emit order
 	var evs []state.Event
 	for _, msgID := range ids {
+		text := ctx.textAccum[msgID]
+		if strings.TrimSpace(text) == "" {
+			text = note
+		} else {
+			text += "\n" + note
+		}
 		if ctx.conciergeID != "" && ctx.textSess[msgID] == ctx.conciergeID {
 			evs = append(evs, state.Event{Kind: state.EvChatOffice, Msg: state.ChatMsg{
 				ID:      "office-" + msgID,
 				From:    "office",
 				Kind:    "office",
-				Text:    ctx.textAccum[msgID] + "\n" + note,
+				Text:    text,
 				At:      ctx.textStart[msgID],
 				Pending: false,
 			}})
@@ -883,7 +887,7 @@ func interruptedStreamEvents(ctx *normCtx, note string) []state.Event {
 			ID:      "bossmsg-" + msgID,
 			From:    "boss",
 			Kind:    "boss",
-			Text:    ctx.textAccum[msgID] + "\n" + note,
+			Text:    text,
 			At:      ctx.textStart[msgID],
 			Pending: false,
 		}})
@@ -902,6 +906,38 @@ func interruptedStreamEvents(ctx *normCtx, note string) []state.Event {
 	}
 	for msgID := range ctx.textSess {
 		delete(ctx.textSess, msgID)
+	}
+	return evs
+}
+
+// interruptedDialogEvents resolves every outstanding modal when its owning
+// OpenCode process disappears. The UI removes modals only on resolved events;
+// clearing the maps alone would leave an unanswerable prompt on screen.
+func interruptedDialogEvents(ctx *normCtx, note string) []state.Event {
+	permIDs := make([]string, 0, len(ctx.pendingPerms))
+	for id := range ctx.pendingPerms {
+		permIDs = append(permIDs, id)
+	}
+	questionIDs := make([]string, 0, len(ctx.pendingQuestions))
+	for id := range ctx.pendingQuestions {
+		questionIDs = append(questionIDs, id)
+	}
+	sort.Strings(permIDs)
+	sort.Strings(questionIDs)
+	evs := make([]state.Event, 0, len(permIDs)+len(questionIDs))
+	for _, id := range permIDs {
+		hold := ctx.pendingPerms[id]
+		evs = append(evs, state.Event{Kind: state.EvPermission, PermissionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolName: hold.Title, ToolSummary: note, ToolState: "resolved"})
+		delete(ctx.pendingPerms, id)
+	}
+	for _, id := range questionIDs {
+		hold := ctx.pendingQuestions[id]
+		evs = append(evs, state.Event{Kind: state.EvQuestion, QuestionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolSummary: note, ToolState: "resolved"})
+		delete(ctx.pendingQuestions, id)
 	}
 	return evs
 }

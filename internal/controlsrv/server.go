@@ -16,6 +16,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -192,11 +193,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !s.requireMethod(w, r, http.MethodGet) {
 			return
 		}
-		limit, ok := s.transcriptLimit(w, r)
+		limit, before, paged, ok := s.transcriptParams(w, r)
 		if !ok {
 			return
 		}
-		s.read(w, control.QueryTranscript, limit)
+		query := control.QueryTranscript
+		if paged {
+			query += "?page=1"
+		}
+		if before != "" {
+			query += "&before=" + url.QueryEscape(before)
+		}
+		s.transcriptRead(w, query, limit)
 	case control.RouteStatus:
 		if !s.requireMethod(w, r, http.MethodGet) {
 			return
@@ -285,6 +293,25 @@ func (s *Server) read(w http.ResponseWriter, query string, limit int) {
 	}
 	if result == queryTimedOut {
 		s.writeError(w, http.StatusGatewayTimeout, "office busy")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(payload)
+}
+
+func (s *Server) transcriptRead(w http.ResponseWriter, query string, limit int) {
+	payload, result := s.query(query, limit)
+	if result == querySaturated {
+		s.writeError(w, http.StatusServiceUnavailable, "office busy")
+		return
+	}
+	if result == queryTimedOut {
+		s.writeError(w, http.StatusGatewayTimeout, "office busy")
+		return
+	}
+	var failure control.ErrorResponse
+	if err := json.Unmarshal(payload, &failure); err == nil && failure.Error != "" {
+		s.writeError(w, http.StatusBadRequest, failure.Error)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -388,24 +415,33 @@ func ensureEOF(decoder *json.Decoder) error {
 	return err
 }
 
-func (s *Server) transcriptLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
-	value := r.URL.Query().Get("limit")
+func (s *Server) transcriptParams(w http.ResponseWriter, r *http.Request) (int, string, bool, bool) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid before cursor")
+		return 0, "", false, false
+	}
+	value := values.Get("limit")
 	if value == "" {
-		return 0, true
+		if _, present := values["before"]; present && values.Get("before") == "" {
+			s.writeError(w, http.StatusBadRequest, "invalid before cursor")
+			return 0, "", false, false
+		}
+		return 0, values.Get("before"), len(values["before"]) > 0, true
 	}
 	limit, err := strconv.Atoi(value)
 	if err != nil {
-		return 0, true
+		return 0, "", false, true
 	}
 	if limit < 0 {
 		s.writeError(w, http.StatusBadRequest, "invalid limit")
-		return 0, false
+		return 0, "", false, false
 	}
-	if limit > 500 {
-		s.writeError(w, http.StatusBadRequest, "limit exceeds 500")
-		return 0, false
+	if _, present := values["before"]; present && values.Get("before") == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid before cursor")
+		return 0, "", false, false
 	}
-	return limit, true
+	return limit, values.Get("before"), true, true
 }
 
 func (s *Server) writeJSON(w http.ResponseWriter, status int, value any) {

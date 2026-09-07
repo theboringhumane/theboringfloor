@@ -27,6 +27,7 @@ package backend
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/theboringhumane/theboringfloor/internal/config"
@@ -688,10 +689,8 @@ func (ctx *claudeNormCtx) claudeStreamClosePin(uuid string, now int64) []state.E
 // Pending=false bubble carrying the interrupted note (abort/stop).
 func claudeInterruptedStreamEvents(ctx *claudeNormCtx, note string, now int64) []state.Event {
 	var ids []string
-	for uuid, accum := range ctx.textAccum {
-		if strings.TrimSpace(accum) != "" {
-			ids = append(ids, uuid)
-		}
+	for uuid := range ctx.textAccum {
+		ids = append(ids, uuid)
 	}
 	var evs []state.Event
 	for _, uuid := range ids {
@@ -702,11 +701,17 @@ func claudeInterruptedStreamEvents(ctx *claudeNormCtx, note string, now int64) [
 		if at == 0 {
 			at = now
 		}
+		text := ctx.textAccum[uuid]
+		if strings.TrimSpace(text) == "" {
+			text = note
+		} else {
+			text += "\n" + note
+		}
 		evs = append(evs, state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
 			ID:      "bossmsg-" + uuid,
 			From:    "boss",
 			Kind:    "boss",
-			Text:    ctx.textAccum[uuid] + "\n" + note,
+			Text:    text,
 			At:      at,
 			Pending: false,
 		}})
@@ -720,6 +725,39 @@ func claudeInterruptedStreamEvents(ctx *claudeNormCtx, note string, now int64) [
 	}
 	for k := range ctx.streamed {
 		delete(ctx.streamed, k)
+	}
+	return evs
+}
+
+// claudeInterruptedDialogEvents resolves every modal whose CLI process has
+// exited and frees the wire payloads that could no longer be answered.
+func claudeInterruptedDialogEvents(ctx *claudeNormCtx, note string) []state.Event {
+	permIDs := make([]string, 0, len(ctx.pendingPerms))
+	for id := range ctx.pendingPerms {
+		permIDs = append(permIDs, id)
+	}
+	questionIDs := make([]string, 0, len(ctx.pendingQuestions))
+	for id := range ctx.pendingQuestions {
+		questionIDs = append(questionIDs, id)
+	}
+	sort.Strings(permIDs)
+	sort.Strings(questionIDs)
+	evs := make([]state.Event, 0, len(permIDs)+len(questionIDs))
+	for _, id := range permIDs {
+		hold := ctx.pendingPerms[id]
+		evs = append(evs, state.Event{Kind: state.EvPermission, PermissionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolSummary: note, ToolState: "resolved"})
+		delete(ctx.pendingPerms, id)
+		delete(ctx.permMeta, id)
+	}
+	for _, id := range questionIDs {
+		hold := ctx.pendingQuestions[id]
+		evs = append(evs, state.Event{Kind: state.EvQuestion, QuestionID: id,
+			SessionID: hold.SessionID, EmployeeID: hold.EmployeeID, EmployeeName: hold.EmployeeName,
+			ToolSummary: note, ToolState: "resolved"})
+		delete(ctx.pendingQuestions, id)
+		delete(ctx.dialogMeta, id)
 	}
 	return evs
 }

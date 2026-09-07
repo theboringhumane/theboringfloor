@@ -10,13 +10,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/theboringhumane/theboringfloor/internal/config"
@@ -32,10 +36,77 @@ const (
 
 type gateway struct {
 	token     string
+	exec      bool
 	client    *http.Client
 	list      func(context.Context, time.Duration) ([]projects.Project, error)
 	get       func(context.Context, string, time.Duration) (projects.Project, error)
 	discovery func(string) (control.Discovery, error)
+	launcher  officeLauncher
+	startMu   sync.Mutex
+	starting  map[string]bool
+}
+
+// officeLauncher starts an office in a project directory and returns once the
+// launch has either been accepted by the operating system or failed to begin.
+// It calls exited after an accepted process exits, so the gateway can allow a
+// later start request for a stopped project.
+type officeLauncher interface {
+	Launch(dir string, exited func()) error
+}
+
+type commandLauncher struct{}
+
+var ErrOfficeBinaryNotFound = errors.New("theboringfloor binary not found")
+var officeLookPath = exec.LookPath
+
+func (commandLauncher) Launch(dir string, exited func()) error {
+	command, closeFiles, err := newOfficeCommand(dir)
+	if err != nil {
+		return err
+	}
+	defer closeFiles()
+	if err := command.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = command.Wait()
+		exited()
+	}()
+	return nil
+}
+
+func newOfficeCommand(dir string) (*exec.Cmd, func(), error) {
+	binary, err := officeLookPath("theboringfloor")
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w: %v", ErrOfficeBinaryNotFound, err)
+	}
+	return newOfficeCommandForBinary(dir, binary)
+}
+
+func newOfficeCommandForBinary(dir, binary string) (*exec.Cmd, func(), error) {
+	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open %s: %w", os.DevNull, err)
+	}
+	command := exec.Command(binary)
+	command.Dir = dir
+	command.Stdin = null
+	command.Stdout = null
+	command.Stderr = null
+	command.Env = withoutEnvironment(os.Environ(), "NO_CONTROL")
+	isolateOfficeProcessGroup(command)
+	return command, func() { _ = null.Close() }, nil
+}
+
+func withoutEnvironment(environment []string, name string) []string {
+	filtered := make([]string, 0, len(environment))
+	for _, entry := range environment {
+		key, _, _ := strings.Cut(entry, "=")
+		if key != name {
+			filtered = append(filtered, entry)
+		}
+	}
+	return filtered
 }
 
 func newGateway(token string) *gateway {
@@ -49,6 +120,8 @@ func newGateway(token string) *gateway {
 		list:      projects.List,
 		get:       projects.Get,
 		discovery: projects.Discovery,
+		launcher:  commandLauncher{},
+		starting:  make(map[string]bool),
 	}
 }
 
@@ -68,6 +141,15 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Method == http.MethodGet && r.URL.Path == apiPrefix+"/projects" {
 		g.projects(w, r)
+		return
+	}
+	if r.URL.Path == apiPrefix+"/exec" {
+		if r.Method != http.MethodPost {
+			w.Header().Set("Allow", http.MethodPost)
+			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+			return
+		}
+		g.execCommand(w, r)
 		return
 	}
 
@@ -91,6 +173,11 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.proxy(w, r, id, http.MethodPost, control.RouteStop, nil)
 	case r.Method == http.MethodPost && suffix == "/new":
 		g.proxy(w, r, id, http.MethodPost, control.RouteSessionNew, nil)
+	case r.Method == http.MethodPost && suffix == "/start":
+		g.start(w, r, id)
+	case suffix == "/start":
+		w.Header().Set("Allow", http.MethodPost)
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
@@ -118,14 +205,21 @@ func (g *gateway) transcript(w http.ResponseWriter, r *http.Request, id string) 
 	limit := r.URL.Query().Get("limit")
 	if limit != "" {
 		n, err := strconv.Atoi(limit)
-		if err != nil || n < 0 || n > 500 {
+		if err != nil || n < 0 {
 			writeError(w, http.StatusBadRequest, "invalid transcript limit")
 			return
 		}
 	}
 	path := control.RouteTranscript
+	query := url.Values{}
 	if limit != "" {
-		path += "?limit=" + strconv.Itoa(mustAtoi(limit))
+		query.Set("limit", strconv.Itoa(mustAtoi(limit)))
+	}
+	if before, present := r.URL.Query()["before"]; present {
+		query["before"] = before
+	}
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
 	}
 	g.proxy(w, r, id, http.MethodGet, path, nil)
 }
@@ -159,6 +253,59 @@ func (g *gateway) message(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	g.proxy(w, r, id, http.MethodPost, control.RouteMessage, payload)
+}
+
+func (g *gateway) start(w http.ResponseWriter, r *http.Request, id string) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxMessageBytes)
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil || len(body) != 0 {
+		writeError(w, http.StatusBadRequest, "start request body must be empty")
+		return
+	}
+
+	g.startMu.Lock()
+	if g.starting[id] {
+		g.startMu.Unlock()
+		writeError(w, http.StatusConflict, "office already running")
+		return
+	}
+	project, err := g.get(r.Context(), id, 10*time.Second)
+	if err != nil {
+		g.startMu.Unlock()
+		if errors.Is(err, projects.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "project not found")
+			return
+		}
+		g.projectError(w, err)
+		return
+	}
+	if project.Live {
+		g.startMu.Unlock()
+		writeError(w, http.StatusConflict, "office already running")
+		return
+	}
+	if project.Dir == "" {
+		g.startMu.Unlock()
+		writeError(w, http.StatusBadGateway, "could not start office")
+		return
+	}
+	g.starting[id] = true
+	g.startMu.Unlock()
+
+	if err := g.launcher.Launch(project.Dir, func() {
+		g.startMu.Lock()
+		delete(g.starting, id)
+		g.startMu.Unlock()
+	}); err != nil {
+		log.Printf("floorgate: start office for project %q: %v", id, err)
+		g.startMu.Lock()
+		delete(g.starting, id)
+		g.startMu.Unlock()
+		writeError(w, http.StatusBadGateway, "could not start office")
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{"id": project.ID, "startRequested": true})
 }
 
 func (g *gateway) proxy(w http.ResponseWriter, r *http.Request, id, method, path string, payload []byte) {
@@ -200,12 +347,27 @@ func (g *gateway) proxy(w http.ResponseWriter, r *http.Request, id, method, path
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		writeError(w, http.StatusBadGateway, "office returned an error")
+		g.proxyOfficeError(w, response)
 		return
 	}
 	w.Header().Set("Content-Type", response.Header.Get("Content-Type"))
 	w.WriteHeader(response.StatusCode)
 	_, _ = io.Copy(w, response.Body)
+}
+
+func (g *gateway) proxyOfficeError(w http.ResponseWriter, response *http.Response) {
+	body, err := io.ReadAll(response.Body)
+	if err != nil || len(body) == 0 || !json.Valid(body) {
+		writeError(w, response.StatusCode, "office returned an error")
+		return
+	}
+	contentType := response.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/json"
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.WriteHeader(response.StatusCode)
+	_, _ = w.Write(body)
 }
 
 func (g *gateway) projectError(w http.ResponseWriter, err error) {

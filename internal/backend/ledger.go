@@ -59,6 +59,71 @@ type LedgerEntry struct {
 	Project       string   `json:"project"` // dir basename
 }
 
+// ReturnRecordInput is the backend-agnostic set of resolved facts needed to
+// record a worker return. Callers resolve their own session and transport
+// details before constructing it; this ledger seam knows neither.
+type ReturnRecordInput struct {
+	ProjectDir    string
+	PrimaryID     string
+	WorkerSession string
+	DispatchTitle string
+	WorkerName    string
+	WorkerRole    string
+	ReturnText    string
+	CompletedAt   int64
+
+	// Mirror, when supplied, records the completed entry in the secondary
+	// memory lane. The callbacks keep caller-specific error presentation out
+	// of this backend-agnostic helper.
+	Mirror        func(LedgerEntry) error
+	OnMirrorError func(error)
+	OnAppendError func(error)
+}
+
+// recordReturn constructs and records a completed worker return in both
+// memory lanes. It is deliberately synchronous: callers schedule it off their
+// hot path and retain ownership of their own lifecycle/wait tracking.
+func recordReturn(in ReturnRecordInput) {
+	e := returnLedgerEntry(in)
+	if in.Mirror != nil {
+		if err := in.Mirror(e); err != nil && in.OnMirrorError != nil {
+			in.OnMirrorError(err)
+		}
+	}
+	if err := NewLedger(in.ProjectDir).Append(e); err != nil && in.OnAppendError != nil {
+		in.OnAppendError(err)
+	}
+}
+
+// returnLedgerEntry shapes the frozen completed-dispatch record from a
+// backend-resolved return. The return contract supplies digests when present;
+// absent sections degrade to empty fields, and only real ISSUES bullets flip
+// the verdict from done to issues.
+func returnLedgerEntry(in ReturnRecordInput) LedgerEntry {
+	sections := parseLedgerSections(in.ReturnText)
+	issues := ledgerIssues(sections["ISSUES"])
+	verdict := "done"
+	if len(issues) > 0 {
+		verdict = "issues"
+	}
+	return LedgerEntry{
+		LedgerID:      LedgerID(in.CompletedAt, in.DispatchTitle, in.WorkerName),
+		DispatchTitle: in.DispatchTitle,
+		WorkerName:    in.WorkerName,
+		WorkerRole:    in.WorkerRole,
+		WorkerSession: in.WorkerSession,
+		Verdict:       verdict,
+		Summary:       strings.TrimSpace(in.ReturnText),
+		Files:         ledgerFilePaths(sections["FILES"]),
+		VerifyDigest:  ledgerLastLine(sections["VERIFY"], 140),
+		ProofOneLiner: ledgerFirstLine(sections["PROOF"], 140),
+		Issues:        issues,
+		CompletedAt:   in.CompletedAt,
+		PrimaryID:     in.PrimaryID,
+		Project:       filepath.Base(filepath.Clean(in.ProjectDir)),
+	}
+}
+
 // ledgerCap — how many completed dispatches one project remembers at most:
 // the ledger is the boss's working memory, not an archive; the newest 50
 // entries stay, older ones age out (dropped from the END — entries are

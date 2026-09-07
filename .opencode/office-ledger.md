@@ -7,6 +7,244 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-07 · Run full Go test suite (@runner subagent) — hemerodromos-1 (runner) · `done`
+- summary: ## RUNS
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788768872652-8de6e188
+
+### 2026-09-07 · Build transcript features (@developer subagent) — tekton-12 (developer) · `done`
+- summary: Rebuilt the transcript view around store-owned paginated message state.
+- files: `mobile/lib/views/session_view.dart`, `mobile/lib/store/session_store.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/test/session_view_test.dart`
+- verify: ```
+- proof: *(a) Transcript on open — newest content is immediately visible**
+- ledgerId: led-1788768245581-5924e536
+
+### 2026-09-07 · Finish shell, terminal, settings (@developer... — tekton-11 (developer) · `issues`
+- summary: Implemented bounded, cancelable start-office readiness polling in `AppShell`, including:
+- files: `mobile/lib/app.dart`, `mobile/lib/views/project_picker.dart`, `mobile/lib/views/terminal_view.dart`, `mobile/lib/views/settings_view.dart`, `mobile/test/app_test.dart`, `mobile/test/terminal_view_test.dart`, `mobile/test/settings_view_test.dart`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788767903729-a95ab632
+
+### 2026-09-07 · Polish home screen and tiles (@developer suba... — tekton-10 (developer) · `issues`
+- summary: Polished `SpaceView` into a minimal inbox-style home screen: large title, pill search field, themed single-select filters, generous spacing, and pull-to-refresh
+- files: `mobile/lib/views/space_view.dart`, `mobile/lib/components/project_tile.dart`, `mobile/test/space_view_test.dart`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788767785783-8de7d3a8
+
+### 2026-09-07 · Restore transcript features (@developer subag... — tekton-9 (developer) · `issues`
+- summary: No files changed. The assigned scope cannot implement pagination correctly without an API-layer change that the brief explicitly forbids.
+- files: none
+- verify: Not run: no implementation was made because the requirements are internally contradictory.
+- proof: ```text
+- ledgerId: led-1788767489363-3ffad48c
+
+### 2026-09-07 · Flutter architecture + navbar (@developer sub... — theboringcto-3 (cto) · `issues`
+- summary: Restructured `mobile/lib/` into API, models, stores, hooks, views, components, and utilities.
+- files: `mobile/lib/main.dart`, `mobile/lib/app.dart`, `mobile/lib/api/endpoints.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/api/models.dart`, `mobile/lib/models/models.dart`, `mobile/lib/models/project.dart`, `mobile/lib/models/session.dart`, `mobile/lib/models/transcript.dart`, `mobile/lib/models/exec_result.dart`, `mobile/lib/store/settings_store.dart`, `mobile/lib/store/projects_store.dart`
+- verify: ```
+- proof: ### Persistent navigation
+- ledgerId: led-1788767306605-55b8cda0
+
+### 2026-09-07 · Gateway remote exec/TTY endpoint (@developer... — tekton-8 (developer) · `issues`
+- summary: Added authenticated `POST /api/v1/exec` command execution via `/bin/sh -c`.
+- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/main.go`, `cmd/floorgate/exec.go`, `cmd/floorgate/exec_unix.go`, `cmd/floorgate/exec_other.go`, `cmd/floorgate/exec_test.go`
+- verify: ```
+- proof: | METHOD PATH | auth | request JSON | response JSON | status codes |
+- ledgerId: led-1788767187441-cb9aaafe
+
+### 2026-09-07 · Scout mobile app + gateway seams (@explore su... — skopos-2 (scout) · `issues`
+- summary: Confirms `internal/projects/projects.go` and its test now show as modified (they were not in the earlier `git status --short` at the start of this session — ano
+- files: | Path | Why read |, |---|---|, | `mobile/lib/main.dart` | App root, routing decision point |, | `mobile/lib/screens/projects_screen.dart` | Home screen, project list/filter/start-office flow |, | `mobile/lib/screens/session_screen.dart` | Chat/transcript screen, stop/new actions |, | `mobile/lib/api/models.dart` | Wire-shape Dart models, | `mobile/lib/api/gateway_client.dart` | HTTP client, every gateway call site |, | `mobile/lib/settings_store.dart` | Token/base-URL persistence, | `mobile/lib/theme.dart` | Material 3 theme builder |, | `mobile/lib/time.dart` | Relative-time formatter |, | `mobile/test/*.dart`, | `mobile/pubspec.yaml`, `mobile/pubspec.lock` | Declared/resolved packages
+- verify: No file was created, edited, or deleted by this task.
+- proof: ## Req 1 — File tree
+- ledgerId: led-1788767177960-3797ac48
+
+### 2026-09-07 · Transcript pagination API (@developer subagent) — tekton-6 (developer) · `done`
+- summary: Added backward transcript pagination using the opaque `before` message-ID cursor.
+- files: `internal/app/control.go`, `internal/app/control_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: ```http
+- ledgerId: led-1788767049533-3a1c4300
+
+### 2026-09-07 · Filter /var project directories (@developer s... — tekton-7 (developer) · `done`
+- summary: Added exported, documented `IsSystemDir(dir string) bool`, using cleaned, slash-normalized path segments to identify `/var`, `/private/var`, `/tmp`, `/private/t
+- files: `internal/projects/projects.go`, `internal/projects/projects_test.go`
+- verify: ```
+- proof: | `IsSystemDir` input | Output |
+- ledgerId: led-1788767036468-25b9d33c
+
+### 2026-09-07 · Transcript screen redesign (@developer subagent) — theboringcto-2 (cto) · `issues`
+- summary: Added `SessionScreen` as a calm, bottom-anchored, reverse transcript view with a 50-message initial page.
+- files: `mobile/lib/screens/session_screen.dart`, `mobile/test/session_screen_test.dart`
+- verify: ```
+- proof: *(a) Transcript on open**
+- ledgerId: led-1788766729657-d231e344
+
+### 2026-09-07 · Material You theme and app shell (@developer... — tekton-5 (developer) · `issues`
+- summary: Added a single-source Material 3 theme with seeded light/dark fallback schemes and low-elevation, surface-toned component styling.
+- files: `mobile/lib/theme.dart`, `mobile/lib/main.dart`, `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/test/theme_test.dart`, `mobile/test/gateway_client_test.dart`
+- verify: ```
+- proof: ```dart
+- ledgerId: led-1788766692741-4c3583e0
+
+### 2026-09-07 · Home screen redesign (@developer subagent) — theboringcto-1 (cto) · `issues`
+- summary: Added `ProjectsScreen` as a minimal Material 3 projects surface with live client-side name/directory search and composable All / Running / Stopped filters.
+- files: `mobile/lib/screens/projects_screen.dart`, `mobile/test/projects_screen_test.dart`
+- verify: ```
+- proof: Default list with a running and stopped project:
+- ledgerId: led-1788766608075-44946236
+
+### 2026-09-07 · Single-instance office guard (@developer suba... — tekton-4 (developer) · `done`
+- summary: Added exported sentinel `ErrLiveDiscovery`, matchable with `errors.Is`, for attempts to replace another live office’s discovery record.
+- files: `internal/control/control.go`, `internal/control/control_test.go`
+- verify: ```
+- proof: | Existing `control.json` state | Owner alive? | Same process? | `WriteDiscovery` result |
+- ledgerId: led-1788766228002-b3d016f0
+
+### 2026-09-07 · Harden office launcher detachment (@developer... — tekton-3 (developer) · `done`
+- summary: Resolved `theboringfloor` with `exec.LookPath`; missing binaries now return the distinct `ErrOfficeBinaryNotFound` error and launch failures are logged while re
+- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`, `cmd/floorgate/process_unix.go`, `cmd/floorgate/process_other.go`, `cmd/floorgate/process_unix_test.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788766224775-808631ce
+
+### 2026-09-07 · Scout headless office boot (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Confirmed — no working-directory flag, no `os.Chdir`, no positional arg handling. Now I have all evidence for the final report.
+- files: | Path | Why inspected |, |---|---|, | `cmd/theboringfloor/main.go` | Full boot order: control server start, discovery write, signal trap, | `internal/control/control.go` | `Discovery` shape, `ControlPath`, `WriteDiscovery`/`ReadDiscovery`, | `internal/controlsrv/server.go` | `New()`/`Start()` constructor deps, route table, admission contr, | `internal/app/control.go` | `applyControl`, | `internal/app/control_mutations.go` | What backs `/v1/message`, `/v1/stop`, `/v1/session/new` |, | `internal/app/model.go:3347` | Confirms `applyControl`/`applyControlMutations` are wired into the , | `internal/cellmetrics/input.go`, `cellmetrics.go` | The `tea.WithInput` wrapper's `Fd()`/passthrou, | `internal/panels/zenbu_frame.go:380-432` | The `tea.WithOutput` wrapper's `Fd()`/passthrough seman, | `charm.land/bubbletea/v2@v2.0.9/tea.go` (module cache) | `Run()`'s TTY-fallback logic (`OpenTTY()`, | `charm.land/bubbletea/v2@v2.0.9/tty.go`, `tty_unix.go` | `initInput()`
+- verify: Both processes killed (`kill -TERM` then `kill -9` after the 3s teardown deadline), scratch dir removed. No stray processes from this sessio
+- proof: | Requirement for headless boot | Exists today? | Where (file:line) | What is missing |
+- ledgerId: led-1788766020220-1ac69403
+
+### 2026-09-07 · Document start-office endpoint (@developer su... — tekton-2 (developer) · `done`
+- summary: Added the `POST /api/v1/projects/{id}/start` endpoint to the existing gateway API table, including bearer authentication, its empty-body request rule, and async
+- files: `website/app/docs/control-plane/page.tsx`
+- verify: `bun run lint` was not run because `website/package.json` has no `lint` script.
+- proof: | Method path | What it does | Response |
+- ledgerId: led-1788765912454-25fb30ab
+
+### 2026-09-07 · App start-office control (@developer subagent) — tekton-1 (developer) · `done`
+- summary: Added typed `StartOfficeOutcome` / `StartOfficeResult` API results for accepted launch, already-running, missing-project, and launch-failed responses.
+- files: `mobile/lib/api/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/main.dart`, `mobile/test/gateway_client_test.dart`, `mobile/test/models_test.dart`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788765878873-0ea90218
+
+### 2026-09-07 · Scout headless office boot (@explore subagent) — skopos-9 (scout) · `done`
+- summary: I have sufficient evidence for all 8 requirements plus a valuable empirical finding. Let me do a final repo-cleanliness check and the last VERIFY commands befor
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1788765551313-22c6a09b
+
+### 2026-09-07 · Gateway start-office route (@developer subagent) — tekton-22 (developer) · `issues`
+- summary: Added authenticated `POST /api/v1/projects/{id}/start`.
+- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: ```http
+- ledgerId: led-1788762142720-cb5e840e
+
+### 2026-09-07 · App tolerates missing office routes (@develop... — tekton-20 (developer) · `done`
+- summary: Added a `GatewayClient.session` loader that treats `status` and `transcript` as required while safely degrading a failed `busy` request to `null`.
+- files: `mobile/lib/api/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/main.dart`, `mobile/test/models_test.dart`, `mobile/test/gateway_client_test.dart`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788761859818-fbd16a5d
+
+### 2026-09-07 · Audit control server route coverage (@develop... — tekton-21 (developer) · `issues`
+- summary: Added data-driven route coverage tests for every declared `control.Route*` constant.
+- files: `internal/controlsrv/server_test.go`
+- verify: ```
+- proof: | Route | Method | Status before | Status after |
+- ledgerId: led-1788761814730-c35cc144
+
+### 2026-09-07 · Stop floorgate masking office errors (@develo... — tekton-19 (developer) · `done`
+- summary: Changed non-2xx office proxy handling to preserve the office’s original HTTP status code.
+- files: `cmd/floorgate/gateway.go`, `cmd/floorgate/gateway_test.go`
+- verify: ```
+- proof: ```http
+- ledgerId: led-1788761659116-670725e9
+
+### 2026-09-07 · Install Claude Code ledger hook (@developer s... — tekton-18 (developer) · `done`
+- summary: Added project-scoped Claude Code hook configuration at `.claude/settings.json`.
+- files: `internal/backend/charter_claude.go`, `internal/backend/charter_claude_hooks.go`, `internal/backend/charter_claude_hooks_test.go`
+- verify: ```
+- proof: Fresh project output:
+- ledgerId: led-1788761219290-162c3028
+
+### 2026-09-07 · Extract backend-agnostic ledger recorder (@de... — tekton-17 (developer) · `issues`
+- summary: Added backend-agnostic `ReturnRecordInput` and `recordReturn`, which derives the return verdict and ledger entry, mirrors it to agentmemory, and appends it to t
+- files: `internal/backend/ledger.go`, `internal/backend/opencode.go`, `internal/backend/ledger_return_test.go`
+- verify: ```
+- proof: ```go
+- ledgerId: led-1788761034131-7512c598
+
+### 2026-09-07 · Scout Claude return signals and hooks (@explo... — skopos-8 (scout) · `issues`
+- summary: # Read-Only Reconnaissance Report
+- files: | Path | Why inspected |, |---|---|, | `internal/backend/ledger.go` | `LedgerEntry` schema, `Ledger.Append`, dedupe/cap/atomic-write cont, | `internal/backend/opencode.go` (~1340-1505, 2755-2895) | `maybeChildReturned`, `ledgerEntryForRetu, | `internal/backend/boardsync.go` | `reconcileBoardDone`, | `internal/backend/claude.go`, | `internal/backend/claude_events.go` (full) | Found `EvReturned` emission in `mapClaudeUser` (Task/, | `internal/backend/charter_claude.go` | `<dir>/CLAUDE.md` + `<dir>/.opencode/oikonomos.md` writers , | `internal/backend/charter_claude_mcp.go` | `<dir>/.claude/mcp-servers.md` writer, | `~/.claude/settings.json` (redacted) | Live proof a `hooks.Stop` entry is configured on this machi, | `~/.claude.json`, `<repo>/.claude/` | Confirmed presence, listed keys/files only, no values printe, | `/Users/theboringhumane/.local/share/claude/versions/2.1.263` (the resolved `claude` binary) | `st
+- verify: Nothing else under `.claude/` is written by theboringfloor — `settings.json`/`settings.local.json` in the repo's `.claude/` (seen in the dir
+- proof: *Requirement-7 tradeoff table**
+- ledgerId: led-1788760931201-237d495a
+
+### 2026-09-07 · Boot-time stale work reconciler (@developer s... — tekton-14 (developer) · `done`
+- summary: Added `state.TaskStalled` with the persisted value `"stalled"` for work owned by a process that died.
+- files: `internal/state/state.go`, `internal/app/sessions.go`, `internal/app/sessions_stalled_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788760076364-782bb33a
+
+### 2026-09-07 · Backend death-path recovery (@developer subag... — tekton-15 (developer) · `done`
+- summary: Settled OpenCode and Claude in-flight boss placeholders as failed when their child process exits, including zero-text streams.
+- files: `internal/backend/opencode.go`, `internal/backend/claude.go`, `internal/backend/events.go`, `internal/backend/claude_events.go`, `internal/backend/process_unix.go`, `internal/backend/process_other.go`, `internal/backend/process_death_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788760031013-c56cf1d1
+
+### 2026-09-07 · Graceful shutdown signal trap (@developer sub... — tekton-16 (developer) · `done`
+- summary: Added SIGINT/SIGTERM handling before Bubble Tea starts.
+- files: `cmd/theboringfloor/main.go`, `cmd/theboringfloor/signal_shutdown_test.go`
+- verify: ```
+- proof: ```text
+- ledgerId: led-1788759883962-cb24dfcb
+
+### 2026-09-07 · Scout ledger and dispatch tracking (@explore... — skopos-7 (scout) · `issues`
+- summary: # Read-Only Reconnaissance Report
+- files: | Path | Why |, |---|---|, | `internal/backend/ledger.go` | The ledger writer/reader itself, | `internal/backend/opencode.go`, | `internal/backend/claude.go` | Confirmed **no** `LedgerEntry`/`NewLedger`/office-ledger reference , | `internal/backend/agentmemory.go` | Confirms `Verdict` also rides an agentmemory observation tag, | `internal/app/model.go`, | `internal/state/state.go` (lines ~230–260, ~360–430) | `BoardTask`, `TaskStatus` (3 states only, | `internal/app/plan_tools.go` | Full file, | `internal/app/plan_mode.go`, | `internal/app/sessions.go` (lines 85–244 only, via targeted grep+read, | `internal/backend/boardsync.go` | `reconcileBoardDone`
+- verify: (empty output — success, as expected)
+- proof: | Artifact | Written by (file:line) | Trigger | Survives restart? | Encodes unfinished work? |
+- ledgerId: led-1788759557706-f98082b7
+
+### 2026-09-07 · Scout backend process lifecycle (@explore sub... — skopos-6 (scout) · `issues`
+- summary: Confirmed: only two spawn sites in the whole package (`spawnServe` in opencode.go, `spawnClaude` in claude.go); `charter.go` never spawns a process — it only wr
+- files: `internal/backend/backend.go`, `internal/backend/opencode.go` (full read across several windows), `internal/backend/claude.go` (full read across several windows), `internal/backend/claude_events.go` (lines 680-720), `internal/backend/events.go` (grep only, lines ~853-865, ~1743, ~1763), `internal/backend/abort_timeout_test.go`, `internal/backend/opencode_bypass_integration_test.go`, `i, `internal/state/state.go` (lines 683-762), `internal/app/model.go` (lines 3955-4024), `internal/app/stuck_test.go` (grep only), `cmd/theboringfloor/main.go`, `cmd/floorgate/main.go` (grep only), `internal/control/control.go` (grep only), Repo-wide grep for `SysProcAttr|Setpgid|Setsid` and `signal.Notify`
+- verify: ```
+- proof: | Failure mode | What happens today (file:line) | User-visible result | Recoverable identifier available? |
+- ledgerId: led-1788759542465-26b22db6
+
+### 2026-09-07 · Scout crash/resume state seams (@explore suba... — skopos-5 (scout) · `issues`
+- summary: Read `internal/app/sessions.go` in full (SessionFile schema, Snapshot, SaveSession, LoadSession, hydrateSession, persistOfficeSession/persistOfficePin call site
+- files: `internal/app/sessions.go`, `internal/state/state.go`, `internal/config/config.go`, `internal/app/model.go` (lines 1400–1482, 3940–4230, 5000–5099, plus grepped `permQ`/`question`/`wed, `cmd/theboringfloor/main.go`, `internal/backend/ledger.go`, `internal/backend/opencode.go` (`saveLedgerLanes`/`saveLedgerAsync`), `internal/app/stuck_test.go`, `internal/app/btw_busy_test.go`
+- verify: ```
+- proof: | State | Persisted? | Where (file:line) | Restored on restart? |
+- ledgerId: led-1788759357075-7fc4d9cc
+
+### 2026-09-07 · Document automated APK releases (@developer s... — tekton-13 (developer) · `issues`
+- summary: Updated the Android install documentation to state that every version tag is built and signed by GitHub Actions and attached to its GitHub Release as `theboring
+- files: `website/app/docs/control-plane/page.tsx`
+- verify: ```
+- proof: ### Install the Android app
+- ledgerId: led-1788758130522-6561acea
+
+### 2026-09-07 · Make NDK pin overridable (@developer subagent) — tekton-12 (developer) · `done`
+- summary: Replaced the hardcoded Android NDK version with the optional Gradle property `theboringfloorNdkVersion`.
+- files: `mobile/android/app/build.gradle.kts`
+- verify: ```
+- proof: *Before**
+- ledgerId: led-1788758107104-b63e3dce
+
 ### 2026-09-07 · Fail-closed release signing (@developer subag... — tekton-9 (developer) · `done`
 - summary: Replaced the unsafe debug-signing fallback with release-task-graph validation that fails closed when `key.properties` is missing, required properties are blank,
 - files: `mobile/android/app/build.gradle.kts`, `mobile/android/.gitignore`
@@ -118,242 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *`/btw` startup failure path — before:**
 - ledgerId: led-1788723543051-05b14dcc
-
-### 2026-09-06 · Fix gofmt in cmd packages (@developer subagent) — tekton-14 (developer) · `done`
-- summary: Applied `gofmt -w` to the three assigned pre-existing formatting-drift files only.
-- files: `cmd/kittyprobe/main.go`, `cmd/thefloor_mcp/mcp.go`, `cmd/thefloor_mcp/office.go`
-- verify: ```
-- proof: ```diff
-- ledgerId: led-1788723411448-5eb631af
-
-### 2026-09-06 · Make config save atomic (@developer subagent) — tekton-13 (developer) · `done`
-- summary: Replaced `brain.json`’s direct `os.WriteFile` with same-directory temp-file writing followed by `os.Rename`.
-- files: `internal/config/config.go`, `internal/config/config_test.go`
-- verify: ```
-- proof: *Before**
-- ledgerId: led-1788723407771-3017fa06
-
-### 2026-09-06 · Verify backend changes pre-release (@develope... — tekton-10 (developer) · `done`
-- summary: Fixed `/submodel` backend plumbing: `liveBackend.ApplyAgentModels` now writes the OpenCode agent configuration, and `Start` applies persisted `Config.AgentModel
-- files: `internal/backend/opencode.go`, `internal/backend/charter_agentmodel.go`, `internal/backend/charter_agentmodel_test.go`
-- verify: ```
-- proof: `charter_agentmodel.go` now does plumb the override into the OpenCode agent harness: `ApplyAgentModels` writes `.opencode/opencode.json`, an
-- ledgerId: led-1788723224478-a559a2e4
-
-### 2026-09-06 · Review release diff blast radius (@reviewer s... — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788723048616-a041d146
-
-### 2026-09-06 · Pre-release hygiene and secret scan (@develop... — tekton-11 (developer) · `issues`
-- summary: Added a targeted ignore rule for the machine-local `.claude/settings.local.json`.
-- files: `.gitignore`
-- verify: Literal `sk-` false-positive locations were limited to normal code/docs/dependency content: `.opencode/opencode-video-analysis.md:46`; `cmd/
-- proof: ```gitignore
-- ledgerId: led-1788723001966-d818b2d3
-
-### 2026-09-06 · Scout release mechanics (@explore subagent) — skopos-5 (scout) · `issues`
-- summary: # Read-Only Reconnaissance: Release Cut Process for v0.3.31
-- files: | Path | Why inspected |, |---|---|, | `.goreleaser.yaml` | Build IDs, binaries, archive naming, ldflags, | `internal/version/version.go` | Confirm version is stamped, not hardcoded, | `.github/workflows/release.yml` | Only CI workflow; confirms tag-push → goreleaser, | `.gitignore` | Check for `.claude`/`.opencode` ignore rules, | `website/app/changelog/page.tsx` | Changelog surface, | `website/lib/changelog.ts` | Confirms GitHub API fetch, no hardcoded version, | `install.sh` | Grep for hardcoded version strings, | `install.ps1` | Grep for hardcoded version strings, | (git only, no files) | `git config`, `git status -sb`, `git log`, `git tag`, `git show`, `git rev-
-- verify: Convention: **lowercase conventional-commit-style prefixes** — `feat:`, `feat(scope):`, `fix:`, `refactor:`, `site:` (website-only changes)
-- proof: ```bash
-- ledgerId: led-1788722801372-6cbcab36
-
-### 2026-09-06 · Close out submodel + btw work (@developer sub... — tekton-9 (developer) · `issues`
-- summary: Formatted the pre-existing `internal/panels/chat_attach_ignore_test.go` source so the required repository-wide `gofmt -l` check is clean.
-- files: `internal/panels/chat_attach_ignore_test.go`, `internal/app/btw_orphan_test.go`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788722521120-dbaa8991
-
-### 2026-09-06 · Add submodel slash command (@developer subagent) — tekton-8 (developer) · `issues`
-- summary: Added `applySubmodel(fields []string) tea.Cmd`, validating agent names and model references, persisting valid overrides to `brain.json`, and emitting the requir
-- files: `internal/app/submodel.go`, `internal/app/submodel_test.go`, `internal/panels/popover.go`, `internal/panels/popover_cmds_test.go`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788719627750-61aa4350
-
-### 2026-09-06 · Fix btw session persistence (@developer subag... — tekton-4 (developer) · `issues`
-- summary: `hydrateSession` now removes persisted `Meta == "btw-pin"` rows, with a comment explaining that their hidden side-session snapshots are memory-only and cannot b
-- files: `internal/app/sessions.go`, `internal/app/sessions_test.go`, `internal/app/btw_persist_test.go`
-- verify: ```
-- proof: *`session.json` persisted while inside an active `/btw` side session:**
-- ledgerId: led-1788717123453-3ff0f73f
-
-### 2026-09-06 · Add agent model config storage (@developer su... — tekton-6 (developer) · `done`
-- summary: Added `Config.AgentModels map[string]ModelRef` with the `json:"agentModels"` tag and documentation distinguishing OPENCODE agent names from theboringfloor roste
-- files: `internal/config/config.go`, `internal/config/config_test.go`
-- verify: ```
-- proof: ```json
-- ledgerId: led-1788716975353-15ba95ae
-
-### 2026-09-06 · Scout swap routing and agent model (@explore... — skopos-4 (scout) · `issues`
-- summary: # READ-ONLY RECONNAISSANCE — /btw safety + per-sub-agent model config
-- files: | Path | Why |, |---|---|, | `internal/app/sessions.go:337-361` | `officeSpawnBackend`/`btwSwapBackend`/`primarySeamBackend` in, | `internal/app/model.go:5585-5592,6000-6099` | `hasPendingBoss` guard + the actual `/btw` start, | `internal/app/btw_busy_test.go` | Existing characterization tests documenting the guard as "CURREN, | `internal/backend/opencode.go:1474-1574,2251-2430,2627-2679,2881-2947` | `SwapPrimary`/`NewOffice`, | `internal/backend/events.go:205-234,1463-1612` | `mapOCEvent`'s primaryID-gated classification, th, | `internal/backend/claude.go:200-330,920-989` | Claude `NewOffice`/`SwapPrimary`, `teardownProc`, | `internal/config/config.go:67-91,165-204` | `RoleConfig.Model` field + `Roles` default map, | `internal/backend/charter.go:165-212` | `mergeInstruction`'s "never clobber a hand-shaped config" , | `~/.config/opencode/opencode.json`, `opencode.jsonc`, `.opencode/opencode.json`, `~/.config/openco, | `https://opencode.ai/config.json` | Live first-party JSON Schema fetch |
-- verify: ```
-- proof: (none)
-- ledgerId: led-1788716642557-db88cd51
-
-### 2026-09-06 · Always-visible btw return bubble (@developer... — tekton-1 (developer) · `done`
-- summary: Added a fixed hidden-BTW footer row below the scrollable transcript whenever a `btw-pin` message exists and the panel has enough room.
-- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/btw_pin_sticky_test.go`
-- verify: ```
-- proof: *Hidden BTW session, even after scrolling transcript history to the top:**
-- ledgerId: led-1788716618819-849f315a
-
-### 2026-09-06 · Characterize btw busy and orphan bugs (@devel... — tekton-2 (developer) · `issues`
-- summary: Added two hermetic characterization tests for `/btw` refusal when any boss chat message is pending, including a stale turn after the wedge watchdog fires.
-- files: `internal/app/btw_busy_test.go`, `internal/app/btw_orphan_test.go`
-- verify: ```
-- proof: *`TestBtwStartRefusedWhileBossPending`** — Locks in that a pending boss bubble prevents `/btw` and appends the mid-turn error; once concurre
-- ledgerId: led-1788716616609-cbb09535
-
-### 2026-09-06 · Scout BTW session lifecycle (@explore subagent) — skopos-1 (scout) · `issues`
-- summary: I now have complete evidence for all 7 requirements. Let me finalize the report.
-- files: | Path | Why inspected |, |---|---|, | `internal/app/model.go` | Owns `btwSaved`/`btwHiddenSnap`/`btwPinMsgID` fields, `/btw`/`/done` sla, | `internal/app/sessions.go` | `btwSwapBackend`/`officeSpawnBackend`/`primarySeamBackend` interfaces, | `internal/app/btw_hide_test.go` | The only app-level btw lifecycle tests, | `internal/panels/chat.go` | `btwPinRows` hit-map, `BtwPinRowAt`, `ClickRow`, rendering of the `btw, | `internal/panels/chat_window.go` | `hitSpans.btwPin` field backing the hit-map |, | `internal/panels/popover.go` | `/btw`/`/done` help-popover copy only |, | `internal/panels/popover_cmds_test.go` | Confirms `/btw`/`/done` are registered as real slash comm, | `internal/backend/opencode.go` | `liveBackend.NewOffice`/`SwapPrimary`/`PrimaryID`/`ResetPrimary`,, | `internal/backend/claude.go` | `liveClaudeBackend.NewOffice`/`SwapPrimary`, `EvChatBoss` Pending e, | `internal/backend/claude_office_swap_test.go` | Backend-level `/btw`/`/done`/`/new` coverage on th
-- verify: ```
-- proof: (none)
-- ledgerId: led-1788716230839-b493c711
-
-### 2026-09-06 · Scout model picker slash command (@explore su... — skopos-3 (scout) · `issues`
-- summary: Read-only recon complete: traced the slash-command registry/dispatch, the full `/model` (boss model) flow end-to-end, the model listing source, how sub-agent mo
-- files: `internal/panels/popover.go`, `internal/app/model.go`, `internal/app/model_picker.go`, `internal/panels/model_picker.go`, `internal/backend/models_live.go`, `internal/backend/demo.go`, `internal/backend/opencode.go` (~1660–1810), `internal/backend/claude.go`, `internal/backend/events.go` (~214–226), `internal/backend/claude_events.go` (~435–500), `internal/config/config.go`, `internal/backend/charter.go`
-- verify: Clean build, no errors, no output (after dependency download on first run).
-- proof: (none)
-- ledgerId: led-1788716149469-dd31b95f
-
-### 2026-09-06 · Scout transcript clickable bubbles (@explore... — skopos-2 (scout) · `issues`
-- summary: Read-only reconnaissance of the transcript rendering + mouse-click pipeline in the Go TUI. **No files edited.** Found that a directly-analogous feature — a clic
-- files: `internal/panels/chat.go`, `internal/panels/chat_window.go`, `internal/panels/chat_selection.go`, `internal/panels/perm_modal.go`, `internal/panels/question_modal.go`, `internal/panels/links.go`, `internal/app/model.go`, `internal/app/selection.go`, `internal/app/btw_hide_test.go`, --, # FINDINGS, ## 1. Where the transcript is rendered, The transcript is built by a **per-block render cache + windowed viewport**, not a single monolithic
-- verify: ```
-- proof: (none)
-- ledgerId: led-1788716148776-d9bbc016
-
-### 2026-09-05 · Fix attachment path collision (@developer sub... — tekton-39 (developer) · `done`
-- summary: Moved the Claude MCP prompt attachment to `<dir>/.claude/mcp-servers.md`.
-- files: `internal/backend/charter_claude_mcp.go`, `internal/backend/charter_claude_mcp_test.go`, `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`
-- verify: The final grep has **no `.opencode/mcp-servers.md` path** in either Claude-owned implementation file. The sole match is the deliberately rec
-- proof: *Claude attachment path**
-- ledgerId: led-1788631960891-61a0572d
-
-### 2026-09-05 · Fix stale MCP listing race (@developer subagent) — tekton-37 (developer) · `issues`
-- summary: **Root cause diagnosed:** a same-boot ordering race, not an MCP config parser/enumerator drop. `cmd/theboringfloor/main.go:267` launched `mcpinstall.Ensure` asy
-- files: `cmd/theboringfloor/main.go`, `internal/backend/charter_mcp_test.go`
-- verify: ```
-- proof: *Root-cause evidence**
-- ledgerId: led-1788631740781-e18c3ecf
-
-### 2026-09-05 · Claude Code MCP awareness (@developer subagent) — tekton-38 (developer) · `issues`
-- summary: Added Claude Code MCP discovery from `$CLAUDE_CONFIG_DIR/.claude.json` (or `~/.claude.json`), matching `projects` entries, and `<project>/.mcp.json`.
-- files: `internal/backend/charter_claude.go`, `internal/backend/charter_claude_test.go`, `internal/backend/charter_claude_mcp.go`, `internal/backend/charter_claude_mcp_test.go`
-- verify: ```
-- proof: ```md
-- ledgerId: led-1788631729521-e5c660ed
-
-### 2026-09-05 · Add Open Graph images (@developer subagent) — tekton-36 (developer) · `issues`
-- summary: Added build-time `ImageResponse` Open Graph images for the homepage and every statically generated blog post.
-- files: `website/app/opengraph-image.tsx`, `website/app/blog/[slug]/opengraph-image.tsx`, `website/app/layout.tsx`, `website/app/blog/[slug]/page.tsx`
-- verify: ```
-- proof: *Approach: dynamic `ImageResponse`, statically emitted at build time.** Next.js 16.3.0 successfully exported the root and all per-blog-post
-- ledgerId: led-1788630881006-50b19428
-
-### 2026-09-05 · Fix footer dead links (@developer subagent) — tekton-35 (developer) · `issues`
-- summary: Added the exact approved footer destination map for all navigable labels.
-- files: `website/components/site-footer.tsx`
-- verify: ```
-- proof: ### Features
-- ledgerId: led-1788630768192-46d94fd1
-
-### 2026-09-05 · Rename WhyComposio component (@developer suba... — tekton-34 (developer) · `done`
-- summary: Renamed the homepage floor-tour component from `WhyComposio` to `FloorTour`.
-- files: `website/components/home/why-composio.tsx` → `website/components/home/floor-tour.tsx`, `website/app/page.tsx`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788630737993-76bdf84c
-
-### 2026-09-05 · Review MCP claim accuracy (@reviewer subagent) — theboringcto-4 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: 4. Move, revert, or explicitly separate the four out-of-scope working-tree changes from this marketing-copy delivery.
-- proof: (none)
-- ledgerId: led-1788630372983-f0fe5d9f
-
-### 2026-09-05 · Scout prefill reply errors (@explore subagent) — skopos-8 (scout) · `issues`
-- summary: Performed read-only repo reconnaissance; made no edits.
-- files: `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/model.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/plan_mode.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/app/recent_messages.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/opencode.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/parts.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/events.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/claude.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/internal/backend/models_live.go`, `/Users/theboringhumane/Projects/lynxlabs/theboringoffice/cmd/theboringfloor/main.go`
-- verify: ```
-- proof: ## Error origins
-- ledgerId: led-1788630347611-4c6d5614
-
-### 2026-09-05 · MCP discoverability surfaces (@developer suba... — tekton-33 (developer) · `done`
-- summary: Added `/docs/mcp-server` and the pre-existing omitted `/changelog` route to the static sitemap.
-- files: `website/app/sitemap.ts`, `website/app/llms.txt/route.ts`, `website/README.md`
-- verify: ```
-- proof: ```md
-- ledgerId: led-1788630139200-be1e34f2
-
-### 2026-09-05 · Homepage MCP section (@developer subagent) — tekton-31 (developer) · `issues`
-- summary: Added the `McpServer` homepage section with a six-tool responsive card grid, an agent-tools panel, live-office constraints, and MCP docs link.
-- files: `website/components/home/mcp-server.tsx`, `website/app/page.tsx`
-- verify: ```
-- proof: ### The office MCP server
-- ledgerId: led-1788630118543-fc4bef2d
-
-### 2026-09-05 · MCP launch blog post (@developer subagent) — tekton-32 (developer) · `issues`
-- summary: Added a 1,817-word engineering blog post announcing `thefloor_mcp` through the honest tension between prompt markers and a typed tool protocol.
-- files: `website/content/blog/prompt-markers-are-not-a-protocol.md`
-- verify: ```
-- proof: ```md
-- ledgerId: led-1788630109481-407aa1ba
-
-### 2026-09-05 · Scout blog and voice (@general subagent) — skopos-7 (scout) · `issues`
-- summary: Determined that blog posts are Markdown files in `website/content/blog/`, loaded directly from the filesystem. A new post requires one new `<slug>.md` file; its
-- files: `website/lib/blog.ts`, `website/lib/blog-types.ts`, `website/app/blog/page.tsx`, `website/components/blog/blog-filter-list.tsx`, `website/app/blog/[slug]/page.tsx`, `website/app/globals.css`, `website/content/blog/WRITING.md`, `website/content/blog/universal-cli.md`, `website/content/blog/watching-subagent-work.md`, `website/content/blog/a-permission-is-not-a-question.md`, `website/content/blog/claude-code-support.md`, `website/content/blog/running-multiple-coding-agents.md`
-- verify: No build was run; this was read-only reconnaissance.
-- proof: ### Content system and new-post requirements
-- ledgerId: led-1788629884252-a06f4d20
-
-### 2026-09-05 · Scout homepage structure (@general subagent) — skopos-5 (scout) · `issues`
-- summary: Determined the homepage is assembled in a single ordered list in `website/app/page.tsx:16-39`; it renders 12 marketing sections between the shared header and fo
-- files: `website/app/page.tsx`, `website/app/globals.css`, `website/app/layout.tsx`, `website/package.json`, `website/lib/gsap.ts`, `website/components/theme-provider.tsx`, `website/components/section-tag.tsx`, `website/components/scroll-reveal.tsx`, `website/components/site-header.tsx`, `website/components/ui/button.tsx`, `website/components/ui/light-blue-plasma-shader-w-grain-interactive.tsx`, `website/components/home/hero.tsx`
-- verify: ```
-- proof: ### Homepage Sections In Order
-- ledgerId: led-1788629850851-851d9e58
-
-### 2026-09-05 · Scout nav SEO and llms (@general subagent) — skopos-6 (scout) · `issues`
-- summary: **Top navigation is hardcoded, not filesystem-derived.** Desktop links are individual `<Link>` elements in `website/components/site-header.tsx:104-121`; mobile 
-- files: `website/components/site-header.tsx`, `website/components/site-footer.tsx`, `website/app/docs/page.tsx`, `website/app/docs/mcp-server/page.tsx`, `website/app/layout.tsx`, `website/app/get-started/page.tsx`, `website/app/blog/page.tsx`, `website/app/blog/[slug]/page.tsx`, `website/lib/site.ts`, `website/lib/blog.ts`, `website/app/llms.txt/route.ts`, `website/app/sitemap.ts`
-- verify: ```
-- proof: | Surface | File | Manual or automatic | Edit needed to register a new page |
-- ledgerId: led-1788629846384-1c3fb967
-
-### 2026-09-05 · Restore sessions fallback (@developer subagent) — tekton-30 (developer) · `done`
-- summary: Restored the same-product `sessions/<dirhash>/session.json` read fallback in `app.LoadSession`, after the canonical `projects/` path.
-- files: `internal/app/sessions.go`, `internal/app/sessions_test.go`, `internal/sessionsearch/sessionsearch.go`, `internal/sessionsearch/sessionsearch_test.go`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788627818212-9bc6b55c
-
-### 2026-09-05 · Fix website migration docs (@developer subagent) — tekton-29 (developer) · `done`
-- summary: Corrected the getting-started migration guidance: only legacy `THEBORINGOFFICE_*` environment variables remain as silent fallbacks; prior session-layout reads a
-- files: `website/app/docs/getting-started/page.tsx`, `website/app/docs/backends/page.tsx`
-- verify: ```
-- proof: ### Getting Started — rendered migration passage
-- ledgerId: led-1788624951494-898c896a
-
-### 2026-09-05 · Rename agent preamble pkgs (@developer subagent) — tekton-25 (developer) · `done`
-- summary: Renamed all three agent-facing harness headers to `theboringfloor` without changing their surrounding prompt contracts or ordering.
-- files: `internal/browsertools/browsertools.go`, `internal/browsertools/browsertools_test.go`, `internal/browsertools/action/action.go`, `internal/browsertools/action/action_test.go`, `internal/browsertools/action/live_test.go`, `internal/browsertools/action/testdata/fixture.html`, `internal/chatcontext/chatcontext.go`, `internal/plantools/plantools.go`, `internal/plantools/plantools_test.go`
-- verify: ```
-- proof: ### Harness preamble headers
-- ledgerId: led-1788624545907-a75d6ddb
-
-### 2026-09-05 · Rename newer internal pkgs (@developer subagent) — tekton-26 (developer) · `done`
-- summary: Routed `internal/control` home override resolution through `config.Env("HOME")`; `internal/config` introduces no import cycle.
-- files: `internal/control/control.go`, `internal/control/control_test.go`, `internal/sessionsearch/sessionsearch.go`, `internal/sessionsearch/sessionsearch_test.go`, `internal/mcpinstall/mcpinstall.go`, `internal/mcpinstall/mcpinstall_test.go`, `internal/gitx/attribution.go`, `internal/gitx/attribution_env.go`, `internal/gitx/attribution_env_test.go`, `internal/state/state.go`, `internal/state/state_test.go`
-- verify: ```
-- proof: ### Session-search root resolution
-- ledgerId: led-1788624478363-7707bc21
 

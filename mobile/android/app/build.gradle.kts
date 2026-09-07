@@ -36,8 +36,11 @@ fun loadReleaseKeystoreProperties(): Properties {
 android {
     namespace = "com.theboringhumane.theboringfloor"
     compileSdk = flutter.compileSdkVersion
-    // Use the installed, complete NDK rather than provisioning another copy.
-    ndkVersion = "27.0.12077973"
+    // Local NDK 28 is incomplete (missing source.properties); CI runners have different NDK sets,
+    // so keep the working pin by default but allow -PtheboringfloorNdkVersion to override it.
+    ndkVersion = providers.gradleProperty("theboringfloorNdkVersion")
+        .orElse("27.0.12077973")
+        .get()
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

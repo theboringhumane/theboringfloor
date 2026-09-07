@@ -30,3 +30,86 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  android-release:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.2
+
+      - name: Derive release version
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          printf 'tag=%s\n' "$TAG" >> "$GITHUB_OUTPUT"
+          printf 'version=%s\n' "$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Check Android signing secrets
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ]; then
+            echo "Missing required Android signing secret."
+            exit 1
+          fi
+
+      - name: Restore Android signing material
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          KEYSTORE_PATH="$RUNNER_TEMP/theboringfloor-release.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          printf '%s\n' \
+            "storePassword=$ANDROID_KEYSTORE_PASSWORD" \
+            "keyPassword=$ANDROID_KEY_PASSWORD" \
+            "keyAlias=$ANDROID_KEY_ALIAS" \
+            "storeFile=$KEYSTORE_PATH" \
+            > mobile/android/key.properties
+
+      - name: Get Flutter packages
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Build signed Android release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Verify APK signature
+        run: |
+          set -o pipefail
+          export PATH="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1):$PATH"
+          apksigner verify --print-certs mobile/build/app/outputs/flutter-apk/app-release.apk | awk '/SHA-256 digest:/ { print }'
+
+      - name: Rename release APK
+        run: mv mobile/build/app/outputs/flutter-apk/app-release.apk "mobile/build/app/outputs/flutter-apk/theboringfloor-${{ steps.version.outputs.version }}.apk"
+
+      - name: Upload Android release APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.version.outputs.tag }}" "mobile/build/app/outputs/flutter-apk/theboringfloor-${{ steps.version.outputs.version }}.apk" --clobber
+
+      - name: Remove Android signing material
+        if: always()
+        run: |
+          shred --remove "$RUNNER_TEMP/theboringfloor-release.jks" 2>/dev/null || rm -f "$RUNNER_TEMP/theboringfloor-release.jks"
+          shred --remove mobile/android/key.properties 2>/dev/null || rm -f mobile/android/key.properties

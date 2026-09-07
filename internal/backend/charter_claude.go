@@ -135,13 +135,20 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		return false, []string{"[theboringfloor] claude charter: failed (not a directory: " + dir + ")"}
 	}
 
-	// 1. Discover and refresh the prompt-safe MCP attachment before writing
+	// 1. Wire the project-scoped SubagentStop hook before Claude starts. Its
+	//    marker reaches the stream reader, which records the matching dispatch
+	//    return in the office ledger. The hook's own helper reports changes to
+	//    its direct callers; charter notes retain their existing prompt-artifact
+	//    contract and therefore do not surface settings-file churn.
+	_, _ = ensureClaudeLedgerHook(dir)
+
+	// 2. Discover and refresh the prompt-safe MCP attachment before writing
 	//    the office-owned payload and its CLAUDE.md import.
 	mcpChanged, hasMCPAttachment, mcpNotes := ensureClaudeMCPAttachment(dir)
 	changed = changed || mcpChanged
 	notes = append(notes, mcpNotes...)
 
-	// 2. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
+	// 3. The import target: <dir>/.opencode/oikonomos.md is OFFICE-OWNED
 	//    (same discipline as the opencode charter pass) — refresh it to
 	//    the embedded charter bytes whenever it drifts: absent, stale
 	//    (office upgrade), or hand-edited. Members edit CLAUDE.md, never
@@ -172,7 +179,7 @@ func EnsureClaudeCharter(dir string) (changed bool, notes []string) {
 		}
 	}
 
-	// 2. The memory file: create / no-op / append-marked-block.
+	// 4. The memory file: create / no-op / append-marked-block.
 	mdPath := filepath.Join(dir, "CLAUDE.md")
 	raw, err := os.ReadFile(mdPath)
 	switch {

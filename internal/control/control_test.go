@@ -2,6 +2,7 @@ package control
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,6 +71,77 @@ func TestDiscoveryRoundTripAndRemove(t *testing.T) {
 	}
 	if err := RemoveDiscovery(dir); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWriteDiscoveryWritesWhenNoRecordExists(t *testing.T) {
+	dir := controlTestDir(t)
+	want := Discovery{PID: os.Getpid(), Port: 54321, Token: "token", Dir: dir, BootID: "first"}
+	if err := WriteDiscovery(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ReadDiscovery(dir); !ok || got != want {
+		t.Fatalf("ReadDiscovery() = %#v, %t; want %#v, true", got, ok, want)
+	}
+}
+
+func TestWriteDiscoveryOverwritesStaleRecord(t *testing.T) {
+	dir := controlTestDir(t)
+	if err := WriteDiscovery(dir, Discovery{PID: -1, Port: 1, Token: "stale"}); err != nil {
+		t.Fatal(err)
+	}
+	want := Discovery{PID: os.Getpid(), Port: 54321, Token: "fresh", Dir: dir, BootID: "fresh"}
+	if err := WriteDiscovery(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ReadDiscovery(dir); !ok || got != want {
+		t.Fatalf("ReadDiscovery() = %#v, %t; want %#v, true", got, ok, want)
+	}
+}
+
+func TestWriteDiscoveryRefusesLiveForeignRecord(t *testing.T) {
+	dir := controlTestDir(t)
+	other := startOfficeNamedProcess(t)
+	if err := WriteDiscovery(dir, Discovery{PID: other.Process.Pid, Port: 1, Token: "live"}); err != nil {
+		t.Fatal(err)
+	}
+	want := Discovery{PID: os.Getpid(), Port: 54321, Token: "replacement", Dir: dir}
+	if err := WriteDiscovery(dir, want); !errors.Is(err, ErrLiveDiscovery) {
+		t.Fatalf("WriteDiscovery() error = %v, want ErrLiveDiscovery", err)
+	}
+	if got, ok := ReadDiscovery(dir); !ok || got.PID != other.Process.Pid {
+		t.Fatalf("ReadDiscovery() = %#v, %t; want live foreign record", got, ok)
+	}
+}
+
+func TestWriteDiscoveryAllowsSelfUpdate(t *testing.T) {
+	dir := controlTestDir(t)
+	if err := WriteDiscovery(dir, Discovery{PID: os.Getpid(), Port: 1, Token: "first"}); err != nil {
+		t.Fatal(err)
+	}
+	want := Discovery{PID: os.Getpid(), Port: 2, Token: "second", Dir: dir, BootID: "second"}
+	if err := WriteDiscovery(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ReadDiscovery(dir); !ok || got != want {
+		t.Fatalf("ReadDiscovery() = %#v, %t; want %#v, true", got, ok, want)
+	}
+}
+
+func TestWriteDiscoveryOverwritesCorruptRecord(t *testing.T) {
+	dir := controlTestDir(t)
+	if err := os.MkdirAll(filepath.Dir(ControlPath(dir)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ControlPath(dir), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := Discovery{PID: os.Getpid(), Port: 54321, Token: "replacement", Dir: dir, BootID: "replacement"}
+	if err := WriteDiscovery(dir, want); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := ReadDiscovery(dir); !ok || got != want {
+		t.Fatalf("ReadDiscovery() = %#v, %t; want %#v, true", got, ok, want)
 	}
 }
 

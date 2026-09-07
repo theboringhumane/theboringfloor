@@ -304,7 +304,15 @@ func SaveSession(dir string, sf SessionFile) error {
 // resume discoverability hint: /session prints this office's primary id and
 // -s|--session pins one explicitly on the next boot (bypassing the
 // freshness gate — deliberate resume semantics).
-func RestoreNotice(sf *SessionFile) string {
+func RestoreNotice(sf *SessionFile, stalled ...int) string {
+	stalledCount := 0
+	if len(stalled) > 0 {
+		stalledCount = stalled[0]
+	}
+	if stalledCount > 0 {
+		return fmt.Sprintf("restored office session from %s (%d msgs) · %d tasks left unfinished · /new for a fresh office · /session prints the id (-s|--session pins one at boot)",
+			time.UnixMilli(sf.SavedAt).Local().Format("15:04"), len(sf.Chat), stalledCount)
+	}
 	return fmt.Sprintf("restored office session from %s (%d msgs) · /new for a fresh office · /session prints the id (-s|--session pins one at boot)",
 		time.UnixMilli(sf.SavedAt).Local().Format("15:04"), len(sf.Chat))
 }
@@ -365,9 +373,9 @@ type btwSwapBackend interface {
 // hydrateSession — the restore leg of app.New (live mode only): transcript
 // back into the chat, the roster back as SILENT hires — no dispatch events,
 // no task assignment: the freshly spawned server does not know these child
-// sessions, so they return as seated, idle desks — board + mail back, then
-// the dim restore notice.
-func (m *Model) hydrateSession(sf *SessionFile) {
+// sessions, so they return as seated, idle desks — board + mail back. It
+// returns the number of board rows stalled by the dead previous process.
+func (m *Model) hydrateSession(sf *SessionFile) int {
 	// Transcript: drop Pending:true entries — they are bubbles of a turn
 	// the previous process died inside; restoring one would show a stuck
 	// "typing…" placeholder that nothing will ever complete. Drop legacy
@@ -416,6 +424,13 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 		e.Sprite = state.SpriteAtDesk
 		m.st.Employees = append(m.st.Employees, e)
 	}
+	stalled := 0
+	for i := range sf.Tasks {
+		if sf.Tasks[i].Status == state.TaskInProgress {
+			sf.Tasks[i].Status = state.TaskStalled
+			stalled++
+		}
+	}
 	m.st.Tasks = append([]state.BoardTask(nil), sf.Tasks...)
 	m.st.Mails = append([]state.MailItem(nil), sf.Mails...)
 	// The plan editor's drafted-but-unapproved buffer comes back too —
@@ -431,10 +446,11 @@ func (m *Model) hydrateSession(sf *SessionFile) {
 	// member approval.
 	m.setApprovedPlanText(sf.ApprovedPlanText)
 	m.tabs.SetState(m.st)
-	// the restore line is BOOT-SCOPED (Meta bootNoticeMeta): it renders
-	// now but Snapshot strips it on every persist — exactly one restore
-	// line per boot on screen, zero in the file on subsequent cycles.
-	m.appendNotice(RestoreNotice(sf), bootNoticeMeta)
+	// The restore line is BOOT-SCOPED (Meta bootNoticeMeta): it renders now
+	// but Snapshot strips it on every persist — exactly one restore line per
+	// boot on screen, zero in the file on subsequent cycles.
+	m.appendNotice(RestoreNotice(sf, stalled), bootNoticeMeta)
+	return stalled
 }
 
 // persistOfficeSession snapshots the floor (LIVE mode ONLY — the demo

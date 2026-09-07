@@ -67,6 +67,12 @@ const endpoints: APIEndpoint[] = [
     response: 'Project',
   },
   {
+    method: 'POST',
+    path: '/api/v1/projects/{id}/start',
+    does: 'Starts an office for a known project that is not running. Uses bearer auth; the request body must be empty.',
+    response: '{"id":"<project-id>","startRequested":true} (202; poll for readiness)',
+  },
+  {
     method: 'GET',
     path: '/api/v1/projects/{id}/status',
     does: 'Reads live office status and transcript counts.',
@@ -109,7 +115,7 @@ const errors = [
   ['401', 'Unauthenticated.'],
   ['404', 'Unknown project.'],
   ['409', 'Project is known, but no office is running.'],
-  ['502', 'The office returned an error.'],
+  ['Non-2xx office response', 'floorgate preserves the office’s real HTTP status code and JSON error body.'],
   ['504', 'The office timed out.'],
 ]
 
@@ -248,6 +254,35 @@ export default function ControlPlanePage() {
               </table>
             </div>
 
+            <h3 className="mt-12 text-xl font-semibold tracking-tight">Start an office response codes</h3>
+            <div className="mt-6 max-w-4xl">
+              <CmdBlock
+                lines={[
+                  { t: 'POST /api/v1/projects/{id}/start (Bearer auth; empty request body)' },
+                  { t: '202 {"id":"<project-id>","startRequested":true} — accepted asynchronously; the office is not ready yet, so poll for readiness.' },
+                  { t: '400 {"error":"start request body must be empty"}' },
+                  { t: '404 {"error":"project not found"}' },
+                  { t: '409 {"error":"office already running"}' },
+                  { t: '502 {"error":"could not start office"}' },
+                  { t: '405 {"error":"method not allowed"} — non-POST requests are rejected.' },
+                ]}
+              />
+            </div>
+
+            <div className="mt-8 max-w-3xl text-pretty leading-relaxed text-muted-foreground">
+              <p>
+                <strong className="font-medium text-foreground">Security note.</strong> Starting an
+                office is remote process execution gated by the gateway bearer token. For this route,
+                the project directory is resolved only from the persisted project registry using the{' '}
+                <Code>id</Code> in the URL path.
+              </p>
+              <p className="mt-4">
+                The request cannot supply or override a filesystem path, command, argument, or
+                environment variable, and its body must be empty. Concurrent start requests for the
+                same project result in at most one launch attempt.
+              </p>
+            </div>
+
             <h3 className="mt-12 text-xl font-semibold tracking-tight">Error codes</h3>
             <div className="mt-6 overflow-x-auto border border-border">
               <table className="w-full text-left text-sm">
@@ -332,15 +367,20 @@ export default function ControlPlanePage() {
             </h2>
             <div className="mt-6 max-w-3xl space-y-4 text-pretty leading-relaxed text-muted-foreground">
               <p>
-                The Android app ships as a signed release APK attached to the{' '}
+                Every version tag builds and signs the Android app in GitHub Actions. The signed APK is
+                attached to that tag&apos;s{' '}
                 <a
                   href="https://github.com/theboringhumane/theboringfloor/releases"
                   className="text-foreground underline underline-offset-4"
                 >
                   GitHub release
                 </a>
-                , not through an app store. To install without a cable, open that release page on the
-                phone and download the APK there.
+                {' '}as <Code>theboringfloor-&lt;version&gt;.apk</Code>, not through an app store. To install
+                without a cable, open that release page on the phone and download the APK there.
+              </p>
+              <p>
+                Each release page publishes the APK&apos;s SHA-256. Before installing, compare it with the
+                downloaded file.
               </p>
               <p>
                 Android will warn about installing from an unknown source. Allow the browser or file
@@ -353,7 +393,12 @@ export default function ControlPlanePage() {
               </p>
             </div>
             <div className="mt-8 max-w-3xl">
-              <CmdBlock lines={[{ t: 'adb install -r <path-to-apk>' }]} />
+              <CmdBlock
+                lines={[
+                  { t: 'shasum -a 256 <downloaded.apk>' },
+                  { t: 'adb install -r <path-to-apk>' },
+                ]}
+              />
             </div>
           </div>
         </section>
@@ -370,8 +415,12 @@ export default function ControlPlanePage() {
                 vouch for the publisher, which is why it warns about the install.
               </p>
               <p>
-                Before installing, compare the certificate fingerprint of the APK with the published
-                fingerprint on the release page. For v0.4.0 the SHA-256 is{' '}
+                The private signing key lives only in GitHub repository secrets and on the maintainer&apos;s
+                machine. It is never in the repository.
+              </p>
+              <p>
+                Each release&apos;s build log prints the signing certificate SHA-256, so releases can be
+                audited after the fact. The current certificate SHA-256 is{' '}
                 <Code>3d0c9f22464659ccaac8f2a28d7c91ed7e53570ad84dd7e38caa19ea591eb3cb</Code>.
               </p>
               <p>
@@ -407,6 +456,10 @@ export default function ControlPlanePage() {
               <p>
                 Answering a permission prompt or a member question from the phone is not supported in
                 v1. Those still require the terminal.
+              </p>
+              <p>
+                Starting an office remotely does not yet detach or daemonize the launched process, and
+                headless (no-TTY) boot is not yet guaranteed.
               </p>
             </div>
           </div>

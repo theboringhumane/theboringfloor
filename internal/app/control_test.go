@@ -63,6 +63,74 @@ func TestControlTranscriptDefaultLimit(t *testing.T) {
 	}
 }
 
+func TestControlTranscriptBackwardPaging(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	m := New(&agentRecBackend{}, nil)
+	for i := 1; i <= 7; i++ {
+		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), Text: fmt.Sprintf("message %d", i), At: int64(i)})
+	}
+
+	type page struct {
+		Messages  []control.TranscriptMessage `json:"messages"`
+		Truncated bool                        `json:"truncated"`
+		HasMore   *bool                       `json:"hasMore"`
+	}
+	var all []string
+	before := ""
+	for wantMore := true; wantMore; {
+		query := control.QueryTranscript + "?page=1"
+		if before != "" {
+			query += "&before=" + before
+		}
+		var got page
+		controlQuery(t, m, query, 3, &got)
+		if got.HasMore == nil {
+			t.Fatal("paged response missing hasMore")
+		}
+		for _, message := range got.Messages {
+			all = append(all, message.ID)
+		}
+		wantMore = *got.HasMore
+		if wantMore {
+			before = got.Messages[0].ID
+		}
+	}
+	want := []string{"m-5", "m-6", "m-7", "m-2", "m-3", "m-4", "m-1"}
+	if fmt.Sprintf("%v", all) != fmt.Sprintf("%v", want) {
+		t.Fatalf("paged messages = %v, want %v", all, want)
+	}
+}
+
+func TestControlTranscriptDefaultResponseIsByteCompatibleAndClamp(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	m := New(&agentRecBackend{}, nil)
+	m.st.Chat = []state.ChatMsg{{ID: "one", From: "user", Kind: "user", Text: "first", At: 1}}
+	response, _ := m.controlTranscript(0, "", false)
+	if got := string(marshalControlResponse(response)); got != `{"messages":[{"id":"one","from":"user","kind":"user","text":"first","at":1}],"truncated":false}` {
+		t.Fatalf("default response = %s", got)
+	}
+
+	m = New(&agentRecBackend{}, nil)
+	for i := 0; i < controlTranscriptMax+1; i++ {
+		m.st.Chat = append(m.st.Chat, state.ChatMsg{ID: fmt.Sprintf("m-%d", i), At: int64(i)})
+	}
+	clamped, _ := m.controlTranscript(controlTranscriptMax+1, "", true)
+	if len(clamped.Messages) != controlTranscriptMax || clamped.HasMore == nil || !*clamped.HasMore {
+		t.Fatalf("clamped response = %#v", clamped)
+	}
+}
+
+func TestControlTranscriptUnknownBeforeCursor(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	m := New(&agentRecBackend{}, nil)
+	m.st.Chat = []state.ChatMsg{{ID: "known", At: 1}}
+	var failure control.ErrorResponse
+	controlQuery(t, m, control.QueryTranscript+"?page=1&before=unknown", 50, &failure)
+	if failure.Error != "unknown before cursor" {
+		t.Fatalf("unknown cursor response = %#v", failure)
+	}
+}
+
 func TestControlStatusProjectionAndUnknownQuery(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	m := New(&agentRecBackend{}, nil)

@@ -26,6 +26,66 @@ func TestRootHonorsHomeOverride(t *testing.T) {
 	}
 }
 
+func TestIsSystemDir(t *testing.T) {
+	tests := []struct {
+		name string
+		dir  string
+		want bool
+	}{
+		{name: "var root", dir: "/var", want: true},
+		{name: "var descendant", dir: "/var/folders/temporary", want: true},
+		{name: "private var root", dir: "/private/var", want: true},
+		{name: "private var descendant", dir: "/private/var/folders/temporary", want: true},
+		{name: "tmp root", dir: "/tmp", want: true},
+		{name: "tmp descendant", dir: "/tmp/theboringfloor", want: true},
+		{name: "private tmp root", dir: "/private/tmp", want: true},
+		{name: "private tmp descendant", dir: "/private/tmp/theboringfloor", want: true},
+		{name: "ordinary user path", dir: "/Users/x/Projects/foo", want: false},
+		{name: "user var directory", dir: "/Users/x/var", want: false},
+		{name: "varsity directory", dir: "/Users/x/varsity", want: false},
+		{name: "varnish directory", dir: "/home/varnish", want: false},
+		{name: "relative path", dir: "var/folders/temporary", want: false},
+		{name: "empty path", dir: "", want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := IsSystemDir(test.dir); got != test.want {
+				t.Errorf("IsSystemDir(%q) = %t, want %t", test.dir, got, test.want)
+			}
+		})
+	}
+}
+
+func TestListFiltersSystemProjects(t *testing.T) {
+	home := setupHome(t)
+	normalDir := "/Users/x/Projects/normal"
+	varDirs := []string{
+		"/var/folders/a/T/one",
+		"/var/folders/a/T/two",
+		"/var/folders/a/T/three",
+	}
+	writeSession(t, home, control.DirHash(normalDir), app.SessionFile{Dir: normalDir})
+	for _, dir := range varDirs {
+		writeSession(t, home, control.DirHash(dir), app.SessionFile{Dir: dir})
+	}
+
+	filtered, err := List(context.Background(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ids := projectIDs(filtered); !slices.Equal(ids, []string{control.DirHash(normalDir)}) {
+		t.Fatalf("List() IDs = %v, want only %q", ids, control.DirHash(normalDir))
+	}
+
+	all, err := ListAll(context.Background(), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("ListAll() returned %d projects, want 4", len(all))
+	}
+}
+
 func TestListIgnoresDotfilesAndNonDirectories(t *testing.T) {
 	home := setupHome(t)
 	writeSession(t, home, "alpha", app.SessionFile{Dir: "/work/alpha", SavedAt: 10})

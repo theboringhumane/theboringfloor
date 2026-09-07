@@ -442,6 +442,7 @@ func spawnClaude(bin, directory, resumeID string, bypass bool) (*exec.Cmd, io.Wr
 		argv = append(argv, "--resume", resumeID)
 	}
 	cmd := exec.Command(bin, argv...)
+	isolateProcessGroup(cmd)
 	if directory != "" {
 		cmd.Dir = directory
 	}
@@ -834,10 +835,12 @@ func (b *liveClaudeBackend) flushChatStream(id string) {
 // watchProc is the claude twin of watchServe: ONE goroutine per spawned
 // process, parked on the exit channel (the reaper owns cmd.Wait). An
 // UNEXPECTED death latches died (the next Send respawns with --resume) and
-// prints ONE status row; signal-terminated children (our own kill ladder,
-// exit 130/143) are clean kills. Stop()-initiated exits stay silent.
+// settles every in-flight bubble and modal as failed, then prints ONE status
+// row; signal-terminated children (our own kill ladder, exit 130/143) are
+// clean kills. Stop()-initiated exits stay silent.
 func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait chan struct{}) {
 	err := <-exitCh
+	note := "[theboringfloor] claude process exited before this turn completed"
 	b.mu.Lock()
 	current := b.proc == proc
 	errBuf := b.procErr
@@ -851,12 +854,43 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	if current && !stopping {
 		b.died = true
 	}
+	var streamEvs, dialogEvs []state.Event
+	var pendingBoss []string
+	if current && !stopping {
+		streamEvs = claudeInterruptedStreamEvents(b.ctx, note, nowMs())
+		dialogEvs = claudeInterruptedDialogEvents(b.ctx, note)
+		for id := range b.questionStash {
+			delete(b.questionStash, id)
+		}
+		pendingBoss = b.pendingBoss
+		b.pendingBoss = nil
+		b.busyTurns = 0
+		b.interruptArm = false
+		for id := range b.chatSlots {
+			delete(b.chatSlots, id)
+		}
+	}
 	b.mu.Unlock()
 	close(wait)
 	if !current || stopping {
 		return
 	}
-	if stderr := strings.TrimSpace(errBuf.String()); bypass && strings.Contains(stderr, "dangerously-skip-permissions") {
+	for _, e := range streamEvs {
+		b.fl.emit(e)
+	}
+	for _, id := range pendingBoss {
+		b.fl.emit(state.Event{Kind: state.EvChatBoss, Msg: state.ChatMsg{
+			ID: id, From: "boss", Text: note, At: nowMs(), Pending: false,
+		}})
+	}
+	for _, e := range dialogEvs {
+		b.fl.emit(e)
+	}
+	stderr := ""
+	if errBuf != nil {
+		stderr = strings.TrimSpace(errBuf.String())
+	}
+	if bypass && strings.Contains(stderr, "dangerously-skip-permissions") {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 			"[theboringfloor] claude bypass launch failed: CLI rejected --dangerously-skip-permissions (%s) — upgrade Claude Code or turn bypass off and respawn", trimTo(stderr, 300))})
 		return
@@ -959,7 +993,7 @@ func (b *liveClaudeBackend) teardownProc() {
 		case <-time.After(claudeStopDrain):
 		}
 	}
-	_ = proc.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(proc.Process, syscall.SIGTERM)
 	if wait != nil {
 		select {
 		case <-wait:
@@ -967,12 +1001,12 @@ func (b *liveClaudeBackend) teardownProc() {
 		case <-time.After(stopKillGrace):
 		}
 	}
-	_ = proc.Process.Kill()
-	reaped := make(chan struct{})
-	go func() { _ = proc.Wait(); close(reaped) }()
-	select {
-	case <-reaped:
-	case <-time.After(stopKillGrace):
+	_ = signalProcessGroup(proc.Process, syscall.SIGKILL)
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-time.After(stopKillGrace):
+		}
 	}
 }
 
@@ -1705,7 +1739,7 @@ func (b *liveClaudeBackend) AbortSessions() error {
 		if !alive {
 			return
 		}
-		_ = procRef.Process.Signal(syscall.SIGINT)
+		_ = signalProcessGroup(procRef.Process, syscall.SIGINT)
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[claude] turn abort: SIGINT escalate"})
 		b.fl.at(claudeAbortSigTermAfter-claudeAbortSigIntAfter, func() {
 			b.mu.Lock()
@@ -1714,7 +1748,7 @@ func (b *liveClaudeBackend) AbortSessions() error {
 			if !alive {
 				return
 			}
-			_ = procRef.Process.Signal(syscall.SIGTERM)
+			_ = signalProcessGroup(procRef.Process, syscall.SIGTERM)
 			b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[claude] turn abort: SIGTERM escalate"})
 		})
 	})
@@ -1745,7 +1779,7 @@ func (b *liveClaudeBackend) ReconnectMCP(name string) error {
 			"[claude] MCP %s reconnect is respawn-only — the process is already down; the next send respawns it", name)})
 		return nil
 	}
-	_ = proc.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(proc.Process, syscall.SIGTERM)
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[claude] reconnecting MCP %s: process respawn requested — the next send respawns with --resume", name)})
 	return nil
@@ -1794,7 +1828,7 @@ func (b *liveClaudeBackend) Stop() error {
 		case <-time.After(claudeStopDrain):
 		}
 	}
-	_ = proc.Process.Signal(syscall.SIGTERM)
+	_ = signalProcessGroup(proc.Process, syscall.SIGTERM)
 	if wait != nil {
 		select {
 		case <-wait:
@@ -1802,12 +1836,12 @@ func (b *liveClaudeBackend) Stop() error {
 		case <-time.After(stopKillGrace):
 		}
 	}
-	_ = proc.Process.Kill()
-	reaped := make(chan struct{})
-	go func() { _ = proc.Wait(); close(reaped) }()
-	select {
-	case <-reaped:
-	case <-time.After(stopKillGrace):
+	_ = signalProcessGroup(proc.Process, syscall.SIGKILL)
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-time.After(stopKillGrace):
+		}
 	}
 	return nil
 }

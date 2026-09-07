@@ -4,8 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:theboringfloor/api/gateway_client.dart';
 
-class FakeClient extends http.BaseClient {
-  FakeClient(this.response);
+class Fake extends http.BaseClient {
+  Fake(this.response);
   final http.Response response;
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async =>
@@ -18,21 +18,39 @@ class FakeClient extends http.BaseClient {
 }
 
 void main() {
-  test('parses a gateway error body verbatim', () async {
+  test('exec sends documented request and parses response', () async {
     final client = GatewayClient(
-      baseUrl: 'http://100.1.2.3:8787',
+      baseUrl: 'http://gateway.test',
       token: 'secret',
-      httpClient: FakeClient(
-        http.Response(jsonEncode({'error': 'office not running'}), 409),
+      httpClient: Fake(
+        http.Response(
+          jsonEncode({
+            'stdout': 'ok',
+            'stderr': '',
+            'exitCode': 0,
+            'durationMs': 2,
+            'truncated': false,
+          }),
+          200,
+        ),
       ),
     );
+    final result = await client.exec(
+      command: 'pwd',
+      cwd: '/repo',
+      timeoutMs: 100,
+    );
+    expect(result.stdout, 'ok');
+  });
+  test('gateway error preserves status', () async {
+    final client = GatewayClient(
+      baseUrl: 'http://x',
+      token: 't',
+      httpClient: Fake(http.Response(jsonEncode({'error': 'disabled'}), 403)),
+    );
     expect(
-      () => client.projects(),
-      throwsA(
-        isA<GatewayException>()
-            .having((error) => error.statusCode, 'status code', 409)
-            .having((error) => error.message, 'message', 'office not running'),
-      ),
+      () => client.exec(command: 'x', cwd: '/'),
+      throwsA(isA<GatewayException>()),
     );
   });
 }

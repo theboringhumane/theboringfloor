@@ -3,14 +3,18 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -120,12 +124,12 @@ func TestGatewayProxiesOfficeResponsesOverRealListeners(t *testing.T) {
 	server := httptest.NewServer(gateway)
 	defer server.Close()
 
-	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/"+projectID+"/transcript?limit=12", http.MethodGet, nil, "gate-token")
+	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/"+projectID+"/transcript?limit=12&before=m-12", http.MethodGet, nil, "gate-token")
 	body := responseBody(t, response)
-	if response.StatusCode != http.StatusOK || body != `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false}` {
-		t.Fatalf("transcript status/body = %d %q", response.StatusCode, body)
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "application/json" || body != `{"messages":[{"id":"m1","from":"boss","kind":"chat","text":"hello","at":1}],"truncated":false}` {
+		t.Fatalf("transcript status/content-type/body = %d %q %q", response.StatusCode, response.Header.Get("Content-Type"), body)
 	}
-	if gotAuthorization != "Bearer "+officeToken || gotPath != "/v1/transcript?limit=12" {
+	if gotAuthorization != "Bearer "+officeToken || gotPath != "/v1/transcript?before=m-12&limit=12" {
 		t.Fatalf("upstream auth/path = %q %q", gotAuthorization, gotPath)
 	}
 
@@ -133,6 +137,134 @@ func TestGatewayProxiesOfficeResponsesOverRealListeners(t *testing.T) {
 	body = responseBody(t, response)
 	if response.StatusCode != http.StatusOK || body == "" || gotMessage != `{"text":"hello"}` {
 		t.Fatalf("message status/body/forward = %d %q %q", response.StatusCode, body, gotMessage)
+	}
+}
+
+func TestGatewayProxiesOfficeErrorResponses(t *testing.T) {
+	for _, test := range []struct {
+		name            string
+		officeStatus    int
+		officeBody      string
+		officeType      string
+		wantStatus      int
+		wantBody        string
+		wantContentType string
+	}{
+		{
+			name:            "json not found",
+			officeStatus:    http.StatusNotFound,
+			officeBody:      `{"error":"not found"}`,
+			officeType:      "application/json",
+			wantStatus:      http.StatusNotFound,
+			wantBody:        `{"error":"not found"}`,
+			wantContentType: "application/json",
+		},
+		{
+			name:            "json office busy",
+			officeStatus:    http.StatusServiceUnavailable,
+			officeBody:      `{"error":"office busy"}`,
+			officeType:      "application/json",
+			wantStatus:      http.StatusServiceUnavailable,
+			wantBody:        `{"error":"office busy"}`,
+			wantContentType: "application/json",
+		},
+		{
+			name:            "non-json body",
+			officeStatus:    http.StatusGatewayTimeout,
+			officeBody:      "upstream timed out",
+			officeType:      "text/plain",
+			wantStatus:      http.StatusGatewayTimeout,
+			wantBody:        "{\"error\":\"office returned an error\"}\n",
+			wantContentType: "application/json",
+		},
+		{
+			name:            "empty body",
+			officeStatus:    http.StatusInternalServerError,
+			officeBody:      "",
+			wantStatus:      http.StatusInternalServerError,
+			wantBody:        "{\"error\":\"office returned an error\"}\n",
+			wantContentType: "application/json",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			office := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if test.officeType != "" {
+					w.Header().Set("Content-Type", test.officeType)
+				}
+				w.WriteHeader(test.officeStatus)
+				_, _ = w.Write([]byte(test.officeBody))
+			}))
+			defer office.Close()
+
+			gateway := newTestGateway(t, nil)
+			gateway.discovery = testDiscovery(t, office.URL)
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+
+			response := authorizedRequest(t, server.URL+apiPrefix+"/projects/p/busy", http.MethodGet, nil, "gate-token")
+			if body := responseBody(t, response); response.StatusCode != test.wantStatus || body != test.wantBody || response.Header.Get("Content-Type") != test.wantContentType {
+				t.Fatalf("status/body/content-type = %d %q %q, want %d %q %q", response.StatusCode, body, response.Header.Get("Content-Type"), test.wantStatus, test.wantBody, test.wantContentType)
+			}
+		})
+	}
+}
+
+func TestGatewayPreservesGatewayOriginatedFailureResponses(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		discovery   func(string) (control.Discovery, error)
+		get         func(context.Context, string, time.Duration) (projects.Project, error)
+		client      *http.Client
+		wantStatus  int
+		wantMessage string
+	}{
+		{
+			name:        "transport error",
+			discovery:   func(string) (control.Discovery, error) { return control.Discovery{Port: 1, Token: "office-token"}, nil },
+			client:      &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("dial refused") })},
+			wantStatus:  http.StatusBadGateway,
+			wantMessage: "could not reach office",
+		},
+		{
+			name:        "timeout",
+			discovery:   func(string) (control.Discovery, error) { return control.Discovery{Port: 1, Token: "office-token"}, nil },
+			client:      &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) { return nil, context.DeadlineExceeded })},
+			wantStatus:  http.StatusGatewayTimeout,
+			wantMessage: "office timed out",
+		},
+		{
+			name:      "unknown project",
+			discovery: func(string) (control.Discovery, error) { return control.Discovery{}, projects.ErrNotLive },
+			get: func(context.Context, string, time.Duration) (projects.Project, error) {
+				return projects.Project{}, projects.ErrNotFound
+			},
+			wantStatus:  http.StatusNotFound,
+			wantMessage: "project not found",
+		},
+		{
+			name:        "office not running",
+			discovery:   func(string) (control.Discovery, error) { return control.Discovery{}, projects.ErrNotLive },
+			wantStatus:  http.StatusConflict,
+			wantMessage: "office not running",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			gateway := newTestGateway(t, nil)
+			gateway.discovery = test.discovery
+			if test.get != nil {
+				gateway.get = test.get
+			}
+			if test.client != nil {
+				gateway.client = test.client
+			}
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+
+			response := authorizedRequest(t, server.URL+apiPrefix+"/projects/p/status", http.MethodGet, nil, "gate-token")
+			if body := responseBody(t, response); response.StatusCode != test.wantStatus || body != `{"error":"`+test.wantMessage+`"}`+"\n" {
+				t.Fatalf("status/body = %d %q, want %d error %q", response.StatusCode, body, test.wantStatus, test.wantMessage)
+			}
+		})
 	}
 }
 
@@ -153,7 +285,6 @@ func TestGatewayRejectsInvalidMessageAndTranscriptBeforeProxy(t *testing.T) {
 		{"trailing", "/projects/p/message", "application/json", `{"text":"hi"}{}`, "invalid message body"},
 		{"empty", "/projects/p/message", "application/json", `{"text":"  "}`, "empty message text"},
 		{"bad limit", "/projects/p/transcript?limit=no", "", "", "invalid transcript limit"},
-		{"large limit", "/projects/p/transcript?limit=501", "", "", "invalid transcript limit"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -207,6 +338,253 @@ func TestGatewayProjectErrorMapping(t *testing.T) {
 	}
 }
 
+func TestGatewayStartsStoppedProject(t *testing.T) {
+	project := projects.Project{ID: "known", Dir: "/registry/project", Live: false}
+	gateway := newTestGateway(t, nil)
+	gateway.get = func(context.Context, string, time.Duration) (projects.Project, error) {
+		return project, nil
+	}
+	launcher := &recordingLauncher{}
+	gateway.launcher = launcher
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+
+	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/known/start", http.MethodPost, nil, "gate-token")
+	if body := responseBody(t, response); response.StatusCode != http.StatusAccepted || body != "{\"id\":\"known\",\"startRequested\":true}\n" {
+		t.Fatalf("status/body = %d %q", response.StatusCode, body)
+	}
+	if got := launcher.dirs(); len(got) != 1 || got[0] != project.Dir {
+		t.Fatalf("launcher dirs = %q, want registry dir %q", got, project.Dir)
+	}
+}
+
+func TestNewOfficeCommandConfiguresHeadlessOffice(t *testing.T) {
+	t.Setenv("NO_CONTROL", "1")
+	binary, err := exec.LookPath("true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	command, closeFiles, err := newOfficeCommandForBinary(dir, binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeFiles()
+
+	if command.Dir != dir {
+		t.Fatalf("office command directory = %q, want %q", command.Dir, dir)
+	}
+	for _, stream := range []struct {
+		name string
+		file any
+	}{
+		{name: "stdin", file: command.Stdin},
+		{name: "stdout", file: command.Stdout},
+		{name: "stderr", file: command.Stderr},
+	} {
+		file, ok := stream.file.(*os.File)
+		if !ok {
+			t.Fatalf("%s = %T, want open *os.File for %s", stream.name, stream.file, os.DevNull)
+		}
+		info, err := file.Stat()
+		if err != nil {
+			t.Fatalf("stat %s: %v", stream.name, err)
+		}
+		if info.Mode()&os.ModeCharDevice == 0 {
+			t.Fatalf("%s is not a character device: %v", stream.name, info.Mode())
+		}
+	}
+	if command.Stdin == os.Stdin || command.Stdout == os.Stdout || command.Stderr == os.Stderr {
+		t.Fatal("office command inherited gateway stdio")
+	}
+	for _, entry := range command.Env {
+		if strings.HasPrefix(entry, "NO_CONTROL=") {
+			t.Fatalf("office command retained NO_CONTROL: %q", entry)
+		}
+	}
+}
+
+func TestCommandLauncherReportsMissingBinary(t *testing.T) {
+	oldLookPath := officeLookPath
+	officeLookPath = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { officeLookPath = oldLookPath })
+
+	err := (commandLauncher{}).Launch(t.TempDir(), func() {})
+	if !errors.Is(err, ErrOfficeBinaryNotFound) {
+		t.Fatalf("Launch() error = %v, want ErrOfficeBinaryNotFound", err)
+	}
+}
+
+func TestCommandLauncherReapsChildAndCallsExitedOnce(t *testing.T) {
+	binary, err := exec.LookPath("true")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldLookPath := officeLookPath
+	officeLookPath = func(string) (string, error) { return binary, nil }
+	t.Cleanup(func() { officeLookPath = oldLookPath })
+
+	var calls atomic.Int32
+	exited := make(chan struct{})
+	if err := (commandLauncher{}).Launch(t.TempDir(), func() {
+		if calls.Add(1) == 1 {
+			close(exited)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-exited:
+	case <-time.After(time.Second):
+		t.Fatal("exited callback was not called")
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("exited callback count = %d, want 1", got)
+	}
+}
+
+func TestGatewayStartFailures(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		get        func(context.Context, string, time.Duration) (projects.Project, error)
+		launcher   officeLauncher
+		wantStatus int
+		wantBody   string
+	}{
+		{
+			name: "unknown project",
+			get: func(context.Context, string, time.Duration) (projects.Project, error) {
+				return projects.Project{}, projects.ErrNotFound
+			},
+			wantStatus: http.StatusNotFound,
+			wantBody:   "{\"error\":\"project not found\"}\n",
+		},
+		{
+			name: "live project",
+			get: func(context.Context, string, time.Duration) (projects.Project, error) {
+				return projects.Project{ID: "live", Dir: "/registry/live", Live: true}, nil
+			},
+			wantStatus: http.StatusConflict,
+			wantBody:   "{\"error\":\"office already running\"}\n",
+		},
+		{
+			name: "launch error",
+			get: func(context.Context, string, time.Duration) (projects.Project, error) {
+				return projects.Project{ID: "stopped", Dir: "/registry/stopped"}, nil
+			},
+			launcher:   launcherFunc(func(string, func()) error { return errors.New("missing binary") }),
+			wantStatus: http.StatusBadGateway,
+			wantBody:   "{\"error\":\"could not start office\"}\n",
+		},
+		{
+			name: "missing binary",
+			get: func(context.Context, string, time.Duration) (projects.Project, error) {
+				return projects.Project{ID: "stopped", Dir: "/registry/stopped"}, nil
+			},
+			launcher:   launcherFunc(func(string, func()) error { return ErrOfficeBinaryNotFound }),
+			wantStatus: http.StatusBadGateway,
+			wantBody:   "{\"error\":\"could not start office\"}\n",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			gateway := newTestGateway(t, nil)
+			gateway.get = test.get
+			if test.launcher != nil {
+				gateway.launcher = test.launcher
+			}
+			server := httptest.NewServer(gateway)
+			defer server.Close()
+
+			response := authorizedRequest(t, server.URL+apiPrefix+"/projects/p/start", http.MethodPost, nil, "gate-token")
+			if body := responseBody(t, response); response.StatusCode != test.wantStatus || body != test.wantBody {
+				t.Fatalf("status/body = %d %q, want %d %q", response.StatusCode, body, test.wantStatus, test.wantBody)
+			}
+		})
+	}
+}
+
+func TestGatewayStartRejectsRequestBodies(t *testing.T) {
+	gateway := newTestGateway(t, nil)
+	launcher := &recordingLauncher{}
+	gateway.launcher = launcher
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+
+	for _, body := range []string{
+		`{"dir":"/tmp/attacker"}`,
+		`{"command":"sh","args":["-c","evil"],"env":{"PATH":"/tmp"}}`,
+	} {
+		response := authorizedRequest(t, server.URL+apiPrefix+"/projects/project-1/start", http.MethodPost, strings.NewReader(body), "gate-token")
+		if got := responseBody(t, response); response.StatusCode != http.StatusBadRequest || got != "{\"error\":\"start request body must be empty\"}\n" {
+			t.Fatalf("body %q: status/body = %d %q", body, response.StatusCode, got)
+		}
+	}
+	if got := launcher.dirs(); len(got) != 0 {
+		t.Fatalf("launcher invoked for rejected bodies: %q", got)
+	}
+}
+
+func TestGatewayStartAllowsOnlyOneConcurrentLaunch(t *testing.T) {
+	gateway := newTestGateway(t, nil)
+	gateway.get = func(context.Context, string, time.Duration) (projects.Project, error) {
+		return projects.Project{ID: "stopped", Dir: "/registry/stopped"}, nil
+	}
+	launcher := &blockingLauncher{started: make(chan struct{}), release: make(chan struct{})}
+	gateway.launcher = launcher
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+
+	type result struct {
+		response *http.Response
+		err      error
+	}
+	responses := make(chan result, 2)
+	for range 2 {
+		go func() {
+			request, err := http.NewRequest(http.MethodPost, server.URL+apiPrefix+"/projects/stopped/start", nil)
+			if err == nil {
+				request.Header.Set("Authorization", "Bearer gate-token")
+				request.Header.Set("Content-Type", "application/json")
+				response, requestErr := http.DefaultClient.Do(request)
+				responses <- result{response: response, err: requestErr}
+				return
+			}
+			responses <- result{err: err}
+		}()
+	}
+	<-launcher.started
+	secondResult := <-responses
+	if secondResult.err != nil {
+		t.Fatal(secondResult.err)
+	}
+	second := secondResult.response
+	if body := responseBody(t, second); second.StatusCode != http.StatusConflict || body != "{\"error\":\"office already running\"}\n" {
+		t.Fatalf("second status/body = %d %q", second.StatusCode, body)
+	}
+	close(launcher.release)
+	firstResult := <-responses
+	if firstResult.err != nil {
+		t.Fatal(firstResult.err)
+	}
+	response := firstResult.response
+	if body := responseBody(t, response); response.StatusCode != http.StatusAccepted || body != "{\"id\":\"stopped\",\"startRequested\":true}\n" {
+		t.Fatalf("first status/body = %d %q", response.StatusCode, body)
+	}
+	if got := launcher.count(); got != 1 {
+		t.Fatalf("launcher count = %d, want 1", got)
+	}
+}
+
+func TestGatewayStartRejectsNonPostMethod(t *testing.T) {
+	gateway := newTestGateway(t, nil)
+	server := httptest.NewServer(gateway)
+	defer server.Close()
+	response := authorizedRequest(t, server.URL+apiPrefix+"/projects/project-1/start", http.MethodGet, nil, "gate-token")
+	if body := responseBody(t, response); response.StatusCode != http.StatusMethodNotAllowed || response.Header.Get("Allow") != http.MethodPost || body != "{\"error\":\"method not allowed\"}\n" {
+		t.Fatalf("status/allow/body = %d %q %q", response.StatusCode, response.Header.Get("Allow"), body)
+	}
+}
+
 func TestResolvedBindPrecedence(t *testing.T) {
 	if got := resolvedBind("", ""); got != "127.0.0.1:8787" {
 		t.Fatalf("default = %q", got)
@@ -241,6 +619,74 @@ func newTestGateway(t *testing.T, discovery *control.Discovery) *gateway {
 		gateway.discovery = func(string) (control.Discovery, error) { return *discovery, nil }
 	}
 	return gateway
+}
+
+func testDiscovery(t *testing.T, rawURL string) func(string) (control.Discovery, error) {
+	t.Helper()
+	address := strings.TrimPrefix(rawURL, "http://")
+	_, port, err := net.SplitHostPort(address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return func(string) (control.Discovery, error) {
+		return control.Discovery{Port: n, Token: "office-token"}, nil
+	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+type launcherFunc func(string, func()) error
+
+func (f launcherFunc) Launch(dir string, exited func()) error {
+	return f(dir, exited)
+}
+
+type recordingLauncher struct {
+	mu      sync.Mutex
+	started []string
+}
+
+func (l *recordingLauncher) Launch(dir string, _ func()) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.started = append(l.started, dir)
+	return nil
+}
+
+func (l *recordingLauncher) dirs() []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.started...)
+}
+
+type blockingLauncher struct {
+	mu      sync.Mutex
+	started chan struct{}
+	release chan struct{}
+	calls   int
+}
+
+func (l *blockingLauncher) Launch(_ string, _ func()) error {
+	l.mu.Lock()
+	l.calls++
+	l.mu.Unlock()
+	close(l.started)
+	<-l.release
+	return nil
+}
+
+func (l *blockingLauncher) count() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.calls
 }
 
 func fixtureDiscovery(t *testing.T, id, dir, rawURL, token string) {
