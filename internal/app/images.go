@@ -216,17 +216,20 @@ func (m Model) chatContentOrigin() (originX, originY int, ok bool) {
 	if m.chat == nil || m.tabs.ActiveIndex() != 0 { // the chat tab must own the strip
 		return 0, 0, false
 	}
-	if m.zen || m.threadFocus != nil {
+	if m.zen || m.threadFocus != nil || m.floorOverlay() {
 		return 0, 0, false
 	}
 	dx, dy := (&panels.Tabs{}).ContentOffset() // the sidebar's box chrome (1,2)
+	if m.widePanel() {
+		return m.panelX() + dx, 1 + dy, true
+	}
 	if m.mobile() {
 		if m.planPaneVisible() {
 			return 0, 0, false // mobile: the plan owns the panel slot
 		}
 		return dx, 1 + m.floorBandH() + dy, true // topbar + the band + the chrome
 	}
-	return m.floorW + dx, 1 + dy, true // the sidebar's x + chrome; topbar + chrome
+	return m.panelX() + dx, 1 + dy, true // the sidebar's x + chrome; topbar + chrome
 }
 
 // publishChatMediaFrame — Frame()'s chat-media registry write (called

@@ -40,6 +40,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/plantools"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -205,15 +206,20 @@ func paneAgent(plan *panels.PlanEditor) string {
 	return ""
 }
 
-// sendChatMode is sendChat + the agent seam: in plan mode (agent ==
-// "plan") a text-only prompt rides SendAgent(text, "plan"); everything
-// else — build mode, a harness stub without the seam, a file-carrying
-// prompt (attachments win over the tag: full fidelity beats metadata) —
-// takes the existing attachment/plain path untouched.
+// sendChatMode preserves both attachments and planning intent. Older
+// transports without agent routing receive the explicit planning contract.
 func sendChatMode(b state.Backend, text string, atts []state.Attachment, agent string) error {
-	if agent != "" && len(atts) == 0 {
-		if ab, ok := b.(agentBackend); ok {
+	if agent != "" {
+		if ab, ok := b.(interface {
+			SendAgentWith(string, []state.Attachment, string) error
+		}); ok {
+			return ab.SendAgentWith(text, atts, agent)
+		}
+		if ab, ok := b.(agentBackend); ok && len(atts) == 0 {
 			return ab.SendAgent(text, agent)
+		}
+		if agent == agentModePlan {
+			text = plantools.PlanningPrompt + "\n\n" + text
 		}
 	}
 	return sendChat(b, text, atts)
@@ -231,6 +237,7 @@ func (m *Model) togglePlanMode() tea.Cmd {
 	}
 	if m.agentMode == agentModePlan {
 		m.setAgentMode(agentModeBuild)
+		m.planAutoSkipOnce = true
 		m.plan.Blur()
 		note := "[office] build mode — prompts go straight to the boss"
 		if m.planSendPending > 0 {
@@ -405,6 +412,8 @@ func (m *Model) presentBossPlan(msg state.ChatMsg) {
 		return
 	}
 	m.plan.SetValue(msg.Text)
+	m.planRequestDraft = ""
+	m.approveArmAt = time.Time{}
 	m.plan.SetUserDirty(false)
 	m.restoredPlan = false // F2: a boss-adopted buffer is presented, not restored
 }
@@ -455,6 +464,9 @@ func (m *Model) openPlanForEdit() {
 func (m *Model) approveRefusal() string {
 	if m.plan == nil {
 		return planNothingNotice
+	}
+	if m.planRequestDraft != "" && m.plan.Value() == m.planRequestDraft {
+		return "plan: waiting for a new draft — the previous plan is kept for reference; edit it or wait for the boss"
 	}
 	if m.restoredPlan {
 		if m.plan.UserDirty() {

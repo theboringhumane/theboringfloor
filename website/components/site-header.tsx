@@ -101,7 +101,7 @@ export function SiteHeader({
             )}
           </div>*/}
 
-          <Link href="/#toolkits" className="py-2 transition-colors hover:text-foreground">
+          <Link href="/#workspaces" className="py-2 transition-colors hover:text-foreground">
             Floor Plan
           </Link>
           <Link href="/blog" className="py-2 transition-colors hover:text-foreground">
@@ -165,7 +165,7 @@ export function SiteHeader({
           <Link href="/#solutions" className="py-2" onClick={() => setMobileOpen(false)}>
             Solutions
           </Link>
-          <Link href="/#toolkits" className="py-2" onClick={() => setMobileOpen(false)}>
+          <Link href="/#workspaces" className="py-2" onClick={() => setMobileOpen(false)}>
             Floor Plan
           </Link>
           <Link href="/blog" className="py-2" onClick={() => setMobileOpen(false)}>

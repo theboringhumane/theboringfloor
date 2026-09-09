@@ -122,6 +122,7 @@ type liveBackend struct {
 	// server-side 404/fetch failure degrades to the normal ensurePrimary
 	// path (degrade open — a stale pin must never hard-fail a boot).
 	primaryOverride string
+	freshStart      bool
 	// promptModelRejected latches when a serve rejects the per-prompt model
 	// override with a 400 (an older/foreign server without the /doc model
 	// field). From then on prompts go out without the override — degrade
@@ -477,6 +478,10 @@ func (b *liveBackend) SendAgent(text, agent string) error {
 	return b.sendWithAgent(text, nil, agent)
 }
 
+func (b *liveBackend) SendAgentWith(text string, atts []state.Attachment, agent string) error {
+	return b.sendWithAgent(text, atts, agent)
+}
+
 // AgentDegraded exposes the promptAgentRejected latch as the app's
 // agentDegradeSeam (internal/app plan_mode.go — additive, type-asserted):
 // true once a serve has 400'd the plan/build agent field. From then on
@@ -626,7 +631,10 @@ func (b *liveBackend) sendWithAgent(text string, atts []state.Attachment, agent 
 	if !briefed {
 		prompt = browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\n" + trimmed
 	}
-	err := b.postPrompt(primaryID, prompt, atts, agent)
+	if agent == "plan" {
+		prompt = plantools.PlanningPrompt + "\n\n" + prompt
+	}
+	err := b.postPrompt(primaryID, teamPrompt(b.cfg, prompt), atts, agent)
 	if err == nil && !briefed {
 		b.mu.Lock()
 		b.browserBriefedFor = primaryID
@@ -1254,7 +1262,12 @@ func (b *liveBackend) ensurePrimary() (ocSession, error) {
 func (b *liveBackend) resolvePrimary() (ocSession, error) {
 	b.mu.Lock()
 	override := b.primaryOverride
+	fresh := b.freshStart
+	b.freshStart = false
 	b.mu.Unlock()
+	if fresh {
+		return b.createPrimary(b.bossName())
+	}
 	if override != "" {
 		var s ocSession
 		if err := b.doJSON(http.MethodGet, "/session/"+override, nil, &s); err == nil && s.ID != "" {
@@ -3413,4 +3426,11 @@ func (b *liveBackend) doJSONCtxPage(ctx context.Context, method, path string, bo
 		}
 	}
 	return res.Header.Get("X-Next-Cursor"), nil
+}
+
+func (b *liveBackend) FreshOnStart() {
+	b.mu.Lock()
+	b.freshStart = true
+	b.primaryOverride = ""
+	b.mu.Unlock()
 }

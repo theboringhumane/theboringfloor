@@ -34,20 +34,7 @@
 // switch can never misdeliver a page. BrowserLeaveMsg (the pane's q/esc)
 // flips the slot back to the floor.
 //
-// PREMIUM LANE LIFECYCLE (the member's keep-alive ruling — the page is
-// "always shown"): the pane consults its lane controller on every open
-// (kitty-capable host + `terminal-browser` on PATH + no kill-switch →
-// the embedded zenbu child paints the slot); THIS file owns the flips —
-// leaving the slot (ctrl+b to the floor, the pane's q/esc) SUSPENDS the
-// lane: the child FREEZES (SIGSTOP, alive — its PID never changes, one
-// backgrounded Electron's RAM accepted), the terminal-side image
-// deletes ride the registry clear → the wrapper's a=d (the floor never
-// shows the page), and the lane's image store RETAINS the latest joined
-// frame; returning RESUMES it: the SAME child thaws (SIGCONT — no
-// respawn, no reload) and the retained frame re-emits through the
-// frame-splice wrapper on the very next flush — an instant repaint,
-// before the child emits a byte. The quit paths still seal the lane
-// through Close (group-kill + bounded reap), exactly as before.
+// Browser graphics helpers now serve built-in screenshots only.
 package app
 
 import (
@@ -120,12 +107,12 @@ func (m Model) leftPaneView(w, h int) string {
 // in the accent class, the other gray (the right strip's chrome classes),
 // the ctrl+b hint dim. Never wider than w.
 func (m Model) leftStripView(w int) string {
-	floorSeg := chrome.TabInactive.Render(" floor ")
+	floorSeg := chrome.TabInactive.Render(" office ")
 	browserSeg := chrome.TabInactive.Render(" browser ")
 	if m.leftTab == leftTabBrowser {
 		browserSeg = chrome.TabActive.Render(" browser ")
 	} else {
-		floorSeg = chrome.TabActive.Render(" floor ")
+		floorSeg = chrome.TabActive.Render(" office ")
 	}
 	bar := floorSeg + " " + browserSeg + chrome.DimText.Render("  · ctrl+b")
 	return ansi.Truncate(bar, w, "")
@@ -334,13 +321,13 @@ func (m Model) browserGridOrigin() (originX, originY int, ok bool) {
 	if m.browser == nil || m.leftTab != leftTabBrowser || !m.browser.PremiumActive() {
 		return 0, 0, false
 	}
-	if m.zen || m.threadFocus != nil {
+	if m.zen || m.threadFocus != nil || m.widePanel() || m.floorOverlay() {
 		return 0, 0, false
 	}
 	if !m.mobile() && m.planPaneVisible() {
 		return 0, 0, false // desktop: the plan owns the floor slot
 	}
-	return 0, zenbuGridOriginY, true
+	return m.navigatorWidth(), zenbuGridOriginY, true
 }
 
 // browserShotOrigin — the ABSOLUTE cell origin of the SHOT's body box
@@ -355,11 +342,11 @@ func (m Model) browserShotOrigin() (originX, originY int, ok bool) {
 	if m.browser == nil || m.leftTab != leftTabBrowser || !m.browser.ShotActive() {
 		return 0, 0, false
 	}
-	if m.zen || m.threadFocus != nil {
+	if m.zen || m.threadFocus != nil || m.widePanel() || m.floorOverlay() {
 		return 0, 0, false
 	}
 	if !m.mobile() && m.planPaneVisible() {
 		return 0, 0, false // desktop: the plan owns the floor slot
 	}
-	return 0, zenbuGridOriginY, true
+	return m.navigatorWidth(), zenbuGridOriginY, true
 }

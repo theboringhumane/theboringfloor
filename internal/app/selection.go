@@ -81,6 +81,21 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 		m.threadFocus.Click(msg.X, msg.Y-1) // pane coords: row 0 = its header
 		return nil
 	}
+	if m.floors.Editing() {
+		return nil
+	}
+	if m.mobile() && m.floorNavFocused {
+		return nil
+	}
+	if msg.X < m.navigatorWidth() {
+		m.floorNavFocused = true
+		m.setTermCaptured(false)
+		if m.plan != nil {
+			m.plan.Blur()
+		}
+		return m.floors.NavClick(msg.Y-1, m.navigatorWidth(), m.middleH)
+	}
+	m.floorNavFocused = false
 	// The sidebar tab bar owns its rendered label cells before either the chat
 	// selection or terminal mouse surfaces see a press. TabAt shares the exact
 	// density/fallback geometry used by Tabs.View, while this seam translates
@@ -114,16 +129,18 @@ func (m *Model) handlePress(msg tea.MouseClickMsg) tea.Cmd {
 // outside the tab row so existing floor and panel click routing stays intact.
 func (m *Model) activateTabAt(msg tea.MouseClickMsg) bool {
 	var x, y int
-	if m.mobile() {
+	if m.widePanel() {
+		x, y = msg.X-m.panelX(), msg.Y-1
+	} else if m.mobile() {
 		if msg.Y < 1+m.floorBandH() {
 			return false
 		}
 		x, y = msg.X, msg.Y-(1+m.floorBandH())
 	} else {
-		if msg.X < m.floorW {
+		if msg.X < m.panelX() {
 			return false
 		}
-		x, y = msg.X-m.floorW, msg.Y-1
+		x, y = msg.X-m.panelX(), msg.Y-1
 	}
 	idx, ok := m.tabs.TabAt(x, y)
 	if !ok {
@@ -230,17 +247,20 @@ func (m *Model) armCopyNoteErr(err error) tea.Cmd {
 // the point lands inside the chat tab's panel region (desktop sidebar or
 // the full-width panel below the mobile floor band), ok=false otherwise.
 func (m *Model) chatContentCoords(x, y int) (cx, cy int, ok bool) {
-	if m.tabs.ActiveIndex() != 0 || m.chat == nil {
+	if m.floorOverlay() || m.tabs.ActiveIndex() != 0 || m.chat == nil {
 		return 0, 0, false
 	}
-	if m.mobile() {
+	if m.widePanel() {
+		cx, cy = m.chatCoordsTranslate(x, y)
+		return cx, cy, x >= m.panelX() && y >= 3
+	} else if m.mobile() {
 		if y < 1+m.floorBandH() {
 			return 0, 0, false
 		}
 		cx, cy = m.chatCoordsTranslate(x, y)
 		return cx, cy, true
 	}
-	if x < m.floorW {
+	if x < m.panelX() {
 		return 0, 0, false
 	}
 	cx, cy = m.chatCoordsTranslate(x, y)
@@ -252,8 +272,11 @@ func (m *Model) chatContentCoords(x, y int) (cx, cy int, ok bool) {
 // transcript edge, so it needs the formula even outside the panel.
 func (m *Model) chatCoordsTranslate(x, y int) (cx, cy int) {
 	dx, dy := m.tabs.ContentOffset()
+	if m.widePanel() {
+		return x - m.panelX() - dx, y - (1 + dy)
+	}
 	if m.mobile() {
 		return x - dx, y - (1 + m.floorBandH() + dy)
 	}
-	return x - (m.floorW + dx), y - (1 + dy)
+	return x - (m.panelX() + dx), y - (1 + dy)
 }

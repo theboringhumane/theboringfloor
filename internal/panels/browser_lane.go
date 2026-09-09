@@ -1,94 +1,12 @@
-// browser_lane.go — the browser tab's PREMIUM render lane: zenbu's
-// terminal-browser (https://github.com/zenbu-labs/terminal-browser — a
-// full Chromium app painting pages over the kitty graphics protocol; a
-// distributed BINARY on PATH, never a Go dependency) embedded INSIDE the
-// browser tab's pane, with the universal text-mode HTML viewer as the
-// fallback everywhere the premium gates miss.
-//
-// LANE RESOLVE (memoized per boot, the images-lane memoization idiom —
-// one honest env+PATH read per BrowserLaneController, never per frame):
-//
-//	kitty-capable host (DetectImageSupportFrom == KittyLane: kitty's own
-//	  KITTY_WINDOW_ID, or TERM_PROGRAM ghostty|kitty; tmux folds out
-//	  conservatively, iTerm2/WezTerm/VSCode/xterm are NOT this lane)
-//	AND exec.LookPath("terminal-browser") finds the binary
-//	AND neither kill-switch is armed: THEFLOOR_TERMINAL_BROWSER_OFF
-//	  (this lane's own gate) or THEFLOOR_NO_TERMINAL_BROWSER
-//	  (wave 70's documented `o`-lane gate — one zenbu off-switch contract,
-//	  both spellings honored so an armed member is never surprised)
-//	AND the lane is explicitly OPTED IN: THEFLOOR_ZENBU_LANE=1
-//	  (the wave-85 default-off pivot — the embedded lane is RETAINED but
-//	  opt-in; headless screenshots are the default premium path now)
-//	→ BrowserLaneZenbu; every miss → BrowserLaneText.
-//
-// THE REASON RESOLVE (ResolveBrowserLaneReasonFrom — the same gates in
-// the same order, PLUS the WHY): a text-lane resolve never stays silent
-// anymore — the pane reads the memoized verdict's reason class (premium /
-// opt-in-off / binary-missing / terminal-unsupported / kill-switch, the
-// kill-switch AND opt-in-off classes naming WHICH var is in play) and
-// paints ONE dim hint row
-// under the location bar (the starter card wears it too), so the member
-// sees the lane's reason at the moment of disappointment instead of
-// guessing terminal-browser was never integrated.
-//
-// THE EMBED — the EXACT terminal.go seam reused, no third tty layer: the
-// child spawns on a creack/pty PTY (pty.StartWithSize — Setsid+Setctty,
-// the child is its own pgroup leader) with stdout/stderr painting INTO
-// the pane's embedded terminal model (term.Grid + term.Scrollback, the
-// same pair TermPanel paints from), and ZenbuSession satisfies the
-// panel's termSess contract so the browser tab drives it through
-// TermPanel's paint/key path verbatim (ctrl+space opt-in capture forwards
-// key bytes through Write — the tab owns the toggle, this file owns the
-// pipe). term.Spawn itself is shell-locked (`<shell> -i`), so the command
-// spawn lives here against the SAME primitives; a term-level
-// SpawnCommand can absorb it later without touching the contract.
-//
-// KEYS / CHROME while premium runs: the location bar collapses to the
-// top-only strip "▸ zenbu terminal-browser · <url>" and the lane badge
-// flips to " zenbu "; on ANY exit the pane is back to the text-mode
-// location bar and the " text " badge.
-//
-// FALLBACK (exact): a non-zero exit OR an early exit (< zenbuEarlyExit,
-// 300ms) latches the text lane for THAT url with the dim note
-// "zenbu exited (<code>) — falling back to text mode" (a spawn failure
-// wears 127, the POSIX not-found code). Text-mode URL state persists —
-// the current url + the visited history survive the drop untouched (no
-// re-fetch: this layer never fetches at all). A clean long-run exit
-// (the member quit the browser) returns to text mode silently.
-//
-// LIFECYCLE (the member's keep-alive ruling — the page is "always
-// shown"): leaving the browser tab (ctrl+b to the floor, the pane's
-// q/esc) FREEZES the premium child instead of killing it — the splitter
-// parks FIRST (a CONSUMPTION PAUSE, never a reset: the in-flight APC
-// tail + open chunk chain are PRESERVED in the splitter's buffers —
-// zero store/grid/scrollback mutations while suspended — and any byte
-// the still-running child writes before the stop takes effect lands in
-// the pending buffer, never the grid), the frame-splice registry clears
-// (the wrapper's a=d — the floor never shows the page), and ONLY THEN
-// the process group is SIGSTOPped (CPU off; the PTY's kernel buffer
-// backpressures the child naturally). The image store RETAINS the
-// latest joined frame. Returning THAWS the SAME child (SIGCONT — the
-// PID never changes across a flip, one backgrounded Electron's RAM is
-// the accepted cost): the preserved pending chain's tail COMPLETES it
-// into a valid frame (a mid-chain SIGSTOP is the common case at ~2fps —
-// resetting at the freeze dropped the chain's HEAD and the resumed tail
-// painted the grid with raw base64: the production freeze-leak), and
-// the retained frame re-emits through the frame-splice wrapper on the
-// very next flush: the member sees the last painted page INSTANTLY,
-// before the child emits a byte. The KILL paths are unchanged: office
-// quit / lane Close, a fresh OpenURL (kill + spawn fresh), and the
-// early-exit fallback still group-SIGKILL + bounded-reap
-// (zenbuKillGrace, opencode.go's stopKillGrace discipline) + delete the
-// images + RESET the splitter exactly as before (a dead child's chain
-// never completes); a child found DEAD at the thaw (murdered while
-// frozen) resets the splitter first, then is observed by Poll and rides
-// the existing fallback. Close is idempotent.
+// Browser graphics support shared by the built-in screenshot renderer.
+// The external terminal-browser process is retired. Compatibility interfaces
+// remain for the graphics parser and frame registry, but no resolver probes
+// or starts the removed executable.
 package panels
 
 import (
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -99,7 +17,6 @@ import (
 	"github.com/creack/pty"
 
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
-	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/term"
 )
 
@@ -150,7 +67,7 @@ var zenbuLookPath = exec.LookPath
 // ResolveBrowserLane — the browser tab's lane, live-read (fresh env +
 // PATH probe; callers wanting the per-boot memo use a
 // BrowserLaneResolver).
-func ResolveBrowserLane() BrowserLane { return ResolveBrowserLaneFrom(browserLaneEnv, zenbuLookPath) }
+func ResolveBrowserLane() BrowserLane { return BrowserLaneText }
 
 // BrowserLaneReason — WHY the lane resolved the way it did (the pane's
 // hint-row class; the gate that missed, in the resolve's own precedence:
@@ -181,6 +98,7 @@ const (
 	// (BrowserLaneOptInEnv), the killSwitchVar-style passthrough the hint
 	// renderer consumes.
 	BrowserLaneOptInOff
+	BrowserLaneRemoved
 )
 
 // String — the reason word for tests/notices.
@@ -196,6 +114,8 @@ func (r BrowserLaneReason) String() string {
 		return "kill-switch"
 	case BrowserLaneOptInOff:
 		return "opt-in-off"
+	case BrowserLaneRemoved:
+		return "removed"
 	}
 	return "unknown"
 }
@@ -203,65 +123,13 @@ func (r BrowserLaneReason) String() string {
 // ResolveBrowserLaneReason — the live-read reasoned resolve (fresh env +
 // PATH probe; callers wanting the per-pane memo use a BrowserLaneResolver).
 func ResolveBrowserLaneReason() (BrowserLane, BrowserLaneReason, string) {
-	return ResolveBrowserLaneReasonFrom(browserLaneEnv, zenbuLookPath)
+	return BrowserLaneText, BrowserLaneRemoved, ""
 }
 
-// browserLaneEnv routes this package's product-scoped settings through the
-// canonical accessor while leaving terminal-detection inputs untouched.
-func browserLaneEnv(name string) string {
-	switch name {
-	case BrowserLaneOffEnv:
-		return config.Env("TERMINAL_BROWSER_OFF")
-	case TerminalBrowserOffEnv:
-		return config.Env("NO_TERMINAL_BROWSER")
-	case BrowserLaneOptInEnv:
-		return config.Env("ZENBU_LANE")
-	default:
-		return os.Getenv(name)
-	}
-}
-
-// ResolveBrowserLaneReasonFrom — the pure reasoned core
-// (DetectImageSupportFrom's shape: env + probe injected, the matrix a
-// shell-out-free table). The SAME gates as ResolveBrowserLaneFrom (which
-// now delegates here) in the SAME precedence, plus the reason class and —
-// for the kill-switch and opt-in-off classes — WHICH var is in play:
-//
-//  1. a kill-switch reads "1" (BrowserLaneOffEnv first, then
-//     TerminalBrowserOffEnv) → text + BrowserLaneKillSwitch + the var name;
-//  2. the host is NOT kitty-capable per the detect layer's OWN truth
-//     table (DetectImageSupportFrom != KittyLane — ghostty/kitty are the
-//     lane; tmux folds out, the iterm family is a different protocol and
-//     a dead-end here) → text + BrowserLaneNoTerminal (the probe never
-//     fires on a non-kitty host — the historic discipline);
-//  3. the probe finds no `terminal-browser` binary → text +
-//     BrowserLaneNoBinary;
-//  4. terminal AND binary both qualify but BrowserLaneOptInEnv does not
-//     read "1" (unset, "0", anything else — the wave-85 default-off
-//     pivot) → text + BrowserLaneOptInOff + BrowserLaneOptInEnv;
-//
-// every gate passed → BrowserLaneZenbu + BrowserLanePremium. (The class
-// precedence is kill-switch > opt-in-off > terminal > binary > premium:
-// opt-in-off can only fire when terminal+binary both qualify, so its
-// position against the two earlier classes is never observable — only
-// the kill-switch's precedence over it is.)
-func ResolveBrowserLaneReasonFrom(env func(string) string, lookPath func(string) (string, error)) (BrowserLane, BrowserLaneReason, string) {
-	if strings.TrimSpace(env(BrowserLaneOffEnv)) == "1" {
-		return BrowserLaneText, BrowserLaneKillSwitch, BrowserLaneOffEnv
-	}
-	if strings.TrimSpace(env(TerminalBrowserOffEnv)) == "1" {
-		return BrowserLaneText, BrowserLaneKillSwitch, TerminalBrowserOffEnv
-	}
-	if DetectImageSupportFrom(env) != KittyLane {
-		return BrowserLaneText, BrowserLaneNoTerminal, ""
-	}
-	if _, err := lookPath("terminal-browser"); err != nil {
-		return BrowserLaneText, BrowserLaneNoBinary, ""
-	}
-	if strings.TrimSpace(env(BrowserLaneOptInEnv)) != "1" {
-		return BrowserLaneText, BrowserLaneOptInOff, BrowserLaneOptInEnv
-	}
-	return BrowserLaneZenbu, BrowserLanePremium, ""
+// Kept for embedded callers: legacy environment flags cannot revive the
+// retired process, and the supplied binary lookup is deliberately never used.
+func ResolveBrowserLaneReasonFrom(_ func(string) string, _ func(string) (string, error)) (BrowserLane, BrowserLaneReason, string) {
+	return BrowserLaneText, BrowserLaneRemoved, ""
 }
 
 // ResolveBrowserLaneFrom — the pure lane-only core, kept for the existing
@@ -411,72 +279,10 @@ type ZenbuSession struct {
 // OUTER markers for its kitty lane, which os.Environ carries; the exec
 // package's last-wins dedup puts the PTY's TERM on top, same as
 // term.Spawn).
+// Retained as an internal compatibility seam for the graphics controller.
+// The external browser package is no longer installed, probed, or spawned.
 func newZenbuSession(url string, cols, rows int) (*ZenbuSession, error) {
-	if cols < 2 {
-		cols = 80
-	}
-	if rows < 1 {
-		rows = 24
-	}
-	cmd := exec.Command("terminal-browser", "open", url)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
-	mf, err := pty.StartWithSize(cmd, &pty.Winsize{
-		Rows: uint16(rows),
-		Cols: uint16(cols),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("zenbu: spawn terminal-browser: %w", err)
-	}
-	s := &ZenbuSession{
-		url:     url,
-		cmd:     cmd,
-		mf:      mf,
-		sb:      term.NewScrollback(0), // 0 → term's defaultScrollback
-		grid:    term.NewGrid(cols, rows),
-		images:  newZenbuImageStore(),
-		started: time.Now(),
-		alive:   true,
-		code:    -1,
-	}
-	// FIX B: the image store knows the pane's body box from the PTY's
-	// first byte — every re-emitted frame carries c=cols,r=rows so the
-	// outer terminal SCALES the image to the pane (the child sends no
-	// c=/r=; kitty's native-pixel default painted the wrong size).
-	s.images.setBodyBox(cols, rows)
-	// the reader loop (term.Session.startReader's twin + the kitty
-	// passthrough): the stream SPLITTER (browser_lane_kitty.go) extracts
-	// the child's kitty graphics APCs into the image store, and every
-	// other byte lands in BOTH the raw scrollback and the live screen
-	// model (the base64 payloads NEVER reach the grid — they re-emit to
-	// the outer terminal at RegionView time instead); the PTY going away
-	// flips Alive even if Wait is still reaping.
-	split := newKittyStream(io.MultiWriter(s.sb, s.grid), s.grid, s.images)
-	s.split = split
-	go func() {
-		_, _ = io.Copy(split, s.mf)
-		s.mu.Lock()
-		s.alive = false
-		s.mu.Unlock()
-	}()
-	// the waiter (term.Session.waiter's twin): reap + pin the exit code
-	// and the frozen lifetime (the early-exit rule's input).
-	go func() {
-		err := s.cmd.Wait()
-		code := 0
-		if err != nil {
-			var ee *exec.ExitError
-			if errors.As(err, &ee) {
-				code = ee.ExitCode()
-			} else {
-				code = -1
-			}
-		}
-		s.mu.Lock()
-		s.alive, s.exited, s.code = false, true, code
-		s.life = time.Since(s.started)
-		s.mu.Unlock()
-	}()
-	return s, nil
+	return nil, errors.New("the external terminal browser has been removed")
 }
 
 // spawnZenbuSession — the spawn seam (terminal.go's spawnTermSession

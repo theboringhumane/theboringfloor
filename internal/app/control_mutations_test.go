@@ -43,6 +43,19 @@ func TestControlMutationWhitespaceSendIsNoop(t *testing.T) {
 	}
 }
 
+func TestControlMutationSubstantialRequestPlans(t *testing.T) {
+	b := &agentRecBackend{}
+	m := New(b, nil)
+	cmd := m.applyControlMutations(state.Event{Kind: state.EvControlSend, ControlText: "Build a complete ticket management system"})
+	if m.agentMode != agentModePlan || cmd == nil {
+		t.Fatal("remote request skipped planning")
+	}
+	cmd()
+	if len(b.agentCalls) != 1 || b.agentCalls[0].agent != agentModePlan {
+		t.Fatal("remote request used build routing")
+	}
+}
+
 func TestControlMutationStopAbortsAndNotices(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	b := &controlMutationBackend{}

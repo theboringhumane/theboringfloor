@@ -262,10 +262,10 @@ func TestPlanEditorFocusedVsReadOnly(t *testing.T) {
 	if !strings.Contains(v, "PLAN · markdown (1 mermaid diagram)") {
 		t.Fatalf("header must label PLAN + the diagram count, got first line %q", strings.Split(v, "\n")[0])
 	}
-	if !strings.Contains(v, "ctrl+x approve → build · ctrl+p exits") {
+	if !strings.Contains(v, "ctrl+x twice approve → build · ctrl+p exits") {
 		t.Fatalf("header must carry the key hints, got first line %q", strings.Split(v, "\n")[0])
 	}
-	if !strings.Contains(v, "click to edit · ctrl+x approve → build · ctrl+p exits") {
+	if !strings.Contains(v, "click to edit · ctrl+x twice approve → build · ctrl+p exits") {
 		t.Fatalf("UNFOCUSED plan-mode footer hint missing, got last line %q", last(v))
 	}
 	// glamour actually formatted the markdown (heading restyled, so the raw

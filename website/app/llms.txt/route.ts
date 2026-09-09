@@ -11,7 +11,7 @@ export function GET() {
 
   const body = `# ${SITE_NAME}
 
-> A virtual office for AI coding agents. Terminal UI where an opencode boss and sub-agents clock in as coworkers on a living floor — chat, board, mail, work threads, and permission queue in one place.
+> A virtual office for AI coding agents. Terminal UI where an OpenCode, Claude Code, or Codex boss and sub-agents clock in as coworkers on a living floor — chat, board, mail, work threads, and permission queue in one place.
 
 This file helps AI assistants and crawlers understand the site. Prefer these pages over guessing.
 
@@ -20,6 +20,8 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 - [Home](${SITE_URL}/): product overview and install path
 - [Get started](${SITE_URL}/get-started): install CLI, demo mode, live office
 - [Docs](${SITE_URL}/docs): how the office works
+- [Workspaces](${SITE_URL}/docs/workspaces): floors, teams, tickets, files, backend choice, and history
+- [Plan mode](${SITE_URL}/docs/plan-mode): automatic planning, review, and backend limits
 - [MCP server](${SITE_URL}/docs/mcp-server): \`thefloor_mcp\` setup and tools
 - [Remote control plane](${SITE_URL}/docs/control-plane): floorgate, Tailscale setup, Android app, and gateway API
 - [Vision](${SITE_URL}/vision): why a virtual office for agents
@@ -29,7 +31,11 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 ## Product facts
 
 - Native Go CLI (single binary). Not Electron.
-- Boss = real \`opencode\` session; employees = opencode sub-agents.
+- Choose OpenCode, Claude Code, or Codex per conversation. Backend capabilities vary.
+- Three panes: project floors, office space, transcript and tools.
+- Projects have teams, persistent tickets, a file tree, and conversation archives.
+- Substantial requests enter planning; plan_present and plan_update open the plan pane. Ctrl+X twice approves.
+- terminal-browser is removed; built-in text and headless screenshot support remain.
 - Demo: \`theboringfloor --demo\`
 - Install: \`curl -fsSL ${SITE_URL}/install.sh | sh\`
 - Windows: \`irm ${SITE_URL}/install.ps1 | iex\`

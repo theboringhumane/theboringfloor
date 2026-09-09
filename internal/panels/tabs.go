@@ -1,5 +1,5 @@
-// Package panels — the right-hand sidebar tab strip and its seven tab
-// panels: chat, terminal, agents, board, mail, activity, git (git rides
+// Package panels — the right-hand sidebar tab strip and its eight tab
+// panels: chat, terminal, agents, board, mail, activity, git, files (git rides
 // index 6 — the activity index 5 is hardcoded app-side, so git could only
 // append past it). The browser is NOT one of them: it lives on the LEFT
 // pane's floor|browser slot (app/browser.go owns the switcher; the pane
@@ -8,7 +8,7 @@
 // tabs.go — the strip itself: a one-row tab bar (active tab accent bg,
 // others gray) above a rounded-border panel holding the active tab's
 // content. Keys (handled by the app via the keymap): tab/shift+tab cycles,
-// 1..7 jumps straight to a tab. A compact display mode shortens the tab
+// 1..8 jumps straight to a tab. A compact display mode shortens the tab
 // labels to single letters (/compact — the canonical Title() is untouched,
 // so SetActiveByTitle keeps matching the full names).
 package panels
@@ -68,6 +68,7 @@ var compactLabels = map[string]string{
 	"mail":     "m",
 	"activity": "x",
 	"git":      "g",
+	"files":    "p",
 }
 
 // SetCompact switches the tab-bar label density (the app re-calls it on
@@ -108,6 +109,9 @@ func (t *Tabs) SetActiveByTitle(title string) bool {
 
 // SetSize sizes the whole strip; every tab gets the bordered content area.
 func (t *Tabs) SetSize(w, h int) {
+	if t.w == w && t.h == h {
+		return
+	}
 	t.w, t.h = w, h
 	// 1 row tab bar, box border eats 2 rows + 2 cols
 	cw, ch := w-2, h-1-2
@@ -303,4 +307,12 @@ func fitPlain(s string, w int) string {
 		s += " "
 	}
 	return s
+}
+
+func (t *Tabs) Append(tabs ...Tab) { t.tabs = append(t.tabs, tabs...); t.w = 0 }
+func (t *Tabs) Replace(i int, tab Tab) {
+	if i >= 0 && i < len(t.tabs) {
+		t.tabs[i] = tab
+		t.w = 0
+	}
 }

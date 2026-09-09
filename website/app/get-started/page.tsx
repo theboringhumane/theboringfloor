@@ -22,7 +22,7 @@ export default function GetStartedPage() {
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-pretty leading-relaxed text-muted-foreground">
               Install the native Go CLI, take a tour in demo mode, then run a live office with a
-              real boss and working sub-agents — on opencode or Claude Code.
+              real boss and working sub-agents — on OpenCode, Claude Code, or Codex.
             </p>
 
             <div className="mx-auto mt-10 max-w-md border border-border bg-card p-6 text-left font-mono text-xs leading-relaxed">
@@ -34,6 +34,9 @@ export default function GetStartedPage() {
               <p>theboringfloor</p>
               <p className="mt-3 text-muted-foreground"># same office, on your Claude Code CLI</p>
               <p>theboringfloor --backend claudecode</p>
+              <p className="mt-3 text-muted-foreground"># or use your Codex CLI login</p>
+              <p>codex login</p>
+              <p>theboringfloor --backend codex</p>
               <p className="mt-3 text-muted-foreground"># or attach to an existing opencode server</p>
               <p>theboringfloor --server http://127.0.0.1:4096</p>
             </div>
@@ -65,7 +68,7 @@ export default function GetStartedPage() {
             </div>
             <div className="bg-background p-5">
               <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">03 / Resume</p>
-              <p className="mt-3 text-sm leading-relaxed">Your last chat returns automatically. Use <span className="font-mono text-foreground">--session</span> to choose another.</p>
+              <p className="mt-3 text-sm leading-relaxed">Ctrl+E opens project floors; Ctrl+N starts a conversation with a backend and team. Your last chat returns automatically. Use <span className="font-mono text-foreground">--session</span> to choose another.</p>
             </div>
           </div>
 

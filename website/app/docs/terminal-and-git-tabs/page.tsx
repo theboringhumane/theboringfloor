@@ -60,7 +60,7 @@ export default function TerminalAndGitTabsPage() {
               A real shell, mounted in the office wall.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              Two of the sidebar&apos;s seven tabs are not telemetry. The terminal tab is
+              Two of the sidebar&apos;s eight tabs are not telemetry. The terminal tab is
               a PTY running your <Code>$SHELL</Code>; the git tab is a live repo cockpit
               with a colored diff viewer. Both behave the way the tools you already had
               do — the office just stopped making you leave for them.
@@ -100,7 +100,7 @@ export default function TerminalAndGitTabsPage() {
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               By default the terminal does <em>not</em> grab the keyboard. Released is
               the default state: on the terminal tab the office keys keep working —{' '}
-              <Code>tab</Code>, <Code>shift+tab</Code>, <Code>1..7</Code> and{' '}
+              <Code>tab</Code>, <Code>shift+tab</Code>, <Code>1..8</Code> and{' '}
               <Code>q</Code> still do office things. <Code>ctrl+space</Code> is the one
               capture toggle and it flips both ways: dive in and every key goes to the
               shell (<Code>tab</Code> completes, <Code>shift+tab</Code> sends the

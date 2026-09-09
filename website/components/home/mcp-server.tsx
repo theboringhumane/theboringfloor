@@ -46,7 +46,7 @@ export function McpServer() {
           </h2>
           <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
             <span className="font-mono text-foreground">thefloor_mcp</span> is the local MCP
-            server shipped with the office. A configured OpenCode or Claude Code agent can present
+            server shipped with the office. A configured OpenCode, Claude Code, or Codex agent can present
             plans, read the approved plan and recent transcript, search this project’s recent tail,
             and check office status. The two plan-writing tools require a running office: without
             one, they return an error. They only present or update drafts; the member reviews, edits,

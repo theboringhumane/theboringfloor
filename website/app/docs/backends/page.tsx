@@ -8,14 +8,14 @@ import { SITE_URL } from '@/lib/site'
 export const metadata: Metadata = {
   title: 'Backends | theboringfloor',
   description:
-    'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
+    'OpenCode, Claude Code, and Codex: choose a backend per conversation, preserve its history, and plan substantial work before implementation.',
   alternates: {
     canonical: '/docs/backends',
   },
   openGraph: {
     title: 'Backends · theboringfloor',
     description:
-      'opencode server-attach vs the claudecode stream-json child — picking, pinning, and swapping the LLM transport mid-flight, and the one manager charter that primes either boss.',
+      'OpenCode, Claude Code, and Codex: choose a backend per conversation, preserve its history, and plan substantial work before implementation.',
     url: `${SITE_URL}/docs/backends`,
     type: 'website',
   },
@@ -74,8 +74,8 @@ export default function BackendsPage() {
               The office doesn&apos;t care which brain the boss has.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              Two real transports today — opencode over a live server, or Claude Code as a
-              per-turn child process. Same floor, same board, same queue; only the wiring under
+              Three transports — OpenCode over a live server, Claude Code on a persistent
+              CLI stream, and Codex through JSONL turns. Same floor, same board, same queue; only the wiring under
               the chat changes.
             </p>
           </div>
@@ -84,9 +84,9 @@ export default function BackendsPage() {
         <section className="border-b border-border">
           <div className="mx-auto max-w-7xl px-6 py-20">
             <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              The two transports, side by side
+              Choose your conversation backend
             </h2>
-            <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2">
+            <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
               <div className="flex flex-col gap-3 bg-background p-8">
                 <h3 className="text-sm font-medium text-foreground">opencode (default)</h3>
                 <p className="text-sm leading-relaxed text-muted-foreground">
@@ -104,7 +104,7 @@ export default function BackendsPage() {
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   The office runs the{' '}
                   <code className="font-mono text-xs text-foreground">claude</code> CLI in headless
-                  stream-json mode as a child process — one process per turn, streamed line by
+                  stream-json mode as a persistent child process, streamed line by
                   line into the same chat surface. Needs the claude CLI on PATH; absent, the office
                   warns instead of failing.
                 </p>
@@ -112,9 +112,14 @@ export default function BackendsPage() {
                   backend.name: &quot;claudecode&quot;
                 </span>
               </div>
+              <div className="flex flex-col gap-3 bg-background p-8">
+                <h3 className="text-sm font-medium text-foreground">Codex</h3>
+                <p className="text-sm leading-relaxed text-muted-foreground">Uses your installed Codex CLI, saved login, and model defaults. JSONL turns stream messages, tool activity, file changes, and usage. Later turns resume the exact saved thread.</p>
+                <code className="mt-auto pt-3 text-xs">theboringfloor --backend codex</code>
+              </div>
             </div>
             <p className="mt-4 max-w-2xl font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Also on the menu: Codex (Coming Soon) · Cursor (Coming Soon) · Pi (Coming Soon)
+              Ctrl+N → title, team, backend. Saved conversations retain their original backend.
             </p>
           </div>
         </section>
@@ -280,8 +285,10 @@ export default function BackendsPage() {
             <SectionTag>What this doesn&apos;t do yet</SectionTag>
             <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
               Role models are best-effort — sub-agent model dispatch is opencode&apos;s call, not
-              the office&apos;s. And Codex, Cursor, and Pi remain &quot;(Coming Soon)&quot; tags;
-              the two transports above are the whole menu today.
+              the office&apos;s. Codex uses its CLI model defaults, workspace sandbox for build,
+              and read-only sandbox for plan turns. Run <code>codex login</code> first.
+              Worker discovery, model selection, and remote-history paging vary by backend.
+              Cursor and Pi are not supported transports.
             </p>
           </div>
         </section>

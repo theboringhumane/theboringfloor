@@ -41,14 +41,14 @@ const tools: Tool[] = [
   {
     name: 'plan_present',
     args: '{ text }',
-    does: 'Present a plan draft in the plan pane.',
+    does: 'Enter plan mode and show a draft for review. Does not approve or execute it.',
     availability: 'Live office required.',
     example: 'plan_present({ text: "# Goal\\nReview this plan." })',
   },
   {
     name: 'plan_update',
     args: '{ text }',
-    does: 'Update the plan draft in the plan pane.',
+    does: 'Enter plan mode and show a revised draft. Replaces the draft, including draft edits.',
     availability: 'Live office required.',
     example: 'plan_update({ text: "# Goal\\nReview the revised plan." })',
   },

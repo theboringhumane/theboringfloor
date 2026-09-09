@@ -34,8 +34,8 @@ const cards = [
   },
   {
     id: '07',
-    title: 'A browser, no browser engine',
-    body: 'The browser tab renders pages as text and link rows on any terminal — no headless Chromium, no runtime. On kitty-capable terminals an installed zenbu terminal-browser embeds the real page in the pane; https pages open by default; plain http beyond localhost stays off unless you allow it.',
+    title: 'Built-in browsing',
+    body: 'The built-in browser renders pages as text and link rows. With Chrome installed, kitty-capable terminals can also show headless screenshots. External links open in your system browser; no terminal-browser package is required.',
   },
 ]
 

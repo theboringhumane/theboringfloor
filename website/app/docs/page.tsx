@@ -37,10 +37,11 @@ const groups: { title: string; items: DocLink[] }[] = [
   {
     title: 'Core',
     items: [
+      { href: '/docs/workspaces', name: 'Floors & workspaces', promise: 'Project floors, teams, tickets, files, and a backend for each conversation.' },
       {
         href: '/docs/backends',
         name: 'Backends',
-        promise: 'opencode server-attach or the claudecode stream-json child — pick and swap the brain.',
+        promise: 'OpenCode, Claude Code, and Codex — choose a backend for each conversation.',
       },
       {
         href: '/docs/chat-and-threads',
@@ -90,7 +91,7 @@ const groups: { title: string; items: DocLink[] }[] = [
       {
         href: '/docs/browser-tab',
         name: 'Browser tab',
-        promise: 'Web pages as navigable text rows on any terminal; a real embedded browser on kitty.',
+        promise: 'Built-in text navigation, headless screenshots, and your system browser.',
       },
       {
         href: '/docs/layout-themes-power',
@@ -118,8 +119,8 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
       <img
         src={src}
         alt={alt}
-        width={5086}
-        height={2896}
+        width={1548}
+        height={1014}
         loading="lazy"
         className="shot-img block h-auto w-full"
       />
@@ -145,7 +146,7 @@ export default function DocsPage() {
             </p>
             <div className="mt-12">
               <Shot
-                src="/shots/docs/office-overview.png"
+                src="/shots/workspaces/transcript.webp"
                 alt="theboringfloor overview: the office floor, chat work thread, and panel sidebar"
                 caption="theboringfloor — floor, chat, and panels"
               />
@@ -190,8 +191,7 @@ export default function DocsPage() {
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>The honest bit</SectionTag>
             <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              These pages document what ships today. Codex, Cursor, and Pi transports are still
-              marked &quot;(Coming Soon)&quot; — the{' '}
+              OpenCode, Claude Code, and Codex are supported. Capabilities vary by transport — the{' '}
               <Link href="/docs/backends" className="text-foreground underline underline-offset-4 hover:text-accent">
                 backends page
               </Link>{' '}

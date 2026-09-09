@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '/vision', priority: 0.8, changeFrequency: 'monthly' as const },
     { path: '/docs', priority: 0.8, changeFrequency: 'weekly' as const },
     { path: '/docs/getting-started', priority: 0.8, changeFrequency: 'weekly' as const },
+    { path: '/docs/workspaces', priority: 0.9, changeFrequency: 'weekly' as const, lastModified: new Date('2026-09-10') },
     { path: '/docs/backends', priority: 0.8, changeFrequency: 'weekly' as const },
     { path: '/docs/mcp-server', priority: 0.7, changeFrequency: 'weekly' as const },
     { path: '/docs/control-plane', priority: 0.7, changeFrequency: 'weekly' as const },
@@ -32,7 +33,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ].map(({ path, priority, changeFrequency, lastModified }) => ({
     url: `${SITE_URL}${path}`,
-    lastModified: lastModified ?? new Date('2026-08-24'),
+    lastModified: lastModified ?? new Date(path === '' || path.startsWith('/docs') || path === '/get-started' ? '2026-09-10' : '2026-08-24'),
     changeFrequency,
     priority,
   }))

@@ -508,7 +508,7 @@ export function ShaderBackground({ className }: { className?: string }) {
     }
     document.addEventListener("visibilitychange", onVisibilityChange)
 
-    function render(now: number) {
+    const render = (now: number) => {
       raf = 0
       if (disposed || !visible || !inView) return
       const dt = lastNow === null ? 0 : Math.min((now - lastNow) / 1000, 0.1)

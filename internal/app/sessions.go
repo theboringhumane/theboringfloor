@@ -83,6 +83,8 @@ const (
 
 // SessionFile — the on-disk office session for ONE working directory.
 type SessionFile struct {
+	Title     string `json:"title,omitempty"`
+	Team      string `json:"team,omitempty"`
 	Dir       string `json:"dir"`
 	PrimaryID string `json:"primaryID"`
 	// Backend names the transport the CURRENT PrimaryID belongs to
@@ -205,7 +207,7 @@ func (sf *SessionFile) primaryIDFor(name string) string {
 	if id := sf.PrimaryIDs[name]; id != "" {
 		return id
 	}
-	if name == config.BackendNameDefault {
+	if sf.Backend == name || (sf.Backend == "" && name == config.BackendNameDefault) {
 		return sf.PrimaryID
 	}
 	return ""
@@ -281,7 +283,7 @@ func Snapshot(dir, primaryID string, st state.OfficeState) SessionFile {
 // directory cannot tear the file; last rename wins.
 func SaveSession(dir string, sf SessionFile) error {
 	path := SessionPath(dir)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
 	// Keep direct SessionFile writers (including migrations) inside the same
@@ -294,9 +296,10 @@ func SaveSession(dir string, sf SessionFile) error {
 	}
 	tmp := filepath.Join(filepath.Dir(path),
 		fmt.Sprintf(".session-%d-%d.tmp", os.Getpid(), time.Now().UnixNano()))
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
+	defer os.Remove(tmp)
 	return os.Rename(tmp, path)
 }
 
@@ -376,6 +379,12 @@ type btwSwapBackend interface {
 // sessions, so they return as seated, idle desks — board + mail back. It
 // returns the number of board rows stalled by the dead previous process.
 func (m *Model) hydrateSession(sf *SessionFile) int {
+	if m.conversationTitle == "" {
+		m.conversationTitle = sf.Title
+	}
+	if m.conversationTeam == "" {
+		m.conversationTeam = sf.Team
+	}
 	// Transcript: drop Pending:true entries — they are bubbles of a turn
 	// the previous process died inside; restoring one would show a stuck
 	// "typing…" placeholder that nothing will ever complete. Drop legacy
@@ -462,7 +471,7 @@ func (m *Model) hydrateSession(sf *SessionFile) int {
 //     on a goroutine — the UI NEVER blocks on save.
 //   - force=true  — the quit path: SYNCHRONOUS, because an async write
 //     would lose the race with process exit. Bounded by the on-disk caps
-//     (~200 chat + ~50 + ~50 entries), so it is small and fast.
+//     (200-entry resume snapshot plus a bounded conversation archive).
 func (m *Model) persistOfficeSession(force bool) {
 	if m.st.Mode != state.ModeLive || m.sessDir == "" {
 		return
@@ -478,6 +487,7 @@ func (m *Model) persistOfficeSession(force bool) {
 	st, primaryID := m.officeSessionState(primaryID)
 	dir := m.sessDir
 	sf := Snapshot(dir, primaryID, st)
+	sf.Title, sf.Team = m.conversationTitle, m.conversationTeam
 	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
 	sf.ApprovedPlanText = m.approvedPlanText()
 	// Per-backend pins: the active transport's session stamps
@@ -485,11 +495,18 @@ func (m *Model) persistOfficeSession(force bool) {
 	// a /backend swap + quit never clobbers them (schema note on
 	// SessionFile). pre-schema files simply gain the map.
 	mergeBackendPins(&sf, dir, m.backendName(), primaryID)
+	if m.sessionWriter == nil {
+		m.sessionWriter = &sessionWriter{}
+	}
+	writer := m.sessionWriter
+	seq := writer.reserve()
+	full := mergeArchiveChat(nil, st.Chat)
+	title, team := m.conversationTitle, m.conversationTeam
 	if force {
-		_ = SaveSession(dir, sf) // quit path — best effort, bounded + sync
+		writer.save(seq, dir, sf, full, title, team)
 		return
 	}
-	go func() { _ = SaveSession(dir, sf) }() // async — UI never blocks on disk
+	go writer.save(seq, dir, sf, full, title, team)
 }
 
 // officeSessionState returns the state that belongs to the main office for a
@@ -526,12 +543,9 @@ func (m *Model) persistOfficePin(primaryID string) {
 		return
 	}
 	m.sessLast = time.Now()
-	st, primaryID := m.officeSessionState(primaryID)
-	sf := Snapshot(m.sessDir, primaryID, st)
-	sf.PlanText = m.planText() // plan editor buffer, "" when pristine
-	sf.ApprovedPlanText = m.approvedPlanText()
-	mergeBackendPins(&sf, m.sessDir, m.backendName(), primaryID)
-	_ = SaveSession(m.sessDir, sf) // quit path — best effort, bounded + sync
+	// Keep the outgoing archive under its actual id. The explicit -s pin
+	// selects the requested archive on the relaunched boot.
+	m.persistOfficeSession(true)
 }
 
 // PrimarySessionID — the office's current primary ("boss") session id,
@@ -555,6 +569,19 @@ func (m *Model) PrimarySessionID() string {
 // always-latest-wins). In demo mode only the local clear happens (no
 // server-side session exists).
 func (m *Model) newOffice() {
+	if why := m.backendSwapBlockers(); len(why) > 0 {
+		m.noticeErr("Finish or stop the current turn before starting a conversation")
+		return
+	}
+	m.persistOfficeSession(true)
+	if ob, ok := m.backend.(officeSpawnBackend); ok && m.st.Mode == state.ModeLive {
+		if _, err := ob.NewOffice(); err != nil {
+			m.noticeErr("/new: " + err.Error())
+			return
+		}
+	}
+	m.conversationTitle, m.conversationTeam = "", ""
+	m.cfg.ConversationTeam = ""
 	m.st.Chat = nil
 	m.st.Tasks = nil
 	m.st.Mails = nil
@@ -573,17 +600,9 @@ func (m *Model) newOffice() {
 	}
 	m.restoredPlan = false // /new's canvas is fresh — nothing "restored"
 	m.planSendPending = 0  // and no prior turn's completion follows us in
-	if tb, ok := m.team(); ok {
-		// Hold is cleared first: NewOffice resolves the fresh session
-		// eagerly, so the respawn latch cannot survive into a later Send.
-		_ = tb.ResetPrimary(true)
-	}
-	if ob, ok := m.backend.(officeSpawnBackend); ok && m.st.Mode == state.ModeLive {
-		if _, err := ob.NewOffice(); err != nil {
-			m.noticeErr("/new: fresh office session failed: " + err.Error())
-			return
-		}
-	}
+	m.planAutoSkipOnce = false
+	m.planRequestDraft = ""
+
 	m.tabs.SetState(m.st)
 	m.notice(NewOfficeNotice)
 }

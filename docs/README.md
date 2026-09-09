@@ -4,6 +4,8 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 
 **Site:** [theboringfloor.pages.dev/docs](https://boringfloor.com/docs)
 
+[Project floors and workspaces](workspaces.md) — three panes, teams, tickets, files, conversation archives, and Codex.
+
 ## Manual
 
 ### Install & setup
@@ -32,7 +34,7 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 | Page | |
 |---|---|
 | [Terminal & git tabs](https://boringfloor.com/docs/terminal-and-git-tabs) | PTY shell + live git |
-| [Browser tab](https://boringfloor.com/docs/browser-tab) | text lane · headless screenshots · opt-in zenbu |
+| [Browser tab](https://boringfloor.com/docs/browser-tab) | text viewer · built-in headless screenshots |
 | [Layout, themes & power](https://boringfloor.com/docs/layout-themes-power) | compact, themes, battery |
 | [Keys & slash commands](https://boringfloor.com/docs/keys-and-slash) | every binding, every `/` |
 

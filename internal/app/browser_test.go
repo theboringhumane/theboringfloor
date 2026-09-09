@@ -72,7 +72,7 @@ func ctrlB() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: 'b', Mod: te
 func TestBrowserLeftSlotRegistration(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 
 	// the right strip keeps its seven tabs; the browser is NOT one.
 	if !m.SelectTab("git") || m.ActiveTabIndex() != 6 {
@@ -82,15 +82,15 @@ func TestBrowserLeftSlotRegistration(t *testing.T) {
 		t.Fatalf("the browser must NOT ride the right strip anymore")
 	}
 	// the cycle wraps git → chat (no browser stop in the strip).
-	m.tabs.SetActive(6)
+	m.tabs.SetActive(7)
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 	if got := m.ActiveTabIndex(); got != 0 {
-		t.Fatalf("tab from git (6) → %d, want 0 (wrap to chat)", got)
+		t.Fatalf("tab from files (7) → %d, want 0 (wrap to chat)", got)
 	}
 	// and shift+tab from chat lands ON git.
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyTab, Mod: tea.ModShift}))
-	if got := m.ActiveTabIndex(); got != 6 {
-		t.Fatalf("shift+tab from chat → %d, want 6 (git)", got)
+	if got := m.ActiveTabIndex(); got != 7 {
+		t.Fatalf("shift+tab from chat → %d, want 7 (files)", got)
 	}
 	// the left slot defaults to the floor; ctrl+b flips it BOTH ways.
 	if m.LeftTabIndex() != leftTabFloor {
@@ -105,8 +105,8 @@ func TestBrowserLeftSlotRegistration(t *testing.T) {
 		t.Fatalf("ctrl+b must flip the left slot back to floor, got %d", m.LeftTabIndex())
 	}
 	// digits stay 1..7 for the right strip — the browser never jumps.
-	if got := m.keys.TabJump("8"); got != -1 {
-		t.Fatalf(`TabJump("8") = %d, want -1`, got)
+	if got := m.keys.TabJump("8"); got != 7 {
+		t.Fatalf(`TabJump("8") = %d, want 7`, got)
 	}
 	if got := m.keys.TabJump("7"); got != 6 {
 		t.Fatalf(`TabJump("7") = %d, want 6 (git)`, got)
@@ -116,7 +116,7 @@ func TestBrowserLeftSlotRegistration(t *testing.T) {
 func TestBrowserSlashOpenHappyPath(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	raw := browserFixtureURL(t)
 
 	m = runMsg(t, m, slashMsg{text: "/open " + raw})
@@ -180,7 +180,7 @@ func TestBrowserSlashOpenErrorPath(t *testing.T) {
 	defer srv.Close()
 
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/missing"})
 
 	if got := m.LeftTabIndex(); got != leftTabBrowser {
@@ -201,7 +201,7 @@ func TestBrowserSlashOpenErrorPath(t *testing.T) {
 func TestBrowserSlashOpenUsageError(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open"})
 	frame := ansi.Strip(m.Frame())
 	if !strings.Contains(frame, "/open: usage /open <url>") {
@@ -221,7 +221,7 @@ func TestBrowserSlashOpenUsageError(t *testing.T) {
 func TestBrowserLeaveReturnsToFloor(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})
 	if got := m.LeftTabIndex(); got != leftTabBrowser {
 		t.Fatalf("setup: browser slot active, got %d", got)
@@ -251,7 +251,7 @@ func TestBrowserLeaveReturnsToFloor(t *testing.T) {
 func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	page := &panels.Page{URL: "file:///x.html", Title: "Offtab"}
 	m = runMsg(t, m, panels.BrowserPageMsg{URL: "file:///x.html", Page: page})
 	if m.browser == nil {
@@ -277,7 +277,7 @@ func TestBrowserPageMsgRoutedOffTab(t *testing.T) {
 func TestBrowserSlotOwnsKeys(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + browserFixtureURL(t)})
 	if got := m.LeftTabIndex(); got != leftTabBrowser {
 		t.Fatalf("setup: browser slot active, got %d", got)
@@ -329,7 +329,7 @@ func TestBrowserEditURLThroughApp(t *testing.T) {
 	pinBrowserTextLane(t)
 	srv := browserShortURLServer(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/f"})
 	if got := m.LeftTabIndex(); got != leftTabBrowser {
 		t.Fatalf("setup: browser slot active, got %d", got)
@@ -371,7 +371,7 @@ func TestBrowserEditURLThroughApp(t *testing.T) {
 func TestBrowserEditCancelThroughApp(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	raw := browserFixtureURL(t)
 	m = runMsg(t, m, slashMsg{text: "/open " + raw})
 	before := ansi.Strip(m.Frame())
@@ -406,7 +406,7 @@ func TestBrowserOSOpenThroughApp(t *testing.T) {
 	defer restore()
 
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m = runMsg(t, m, slashMsg{text: "/open " + srv.URL + "/f"})
 	m = runMsg(t, m, shiftO())
 
@@ -447,7 +447,7 @@ func TestBrowserSlashOpenShotNoticeLatch(t *testing.T) {
 	defer restore()
 
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	raw := browserFixtureURL(t)
 	m = runMsg(t, m, slashMsg{text: "/open " + raw})
 
@@ -470,7 +470,7 @@ func TestBrowserSlashOpenShotNoticeLatch(t *testing.T) {
 func TestBrowserShotMsgNeverSettlesLatch(t *testing.T) {
 	pinBrowserTextLane(t)
 	m := New(&recBackend{}, nil)
-	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = runMsg(t, m, tea.WindowSizeMsg{Width: 180, Height: 30})
 	m.browserSlashNote = "http://x.test/" // the armed /open latch
 
 	// the render verdict lands FIRST (production races the two cmds).

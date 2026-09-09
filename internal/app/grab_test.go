@@ -632,14 +632,14 @@ func TestTerminalHintConstPinned(t *testing.T) {
 }
 
 // (l) TabJump covers 1..7 (the git tab's "7" seam) and misses outside.
-func TestTerminalGrabTabJumpOneToSeven(t *testing.T) {
+func TestTerminalGrabTabJumpOneToEight(t *testing.T) {
 	k := NewKeyMap()
-	for want, s := range []string{"1", "2", "3", "4", "5", "6", "7"} {
+	for want, s := range []string{"1", "2", "3", "4", "5", "6", "7", "8"} {
 		if got := k.TabJump(s); got != want {
 			t.Fatalf("TabJump(%q) = %d, want %d", s, got, want)
 		}
 	}
-	for _, s := range []string{"0", "8", "9", "tab", ""} {
+	for _, s := range []string{"0", "9", "10", "tab", ""} {
 		if got := k.TabJump(s); got != -1 {
 			t.Fatalf("TabJump(%q) = %d, want -1 (never a jump)", s, got)
 		}

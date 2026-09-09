@@ -59,7 +59,6 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
-	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
@@ -260,101 +259,15 @@ func (t OpenTool) String() string {
 // lane postdates the rename, so it has no legacy-spelling twin.
 const TerminalBrowserOffEnv = "THEFLOOR_NO_TERMINAL_BROWSER"
 
-// ResolveOpenTool — the next open's preferred lane, resolved FRESH per
-// call: fresh env + PATH probe at use time, so the kill-switch and an
-// install/uninstall land immediately (an `o` press is human-frequency;
-// the probe is PATH stats).
-func ResolveOpenTool() OpenTool { return ResolveOpenToolFrom(openToolEnv, openLookPath) }
-
-// ResolveOpenToolFrom — the pure core (DetectImageSupportFrom's shape:
-// env + probe injected, the matrix a shell-out-free table). ALL of:
-//
-//  1. THEFLOOR_NO_TERMINAL_BROWSER != "1" — the kill-switch
-//     consults the env FIRST: a switched-off lane is never even probed;
-//  2. a kitty-capable host: TERM_PROGRAM ghostty|kitty|wezterm or
-//     kitty's own KITTY_WINDOW_ID (image_detect.go's KittyLane classes),
-//     tmux always a miss (passthrough never guaranteed — the same
-//     conservative fold), iTerm2/Apple Terminal/VSCode a dead-end;
-//  3. the probe finds a `terminal-browser` binary.
-//
-// → OpenToolTerminalBrowser; every miss → OpenToolSystemOpen.
-func ResolveOpenToolFrom(env func(string) string, lookPath func(string) (string, error)) OpenTool {
-	if strings.TrimSpace(env(TerminalBrowserOffEnv)) == "1" {
-		return OpenToolSystemOpen
-	}
-	if !terminalBrowserHostOK(env) {
-		return OpenToolSystemOpen
-	}
-	if _, err := lookPath("terminal-browser"); err != nil {
-		return OpenToolSystemOpen
-	}
-	return OpenToolTerminalBrowser
+// ResolveOpenTool always selects the system browser. The former optional
+// executable is retired, including its injected resolver compatibility seam.
+func ResolveOpenTool() OpenTool { return OpenToolSystemOpen }
+func ResolveOpenToolFrom(_ func(string) string, _ func(string) (string, error)) OpenTool {
+	return OpenToolSystemOpen
 }
 
-// openToolEnv routes the product-scoped kill-switch through the canonical
-// accessor while leaving terminal-detection inputs untouched.
-func openToolEnv(name string) string {
-	if name == TerminalBrowserOffEnv {
-		return config.Env("NO_TERMINAL_BROWSER")
-	}
-	return os.Getenv(name)
-}
-
-// terminalBrowserHostOK — the kitty-capable host gate: tmux folds to a
-// miss FIRST (escapes would have to pass through), kitty's own window
-// marker beats TERM_PROGRAM, and only ghostty/kitty/wezterm name
-// themselves kitty-graphics speakers — everything else (iTerm2, Apple
-// Terminal, VSCode, unknowns) is a dead-end for this lane.
-func terminalBrowserHostOK(env func(string) string) bool {
-	get := func(k string) string { return strings.TrimSpace(env(k)) }
-	if get("TMUX") != "" {
-		return false
-	}
-	if get("KITTY_WINDOW_ID") != "" {
-		return true
-	}
-	switch strings.ToLower(get("TERM_PROGRAM")) {
-	case "ghostty", "kitty", "wezterm":
-		return true
-	}
-	return false
-}
-
-// terminalBrowserOpen — the candidate leg's exec: `terminal-browser open
-// <target>` (NO --split: the binary's own placement defaults; the office
-// never hijacks the member's pane layout semantics). A FILE target runs
-// with cmd.Dir = its parent dir (the office's cwd never leaks into the
-// page's relative fetches); a URL leaves Dir empty (inherits). Env and
-// stdio pass STRAIGHT THROUGH — the page paints on THIS terminal's kitty
-// lane; a discarded stdio would blind it.
-func terminalBrowserOpen(t LinkTarget) error {
-	cmd := exec.Command("terminal-browser", "open", t.Value)
-	if t.Kind == LinkFile {
-		cmd.Dir = filepath.Dir(t.Value)
-	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("terminal-browser: %w", err)
-	}
-	return nil
-}
-
-// defaultOpenRunner — the default shell-out chain: the terminal-browser
-// candidate leg FIRST (kitty-capable host + on PATH + no kill-switch —
-// the whole decision is ResolveOpenTool's), then the system opener as
-// the unconditional fallback: a candidate exec FAILURE (non-zero exit)
-// cascades the SAME target to systemOpen immediately, exactly once —
-// never fatal, never a retry, never a shutdown thread — and a double
-// failure surfaces the system opener's own verdict (errNoOpenTool
-// included). systemOpen itself stays byte-identical.
-func defaultOpenRunner(t LinkTarget) error {
-	if ResolveOpenTool() == OpenToolTerminalBrowser {
-		if err := terminalBrowserOpen(t); err == nil {
-			return nil
-		}
-	}
-	return systemOpen(t)
-}
+// External links always use the operating system browser.
+func defaultOpenRunner(t LinkTarget) error { return systemOpen(t) }
 
 // SetOpenRunnerForShot swaps the shell-out seam for a shot/test harness
 // and returns the restore closure. The house's ForShot pattern (the wedge

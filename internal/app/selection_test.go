@@ -101,7 +101,7 @@ func selRowOf(t *testing.T, m Model, needle string) int {
 // translation seam, inverted: x = floorW + dx + cx).
 func selChatX(m Model, cx int) int {
 	dx, _ := m.tabs.ContentOffset()
-	return m.floorW + dx + cx
+	return m.panelX() + dx + cx
 }
 
 // selClickAt / selDragAt / selUpAt — the scripted mouse events.

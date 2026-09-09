@@ -126,6 +126,7 @@ export default function ChatAndThreadsPage() {
     <>
       <SiteHeader />
       <main>
+        <aside className="mx-auto max-w-5xl border-b border-border px-6 py-8 text-sm leading-relaxed text-muted-foreground">Press Ctrl+R to search the loaded transcript without losing your draft. Ctrl+N starts a titled conversation with its own team and backend; Ctrl+E opens project floors and saved conversations. Local conversation archives retain up to 10,000 messages, while the quick startup snapshot keeps 200. <Link href="/docs/workspaces" className="underline underline-offset-4">Read the workspace guide.</Link></aside>
         <section className="border-b border-border">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
             <SectionTag>Chat &amp; threads</SectionTag>

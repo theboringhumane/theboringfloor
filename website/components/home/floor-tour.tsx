@@ -14,7 +14,7 @@ const tabs = [
     points: [
       'Real sub-agents, opencode or Claude Code, behind every walk cycle',
       'Coffee steam, blinking rack LEDs, an uplink ripple — all tick-driven',
-      'Six tabs, one office: chat, terminal, agents, board, mail, activity',
+      'Floors on the left. Office in the middle. Eight tools tabs on the right.',
     ],
     log: [
       { text: '> tekton-03 walking to board…', tone: 'muted' as const },

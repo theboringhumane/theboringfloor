@@ -6,6 +6,8 @@ const columns = [
     title: "Features",
     links: [
       "The Office",
+      "Workspaces",
+      "Plan Mode",
       "Work Threads",
       "Permission Queue",
       "Concierge",
@@ -30,7 +32,7 @@ const columns = [
     links: [
       "opencode",
       "Claude Code",
-      "Codex (Coming Soon)",
+      "Codex",
       "Cursor (Coming Soon)",
       "Pi (Coming Soon)",
     ],
@@ -47,13 +49,16 @@ const columns = [
 
 // Real routes for the footer entries that have one; the rest render as plain text.
 const linkHrefs: Record<string, string> = {
-  "The Office": "/#toolkits",
+  "The Office": "/#workspaces",
   "Work Threads": "/docs/chat-and-threads",
   "Permission Queue": "/docs/permissions-and-questions",
   Concierge: "/docs/queue-board-memory",
   CLI: "/docs/getting-started",
   opencode: "/docs/backends",
   "Claude Code": "/docs/backends",
+  Codex: "/docs/backends",
+  Workspaces: "/docs/workspaces",
+  "Plan Mode": "/docs/plan-mode",
   Docs: "/docs",
   Blog: "/blog",
   "Floor Plan": "/docs/layout-themes-power",
@@ -70,7 +75,7 @@ export function SiteFooter() {
           <h2 className="max-w-lg text-black text-3xl font-semibold tracking-tight md:text-4xl">
             The desks are empty. Your agents are waiting.
           </h2>
-          <div className="flex flex-shrink-0 gap-3">
+          <div className="flex flex-wrap gap-3">
             <Link
               href="/get-started"
               className="rounded-sm border border-border text-(--band-on-fg) px-5 py-2.5 bg-primary hover:text-black font-mono text-xs uppercase tracking-wider transition-colors hover:bg-secondary"

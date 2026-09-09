@@ -1091,6 +1091,16 @@ func (b *liveClaudeBackend) Send(text string) error {
 // text-only user-message flow rather than being silently dropped or falsely
 // represented as inline media.
 func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error {
+	return b.SendAgentWith(text, atts, "")
+}
+
+func (b *liveClaudeBackend) SendAgent(text, agent string) error {
+	return b.SendAgentWith(text, nil, agent)
+}
+
+// Claude's persistent stream has no per-turn sandbox switch here. Planning
+// is a prompt contract; existing tool permissions continue to apply.
+func (b *liveClaudeBackend) SendAgentWith(text string, atts []state.Attachment, agent string) error {
 	prepared, skipped := prepareAttachments(atts)
 	if len(skipped) > 0 {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] could not attach " +
@@ -1098,7 +1108,11 @@ func (b *liveClaudeBackend) SendWith(text string, atts []state.Attachment) error
 	}
 	noUpload := func(string) bool { return false }
 	persistPathRefs(prepared, noUpload)
-	return b.send(claudeAttachmentPrompt(text, prepared), text, preparedAttachmentNames(prepared))
+	prompt := claudeAttachmentPrompt(text, prepared)
+	if agent == "plan" {
+		prompt = plantools.PlanningPrompt + "\n\n" + prompt
+	}
+	return b.send(prompt, text, preparedAttachmentNames(prepared))
 }
 
 // claudeAttachmentPrompt makes Claude's intentionally text-only attachment
@@ -1189,9 +1203,9 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 	b.mu.Lock()
 	briefed := b.briefed
 	b.mu.Unlock()
-	line := claudeUserLineFor(trimmed)
+	line := claudeUserLineFor(teamPrompt(b.cfg, trimmed))
 	if !briefed {
-		line = claudeUserLineFor(browsertools.PromptPreamble + "\n\n" + chatcontext.PromptPreamble + "\n\n" + plantools.PromptPreamble + "\n\n" + trimmed)
+		line = claudeUserLineFor(teamPrompt(b.cfg, browsertools.PromptPreamble+"\n\n"+chatcontext.PromptPreamble+"\n\n"+plantools.PromptPreamble+"\n\n"+trimmed))
 	}
 	if err := b.writeLine(line); err != nil {
 		b.mu.Lock()
@@ -1859,4 +1873,13 @@ func (b *liveClaudeBackend) Stop() error {
 		}
 	}
 	return nil
+}
+
+// FreshOnStart clears resume pins without spawning a second CLI before Start.
+func (b *liveClaudeBackend) FreshOnStart() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.primaryOverride = ""
+	b.primaryID = ""
+	b.resumeID = ""
 }

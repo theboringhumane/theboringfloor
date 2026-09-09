@@ -3,7 +3,7 @@ import { ScrollReveal } from '@/components/scroll-reveal'
 
 const keys = [
   { combo: 'ctrl+p', action: 'plan' },
-  { combo: 'ctrl+x', action: 'approve → build' },
+  { combo: 'ctrl+x twice', action: 'approve → build' },
   { combo: '[plan]', action: 'statusbar badge' },
 ]
 
@@ -17,13 +17,10 @@ export function PlanThenBuild() {
             The office drafts the plan. You approve it. Then the crew builds.
           </h2>
           <p className="mt-4 max-w-2xl text-pretty text-sm leading-relaxed text-muted-foreground">
-            Hit ctrl+p and keep talking — plan mode is conversation-first. The
-            boss&apos;s finished reply mirrors into a markdown plan pane in the
-            floor slot while you type, mermaid diagrams welcome. Click in and
-            edit until it reads like your plan, not the office&apos;s guess — a
-            fresh reply never clobbers your edits — then ctrl+x approves and
-            the crew builds it. The [plan] badge in the status bar keeps the
-            mode honest.
+            Substantial requests enter planning automatically. The boss investigates,
+            presents a draft with the floor MCP or plan markers, and waits for review.
+            The plan opens beside your conversation, even from an expanded or focused view.
+            Edit it, then press Ctrl+X twice to approve. Ctrl+P lets you switch modes yourself.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             {keys.map((k) => (
@@ -51,10 +48,10 @@ export function PlanThenBuild() {
             </span>
           </div>
           <img
-            src="/shots/plan-mode.png"
-            alt="theboringfloor plan mode: markdown plan editor with mermaid diagram, plan board"
-            width={5086}
-            height={2896}
+            src="/shots/workspaces/plan.webp"
+            alt="theboringfloor plan mode: project floors, a markdown plan editor, and the conversation"
+            width={1548}
+            height={1014}
             loading="lazy"
             className="shot-img block h-auto w-full"
           />

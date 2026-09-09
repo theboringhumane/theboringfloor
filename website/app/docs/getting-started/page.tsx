@@ -167,13 +167,8 @@ export default function GettingStartedPage() {
               .
             </p>
             <p className="mt-8 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Two browser-lane flags ride the installer.{' '}
-              <code className="font-mono text-xs text-foreground">--with-terminal-browser</code>{' '}
-              pulls the zenbu terminal-browser bundle — the opt-in embedded lane, default-off
-              now that the browser tab&apos;s premium path is headless screenshots.{' '}
-              <code className="font-mono text-xs text-foreground">--skip-terminal-browser</code>{' '}
-              survives as a deprecated no-op guard: a plain run already skips the bundle, so the
-              flag changes nothing.
+              The terminal-browser package is no longer installed or launched. The built-in
+              text viewer and optional headless screenshots remain; links can open in your system browser.
             </p>
           </div>
         </section>
@@ -278,7 +273,7 @@ export default function GettingStartedPage() {
               4 · Where your brain lives
             </h2>
             <h3 className="mt-4 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight">
-              One config file, one session file per working directory.
+              One project floor, separate conversation archives.
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The whole office is run by{' '}
@@ -293,7 +288,7 @@ export default function GettingStartedPage() {
               <code className="font-mono text-xs text-foreground">
                 ~/.theboringfloor/projects/&lt;dirhash&gt;/session.json
               </code>
-              , so two projects never share a floor.
+              , with separate conversation archives under conversations/ and project teams and tickets in floor.json. The startup snapshot retains 200 messages; archives retain up to 10,000 per conversation.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Upgrading from an older build? Legacy{' '}
@@ -320,8 +315,8 @@ export default function GettingStartedPage() {
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>What this doesn&apos;t do yet</SectionTag>
             <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              The installer wires opencode and claudecode only — Codex, Cursor, and Pi are still
-              marked &quot;(Coming Soon)&quot; elsewhere on this site. And{' '}
+              Choose OpenCode, Claude Code, or Codex. For Codex, install the CLI, run codex login,
+              then start with --backend codex. Use Ctrl+E for floors and Ctrl+N for a new conversation.{' '}
               <code className="font-mono text-xs text-foreground">--session</code> restores sessions
               for the working directory you boot from, not another one&apos;s history. Next stops:{' '}
               <Link href="/docs/backends" className="text-foreground underline underline-offset-4 hover:text-accent">

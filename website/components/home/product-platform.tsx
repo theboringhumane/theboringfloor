@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import type { CSSProperties } from 'react'
 import { GitBranch, Mail, MessageCircle, MessageSquare } from 'lucide-react'
 import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
@@ -42,12 +43,13 @@ export function ProductPlatform() {
               </span>
             </div>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
-              Open one terminal and a real agent session — opencode or Claude Code — greets
+              Open one terminal and a real agent session — OpenCode, Claude Code, or Codex — greets
               you. When work fans out, sub-agents take desks on the floor with the context you
               need to follow them.
             </p>
             <p className="max-w-md text-pretty text-sm leading-relaxed text-muted-foreground">
-              Six tabs, one office: chat, terminal, agents, board, mail, and activity. No separate
+              Eight tools tabs: chat, terminal, agents, board, mail, activity, git, and files.
+              Project floors stay in their own navigator on the far left. No separate
               dashboard to configure, no status meeting to schedule — you just look across the
               floor.
             </p>
@@ -63,7 +65,7 @@ export function ProductPlatform() {
             {forYouActions.map((a, i) => (
               <div
                 key={a.label}
-                style={{ '--stair-offset': `${Math.min(i * 8, 40)}%` }}
+                style={{ '--stair-offset': `${Math.min(i * 8, 40)}%` } as CSSProperties}
                 className="stair-offset-item flex w-fit items-center gap-2 border border-border bg-card px-4 py-2.5 shadow-sm"
               >
                 <a.icon className="size-4 text-accent" />
@@ -91,6 +93,7 @@ export function ProductPlatform() {
               <p>theboringfloor --demo</p>
               <p className="mt-2">theboringfloor</p>
               <p className="mt-2">theboringfloor --backend claudecode</p>
+              <p className="mt-2">theboringfloor --backend codex</p>
               <p className="mt-2">theboringfloor --server</p>
               <p className="pl-4">http://127.0.0.1:4096</p>
             </div>

@@ -30,6 +30,8 @@ Floor physics (event -> sprite):
   permission ask       -> stands AT THE MAIL BOX waving (blocked)
 ```
 
+See [Project floors](workspaces.md) for the current three-pane layout and storage model. Floors form a persistent left navigator; the office occupies the middle and the tool tabs occupy the right.
+
 ## Where each piece lives
 
 | Path | Job |
@@ -42,7 +44,9 @@ Floor physics (event -> sprite):
 | `cmd/soundtest` | verification binary for the sound layer: play all / `--only` / `--bell-mode` / `--list` |
 | `internal/app` | root bubbletea model: the state reducer, layout + key routing, boot splash, power governor, digest render cache, ambient social life, terminal-tab adapter |
 | `internal/state` | the ONE contract backend and UI speak: `OfficeState`, `Event`, the `Backend` interface (incl. `MCPServers` / `ReconnectMCP`) |
-| `internal/backend` | the two `state.Backend`s — scripted `demo.go`, live `opencode.go` (SSE client) — plus pure SSE normalization (`events.go`), the agentmemory adapter, MCP status/connect, question kinds |
+| `internal/workspace` | atomic floor/team/ticket storage and lightweight conversation metadata |
+| `cmd/workspaceshot` | isolated visual fixtures for floors, tickets, files, transcripts, and conversation forms |
+| `internal/backend` | Codex CLI JSONL (`codex.go`), Claude Code CLI, and the original `state.Backend`s — scripted `demo.go`, live `opencode.go` (SSE client) — plus pure SSE normalization (`events.go`), the agentmemory adapter, MCP status/connect, question kinds |
 | `internal/panels` | the sidebar: tab strip + chat, terminal, agents, board, mail, activity, git (live status + diff viewer); slash/@ popover, question + permission modals, MCP status block, subagent threads |
 | `internal/office` | the floor: props-driven floorplan, roster seats, sprite glyphs + walker physics, the pure frame renderer, tick-pure ambient fixtures |
 | `internal/chrome` | topbar, statusbar, shared lipgloss styles + themes |

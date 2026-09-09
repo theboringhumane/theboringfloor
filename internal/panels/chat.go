@@ -269,6 +269,12 @@ type PermissionView struct {
 
 // Chat is the chat tab panel.
 type Chat struct {
+	workspaceProject, workspaceBackend, workspaceTeam string
+	searching                                         bool
+	searchText                                        string
+	searchMatches                                     []int
+	searchIndex                                       int
+
 	vp viewport.Model
 	ta textarea.Model
 	// sp — the braille spinner (spinner.MiniDot, magenta) whose frame
@@ -1483,6 +1489,7 @@ func (c *Chat) SetSize(w, h int) {
 	// re-JOINED, never re-rendered, here (the next SetState's generation
 	// flip misses them all anyway).
 	if wChanged && len(c.blocks) > 0 {
+		c.buildBlocks() // Width changes must reflow immediately, even without a backend event.
 		c.setConversationLines(c.assembleConversationLines())
 		if c.follow {
 			c.vp.GotoBottom()
@@ -1678,6 +1685,30 @@ func (c *Chat) ResumeFromFocus() {
 // doesn't claim (the textarea's own clipboard pasteMsgs) fall through the
 // default arm INTO the textarea.
 func (c *Chat) Update(msg tea.Msg) tea.Cmd {
+	if p, ok := msg.(tea.PasteMsg); ok && c.searching && c.perm == nil && c.question == nil && c.sessPick == nil && c.openPick == nil {
+		c.searchText += strings.Join(strings.Fields(p.Content), " ")
+		c.searchIndex = 0
+		c.refreshSearch()
+		if len(c.searchMatches) > 0 {
+			c.follow = false
+			c.vp.SetYOffset(c.searchMatches[0])
+			c.syncWindow()
+		}
+		return nil
+	}
+	if k, ok := msg.(tea.KeyPressMsg); ok && c.perm == nil && c.question == nil && c.sessPick == nil && c.openPick == nil {
+		if c.searching {
+			c.searchKey(k)
+			return nil
+		}
+		if k.String() == "ctrl+r" {
+			c.searching = true
+			c.searchText = ""
+			c.searchMatches = nil
+			return nil
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		// While a boss question popover is open it OWNS EVERY KEY: the
@@ -2075,7 +2106,7 @@ func (c *Chat) View() string {
 		b.WriteString(row)
 		b.WriteString("\n")
 	}
-	b.WriteString(chrome.PanelDim.Render(fitPlain(strings.Repeat("─", c.w), c.w)))
+	b.WriteString(c.workspaceDivider())
 	if c.pendingSpin {
 		// the typing row — glued to the input, not the transcript: the
 		// viewport holds the words, this row holds the pulse. ONE row

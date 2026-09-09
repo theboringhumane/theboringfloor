@@ -88,12 +88,13 @@ export default function LayoutThemesPowerPage() {
               Normal is the floor plan. Everything else is a slash command.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Out of the box the office boots into the normal layout: the full sidebar
-              with spelled-out tab names and the full-height composer. This is the
-              reference everything else narrows, widens or hides.
+              The desktop layout has three panes: project floors on the far left, the office
+              in the middle, and transcript and eight tools tabs on the right. Ctrl+E focuses
+              floors; Ctrl+W expands tools while retaining the navigator. Below 100 columns,
+              floors use a drawer. See <Link href="/docs/workspaces" className="underline">workspaces</Link> for the complete workflow.
             </p>
             <Shot
-              src="/shots/docs/layout-normal.png"
+              src="/shots/workspaces/transcript.webp"
               alt="theboringfloor normal layout: full sidebar with spelled-out tab names next to the floor"
               caption="normal — the default layout, full sidebar, full composer"
             />

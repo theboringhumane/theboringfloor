@@ -453,24 +453,18 @@ func TestBrowserEditInShotMode(t *testing.T) {
 	}
 }
 
-func TestBrowserEditNeverOpensWhilePremium(t *testing.T) {
-	// the premium lane owns its key surface: `e` forwards to the child
-	// (the controller's Write path), never opening the text-lane editor.
+func TestBrowserEditorWorksWithRetiredPremiumEnvironment(t *testing.T) {
 	pinKittyEnv(t)
 	fakeSpawnPins(t)
 	b := NewBrowser()
 	b.SetSize(64, 16)
 	b.fetchFn = func(string) (*Page, error) { return navPage("https://a.dev/x", "Xray"), nil }
-	cmd := b.Open("https://a.dev/x")
-	if cmd == nil {
-		t.Fatal("Open must produce the fetch cmd")
-	}
-	b.Update(cmd())
-	if !b.PremiumActive() {
-		t.Fatal("setup: the premium embed is live")
+	b.Update(b.Open("https://a.dev/x")())
+	if b.PremiumActive() {
+		t.Fatal("retired browser must not start")
 	}
 	b.Update(browserKey("e"))
-	if b.editing {
-		t.Fatal("`e` on the premium lane forwards to the child — the text editor stays closed")
+	if !b.editing {
+		t.Fatal("built-in browser URL editor must remain available")
 	}
 }

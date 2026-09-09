@@ -149,9 +149,11 @@ const BackendNameDefault = "opencode"
 // BackendNameClaude is the claude-code transport name (backend.NewClaude).
 const BackendNameClaude = "claudecode"
 
+const BackendNameCodex = "codex"
+
 // ValidBackendName reports whether name names a real transport.
 func ValidBackendName(name string) bool {
-	return name == BackendNameDefault || name == BackendNameClaude
+	return name == BackendNameDefault || name == BackendNameClaude || name == BackendNameCodex
 }
 
 // ValidAgentName reports whether name is a safe opencode agent-name key.
@@ -192,7 +194,9 @@ func (c BackendConfig) ResolvedName() string {
 }
 
 type Config struct {
-	Version int `json:"version"`
+	// ConversationTeam is runtime context; it never changes brain.json.
+	ConversationTeam string `json:"-"`
+	Version          int    `json:"version"`
 	// Attribution is the office-wide majdoor commit-attribution switch:
 	// "on" (the default) makes boot install the office's commit-msg hook
 	// into the current repo (every commit carries the MajdoorTrailer);

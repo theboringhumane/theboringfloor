@@ -101,13 +101,13 @@ func TestTermMouseRoutesReleased(t *testing.T) {
 	m, fake := mouseSetupTerminal(t, false)
 
 	pressY := 15
-	pressX := m.floorW + 30
+	pressX := m.panelX() + 30
 	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: pressX, Y: pressY, Button: tea.MouseLeft}))
 	m = nm.(Model)
 	if len(fake.clicks) != 1 {
 		t.Fatalf("a sidebar-box press on the terminal tab must reach the panel RELEASED, got %d clicks", len(fake.clicks))
 	}
-	if got, want := fake.clicks[0].X, pressX-m.floorW; got != want {
+	if got, want := fake.clicks[0].X, pressX-m.panelX(); got != want {
 		t.Errorf("press X must lose the floor cols (box space), got %d want %d", got, want)
 	}
 	if got, want := fake.clicks[0].Y, pressY-1; got != want {
@@ -124,7 +124,7 @@ func TestTermMouseRoutesReleased(t *testing.T) {
 	if len(fake.releases) != 1 {
 		t.Fatalf("the dragged release must reach the terminal panel (copy lives there), got %d", len(fake.releases))
 	}
-	if got, want := fake.releases[0].X, pressX+5-m.floorW; got != want {
+	if got, want := fake.releases[0].X, pressX+5-m.panelX(); got != want {
 		t.Errorf("release X must ride the same box-space adjust, got %d want %d", got, want)
 	}
 	if m.sel != mselIdle {
@@ -135,7 +135,7 @@ func TestTermMouseRoutesReleased(t *testing.T) {
 func TestTermViewportClickCapturesButOutsideDoesNot(t *testing.T) {
 	m, fake := mouseSetupTerminal(t, false)
 	dx, dy := m.tabs.ContentOffset()
-	insideX := m.floorW + dx + 3
+	insideX := m.panelX() + dx + 3
 	insideY := 1 + dy + 3
 
 	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: insideX, Y: insideY, Button: tea.MouseLeft}))
@@ -147,7 +147,7 @@ func TestTermViewportClickCapturesButOutsideDoesNot(t *testing.T) {
 	// The tab strip is outside the viewport. Its click may be routed by the
 	// terminal mouse seam, but must not alter the released capture state.
 	m.setTermCaptured(false)
-	nm, _ = m.Update(tea.MouseClickMsg(tea.Mouse{X: m.floorW + dx + 3, Y: 1, Button: tea.MouseLeft}))
+	nm, _ = m.Update(tea.MouseClickMsg(tea.Mouse{X: m.panelX() + dx + 3, Y: 1, Button: tea.MouseLeft}))
 	m = nm.(Model)
 	if m.termCapturedNow() {
 		t.Fatal("a click outside the terminal viewport must not capture")
@@ -156,7 +156,7 @@ func TestTermViewportClickCapturesButOutsideDoesNot(t *testing.T) {
 
 func TestTermMouseRoutesCaptured(t *testing.T) {
 	m, fake := mouseSetupTerminal(t, true)
-	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: m.floorW + 12, Y: 8, Button: tea.MouseLeft}))
+	nm, _ := m.Update(tea.MouseClickMsg(tea.Mouse{X: m.panelX() + 12, Y: 8, Button: tea.MouseLeft}))
 	m = nm.(Model)
 	if len(fake.clicks) != 1 {
 		t.Fatalf("mouse stays forwarded while CAPTURED (selection over a running shell), got %d clicks", len(fake.clicks))
@@ -184,7 +184,7 @@ func TestTermMouseKeysStayGated(t *testing.T) {
 	}
 	// wheel in released mode NOW forwards (terminal scrollback viewing does
 	// not need a dive) — previously dropped with the keys.
-	nm, _ = m.Update(tea.MouseWheelMsg(tea.Mouse{X: m.floorW + 10, Y: 10, Button: tea.MouseWheelUp}))
+	nm, _ = m.Update(tea.MouseWheelMsg(tea.Mouse{X: m.panelX() + 10, Y: 10, Button: tea.MouseWheelUp}))
 	m = nm.(Model)
 	if fake.wheels != 1 {
 		t.Fatalf("wheel must reach the terminal panel released, got %d", fake.wheels)

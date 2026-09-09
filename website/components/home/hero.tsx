@@ -115,16 +115,13 @@ export function Hero() {
         </a>
 
         <h1 className="mt-10 max-w-[14ch] font-sans text-[clamp(3.25rem,11vw,8rem)] font-medium leading-[0.9] tracking-[-0.05em]">
-          <span className="">Work with agents</span>
-          <br />
-          that feel like{" "}
-          <span className="text-(--band-accent) italic">coworkers.</span>
+          Give every project<br />
+          its own <span className="text-(--band-accent) italic">floor.</span>
         </h1>
         <p className="mt-8 max-w-lg text-pretty font-sans text-base leading-relaxed text-(--band-fg)/50 md:text-lg">
-          A terminal app where your opencode or Claude Code boss and sub-agents
-          clock in as coworkers on a living floor. See the work move, talk to
-          the boss like a person, and come back tomorrow to an office that
-          remembers.
+          Your projects, agent teams, tickets, and conversations in one terminal.
+          Plan the work, watch the office build, and keep the code in view.
+          Powered by OpenCode, Claude Code, or Codex — your choice for every conversation.
         </p>
 
         <div className="mt-12 flex max-w-xl flex-col">

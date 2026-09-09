@@ -36,6 +36,7 @@ bun run deploy:prod    # Pages, main
 | Path | |
 |---|---|
 | [`/docs/getting-started`](https://boringfloor.com/docs/getting-started) | install |
+| [`/docs/workspaces`](https://boringfloor.com/docs/workspaces) | floors, teams, tickets, files, history |
 | [`/docs/backends`](https://boringfloor.com/docs/backends) | transports |
 | [`/docs/mcp-server`](https://boringfloor.com/docs/mcp-server) | MCP server |
 | [`/docs/chat-and-threads`](https://boringfloor.com/docs/chat-and-threads) | chat |
@@ -60,3 +61,9 @@ public/sounds/  WAV preview files
 ```
 
 In-repo architecture: [`../docs/architecture.md`](../docs/architecture.md). Hub: [`../docs/README.md`](../docs/README.md).
+
+## Workspace UI
+
+The homepage workspace tour uses actual app renders with illustrative fixtures from `cmd/workspaceshot`. Optimized lossless assets live in `public/shots/workspaces/`. `/docs/workspaces` covers floors, teams, tickets, files, backends, and storage; `/docs/plan-mode` documents automatic routing and the backend-specific planning limits.
+
+Validate with `node_modules/.bin/tsc --noEmit` and `bun run build`. The production build also checks TypeScript. Preview the exported `out/` directory with a local static server.

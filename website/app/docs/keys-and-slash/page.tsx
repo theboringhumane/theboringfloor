@@ -95,7 +95,7 @@ const navigationKeys: Key[] = [
 
 const paneKeys: Key[] = [
   {
-    combo: 'tab / shift+tab / 1..7',
+    combo: 'tab / shift+tab / 1..8',
     action:
       'switch panel: chat · terminal · agents · board · mail · activity · git — only while shell-captured (ctrl+space) are these NOT intercepted',
   },
@@ -154,7 +154,11 @@ const terminalKeys: Key[] = [
 ]
 
 const browserKeys: Key[] = [
-  { combo: 'ctrl+b', action: 'flip the left pane between the floor and the browser — the only way in' },
+  { combo: 'ctrl+e', action: 'focus project floors; Escape or Tab returns to tools' },
+  { combo: 'ctrl+n', action: 'new conversation: title, team, and backend' },
+  { combo: 'ctrl+r', action: 'search the loaded transcript, keeping your draft' },
+  { combo: 'ctrl+w', action: 'expand tools while keeping floors on the far left' },
+  { combo: 'ctrl+b', action: 'flip the middle pane between the office and browser' },
   { combo: 'up / down / j / k', action: 'move the link cursor' },
   { combo: 'o', action: 'open the focused link — a file rides to the OS browser, http(s) navigates in place' },
   { combo: 'e', action: 'inline URL editor in the location bar — prefilled, enter opens, esc cancels' },
@@ -373,7 +377,7 @@ Describe the revised draft.
                 { cmd: '/stop', does: 'abort current work (boss + workers)' },
                 { cmd: '/new', does: 'fresh office — the transcript is archived' },
                 { cmd: '/session', does: 'past-sessions picker; switch the office live' },
-                { cmd: '/backend', does: 'print the active LLM transport; swap opencode/claudecode while idle' },
+                { cmd: '/backend', does: 'print the active LLM transport; swap opencode/claudecode/codex while idle' },
                 { cmd: '/status', does: 'office status' },
                 { cmd: '/mcp [reconnect <name>]', does: 'MCP server status; reconnect one server' },
               ]}

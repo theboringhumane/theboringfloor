@@ -2,10 +2,10 @@ import { FolderGit2, LayoutGrid, ShieldCheck, Terminal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const stats = [
-  { value: 'CLI', label: 'Native binary', icon: Terminal },
-  { value: 'Demo', label: 'Tour first', icon: LayoutGrid },
-  { value: 'Threads', label: 'Work + diffs', icon: FolderGit2 },
-  { value: 'Queue', label: 'Your permissions', icon: ShieldCheck },
+  { value: 'Floors', label: 'One per project', icon: LayoutGrid },
+  { value: 'Teams', label: 'Tickets + ownership', icon: FolderGit2 },
+  { value: '3 agents', label: 'Choose per conversation', icon: Terminal },
+  { value: 'Plan first', label: 'Review before build', icon: ShieldCheck },
 ]
 
 export function StatsStrip() {

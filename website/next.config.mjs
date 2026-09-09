@@ -3,9 +3,6 @@ const nextConfig = {
   // Static export → website/out/ for Cloudflare Pages (no SSR features in use:
   // generateStaticParams pre-builds the blog routes, fs reads are build-time only).
   output: 'export',
-  typescript: {
-    ignoreBuildErrors: true,
-  },
   images: {
     unoptimized: true,
   },

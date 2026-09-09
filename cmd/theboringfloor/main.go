@@ -8,7 +8,7 @@
 //	                                restore and its 4-day freshness gate for this boot —
 //	                                /session in-app prints the id)
 //	theboringfloor --autokill 6s   exit after duration (CI / screenshot runs)
-//	theboringfloor --backend NAME  LLM transport: opencode|claudecode
+//	theboringfloor --backend NAME  LLM transport: opencode|claudecode|codex
 //	                                (beats brain.json backend.name this boot;
 //	                                /backend swaps mid-flight and persists)
 //	theboringfloor --version       print version and exit
@@ -62,16 +62,26 @@ func (n notifyBus) Notify(kind, title, body string) { n.Bus.Send(kind, title, bo
 func env(suffix string) string { return config.Env(suffix) }
 
 func main() {
+	projectDir := flag.String("project", "", "open a project floor directory")
+	fresh := flag.Bool("new", false, "start a new conversation on this floor")
+	conversationTitle := flag.String("title", "", "conversation title")
+	conversationTeam := flag.String("team", "", "conversation team id")
 	demo := flag.Bool("demo", env("DEMO") == "1", "run with simulated events")
 	server := flag.String("server", "", "opencode serve URL (attach, don't spawn)")
-	session := flag.String("session", "", "resume this opencode chat session id (explicit pin; beats the saved-session restore)")
+	session := flag.String("session", "", "resume this backend conversation id (explicit pin; beats the saved-session restore)")
 	sessionShort := flag.String("s", "", "shorthand for -session")
 	autokill := flag.Duration("autokill", 0, "exit after this duration (shots/CI)")
 	theme := flag.String("theme", "", "color theme: noir|paper|mono|dracula|solarized")
-	backendName := flag.String("backend", "", "LLM transport: opencode|claudecode (brain.json backend.name is the persisted default)")
+	backendName := flag.String("backend", "", "LLM transport: opencode|claudecode|codex (brain.json backend.name is the persisted default)")
 	printCfg := flag.Bool("print-default-config", false, "print the default brain.json and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *projectDir != "" {
+		if err := os.Chdir(*projectDir); err != nil {
+			fmt.Fprintln(os.Stderr, "Open floor:", err)
+			os.Exit(1)
+		}
+	}
 
 	if *showVersion {
 		fmt.Println(version.String())
@@ -125,7 +135,7 @@ func main() {
 		*backendName = cfg.Backend.ResolvedName()
 	}
 	if !config.ValidBackendName(*backendName) {
-		fmt.Fprintf(os.Stderr, "[theboringfloor] --backend must be opencode|claudecode (got %q) — using opencode\n", *backendName)
+		fmt.Fprintf(os.Stderr, "[theboringfloor] --backend must be opencode|claudecode|codex (got %q) — using opencode\n", *backendName)
 		*backendName = config.BackendNameDefault
 	}
 	if *theme == "" {
@@ -140,6 +150,7 @@ func main() {
 		}
 	}
 
+	cfg.Backend.Name = *backendName
 	var b state.Backend
 	if *demo {
 		b = backend.NewDemo(cfg)
@@ -155,7 +166,7 @@ func main() {
 	}
 
 	ps := config.LoadProjectSettings(mustGetwd())
-	model := app.New(b, cfg, app.WithResumeSession(*session), app.WithServerURL(*server), app.WithBypassPermissions(ps.BypassPermissions))
+	model := app.New(b, cfg, app.WithResumeSession(*session), app.WithConversation(*fresh, *conversationTitle, *conversationTeam), app.WithServerURL(*server), app.WithBypassPermissions(ps.BypassPermissions))
 	if cfg.UI.Sounds != "" && cfg.UI.Sounds != "off" {
 		model.SetSoundBus(sndBus{sound.NewBus(cfg.UI.Sounds, "")})
 	}
@@ -346,6 +357,37 @@ func main() {
 	fm.PersistSession()
 	stopControl()
 	stopBounded(b)
+
+	if req := fm.FloorExecRequest(); req != nil {
+		binary, err := os.Executable()
+		if err == nil {
+			argv := []string{"theboringfloor", "--project", req.Dir, "--backend", req.Backend}
+			if req.Fresh {
+				argv = append(argv, "--new")
+			} else if req.Session != "" {
+				argv = append(argv, "--session", req.Session)
+			}
+			if req.Title != "" {
+				argv = append(argv, "--title", req.Title)
+			}
+			if req.Team != "" {
+				argv = append(argv, "--team", req.Team)
+			}
+			if name := chrome.CurrentTheme().Name; name != "" {
+				argv = append(argv, "--theme", name)
+			}
+			// A pinned OpenCode server belongs to the original floor. Do not leak
+			// that transport target into a different project or backend.
+			if req.Dir == mustGetwd() && req.Backend == "opencode" && *server != "" {
+				argv = append(argv, "--server", *server)
+			}
+			err = syscall.Exec(binary, argv, os.Environ())
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Could not open floor:", err)
+		}
+		return
+	}
 
 	// /session picker accept = quit + exec-replace (the app recorded the
 	// intent via ExecRequest): relaunch the same binary pinned to the

@@ -147,8 +147,8 @@ func pagerFixture(t *testing.T, b *pagerStubBackend, history int) Model {
 
 // pgup / wheel up gesture constructors.
 func pgupMsg() tea.KeyPressMsg { return tea.KeyPressMsg(tea.Key{Code: tea.KeyPgUp}) }
-func wheelUpMsg() tea.MouseWheelMsg {
-	return tea.MouseWheelMsg(tea.Mouse{Button: tea.MouseWheelUp})
+func wheelUpMsg(m Model) tea.MouseWheelMsg {
+	return tea.MouseWheelMsg(tea.Mouse{X: m.panelX() + 5, Y: 4, Button: tea.MouseWheelUp})
 }
 
 // scrollOnce pumps one pgup+wheel pair; the pgUp scrolls a page toward
@@ -156,7 +156,7 @@ func wheelUpMsg() tea.MouseWheelMsg {
 func scrollOnce(t *testing.T, m Model) Model {
 	t.Helper()
 	m = runMsg(t, m, pgupMsg())
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
 	return m
 }
 
@@ -384,7 +384,7 @@ func TestPaginateScrollTopWalksAndAnchors(t *testing.T) {
 	}
 	b2.fail = false
 	topBefore := strings.SplitN(m2.chat.View(), "\n", 3)
-	m2 = runMsg(t, m2, wheelUpMsg()) // the retry lands his-351..his-400 above
+	m2 = runMsg(t, m2, wheelUpMsg(m2)) // the retry lands his-351..his-400 above
 	if len(b2.calls) != 4 {
 		t.Fatalf("the parked wheel-up arms exactly one hop, got %d calls", len(b2.calls))
 	}
@@ -495,7 +495,7 @@ func TestPaginateOverlapDedupeVsHydrateAndLiveEcho(t *testing.T) {
 	// hop 2: his-001..his-030 — BELOW the hydrated head: all 30 splice,
 	// including his-005 ("repeat note", whose hydrated twin his-033 was
 	// consumed by hop 1's multiplicity drop).
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
 	if len(b.calls) != 3 || b.calls[2].before != "his-031" {
 		t.Fatalf("hop 2 rides before=his-031, got %+v", b.calls)
 	}
@@ -527,14 +527,14 @@ func TestPaginateErrorLatchThreeStrikes(t *testing.T) {
 
 	b.fail = true
 	for strike := 1; strike <= 3; strike++ {
-		m = runMsg(t, m, wheelUpMsg())
+		m = runMsg(t, m, wheelUpMsg(m))
 		if len(b.calls) != 1+strike {
 			t.Fatalf("strike %d must still fetch (the latch is not yet tripped), calls=%d", strike, len(b.calls))
 		}
 	}
 	// latched: the 4th top gesture fetches nothing.
-	m = runMsg(t, m, wheelUpMsg())
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
+	m = runMsg(t, m, wheelUpMsg(m))
 	if len(b.calls) != 4 {
 		t.Fatalf("after 3 strikes the walk must back off — calls=%d, want 4 (1 seed + 3 strikes)", len(b.calls))
 	}
@@ -545,7 +545,7 @@ func TestPaginateErrorLatchThreeStrikes(t *testing.T) {
 
 	// reconnect: the marker re-arms (ResetFailures) — the next gesture fetches again.
 	m = runMsg(t, m, state.Event{Kind: state.EvStatus, Text: streamReconnectedMarker})
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
 	if len(b.calls) != 5 {
 		t.Fatalf("a reconnected stream must re-arm the walk, calls=%d", len(b.calls))
 	}
@@ -562,7 +562,7 @@ func TestPaginateModalSuppressesArm(t *testing.T) {
 	if m.permQ.front() == nil {
 		t.Fatal("fixture: the permission ask must be open")
 	}
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
 	if len(b.calls) != 1 {
 		t.Fatalf("a permission float must suppress the arm, calls=%d", len(b.calls))
 	}
@@ -571,7 +571,7 @@ func TestPaginateModalSuppressesArm(t *testing.T) {
 	if m.permQ.front() != nil {
 		t.Fatal("the answer must close the ask")
 	}
-	m = runMsg(t, m, wheelUpMsg())
+	m = runMsg(t, m, wheelUpMsg(m))
 	if len(b.calls) != 2 {
 		t.Fatalf("with the float closed the arm fires, calls=%d", len(b.calls))
 	}
@@ -584,7 +584,7 @@ func TestPaginateModalSuppressesArm(t *testing.T) {
 	if m2.question == nil {
 		t.Fatal("fixture: the question hold must be open")
 	}
-	m2 = runMsg(t, m2, wheelUpMsg())
+	m2 = runMsg(t, m2, wheelUpMsg(m2))
 	if len(b2.calls) != 1 {
 		t.Fatalf("a question float must suppress the arm, calls=%d", len(b2.calls))
 	}
@@ -616,7 +616,7 @@ func TestPaginateDemoTourWalksFixture(t *testing.T) {
 		if !m.chat.AtTranscriptTop() {
 			t.Fatalf("hop %d: never reached the top", hops)
 		}
-		m = runMsg(t, m, wheelUpMsg())
+		m = runMsg(t, m, wheelUpMsg(m))
 	}
 	if got := len(m.st.Chat); got != 450 {
 		t.Fatalf("the demo walk must splice 450 rows (9 hops × 50; the seed's newest page is discarded), got %d", got)

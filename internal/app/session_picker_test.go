@@ -216,8 +216,8 @@ func TestSessionPickerAcceptResumesLive(t *testing.T) {
 	if !ok {
 		t.Fatalf("the accept must persist session.json immediately")
 	}
-	if sf.PrimaryID != "ses-beta-older" {
-		t.Fatalf("session.json must carry the ACCEPTED pin (next boot auto-restores), got %q", sf.PrimaryID)
+	if sf.PrimaryID != "ses-alpha-new" {
+		t.Fatalf("outgoing snapshot must retain its original session id (exec carries the selected id), got %q", sf.PrimaryID)
 	}
 }
 

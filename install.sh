@@ -15,14 +15,6 @@
 #                        never boots in (it auto-installs into its boot repo
 #                        when attribution is on, the default)
 #   --skip-agentmemory   Do not install/start the agentmemory background service
-#   --with-terminal-browser
-#                        Install the zenbu terminal-browser bundle (the OPT-IN
-#                        embedded browser lane — default-off; the office's
-#                        browser tab uses headless screenshots now)
-#   --skip-terminal-browser
-#                        Deprecated no-op guard: terminal-browser is opt-in
-#                        (--with-terminal-browser) since the default-off
-#                        pivot, so a plain run already skips it
 #   --uninstall          Remove the theboringfloor and thefloor_mcp binaries, shims, the agentmemory
 #                        service, and the terminal-browser bundle + shim
 #
@@ -31,10 +23,6 @@
 #   theboringfloor_<version>_checksums.txt
 # Fallback when the GitHub API can't resolve a version:
 #   .../releases/latest/download/theboringfloor_<os>_<arch>.tar.gz    (checksums skipped, loudly)
-# With --with-terminal-browser, also pulls the zenbu terminal-browser bundle
-# (opt-in embedded browser lane — off by default):
-#   https://github.com/zenbu-labs/terminal-browser/releases/latest/download/terminal-browser-<os>-<arch>.tar.gz
-#   (extracts a terminal-browser/ bundle that MUST stay intact — <prefix> gets a shim, not a symlink)
 
 set -eu
 umask 022
@@ -53,8 +41,6 @@ AM_LOG_DIR="${HOME}/.agentmemory/logs"
 
 DRY_RUN=0
 SKIP_AGENTMEMORY=0
-SKIP_TERMINAL_BROWSER=0
-WITH_TERMINAL_BROWSER=0
 UNINSTALL=0
 PREFIX=""
 PATH_HINT=0
@@ -72,7 +58,6 @@ DL_BASE=""
 TMPWORK=""
 AM_BIN=""
 AM_SERVICE_STATE="not attempted"
-TB_STATE="not attempted"
 MCP_BINARY="not included in this archive"
 
 # ---------------------------------------------------------------- utilities
@@ -154,15 +139,7 @@ Flags:
    --prefix DIR         Install prefix for the theboringfloor and thefloor_mcp binaries
                        (default: /usr/local/bin if writable, else ~/.local/bin)
   --skip-agentmemory   Do not install/start the agentmemory background service
-  --with-terminal-browser
-                       Install the zenbu terminal-browser bundle (the OPT-IN
-                       embedded browser lane — default-off; the office's
-                       browser tab uses headless screenshots now)
-  --skip-terminal-browser
-                       Deprecated no-op guard: terminal-browser is opt-in
-                       (--with-terminal-browser) since the default-off pivot,
-                       so a plain run already skips it
-  --backend NAME       LLM transport: opencode (default) | claudecode
+  --backend NAME       LLM transport: opencode (default) | claudecode | codex
   --majdoor-hook DIR   Install the TheBoringMajdoor commit-msg attribution
                        hook into the repo at DIR — meant for repos the office
                        never boots in (it auto-installs into its boot repo
@@ -674,155 +651,6 @@ EOF
     info "    hint: sudo loginctl enable-linger ${USER:-$(id -un)}   (survives logout without a login session)"
 }
 
-# ---------------------------------------------------------------- terminal-browser
-
-print_manual_terminal_browser() { # $1 = reason
-    warn "terminal-browser auto-install unavailable: $1"
-    cat <<EOF
-    Manual setup (best effort — theboringfloor itself is fully installed):
-      1. download : https://github.com/zenbu-labs/terminal-browser/releases/latest
-                    (terminal-browser-<os>-<arch>.tar.gz)
-      2. extract  : tar -xzf <tarball> -C ~/.local/share/terminal-browser
-      3. link     : put the bundle's bin/terminal-browser launcher on PATH via a
-                    shim that execs the absolute path — a plain SYMLINK breaks
-                    the launcher's \$0-based ROOT resolution
-      4. runtime  : needs kitty or ghostty — the premium lane only engages there
-EOF
-}
-
-# write_tb_shim — $1 = shim path, $2 = bundle home (dir holding terminal-browser/).
-write_tb_shim() {
-    cat > "$1" <<EOF
-#!/bin/sh
-# theboringfloor installer shim — terminal-browser ships as an intact bundle
-# (bin + electron + cli MUST stay side-by-side); its launcher resolves ROOT
-# from \$0's dirname, so a plain symlink escapes the bundle. Exec the absolute
-# launcher path instead — \$0 lands inside the bundle and ROOT resolves right.
-exec "$2/terminal-browser/bin/terminal-browser" "\$@"
-EOF
-}
-
-# setup_terminal_browser — OPT-IN premium browser lane (zenbu
-# terminal-browser, kitty/ghostty at runtime). DEFAULT-OFF since the
-# headless-screenshots pivot: the stage only runs with
-# --with-terminal-browser; a plain run prints one info line and moves on.
-# NEVER fatal, same guarded
-# shape as the agentmemory stage: every failure (download, extract, missing
-# launcher, shim write, version check) degrades to the manual block and the
-# text lane simply stays the default. The release asset extracts a DIRECTORY
-# (bin + electron + cli must stay side-by-side), so the bundle lands intact
-# under ${TB_HOME:-~/.local/share/terminal-browser} and <prefix> gets a tiny
-# exec shim — a plain symlink breaks the launcher's $0-based ROOT resolution
-# (verified: exit 126 through a symlink, v0.6.0 through the shim).
-setup_terminal_browser() {
-    stage "terminal-browser (premium browser lane)"
-    if [ "$WITH_TERMINAL_BROWSER" -ne 1 ]; then
-        info "    terminal-browser: skipped (default-off; --with-terminal-browser to install — the office's browser tab uses headless screenshots now)"
-        TB_STATE="skipped (default-off; --with-terminal-browser to opt in)"
-        return 0
-    fi
-    if [ "$SKIP_TERMINAL_BROWSER" -eq 1 ]; then
-        info "    --skip-terminal-browser given; skipping. Re-run without it for the kitty/ghostty premium lane."
-        TB_STATE="skipped (--skip-terminal-browser)"
-        return 0
-    fi
-
-    tb_found=$(command -v terminal-browser 2>/dev/null || true)
-    if [ -n "$tb_found" ]; then
-        info "    terminal-browser already on PATH: ${tb_found}"
-        TB_STATE="already installed (${tb_found})"
-        return 0
-    fi
-
-    # zenbu ships darwin-arm64 / linux-arm64 / linux-x64 ONLY — no darwin-x64.
-    case "${OS}/${ARCH}" in
-        darwin/arm64) tb_asset="terminal-browser-darwin-arm64.tar.gz" ;;
-        linux/arm64)  tb_asset="terminal-browser-linux-arm64.tar.gz" ;;
-        linux/amd64)  tb_asset="terminal-browser-linux-x64.tar.gz" ;;
-        *)
-            info "    no terminal-browser build for ${OS}/${ARCH} — text lane stays default"
-            TB_STATE="unavailable (${OS}/${ARCH})"
-            return 0
-            ;;
-    esac
-
-    tb_home="${TB_HOME:-$HOME/.local/share/terminal-browser}"
-    tb_url="https://github.com/zenbu-labs/terminal-browser/releases/latest/download/${tb_asset}"
-    tb_shim="${PREFIX}/terminal-browser"
-    info "    asset:       ${tb_asset}"
-    info "    bundle home: ${tb_home}"
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        info "  [dry-run] download ${tb_url}"
-        info "            -> (mktemp tarball inside the install workdir)"
-        info "  [dry-run] mkdir -p ${tb_home} && tar -xzf <tarball> -C ${tb_home}   (the intact terminal-browser/ bundle lands inside)"
-        info "  [dry-run] write shim ${tb_shim} -> exec ${tb_home}/terminal-browser/bin/terminal-browser (a plain symlink would break the launcher's \$0 ROOT)"
-        info "  [dry-run] chmod 755 ${tb_shim}"
-        info "  [dry-run] verify: ${tb_shim} --version (first line lands in the summary)"
-        TB_STATE="would install bundle into ${tb_home} + shim into ${PREFIX} (dry-run)"
-        return 0
-    fi
-
-    # Never clobber a member-installed launcher that isn't ours.
-    if [ -e "$tb_shim" ] && ! grep -q 'theboringfloor installer shim' "$tb_shim" 2>/dev/null; then
-        warn "${tb_shim} exists and was not written by this script — not overwriting"
-        print_manual_terminal_browser "foreign file at ${tb_shim}"
-        TB_STATE="not installed (${tb_shim} exists, not ours)"
-        return 0
-    fi
-
-    if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-        print_manual_terminal_browser "neither 'curl' nor 'wget' on PATH"
-        TB_STATE="not installed (no curl/wget)"
-        return 0
-    fi
-
-    tb_tarball="${TMPWORK}/${tb_asset}"
-    # Guarded: errexit is ON, so ANY failure below must degrade to the manual
-    # path — never abort the whole install (the text lane stays default).
-    if ! fetch "$tb_url" "$tb_tarball"; then
-        print_manual_terminal_browser "download failed (see the fetch error above)"
-        TB_STATE="not installed (download failed)"
-        return 0
-    fi
-    if ! mkdir -p "$tb_home"; then
-        print_manual_terminal_browser "could not create ${tb_home}"
-        TB_STATE="not installed (cannot create bundle home)"
-        return 0
-    fi
-    if ! tar -xzf "$tb_tarball" -C "$tb_home"; then
-        print_manual_terminal_browser "tar extract failed"
-        TB_STATE="not installed (extract failed)"
-        return 0
-    fi
-    tb_launcher="${tb_home}/terminal-browser/bin/terminal-browser"
-    if [ ! -f "$tb_launcher" ]; then
-        print_manual_terminal_browser "bundle missing bin/terminal-browser after extract"
-        TB_STATE="not installed (bundle incomplete)"
-        return 0
-    fi
-    if ! write_tb_shim "$tb_shim" "$tb_home"; then
-        print_manual_terminal_browser "could not write the shim at ${tb_shim}"
-        TB_STATE="not installed (shim write failed)"
-        return 0
-    fi
-    if ! chmod 755 "$tb_shim"; then
-        print_manual_terminal_browser "could not chmod 755 ${tb_shim}"
-        TB_STATE="not installed (shim chmod failed)"
-        return 0
-    fi
-    tb_ver=$("$tb_shim" --version 2>/dev/null | head -n 1)
-    if [ -z "$tb_ver" ]; then
-        print_manual_terminal_browser "'${tb_shim} --version' printed nothing"
-        TB_STATE="not installed (version check failed)"
-        return 0
-    fi
-    info "    installed:   ${tb_home}/terminal-browser (intact bundle)"
-    info "    shim:        ${tb_shim}"
-    info "    verified:    ${tb_ver}"
-    TB_STATE="installed (${tb_ver})"
-}
-
 # ---------------------------------------------------------------- uninstall
 
 manifest_hash_for() { # $1 = binary basename
@@ -1116,8 +944,8 @@ PYEOF
 setup_backend() {
     stage "Backend selection"
     case "$BACKEND" in
-        opencode|claudecode) : ;;
-        *) die "--backend must be opencode|claudecode" ;;
+        opencode|claudecode|codex) : ;;
+        *) die "--backend must be opencode|claudecode|codex" ;;
     esac
     info "    backend: ${BACKEND}   (brain.json backend.name — swap live with /backend in-app)"
     if [ "$BACKEND" = "claudecode" ]; then
@@ -1131,6 +959,13 @@ setup_backend() {
             warn "--backend claudecode but the claude CLI is not on PATH"
             warn "install claude code first, or run theboringfloor with /backend opencode until then"
             BACKEND_STATE="claude CLI NOT on PATH (install claude code; office degrades loudly until then)"
+        fi
+    elif [ "$BACKEND" = "codex" ]; then
+        if command -v codex >/dev/null 2>&1; then
+            BACKEND_STATE="Codex CLI available"
+        else
+            warn "Install the Codex CLI and run codex login before starting this backend"
+            BACKEND_STATE="Codex CLI not on PATH"
         fi
     else
         BACKEND_STATE="default"
@@ -1211,7 +1046,6 @@ print_install_summary() {
     fi
     box_row ""
     box_row "  agentmemory : ${AM_SERVICE_STATE}"
-    box_row "  terminal-browser : ${TB_STATE}"
     box_row "  backend   : ${BACKEND} (${BACKEND_STATE})"
     if [ -n "$MAJDOOR_HOOK_DIR" ]; then
         box_row "  majdoor hook: ${MAJDOOR_STATE}"
@@ -1243,8 +1077,6 @@ main() {
         case "$1" in
             --dry-run)          DRY_RUN=1 ;;
             --skip-agentmemory) SKIP_AGENTMEMORY=1 ;;
-            --with-terminal-browser) WITH_TERMINAL_BROWSER=1 ;;
-            --skip-terminal-browser) SKIP_TERMINAL_BROWSER=1 ;;
             --uninstall)        UNINSTALL=1 ;;
             --prefix)           [ $# -ge 2 ] || die "--prefix requires a DIR argument"
                                 PREFIX=$2; shift ;;
@@ -1263,7 +1095,7 @@ main() {
     [ -n "$PREFIX" ] || PREFIX=""
     # fail fast — a mistyped transport should die HERE, not after downloads.
     [ "$BACKEND" = "opencode" ] || [ "$BACKEND" = "claudecode" ] \
-        || die "--backend must be opencode|claudecode"
+        || die "--backend must be opencode|claudecode|codex"
 
     print_banner
 
@@ -1280,7 +1112,6 @@ main() {
     verify_checksum
     install_binary
     setup_agentmemory
-    setup_terminal_browser
     setup_backend
     setup_majdoor_hook
     print_install_summary

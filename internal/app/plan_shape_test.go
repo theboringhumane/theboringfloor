@@ -163,7 +163,7 @@ func TestPlanShapeGateKeepsUserEdit(t *testing.T) {
 
 	v1 := gatedPlan("Plan v1", "matte")
 	m = bossReply(t, m, "b1", v1)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	// the click now PLACES the caret (selection wave); ctrl+end parks it
 	// back at the buffer's end before typing, like a member would
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd, Mod: tea.ModCtrl}))
@@ -280,7 +280,7 @@ func TestPlanShapeStarterFlowUnaffected(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.IsStarter() {
 		t.Fatal("a click into an empty pane must arm the starter scaffold")
 	}

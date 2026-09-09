@@ -298,7 +298,14 @@ func (e *PlanEditor) header() string {
 	}
 	left := labelStyle.Render(label) + chrome.PanelDim.Render(" · markdown ") +
 		chrome.PanelDim.Render("("+diagrams+")")
-	right := chrome.PanelDim.Render("ctrl+x approve → build · ctrl+p exits")
+	rightText := "ctrl+x twice approve → build · ctrl+p exits"
+	if n == 0 || e.w < 60 {
+		left = labelStyle.Render(label) + chrome.PanelDim.Render(" · markdown")
+	}
+	if e.w < 60 {
+		rightText = "ctrl+x twice: approve"
+	}
+	right := chrome.PanelDim.Render(rightText)
 	gap := e.w - lipgloss.Width(left) - lipgloss.Width(right)
 	if gap < 1 {
 		gap = 1
@@ -321,7 +328,10 @@ func (e *PlanEditor) footer() string {
 	case e.mode == planModeBuild:
 		hint = "ctrl+p back to plan"
 	case !e.focused:
-		hint = "click to edit · ctrl+x approve → build · ctrl+p exits"
+		hint = "click to edit · ctrl+x twice approve → build · ctrl+p exits"
+		if e.w < 60 {
+			hint = "click to edit · ctrl+x twice: approve"
+		}
 	case e.sel.active:
 		hint = "shift+arrows select · ctrl+c copy · ctrl+x cut · esc clear"
 	}

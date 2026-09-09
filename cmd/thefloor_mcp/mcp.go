@@ -104,8 +104,8 @@ func toolDefinitions() []map[string]interface{} {
 	str := map[string]interface{}{"type": "string"}
 	integer := map[string]interface{}{"type": "integer"}
 	return []map[string]interface{}{
-		{"name": "plan_present", "description": "Present a plan draft in the live theboringfloor office for member review.", "inputSchema": schema(map[string]interface{}{"text": str}, "text")},
-		{"name": "plan_update", "description": "Update a plan draft in the live theboringfloor office.", "inputSchema": schema(map[string]interface{}{"text": str}, "text")},
+		{"name": "plan_present", "description": "Enter plan mode and show a nonempty Markdown draft in the live office. Use before substantial implementation; wait for member approval before building. Replaces the current draft, never the approved plan.", "inputSchema": schema(map[string]interface{}{"text": str}, "text")},
+		{"name": "plan_update", "description": "Enter plan mode and show a revised nonempty Markdown draft in the live office. Replaces the draft, including draft edits; does not approve or execute it.", "inputSchema": schema(map[string]interface{}{"text": str}, "text")},
 		{"name": "plan_get_approved", "description": "Get the approved plan from the live office or its on-disk snapshot.", "inputSchema": schema(map[string]interface{}{})},
 		{"name": "transcript_read", "description": "Read recent transcript messages from the live office or on-disk snapshot.", "inputSchema": schema(map[string]interface{}{"limit": integer})},
 		{"name": "transcript_search", "description": "Search the current project's on-disk transcript.", "inputSchema": schema(map[string]interface{}{"query": str, "limit": integer}, "query")},

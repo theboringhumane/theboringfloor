@@ -25,22 +25,21 @@ func (m *Model) applyPlanTools(ev state.Event) tea.Cmd {
 		return nil
 	}
 	switch ev.Kind {
-	case state.EvPlanPresent:
-		m.setAgentMode(agentModePlan)
-		m.plan.SetValue(ev.PlanToolText)
-		m.plan.SetUserDirty(false)
-		m.restoredPlan = false
-		m.notice(planPresentNotice)
-	case state.EvPlanUpdate:
+	case state.EvPlanPresent, state.EvPlanUpdate:
 		if strings.TrimSpace(ev.PlanToolText) == "" {
-			m.noticeErr("plan update ignored — empty plan text")
+			m.noticeErr("plan ignored — empty plan text")
 			return nil
 		}
-		m.setAgentMode(agentModePlan)
+		m.revealPlan()
 		m.plan.SetValue(ev.PlanToolText)
+		m.planRequestDraft = ""
 		m.plan.SetUserDirty(false)
 		m.restoredPlan = false
-		m.notice(planUpdateNotice)
+		if ev.Kind == state.EvPlanPresent {
+			m.notice(planPresentNotice)
+		} else {
+			m.notice(planUpdateNotice)
+		}
 	case state.EvPlanGetApproved:
 		followup := m.approvedPlanFollowup()
 		// The tool-triggered follow-up must be visible immediately rather
@@ -70,7 +69,9 @@ type approvedPlanResult struct{ err error }
 
 func approvedPlanCmd(current *currentBackend, followup string) tea.Cmd {
 	return func() tea.Msg {
-		if err := current.send(followup, nil, ""); err != nil {
+		// Reading an approval is not permission to execute it. Keep this
+		// synthetic lookup turn on the planning route, including its sandbox.
+		if err := current.send(followup, nil, agentModePlan); err != nil {
 			return approvedPlanResult{err: err}
 		}
 		return approvedPlanResult{}

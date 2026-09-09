@@ -97,8 +97,8 @@ func TestSessionPickerAcceptCapturesExecIntent(t *testing.T) {
 	if !ok {
 		t.Fatalf("the accept must persist session.json synchronously")
 	}
-	if sf.PrimaryID != "ses-beta-older" {
-		t.Fatalf("session.json must be stamped with the ACCEPTED pin, got %q", sf.PrimaryID)
+	if sf.PrimaryID != "ses-alpha-new" {
+		t.Fatalf("outgoing snapshot must retain its original session id, got %q", sf.PrimaryID)
 	}
 }
 

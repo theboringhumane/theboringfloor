@@ -77,7 +77,12 @@ var slashCommands = []slashCommand{
 	{"/zen", "fullscreen floor, any key exits", ""},
 	{"/focus", "alias of /zen", "/focus floor"},
 	{"/stop", "abort current work (boss + workers)", ""},
-	{"/new", "fresh office (transcript archived)", ""},
+	{"/new", "new conversation · choose backend and team", ""},
+	{"/floors", "project workspaces and conversations", ""},
+	{"/files", "project file tree and preview", ""},
+	{"/tickets", "project task board", ""},
+	{"/expand", "expand the active panel", ""},
+	{"/backend", "switch backend", "/backend opencode|claudecode|codex"},
 	{"/session", "past-sessions picker (enter resumes live)", ""},
 	{"/quit", "exit theboringfloor", ""},
 }

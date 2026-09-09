@@ -87,8 +87,8 @@ func TestPlanGetApprovedUsesBackendAtCommandExecutionAndAddsMemberRow(t *testing
 	if result, ok := msg.(approvedPlanResult); !ok || result.err != nil {
 		t.Fatalf("get-approved result = %#v", msg)
 	}
-	if len(old.sentTexts) != 0 || len(latest.sentTexts) != 1 || latest.sentTexts[0] != m.approvedPlanFollowup() {
-		t.Fatalf("follow-up must use swapped current backend: old=%q latest=%q", old.sentTexts, latest.sentTexts)
+	if len(old.agentCalls) != 0 || len(latest.agentCalls) != 1 || latest.agentCalls[0].text != m.approvedPlanFollowup() || latest.agentCalls[0].agent != agentModePlan {
+		t.Fatalf("follow-up must use swapped backend in plan mode: old=%q latest=%q", old.agentCalls, latest.agentCalls)
 	}
 }
 

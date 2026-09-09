@@ -64,8 +64,8 @@ func enterKey() tea.KeyPressMsg {
 
 // paneClick returns a left click inside the desktop floor slot (the plan
 // pane's region) — the manual-open / focus gesture for the pane.
-func paneClick() tea.MouseClickMsg {
-	return tea.MouseClickMsg(tea.Mouse{X: 5, Y: 5, Button: tea.MouseLeft})
+func paneClick(m Model) tea.MouseClickMsg {
+	return tea.MouseClickMsg(tea.Mouse{X: m.navigatorWidth() + 5, Y: 5, Button: tea.MouseLeft})
 }
 
 // bossReply drives one completed boss message through Update (the
@@ -340,7 +340,7 @@ func TestPlanAntiClobberKeepsUserEdit(t *testing.T) {
 	m = bossReply(t, m, "b1", v1)
 
 	// the user clicks into the pane and edits (the anti-clobber latch)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.Focused() {
 		t.Fatal("a click inside the pane must focus it (existing swallow-routing)")
 	}
@@ -462,7 +462,7 @@ func TestPlanApproveFromEditorFocus(t *testing.T) {
 
 	body := gatedPlan("Editor-focused approve", "approve-me")
 	m = bossReply(t, m, "b1", body)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.Focused() {
 		t.Fatal("setup: the pane must be focused for the editor-focus claim")
 	}
@@ -510,7 +510,7 @@ func TestPlanApproveRefusesUnedited(t *testing.T) {
 
 	// (b) the manually-opened starter template refuses (unchanged = nothing
 	// to sign off) — the template arms on click into an empty pane
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.IsStarter() {
 		t.Fatalf("a click into an empty pane must arm the starter scaffold, got %q", firstNonEmptyLine(m.plan.Value()))
 	}
@@ -1092,7 +1092,7 @@ func TestApproveRestoredRefusesUntilEdited(t *testing.T) {
 	}
 
 	// open + edit: the gate lifts (userDirty) and the accept clears the latch
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	// the click now PLACES the caret (selection wave); ctrl+end parks it
 	// back at the buffer's end before typing, like a member would
 	m = runMsg(t, m, tea.KeyPressMsg(tea.Key{Code: tea.KeyEnd, Mod: tea.ModCtrl}))
@@ -1147,7 +1147,7 @@ func TestPlanSelCutSkipsApproveArm(t *testing.T) {
 	m = runMsg(t, m, ctrlP())
 	body := gatedPlan("Cut plan", "selection")
 	m = bossReply(t, m, "b1", body)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.Focused() {
 		t.Fatal("setup: the pane must be focused")
 	}
@@ -1205,7 +1205,7 @@ func TestPlanSelCopySkipsQuit(t *testing.T) {
 	m = runMsg(t, m, ctrlP())
 	body := gatedPlan("Copy plan", "clipboard")
 	m = bossReply(t, m, "b1", body)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	before := m.plan.Value()
 	m = markThree(t, m)
 
@@ -1246,7 +1246,7 @@ func TestPlanSelEscOwnsSelectionFirst(t *testing.T) {
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 40})
 	m = runMsg(t, m, ctrlP())
 	m = bossReply(t, m, "b1", gatedPlan("Esc plan", "gate"))
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	m = markThree(t, m)
 
 	m = runMsg(t, m, escKey())
@@ -1275,7 +1275,7 @@ func TestPlanPasteMsgRoutesToFocusedPane(t *testing.T) {
 	m = runMsg(t, m, ctrlP())
 	body := gatedPlan("Paste plan", "bracketed")
 	m = bossReply(t, m, "b1", body)
-	m = runMsg(t, m, paneClick())
+	m = runMsg(t, m, paneClick(m))
 	if !m.plan.Focused() {
 		t.Fatal("setup: the pane must be focused")
 	}

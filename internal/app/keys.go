@@ -129,6 +129,8 @@ func (k KeyMap) TabJump(s string) int {
 		return 5
 	case "7":
 		return 6
+	case "8":
+		return 7
 	}
 	return -1
 }

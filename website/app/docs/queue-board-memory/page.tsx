@@ -53,6 +53,7 @@ export default function QueueBoardMemoryPage() {
     <>
       <SiteHeader />
       <main>
+        <aside className="mx-auto max-w-5xl border-b border-border px-6 py-8 text-sm leading-relaxed text-muted-foreground">The Board now includes persistent project tickets with priority, owner, team, description, and checklists, across Backlog, In progress, Blocked, Review, and Done. These manual tickets live in floor.json independently of conversations or agentmemory. Live agent task rows are also shown as read-only activity. <Link href="/docs/workspaces" className="underline underline-offset-4">Read the workspace guide.</Link></aside>
         <section className="border-b border-border">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
             <SectionTag>Docs — queue, board & memory</SectionTag>

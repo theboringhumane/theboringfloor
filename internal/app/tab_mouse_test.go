@@ -18,23 +18,24 @@ func TestRightPanelTabLabelsActivateTabs(t *testing.T) {
 		t.Fatal("precondition: 120x40 must render the desktop right panel")
 	}
 	clicks := make(map[int]int)
-	for x := 0; x < 120-m.floorW; x++ {
+	for x := 0; x < 120-m.panelX(); x++ {
 		if idx, ok := m.tabs.TabAt(x, 0); ok {
 			if _, seen := clicks[idx]; !seen {
 				clicks[idx] = x
 			}
 		}
 	}
-	if len(clicks) != 7 {
-		t.Fatalf("visible tab click targets = %d, want 7", len(clicks))
+	if len(clicks) != 8 {
+		t.Fatalf("visible tab click targets = %d, want 8", len(clicks))
 	}
-	for idx := 0; idx < 7; idx++ {
+	for idx := 0; idx < 8; idx++ {
 		localX, ok := clicks[idx]
 		if !ok {
 			t.Errorf("tab %d has no visible click target", idx)
 			continue
 		}
-		x := m.floorW + localX
+		m.tabs.SetActive(0) // each click starts in the normal split layout
+		x := m.panelX() + localX
 		if got, hit := m.tabs.TabAt(localX, 0); !hit || got != idx {
 			t.Fatalf("precondition: local x=%d hits (%d, %t), want (%d, true)", localX, got, hit, idx)
 		}

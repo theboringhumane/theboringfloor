@@ -191,23 +191,23 @@ func (t *termTabWrap) alive() bool {
 // Update already hands every wheel msg to tabs.Update (coords are unused
 // by the panel's scroll).
 func (m *Model) sendTermMouse(msg tea.Msg) (tea.Cmd, bool) {
-	if m.tabs.ActiveIndex() != terminalIndex {
+	if m.floorOverlay() || m.tabs.ActiveIndex() != terminalIndex {
 		return nil, false
 	}
 	// translate strips the screen chrome down to sidebar-box space.
 	translate := func(x, y int) (int, int) {
-		if m.mobile() {
+		if m.mobile() && !m.widePanel() {
 			return x, y - (1 + m.floorBandH())
 		}
-		return x - m.floorW, y - 1
+		return x - m.panelX(), y - 1
 	}
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
-		if m.mobile() {
+		if m.mobile() && !m.widePanel() {
 			if msg.Y < 1+m.floorBandH() {
 				return nil, false
 			}
-		} else if msg.X < m.floorW {
+		} else if msg.X < m.panelX() {
 			return nil, false
 		}
 		msg.X, msg.Y = translate(msg.X, msg.Y)

@@ -77,7 +77,7 @@ func TestBossImageSpliceOriginDesktopMobile(t *testing.T) {
 		// + the chat gutter (2) + the boss hanging indent (7).
 		wantX := 1 + 2 + 7
 		if !m.mobile() {
-			wantX += m.floorW
+			wantX += m.panelX()
 		} else if width != 60 || !m.mobile() {
 			t.Fatalf("width %d must be the mobile layout", width)
 		}

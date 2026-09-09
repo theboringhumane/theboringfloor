@@ -148,14 +148,14 @@ func TestBtwExitClearsHiddenStateAndPin(t *testing.T) {
 	}
 }
 
-func TestBtwNewClearsHiddenStateAndPin(t *testing.T) {
+func TestBtwNewChooserPreservesHiddenStateUntilConfirmed(t *testing.T) {
 	m := newBtwTestModel(t)
 	m.btwHiddenSnap = &btwSnapshot{chat: []state.ChatMsg{{ID: "hidden", From: "user", Text: "keep this hidden"}}}
 	m.btwPinMsgID = "btw-pin-stale"
 
 	m = runMsg(t, m, slashMsg{text: "/new"})
-	if m.btwHiddenSnap != nil || m.btwPinMsgID != "" {
-		t.Fatalf("/new must clear hidden btw state and pin: hidden=%+v pin=%q", m.btwHiddenSnap, m.btwPinMsgID)
+	if m.btwHiddenSnap == nil || m.btwPinMsgID != "btw-pin-stale" || !m.floors.Editing() {
+		t.Fatalf("/new chooser must preserve hidden btw state until launch: hidden=%+v pin=%q", m.btwHiddenSnap, m.btwPinMsgID)
 	}
 }
 

@@ -540,7 +540,7 @@ func TestPlanSelFooterHintSwap(t *testing.T) {
 		t.Fatalf("clearing the mark restores the frozen footer, got %q", ansi.Strip(got))
 	}
 	e.Blur()
-	if got := ansi.Strip(e.footer()); got != "click to edit · ctrl+x approve → build · ctrl+p exits" {
+	if got := ansi.Strip(e.footer()); got != "click to edit · ctrl+x twice approve → build · ctrl+p exits" {
 		t.Fatalf("the unfocused footer is byte-frozen, got %q", got)
 	}
 	e.SetMode("build")

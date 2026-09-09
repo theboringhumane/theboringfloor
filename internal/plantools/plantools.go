@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	PlanningPrompt = "[theboringfloor: planning turn] Inspect and research read-only. Do not modify project files, run mutating commands, or dispatch implementation workers. Present a concrete plan with scope, steps, risks, and verification using plan_present (floor MCP) or the plan-present marker. Wait for the member's approval before implementation."
 	// MaxRunes bounds persisted plan text while preserving its beginning.
 	MaxRunes = 20000
 	// TruncationMarker is appended when a plan exceeds MaxRunes.
@@ -37,6 +38,7 @@ type Directive struct {
 // PromptPreamble rides the first boss prompt after the browser and
 // recent-message harness preambles.
 const PromptPreamble = "[theboringfloor harness — plan tools]\n" +
+	"Assess scope before acting. Substantial features, new systems, multi-layer changes, migrations, and major refactors require planning first: inspect read-only, present a concrete plan with plan_present (floor MCP) or the marker below, then wait for approval before implementation or implementation dispatch. Simple questions and small scoped edits can proceed directly. An approved plan from an earlier task does not authorize a new plan. " +
 	"The member reviews and approves plan execution in the plan pane with ctrl+x twice. " +
 	"Presenting or updating a plan is presentation only, never execution. Emit at most one directive per reply:\n" +
 	"⟦plan-present⟧\n<markdown>\n⟦/plan-present⟧ — present a nonempty plan.\n" +

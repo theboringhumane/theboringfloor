@@ -553,11 +553,17 @@ func Fg(c color.Color, s string) string {
 
 // OnBar renders s colored against the shared bar background.
 func OnBar(c color.Color, s string) string {
+	if c == BarBgColor {
+		c = White
+	}
 	return lipgloss.NewStyle().Background(BarBgColor).Foreground(c).Render(s)
 }
 
 // OnBarBold renders s bold-and-colored against the shared bar background.
 func OnBarBold(c color.Color, s string) string {
+	if c == BarBgColor {
+		c = White
+	}
 	return lipgloss.NewStyle().Background(BarBgColor).Foreground(c).Bold(true).Render(s)
 }
 

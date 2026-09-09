@@ -143,3 +143,10 @@ func (f *flow) stop() {
 
 // nowMs is the Date.now() of the TS codebase.
 func nowMs() int64 { return time.Now().UnixMilli() }
+
+func teamPrompt(cfg *config.Config, text string) string {
+	if cfg == nil || cfg.ConversationTeam == "" {
+		return text
+	}
+	return "This conversation belongs to the " + cfg.ConversationTeam + " team on the current project floor. Keep work scoped to the request and coordinate cross-team dependencies explicitly.\n\n" + text
+}

@@ -100,8 +100,8 @@ func TestWideFrameKeepsHorizontalSplit(t *testing.T) {
 	if m.mobile() {
 		t.Fatalf("140 cols must keep the desktop layout")
 	}
-	if w, h, sidebar, floor := m.LayoutInfo(); w != 140 || h != 30 || sidebar != 80 || floor != 60 {
-		t.Fatalf("LayoutInfo = %dx%d sidebar %d floor %d, want 140x30 sidebar 80 floor 60", w, h, sidebar, floor)
+	if w, h, sidebar, floor := m.LayoutInfo(); w != 140 || h != 30 || sidebar != 80 || floor != 37 {
+		t.Fatalf("LayoutInfo = %dx%d sidebar %d floor %d, want 140x30 sidebar 80 floor 37", w, h, sidebar, floor)
 	}
 	plain := ansi.Strip(m.Frame())
 	// desk and tab bar sit on DIFFERENT columns of the SAME rows: the

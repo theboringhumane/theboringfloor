@@ -2,9 +2,9 @@
 // (exact port of node-legacy/src/app.tsx officeReducer + initialState),
 // layout, key routing, the power governor, and the backend event seam.
 //
-// Layout: topbar (1) | middle (floor left flex | right sidebar) | statusbar (1).
-// The sidebar holds seven tabs — chat | terminal | agents | board | mail |
-// activity | git — and its width is configurable (brain.json ui.sidebarWidth,
+// Layout: topbar | project navigator | office | tool tabs | statusbar.
+// The tool pane holds eight tabs — chat | terminal | agents | board | mail |
+// activity | git | files — and its width is configurable (brain.json ui.sidebarWidth,
 // 26..100 clamp, 0 = default 80; /compact mode narrows it to 30). The LEFT
 // pane is a two-tab slot of its own — floor (default) | browser — flipped
 // with ctrl+b (app/browser.go owns the switcher). /zen is a transient
@@ -450,6 +450,16 @@ type btwSnapshot struct {
 
 // Model is the tea.Model for the whole app.
 type Model struct {
+	sessionWriter                       *sessionWriter
+	conversationTitle, conversationTeam string
+	freshConversation                   bool
+	execFloor                           *FloorLaunch
+	floors                              *panels.Floors
+	files                               *panels.Files
+	tickets                             *panels.Tickets
+	focusPanel                          bool
+	floorNavFocused                     bool
+
 	backend        state.Backend
 	currentBackend *currentBackend // shared across value-copy tea updates
 	// recentToolOutputs keeps the completed body beside the compact transcript
@@ -560,7 +570,9 @@ type Model struct {
 	// one-per-completed-boss-reply (notePlanCompletion). A completion that
 	// lands after a reflex flip back to build posts the land-in-chat note;
 	// toggling OUT of plan mode with any pending shows the exit suffix.
-	planSendPending int
+	planSendPending  int
+	planAutoSkipOnce bool   // ctrl+p back to build overrides auto planning for the next request
+	planRequestDraft string // prior draft retained for reference while a new automatic plan is pending
 	// planDegradeNoted — F5: the one-time-per-session entry warning for a
 	// degraded agent seam (the badge keeps showing it every frame after).
 	planDegradeNoted bool
@@ -1298,7 +1310,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	plan.SetMode(agentModeBuild)
 	current := newCurrentBackend(b)
 	chat := panels.NewChat(func(text string, atts []state.Attachment) tea.Cmd {
-		return currentBackendSend(current, plan, text, atts)
+		return func() tea.Msg { return chatSubmitMsg{text: text, atts: atts} }
 	})
 	chat.SetBossShortName(bossShort)
 	agents := panels.NewAgents()
@@ -1306,6 +1318,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	activity := panels.NewActivity()
 	m := Model{
 		backend:           b,
+		sessionWriter:     &sessionWriter{},
 		currentBackend:    current,
 		recentToolOutputs: map[string]string{},
 		cfg:               cfg,
@@ -1429,7 +1442,12 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 	if b != nil && b.Mode() == state.ModeLive {
 		if dir, err := os.Getwd(); err == nil {
 			m.sessDir = dir
-			if m.resumePin != "" {
+			if m.freshConversation {
+				// An explicit new conversation never inherits another transcript.
+				if fresh, ok := b.(interface{ FreshOnStart() }); ok {
+					fresh.FreshOnStart()
+				}
+			} else if m.resumePin != "" {
 				// EXPLICIT RESUME PIN (-s/--session): beats session.json's
 				// stored id AND skips the 4-day freshness gate — the member
 				// asked for THIS session deterministically. resolvePrimary
@@ -1441,7 +1459,10 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 					ps.PrimaryOverride(m.resumePin)
 					pinned = true
 				}
-				sf, sfOK := LoadSession(dir)
+				sf, sfOK := loadConversation(dir, cfg.Backend.ResolvedName(), m.resumePin)
+				if !sfOK {
+					sf, sfOK = LoadSession(dir)
+				}
 				switch {
 				case !pinned:
 					// A live harness stub without the seam: never fake the
@@ -1470,7 +1491,12 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 						ps.PrimaryOverride(pin)
 					}
 				}
-				m.hydrateSession(sf)
+				if full, ok := loadConversation(dir, cfg.Backend.ResolvedName(), sf.primaryIDFor(cfg.Backend.ResolvedName())); ok {
+					sf = full
+				}
+				if sf.Backend == "" || sf.Backend == cfg.Backend.ResolvedName() {
+					m.hydrateSession(sf)
+				}
 				// A restored office is already warm — skip the boot
 				// splash so the transcript + restore notice are the
 				// first frame (the splash opens cold starts only).
@@ -1478,6 +1504,7 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 			}
 		}
 	}
+	m.workspaceInit()
 	return m
 }
 
@@ -1485,6 +1512,13 @@ func New(b state.Backend, cfg *config.Config, opts ...Option) Model {
 // …). Used by harnesses (uishot) before the run starts; selecting the
 // terminal tab lazy-spawns its shell on this first visit.
 func (m *Model) SelectTab(name string) bool {
+	if strings.EqualFold(name, "floors") || strings.EqualFold(name, "workspaces") {
+		m.floorNavFocused = true
+		m.frameNonce++
+		return true
+	}
+	m.floorNavFocused = false
+	m.frameNonce++
 	ok := m.tabs.SetActiveByTitle(name)
 	if ok {
 		m.normalizeTermCapture() // leaving captured → release before re-entry
@@ -1529,7 +1563,7 @@ func (m Model) State() state.OfficeState {
 // Init arms the first power-governed tick plus the boot splash's own
 // frame ticker; applyEvent re-arms the office tick every cycle.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.tickCmd(), bootTick())
+	return tea.Batch(m.tickCmd(), bootTick(), m.floors.Refresh(), m.files.Refresh(), m.tickets.Refresh())
 }
 
 // tickCmd re-arms the animation tick at the delay the governor picks for
@@ -1563,6 +1597,24 @@ func (m Model) FrameCacheStats() (hits, misses uint64) {
 
 // Update routes keys, backend events and component ticks.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if panels.IsWorkspaceResult(msg) {
+		m.frameNonce++
+		return m, tea.Batch(m.floors.Update(msg), m.files.Update(msg), m.tickets.Update(msg))
+	}
+	switch x := msg.(type) {
+	case panels.FloorLaunchMsg:
+		m.frameNonce++
+		cmd := m.launchFloor(x)
+		return m, cmd
+	case panels.FileAttachMsg:
+		m.frameNonce++
+		m.tabs.SetActive(0)
+		return m, m.chat.StageAttachment(x.Attachment)
+	case panels.TicketRunMsg:
+		m.frameNonce++
+		return m, m.sendTicketToDraft(x.Ticket)
+	}
+
 	// Boot gate: until the splash is done (cascade + ready, 4s cap, or a
 	// keypress skip) INPUT feeds the boot component only — the office
 	// tick, backend events and resizes keep flowing to the normal switch
@@ -1644,7 +1696,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// browser's esc outranks the selection too — while the switcher
 		// sits on browser the key belongs to the pane (its leave-to-floor
 		// contract), never to a chat-region mark.
-		if msg.String() == "esc" && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && !m.browserActive() && m.chat != nil && !m.chat.LinkPickerOpen() && m.chat.SelectionActive() {
+		if msg.String() == "esc" && !m.floorNavFocused && !m.floors.Editing() && m.threadFocus == nil && m.tabs.ActiveIndex() == 0 && !m.browserActive() && m.chat != nil && !m.chat.LinkPickerOpen() && m.chat.SelectionActive() {
 			m.chat.ClearSelection()
 			m.sel = mselIdle
 			break
@@ -1739,6 +1791,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.frameNonce++
 		}
 	case tea.MouseWheelMsg:
+		if m.floors.Editing() {
+			break
+		}
+		if (m.mobile() && m.floorNavFocused) || msg.X < m.navigatorWidth() {
+			code := tea.KeyDown
+			if msg.Button == tea.MouseWheelUp {
+				code = tea.KeyUp
+			}
+			m.frameNonce++
+			m.floors.Update(tea.KeyPressMsg(tea.Key{Code: code}))
+			break
+		}
 		// wheel scrolls the active panel (the default-arm's twin) — except
 		// an open thread-focus, which owns the wheel for its own viewport
 		// (the office underneath never scrolls behind the pane), and the
@@ -1751,7 +1815,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
-		if m.browserActive() {
+		if m.browserActive() && !m.widePanel() {
 			if cmd := m.browser.Update(msg); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -1767,6 +1831,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+	case chatSubmitMsg:
+		m.prepareRequestMode(msg.text)
+		cmds = append(cmds, currentBackendSend(m.currentBackend, m.plan, msg.text, msg.atts))
 	case chatSentMsg:
 		// nothing local: backend.Send owns the echo (chat-user + pending boss
 		// bubble) via the event stream — applying them here duplicated the bubbles.
@@ -1855,11 +1922,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// editable draft or transforming the completion payload again.
 			approvedPlanTexts.Store(m.plan, msg.plan)
 		}
-		m.setAgentMode(agentModeBuild)
-		m.restoredPlan = false
-		if m.plan != nil {
-			m.plan.SetUserDirty(false)
-			m.plan.Blur()
+		// A newer draft can arrive while the transport accepts this plan.
+		// Keep it visible and unapproved; record only the snapshot sent.
+		if m.plan == nil || capApprovedPlanText(m.plan.Value()) == msg.plan {
+			m.setAgentMode(agentModeBuild)
+			m.restoredPlan = false
+			m.planRequestDraft = ""
+			if m.plan != nil {
+				m.plan.SetUserDirty(false)
+				m.plan.Blur()
+			}
 		}
 		m.playSound("send")
 		m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", len(msg.plan)))
@@ -2359,6 +2431,16 @@ func (m Model) Frame() string {
 	if m.width == 0 {
 		return "theboringfloor — waiting for terminal size…"
 	}
+	if m.widePanel() {
+		m.tabs.SetSize(m.width-m.navigatorWidth(), m.middleH)
+	} else if m.mobile() {
+		m.tabs.SetSize(m.width, m.middleH-m.floorBandH())
+	} else {
+		m.tabs.SetSize(m.sidebar, m.middleH)
+	}
+	if m.chat != nil {
+		m.chat.SetWorkspaceContext(m.projInfo().Project, m.backendName(), m.conversationTeam)
+	}
 	digest := m.frameDigest()
 	if m.gov.frameCached != "" && m.gov.frameKey == digest {
 		m.gov.frameHits++
@@ -2404,6 +2486,12 @@ func (m Model) Frame() string {
 			bot = chrome.StatusBarZenHint(m.st, m.width,
 				chrome.OnBarBold(chrome.Warn, " "+quitArmToast+" "))
 		}
+	} else if m.widePanel() {
+		mid = m.tabs.View()
+		if m.navigatorWidth() > 0 {
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.floors.NavView(m.navigatorWidth(), m.middleH, m.floorNavFocused), mid)
+		}
+		bot = chrome.StatusBarAgent(m.st, "Ctrl+W expand · Ctrl+E floors · Ctrl+N new · Tab panels", len(m.queue), m.agentBadge(), m.width)
 	} else if m.mobile() {
 		// mobile (auto, width < mobileMaxCols): the middle stacks
 		// VERTICALLY — the left slot (floor|browser switcher + content)
@@ -2434,13 +2522,19 @@ func (m Model) Frame() string {
 			// a presented/edited plan: the plan editor owns the floor slot.
 			// Plan mode with an EMPTY pane leaves the normal office floor.
 			m.plan.SetSize(m.floorW, m.middleH)
-			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.plan.View(), side)
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.floors.NavView(m.navigatorWidth(), m.middleH, m.floorNavFocused), m.plan.View(), side)
 		} else {
-			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.leftPaneView(m.floorW, m.middleH), side)
+			mid = lipgloss.JoinHorizontal(lipgloss.Top, m.floors.NavView(m.navigatorWidth(), m.middleH, m.floorNavFocused), m.leftPaneView(m.floorW, m.middleH), side)
 		}
 		bot = chrome.StatusBarAgent(m.st, m.hintLine(), len(m.queue), m.agentBadge(), m.width)
 	}
+	if m.floorNavFocused && !m.zen && m.threadFocus == nil {
+		bot = chrome.StatusBarAgent(m.st, "↑↓ project · ←→ conversation · Enter open · n new · Esc back", len(m.queue), m.agentBadge(), m.width)
+	}
 	frame := lipgloss.JoinVertical(lipgloss.Left, top, mid, bot)
+	if m.floorOverlay() && m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
+		frame = m.floors.OverlayFrame(frame, m.width, m.height)
+	}
 	// The /model picker splices over the COMPOSED frame (app-level float —
 	// centered on the whole terminal, layout-neutral: floor/sidebar/zen/
 	// mobile all underlay the same). While a permission/question float is
@@ -2581,6 +2675,17 @@ const pasteIgnoreNotice = "paste: nothing focused accepts text"
 //  7. otherwise (agents/board/mail/activity/git — no text surface):
 //     ONE dim notice, never a silent drop.
 func (m *Model) routePaste(msg tea.PasteMsg) tea.Cmd {
+	if m.permQ.front() == nil && m.question == nil && m.modelPick == nil && m.threadFocus == nil {
+		if m.floors.Editing() {
+			return m.floors.Update(msg)
+		}
+		if m.floorNavFocused {
+			return nil
+		}
+		if m.workspaceEditing() {
+			return m.tabs.Update(msg)
+		}
+	}
 	if m.agentMode == agentModePlan && m.plan != nil && m.plan.Focused() &&
 		m.permQ.front() == nil && m.question == nil && m.modelPick == nil {
 		return m.plan.Update(msg)
@@ -2637,7 +2742,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// office's unclaimed keys: the right strip's chat/terminal surfaces
 	// (the textarea, the shell) all yield — exactly like the browser tab
 	// did when it rode the strip.
-	browserActive := m.browserActive()
+	browserActive := m.browserActive() && !m.widePanel()
 	if browserActive {
 		chatActive, termActive = false, false
 	}
@@ -2702,6 +2807,42 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 		return m.hideBtw()
 	}
 
+	if m.permQ.front() == nil && m.question == nil {
+		if m.floors.Editing() {
+			return m.floors.Update(msg)
+		}
+		if m.floorNavFocused {
+			switch key {
+			case "esc", "ctrl+e", "tab":
+				m.floorNavFocused = false
+				return nil
+			case "ctrl+n":
+				m.floors.NewConversation()
+				return nil
+			}
+			return m.floors.Update(msg)
+		}
+		if m.workspaceEditing() {
+			return m.tabs.Update(msg)
+		}
+		if chatActive && m.chat.Searching() {
+			return m.chat.Update(msg)
+		}
+		if !m.termCapturedNow() {
+			switch key {
+			case "ctrl+w":
+				m.focusPanel = !m.focusPanel
+				return nil
+			case "ctrl+e":
+				return m.focusFloors()
+			case "ctrl+n":
+				m.floorNavFocused = true
+				m.floors.SelectCurrent()
+				m.floors.NewConversation()
+				return nil
+			}
+		}
+	}
 	// Tab-switch keys work on the terminal tab like ANY OTHER tab while the
 	// shell keyboard is RELEASED (the default). In CAPTURED mode (opt-in
 	// via ctrl+space) tab/shift+tab are the shell's completion keys and the
@@ -2996,7 +3137,7 @@ func (m *Model) planBodyCoords(x, y int) (col, vrow int) {
 	if m.mobile() {
 		return x, y - (1 + m.floorBandH() + 1)
 	}
-	return x, y - 2
+	return x - m.navigatorWidth(), y - 2
 }
 
 // planPaneRegionHit reports whether a screen point is INSIDE the plan
@@ -3006,7 +3147,7 @@ func (m *Model) planBodyCoords(x, y int) (col, vrow int) {
 func (m *Model) planPaneRegionHit(x, y int) bool {
 	if m.agentMode != agentModePlan || m.plan == nil || !m.planPaneVisible() ||
 		m.permQ.front() != nil || m.question != nil || m.modelPick != nil ||
-		m.threadFocus != nil || m.zen || m.height == 0 {
+		m.threadFocus != nil || m.zen || m.floorOverlay() || m.height == 0 {
 		return false
 	}
 	col, vrow := m.planBodyCoords(x, y)
@@ -3137,6 +3278,21 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.modelPick != nil {
 		return nil
 	}
+	if m.widePanel() {
+		dx, dy := m.tabs.ContentOffset()
+		cx, cy := msg.X-m.panelX()-dx, msg.Y-1-dy
+		if m.tabs.ActiveIndex() == 0 {
+			if cmd := m.chat.PermClick(cx, cy); cmd != nil {
+				return cmd
+			}
+			m.chat.ClickRow(cx, cy)
+			return nil
+		}
+		adj := msg
+		adj.X = cx
+		adj.Y = cy
+		return m.tabs.Update(adj)
+	}
 	// Plan mode's floor-slot pane owns its region: a click INSIDE it opens
 	// the pane for editing — an EMPTY pane first arms its starter scaffold
 	// (the manual-open scratch workflow), a presented plan is never
@@ -3151,7 +3307,7 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 				m.openPlanForEdit()
 				return nil
 			}
-		} else if msg.X < m.floorW {
+		} else if msg.X >= m.navigatorWidth() && msg.X < m.panelX() {
 			m.openPlanForEdit()
 			return nil
 		}
@@ -3190,13 +3346,13 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			m.chat.ClickRow(cx, cy)
 			return nil
 		}
-	} else if msg.X >= m.floorW {
+	} else if msg.X >= m.panelX() {
 		// sidebar. The git tab claims clicks: row hit → open the file's
 		// diff. Coords land in sidebar-box space (topbar stripped only) —
 		// the panel subtracts Tabs.ContentOffset itself.
 		if m.tabs.ActiveIndex() == gitIndex {
 			adj := msg
-			adj.X -= m.floorW
+			adj.X -= m.panelX()
 			adj.Y--
 			return m.tabs.Update(adj)
 		}
@@ -3208,7 +3364,7 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 			return nil
 		}
 		dx, dy := m.tabs.ContentOffset()
-		cx, cy := msg.X-(m.floorW+dx), msg.Y-(1+dy)
+		cx, cy := msg.X-(m.panelX()+dx), msg.Y-(1+dy)
 		// the popover claims clicks inside its card first (fires the
 		// answer seam); outside it returns nil and thread rows take over
 		if cmd := m.chat.PermClick(cx, cy); cmd != nil {
@@ -3232,7 +3388,7 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.browserActive() {
 		return nil
 	}
-	id, ok := office.HitAgent(m.st, msg.X, msg.Y-1 /* topbar row */)
+	id, ok := office.HitAgent(m.st, msg.X-m.navigatorWidth(), msg.Y-1 /* topbar row */)
 	if !ok {
 		return nil
 	}
@@ -4243,8 +4399,9 @@ func (m *Model) resetServerTurn() {
 // routing notice prints at most ONCE per busy turn (conciergeNoted,
 // re-armed by resetServerTurn).
 func (m *Model) routeBusySend(text string, atts []state.Attachment) tea.Cmd {
+	m.prepareRequestMode(text)
 	busy := hasPendingBoss(m.st) || m.st.BossDelegating || m.questionParked
-	if busy && m.cfg != nil && m.cfg.Boss.Concierge && len(atts) == 0 {
+	if busy && m.agentMode != agentModePlan && m.cfg != nil && m.cfg.Boss.Concierge && len(atts) == 0 {
 		if m.currentBackend.supportsConcierge() {
 			notice := !m.conciergeNoted
 			m.conciergeNoted = true
@@ -4460,6 +4617,7 @@ func (m *Model) dispatchQueued(manual bool) tea.Cmd {
 	} else {
 		qdebugf("flush %q (plain send, single item)", texts[0])
 	}
+	m.prepareRequestMode(sendText)
 	m.batchItems = items
 	m.batchSummaries = texts
 	if batch {
@@ -4825,8 +4983,11 @@ func (m *Model) resize(w, h int) {
 	if w-sw < 8 {
 		sw = w - 8
 	}
+	if !m.mobile() {
+		sw = min(sw, w-m.navigatorWidth()-28)
+	}
 	m.sidebar = sw
-	m.floorW = w - sw
+	m.floorW = w - m.navigatorWidth() - sw
 	if m.mobile() {
 		// mobile stack: no sidebar — the tab strip owns the full width in
 		// the rows under the floor band (Frame renders the band itself at
@@ -5672,7 +5833,7 @@ const slashHelp = `commands:
   /new               fresh office (previous transcript archived on disk)
   /session           pick a past session to resume live (fallback prints
                      the id + path; boot flag -s|--session <id> pins one)
-  /backend [name]    show the LLM transport; /backend opencode|claudecode
+  /backend [name]    show the LLM transport; /backend opencode|claudecode|codex
                      swaps mid-flight (idle office only · persists)
   /status            office status
   /mcp [reconnect x] show MCP servers; reconnect one by name
@@ -5994,11 +6155,23 @@ func (m *Model) applySlash(input string) tea.Cmd {
 			}
 		}
 		m.chat.SetQuestion(m.questionView(m.question))
+	case "/floors", "/workspaces":
+		return m.focusFloors()
+	case "/files":
+		m.leftTab = leftTabFloor
+		m.tabs.SetActive(7)
+		return m.files.Refresh()
+	case "/tickets":
+		m.leftTab = leftTabFloor
+		m.tabs.SetActive(3)
+		return m.tickets.Refresh()
+	case "/expand":
+		m.focusPanel = !m.focusPanel
 	case "/new":
-		m.btwSaved = nil // /new abandons any btw session
-		m.btwHiddenSnap = nil
-		m.btwPinMsgID = ""
-		m.newOffice() // sessions.go — clear surfaces + fresh floor
+		m.floorNavFocused = true
+		m.floors.SelectCurrent()
+		m.floors.NewConversation()
+		return nil
 	case "/backend":
 		// install-seeded brain.json backend.name's in-app twin: show the
 		// active transport or swap it mid-flight (idle-office gate inside).
@@ -6638,7 +6811,7 @@ func backendNameFromStatus(text string) (string, bool) {
 		rest = rest[:i]
 	}
 	switch rest {
-	case config.BackendNameDefault, config.BackendNameClaude:
+	case config.BackendNameDefault, config.BackendNameClaude, config.BackendNameCodex:
 		return rest, true
 	}
 	return "", false
@@ -6653,6 +6826,8 @@ func backendNameFromStatus(text string) (string, bool) {
 // THEFLOOR_CLAUDE_BIN / PATH resolution).
 func backendFor(name, baseURL, dir string, cfg *config.Config) state.Backend {
 	switch name {
+	case config.BackendNameCodex:
+		return backend.NewCodex("", dir, cfg)
 	case config.BackendNameClaude:
 		return backend.NewClaude("", dir, cfg)
 	default:
@@ -6720,18 +6895,18 @@ func (m *Model) backendSwapBlockers() []string {
 	return why
 }
 
-// applyBackendSlash — /backend [opencode|claudecode]: bare prints the
+// applyBackendSlash — /backend [opencode|claudecode|codex]: bare prints the
 // active transport, a validated name swaps it mid-flight (IDLE ONLY — the
 // busy path is a refusal with the blocker list, never a forced tear-down:
 // esc-esc//stop the turn first, then retry).
 func (m *Model) applyBackendSlash(fields []string) tea.Cmd {
 	if len(fields) < 2 {
-		m.notice(fmt.Sprintf("backend: %s — /backend opencode|claudecode swaps (idle office only · persists to brain.json)", m.backendName()))
+		m.notice(fmt.Sprintf("backend: %s — /backend opencode|claudecode|codex swaps (idle office only · persists to brain.json)", m.backendName()))
 		return nil
 	}
 	name := strings.ToLower(strings.TrimSpace(fields[1]))
 	if !config.ValidBackendName(name) {
-		m.noticeErr(fmt.Sprintf("/backend: unknown backend %q (opencode|claudecode)", fields[1]))
+		m.noticeErr(fmt.Sprintf("/backend: unknown backend %q (opencode|claudecode|codex)", fields[1]))
 		return nil
 	}
 	if m.st.Mode != state.ModeLive {

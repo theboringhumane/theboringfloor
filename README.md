@@ -7,7 +7,7 @@
 **A startup office in your terminal, staffed by real agents.**
 
 Chat with the boss. Watch the floor — employees walk, type, drop mail, hit the tea machine.
-Right panel is yours. Left pane is the floor (or the in-TUI browser).
+Floors stay on the left, the office lives in the middle, and transcripts and tools live on the right.
 
 [Website](https://boringfloor.com) · [Docs](https://boringfloor.com/docs) · [Get started](https://boringfloor.com/get-started) · [Discord](https://discord.gg/YPDsHVHTVf)
 
@@ -22,9 +22,11 @@ Right panel is yours. Left pane is the floor (or the in-TUI browser).
 
 </div>
 
-![chat tab](docs/shots-go/chat.png)
+![Project floors, office, and transcript](docs/shots-workspaces/transcript.png)
 
-Under the wallpaper it is real: the manager is **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, employees are **opencode sub-agents**, the board is **agentmemory actions**, mail is **agentmemory signals**.
+[Project floors and workspaces](docs/workspaces.md): teams, persistent tickets, a project file explorer, conversation archives, and a choice of OpenCode, Claude Code, or Codex for each new conversation.
+
+Under the wallpaper it is real: the manager is **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, employees are **opencode sub-agents**, the board combines **local tickets and agentmemory actions**, mail is **agentmemory signals**.
 
 ## Install
 
@@ -42,7 +44,7 @@ irm https://boringfloor.com/install.ps1 | iex
 
 The Windows installer downloads the matching `theboringfloor_<version>_<os>_<arch>.tar.gz` release archive, verifies its SHA-256 checksum, and installs `theboringfloor.exe` (plus `tbo.exe`) in `%LOCALAPPDATA%\theboringfloor\bin`. It adds that directory to your user `PATH`; open a new PowerShell window, then run `theboringfloor --demo`. To install manually, download the matching `theboringfloor_<version>_<os>_<arch>.tar.gz` archive and checksums file from [Releases](https://github.com/theboringhumane/theboringfloor/releases), verify the checksum, then put `theboringfloor.exe` in a directory on your `PATH`.
 
-Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI):
+Pick the LLM transport at install (`opencode` default; `claudecode` needs the [claude](https://docs.anthropic.com/en/docs/claude-code) CLI; `codex` needs the [Codex CLI](https://developers.openai.com/codex/cli)):
 
 ```bash
 curl -fsSL https://boringfloor.com/install.sh | sh -s -- --backend claudecode
@@ -71,6 +73,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 | In-repo | Website |
 |---|---|
 | [Docs hub](docs/README.md) | [Docs home](https://boringfloor.com/docs) |
+| [Project floors](docs/workspaces.md) | Teams, tickets, files, and Codex |
 | [Architecture](docs/architecture.md) | [Vision](https://boringfloor.com/vision) |
 | [Website](website/README.md) | [Get started](https://boringfloor.com/get-started) |
 | [Commands (`cmd/`)](cmd/README.md) | [Sounds](https://boringfloor.com/sounds) |
@@ -99,7 +102,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 
 Config file: `~/.theboringfloor/configs/brain.json` (`theboringfloor --print-default-config`). Details: [backends](https://boringfloor.com/docs/backends) + [layout](https://boringfloor.com/docs/layout-themes-power).
 
-Whichever backend you pick, the office primes it with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringfloor charter -->` block appended below your content. Nothing member-owned is ever overwritten.
+For OpenCode and Claude Code, the office primes the backend with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringfloor charter -->` block appended below your content. Nothing member-owned is ever overwritten. Codex receives the bundled manager charter in its first prompt and uses its own CLI configuration.
 
 ## Peek
 
