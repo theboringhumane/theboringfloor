@@ -2,6 +2,8 @@ package app
 
 import (
 	"image/color"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -14,9 +16,18 @@ import (
 
 // TestThemeFrameAutoInvalidatesCache exercises the terminal-driven path: it
 // must invalidate Frame through the chrome theme identity, not a one-off
-// frameNonce bump. This test intentionally runs before explicit-theme tests;
-// SetThemeAuto is correctly suppressed after an explicit theme is pinned.
+// frameNonce bump. Run in a fresh process because theme pins intentionally
+// last for the application lifetime; explicit-theme tests must not affect
+// auto-detection, regardless of test order.
 func TestThemeFrameAutoInvalidatesCache(t *testing.T) {
+	if os.Getenv("FLOOR_TEST_AUTO_THEME") != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestThemeFrameAutoInvalidatesCache$")
+		cmd.Env = append(os.Environ(), "FLOOR_TEST_AUTO_THEME=1")
+		if output, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("auto-theme subprocess: %v\n%s", err, output)
+		}
+		return
+	}
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := New(&recBackend{}, nil)
 	m = runMsg(t, m, tea.WindowSizeMsg{Width: 140, Height: 30})

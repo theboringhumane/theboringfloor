@@ -40,14 +40,14 @@ import (
 // Stored as FG strings on cells/props/zones; mapped to lipgloss at render.
 type ColorName = string
 
-// Color codes — chalk ANSI names to ANSI256 indices.
+// Color codes — fixed Noir RGB colors, independent of the terminal palette.
 var ansiColors = map[string]string{
-	"black": "0", "red": "1", "green": "2", "yellow": "3",
-	"blue": "4", "magenta": "5", "cyan": "6", "white": "7",
-	"gray": "8", "grey": "8",
-	"redBright": "9", "greenBright": "10", "yellowBright": "11",
-	"blueBright": "12", "magentaBright": "13", "cyanBright": "14",
-	"whiteBright": "15",
+	"black": "#17191f", "red": "#e06c75", "green": "#8dc891", "yellow": "#dfbb73",
+	"blue": "#83a6df", "magenta": "#c397d8", "cyan": "#7dc8c3", "white": "#d5d8df",
+	"gray": "#75808e", "grey": "#75808e",
+	"redBright": "#f18a91", "greenBright": "#aad7a1", "yellowBright": "#eed195",
+	"blueBright": "#a4bdec", "magentaBright": "#d7b2e5", "cyanBright": "#9edbd7",
+	"whiteBright": "#f1f3f6",
 }
 
 // floorThemes remap the canonical floor colors per UI theme. The floor paints
@@ -59,10 +59,10 @@ var floorThemes = map[string]map[string]string{
 		"gray": "240", "grey": "240", "white": "238", "whiteBright": "255",
 	},
 	"mono": {
-		"red": "7", "green": "7", "yellow": "15", "blue": "7", "magenta": "7",
-		"cyan": "7", "white": "15", "gray": "8", "grey": "8", "redBright": "15",
-		"greenBright": "7", "yellowBright": "15", "blueBright": "7",
-		"magentaBright": "7", "cyanBright": "7", "whiteBright": "15", "black": "8",
+		"red": "#d5d8df", "green": "#d5d8df", "yellow": "#f1f3f6", "blue": "#d5d8df", "magenta": "#d5d8df",
+		"cyan": "#d5d8df", "white": "#f1f3f6", "gray": "#75808e", "grey": "#75808e", "redBright": "#f1f3f6",
+		"greenBright": "#d5d8df", "yellowBright": "#f1f3f6", "blueBright": "#d5d8df",
+		"magentaBright": "#d5d8df", "cyanBright": "#d5d8df", "whiteBright": "#f1f3f6", "black": "#75808e",
 	},
 	"dracula": {
 		"yellow": "#f1fa8c", "red": "#ff5555", "cyan": "#8be9fd",

@@ -13,6 +13,7 @@ import (
 	"github.com/theboringhumane/theboringfloor/internal/app"
 	"github.com/theboringhumane/theboringfloor/internal/chrome"
 	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/office"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 	"github.com/theboringhumane/theboringfloor/internal/workspace"
 )
@@ -35,6 +36,7 @@ func main() {
 	out := flag.String("out", "/tmp/theboringfloor-workspace-shots", "output directory")
 	width := flag.Int("width", 150, "columns")
 	height := flag.Int("height", 42, "rows")
+	theme := flag.String("theme", "noir", "UI theme")
 	flag.Parse()
 	scratch, err := os.MkdirTemp("", "floor-ui-proof-")
 	must(err)
@@ -77,7 +79,10 @@ func main() {
 		c := workspace.Conversation{ID: fmt.Sprintf("session-%d", i), Title: title, Backend: []string{"claudecode", "opencode"}[i], Team: teams[i], Messages: 12 + i*8, Updated: now - int64(i)*1800000}
 		must(workspace.WriteJSON(filepath.Join(workspace.ConversationDir(root, c.Backend, c.ID), "meta.json"), c))
 	}
-	chrome.SetTheme("noir")
+	if !chrome.SetTheme(*theme) {
+		panic("unknown theme: " + *theme)
+	}
+	office.SetTheme(*theme)
 	cfg := config.Default()
 	cfg.Backend.Name = "codex"
 	cfg.UI.Sounds = "off"

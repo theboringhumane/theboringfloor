@@ -2402,7 +2402,7 @@ func (m Model) View() tea.View {
 	// (not Frame) so snapshot harnesses (cmd/uishot) keep printing the
 	// office frame byte-identically — the splash never leaks into shots.
 	if !m.bootDone && m.width > 0 {
-		v := tea.NewView(m.boot.View())
+		v := tea.NewView(chrome.SolidFrame(m.boot.View(), m.width, m.height))
 		v.AltScreen = true
 		v.ReportFocus = true // focus latch feeds the notify pings from tick one
 		return v
@@ -2429,7 +2429,7 @@ func (m Model) projInfo() projinfo.Info {
 // same tick+sprites never rebuilds the grid).
 func (m Model) Frame() string {
 	if m.width == 0 {
-		return "theboringfloor — waiting for terminal size…"
+		return chrome.SolidFrame("theboringfloor — waiting for terminal size…", 0, 0)
 	}
 	if m.widePanel() {
 		m.tabs.SetSize(m.width-m.navigatorWidth(), m.middleH)
@@ -2553,6 +2553,7 @@ func (m Model) Frame() string {
 	// string, the wave-86 routing). ADDITIVE: the browser publish above is
 	// untouched.
 	m.publishChatMediaFrame()
+	frame = chrome.SolidFrame(frame, m.width, m.height)
 	m.gov.frameKey, m.gov.frameCached = digest, frame
 	return frame
 }

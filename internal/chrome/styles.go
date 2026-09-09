@@ -51,7 +51,7 @@ type Theme struct {
 
 	BarBg     color.Color // inverted bar background (topbar + statusbar)
 	Border    color.Color // panel rounded border
-	PanelBg   color.Color // sidebar panel background — subtle offset from terminal bg
+	PanelBg   color.Color // solid canvas and panel background
 	ToolColor color.Color // chat tool one-liner ink (noir: dim cyan)
 
 	// Deep-work stream accents.
@@ -86,31 +86,31 @@ type Theme struct {
 
 // themeList keeps the /themes order stable (map iteration is random).
 var themeList = []Theme{
-	{ // noir — the original dark look (ANSI palette); BarBg "8" is dark gray
+	{ // noir — fixed RGB colors, independent of the terminal palette
 		Name:   "noir",
 		Dark:   true,
-		Accent: lipgloss.Color("3"), Err: lipgloss.Color("1"),
-		OK: lipgloss.Color("2"), Info: lipgloss.Color("6"),
-		Magenta: lipgloss.Color("5"), Blue: lipgloss.Color("4"),
-		White: lipgloss.Color("7"), Black: lipgloss.Color("0"),
-		Dim:   lipgloss.Color("8"),
-		BarBg: lipgloss.Color("8"), Border: lipgloss.Color("7"),
+		Accent: lipgloss.Color("#dfbb73"), Err: lipgloss.Color("#e06c75"),
+		OK: lipgloss.Color("#8dc891"), Info: lipgloss.Color("#7dc8c3"),
+		Magenta: lipgloss.Color("#c397d8"), Blue: lipgloss.Color("#83a6df"),
+		White: lipgloss.Color("#d5d8df"), Black: lipgloss.Color("#17191f"),
+		Dim:   lipgloss.Color("#75808e"),
+		BarBg: lipgloss.Color("#30343d"), Border: lipgloss.Color("#d5d8df"),
 		PanelBg:      lipgloss.Color("#161619"),
-		ToolColor:    lipgloss.Color("6"),
-		Warn:         lipgloss.Color("3"),
-		Question:     lipgloss.Color("11"),
-		RoleBoss:     lipgloss.Color("3"),
-		RoleHR:       lipgloss.Color("1"),
-		RoleDev:      lipgloss.Color("6"),
-		RoleScout:    lipgloss.Color("2"),
-		RoleReviewer: lipgloss.Color("5"),
-		RoleRunner:   lipgloss.Color("4"),
+		ToolColor:    lipgloss.Color("#7dc8c3"),
+		Warn:         lipgloss.Color("#dfbb73"),
+		Question:     lipgloss.Color("#eed195"),
+		RoleBoss:     lipgloss.Color("#dfbb73"),
+		RoleHR:       lipgloss.Color("#e06c75"),
+		RoleDev:      lipgloss.Color("#7dc8c3"),
+		RoleScout:    lipgloss.Color("#8dc891"),
+		RoleReviewer: lipgloss.Color("#c397d8"),
+		RoleRunner:   lipgloss.Color("#83a6df"),
 		DiffAddBg:    lipgloss.Color("#16301d"),
 		DiffDelBg:    lipgloss.Color("#33191c"),
 		DiffAddFg:    lipgloss.Color("#56d364"),
 		DiffDelFg:    lipgloss.Color("#ff7b72"),
-		DiffCtxFg:    lipgloss.Color("8"),
-		DiffGutterFg: lipgloss.Color("8"),
+		DiffCtxFg:    lipgloss.Color("#75808e"),
+		DiffGutterFg: lipgloss.Color("#75808e"),
 		ChromaStyle:  "github-dark",
 		Glamour:      "dark",
 	},

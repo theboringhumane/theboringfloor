@@ -1,6 +1,6 @@
 // styles_test.go — the device light/dark theme contract:
 //   - every registry theme's Dark flag agrees with the luminance of its
-//     background (BarBg — the registry's only explicit surface slot);
+//     background (BarBg);
 //   - SetThemeAuto follows the terminal background while unpinned and never
 //     overrides — or persists over — an explicit pin.
 package chrome
@@ -15,9 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// bgLuminance computes WCAG relative luminance of a registry color. ANSI
-// index colors (noir's entry) resolve through lipgloss/x-ansi's xterm
-// palette inside RGBA(); hex colors carry their own RGB.
+// bgLuminance computes WCAG relative luminance of a registry color.
 func bgLuminance(c color.Color) float64 {
 	r, g, b, _ := c.RGBA()
 	lin := func(v uint32) float64 {
