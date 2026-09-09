@@ -158,6 +158,9 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
+	if g.workspaceRoute(w, r, id, suffix) {
+		return
+	}
 	switch {
 	case r.Method == http.MethodGet && suffix == "":
 		g.project(w, r, id)

@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/theboringhumane/theboringfloor/internal/control"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 	"github.com/theboringhumane/theboringfloor/internal/workspace"
 )
@@ -119,4 +120,17 @@ func loadConversation(dir, backend, id string) (*SessionFile, bool) {
 		return nil, false
 	}
 	return &sf, true
+}
+
+// ArchiveTranscript projects saved rows with the same attachment metadata as
+// live conversations. The phone decides which rows belong in its reading view.
+func ArchiveTranscript(sf SessionFile) []control.TranscriptMessage {
+	rows := make([]control.TranscriptMessage, 0, len(sf.Chat))
+	for _, m := range sf.Chat {
+		if m.Pending {
+			continue
+		}
+		rows = append(rows, control.TranscriptMessage{ID: m.ID, From: m.From, Kind: m.Kind, Text: m.Text, At: m.At, Attachments: controlTranscriptAttachments(m.Meta)})
+	}
+	return rows
 }

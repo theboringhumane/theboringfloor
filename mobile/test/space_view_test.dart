@@ -121,7 +121,7 @@ void main() {
     ) async {
       await _pumpSpace(tester, _store(_ProjectsClient([_running])));
 
-      final title = tester.widget<Text>(find.text('All Repos'));
+      final title = tester.widget<Text>(find.text('Floors'));
       expect(title.style?.fontFamily, 'Playfair Display');
     });
 

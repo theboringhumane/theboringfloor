@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../api/gateway_client.dart';
 import '../models/project.dart';
+import '../models/floor.dart';
 import '../models/session.dart';
 import '../models/transcript.dart';
 import '../models/attachment.dart';
@@ -10,7 +11,9 @@ import '../models/attachment.dart';
 const sessionRefreshInterval = Duration(seconds: 3);
 
 class SessionStore extends ChangeNotifier {
-  SessionStore(this.client, this.project);
+  SessionStore(this.client, this.project, {this.conversation});
+  final FloorConversation? conversation;
+  bool get readOnly => conversation != null;
   final GatewayClient client;
   final Project project;
   SessionData? data;
@@ -25,6 +28,8 @@ class SessionStore extends ChangeNotifier {
   int _newestMessageGeneration = 0;
 
   List<TranscriptMessage> get messages => data?.messages ?? const [];
+  List<TranscriptMessage> get visibleMessages =>
+      conversationMessages(messages, working: isWorking);
   bool get hasMore => data?.hasMore ?? false;
   int get pollGeneration => _pollGeneration;
 
@@ -40,7 +45,9 @@ class SessionStore extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      data = await client.session(project.id);
+      data = conversation == null
+          ? await client.session(project.id)
+          : await client.archive(project.id, conversation!, project.dir);
       _hasPagedOlder = false;
     } catch (e) {
       error = e;
@@ -56,7 +63,7 @@ class SessionStore extends ChangeNotifier {
   Future<bool> refresh() async {
     // A newest-page request and an older-page request cannot safely race: the
     // latter's opaque cursor is based on the currently retained oldest item.
-    if (_refreshing || loadingOlder) return true;
+    if (readOnly || _refreshing || loadingOlder) return true;
 
     _refreshing = true;
     try {
@@ -68,11 +75,21 @@ class SessionStore extends ChangeNotifier {
         return true;
       }
 
-      final mergedMessages = _mergeMessages(current.messages, latest.messages);
-      final currentIds = current.messages.map((message) => message.id).toSet();
-      final hasNewMessages = latest.messages.any(
-        (message) => !currentIds.contains(message.id),
-      );
+      final switched =
+          current.status.primaryId != latest.status.primaryId ||
+          current.status.backend != latest.status.backend;
+      final mergedMessages = switched
+          ? latest.messages
+          : _mergeMessages(current.messages, latest.messages);
+      if (switched) _hasPagedOlder = false;
+      final currentIds = conversationMessages(
+        current.messages,
+        working: current.busy?.busy == true,
+      ).map((message) => message.id).toSet();
+      final hasNewMessages = conversationMessages(
+        mergedMessages,
+        working: latest.busy?.busy == true,
+      ).any((message) => !currentIds.contains(message.id));
       final hasMore = _hasPagedOlder ? current.hasMore : latest.hasMore;
       final changed =
           !_sameMessages(current.messages, mergedMessages) ||
@@ -206,7 +223,9 @@ class SessionStore extends ChangeNotifier {
           a.kind != b.kind ||
           a.text != b.text ||
           a.at != b.at ||
-          a.meta != b.meta) {
+          a.meta != b.meta ||
+          a.pending != b.pending ||
+          a.phase != b.phase) {
         return false;
       }
     }
@@ -219,7 +238,9 @@ class SessionStore extends ChangeNotifier {
       left.primaryId == right.primaryId &&
       left.planDraftLen == right.planDraftLen &&
       left.planApprovedLen == right.planApprovedLen &&
-      left.chatCount == right.chatCount;
+      left.chatCount == right.chatCount &&
+      left.planPending == right.planPending &&
+      left.planRevision == right.planRevision;
 
   bool _sameBusy(Busy? left, Busy? right) =>
       left?.busy == right?.busy &&

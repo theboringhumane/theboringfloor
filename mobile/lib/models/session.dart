@@ -8,10 +8,16 @@ class Status {
     required this.planDraftLen,
     required this.planApprovedLen,
     required this.chatCount,
+    this.planPending = false,
+    this.planRevision = "",
   });
   final String dir, backend, primaryId;
+  final bool planPending;
+  final String planRevision;
   final int planDraftLen, planApprovedLen, chatCount;
   factory Status.fromJson(Map<String, dynamic> j) => Status(
+    planPending: j['planPending'] == true,
+    planRevision: j['planRevision'] as String? ?? '',
     dir: j['dir'] as String,
     backend: j['backend'] as String,
     primaryId: j['primaryId'] as String? ?? '',

@@ -12,7 +12,7 @@ class AppNavBar extends StatelessWidget {
       NavigationDestination(
         icon: Icon(Icons.dashboard_outlined),
         selectedIcon: Icon(Icons.dashboard),
-        label: 'Space',
+        label: 'Floors',
       ),
       NavigationDestination(
         icon: Icon(Icons.terminal_outlined),

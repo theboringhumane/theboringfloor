@@ -1,6 +1,7 @@
 package app
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -56,6 +57,7 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 		approved := m.approvedPlanText()
 		payload = marshalControlResponse(control.PlanResponse{
 			Draft: draft, Approved: approved, HasApproved: approved != "",
+			Pending: m.remotePlanPending, Error: m.remotePlanError,
 		})
 	case control.QueryTranscript, control.QueryTranscript + "?page=1":
 		response, _ := m.controlTranscript(ev.ControlLimit, "", ev.ControlQuery != control.QueryTranscript)
@@ -67,6 +69,8 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 		}
 		approved := m.approvedPlanText()
 		payload = marshalControlResponse(control.StatusResponse{
+			PlanPending:     strings.TrimSpace(draft) != "" && draft != approved && m.planPaneVisible(),
+			PlanRevision:    fmt.Sprintf("%x", sha256.Sum256([]byte(draft))),
 			Dir:             m.memoryDir(),
 			Backend:         m.backendName(),
 			PrimaryID:       m.PrimarySessionID(),

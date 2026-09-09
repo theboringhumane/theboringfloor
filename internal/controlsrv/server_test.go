@@ -31,6 +31,7 @@ type routeCoverageCase struct {
 }
 
 var controlRouteCoverageCases = []routeCoverageCase{
+	{"RouteWorkspaceAction", http.MethodPost, http.MethodGet, control.RouteWorkspaceAction, `{"action":"plan-approve","expected":"plan"}`},
 	{"RouteHealth", http.MethodGet, http.MethodPost, control.RouteHealth, ""},
 	{"RoutePlan", http.MethodGet, http.MethodPost, control.RoutePlan, ""},
 	{"RoutePlanPresent", http.MethodPost, http.MethodGet, control.RoutePlanPresent, `{"text":"plan"}`},
@@ -55,7 +56,7 @@ func (f *fakeSink) send(event state.Event) {
 	f.mu.Lock()
 	f.events = append(f.events, event)
 	f.mu.Unlock()
-	if event.Kind != state.EvControlQuery || !f.respond {
+	if (event.Kind != state.EvControlQuery && event.Kind != state.EvControlWorkspace) || !f.respond {
 		return
 	}
 	payload := cannedPayload(event.ControlQuery)

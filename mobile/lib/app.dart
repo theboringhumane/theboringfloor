@@ -8,12 +8,13 @@ import 'components/app_nav_bar.dart';
 import 'models/project.dart';
 import 'models/session.dart';
 import 'store/projects_store.dart';
-import 'store/session_store.dart';
 import 'store/settings_store.dart';
 import 'store/terminal_store.dart';
 import 'theme.dart';
 import 'views/project_picker.dart';
+import 'views/floor_view.dart';
 import 'views/session_view.dart';
+import 'store/session_store.dart';
 import 'views/settings_view.dart';
 import 'views/splash_view.dart';
 import 'views/space_view.dart';
@@ -191,7 +192,7 @@ class _AppShellState extends State<AppShell> {
 
   void _open(Project p) => Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => SessionView(store: SessionStore(client, p)),
+      builder: (_) => FloorView(client: client, project: p),
     ),
   );
 
@@ -212,7 +213,11 @@ class _AppShellState extends State<AppShell> {
     final project = _pendingSession;
     _pendingSession = null;
     if (mounted && project != null) {
-      _open(project);
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SessionView(store: SessionStore(client, project)),
+        ),
+      );
     }
   }
 

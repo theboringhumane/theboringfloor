@@ -25,16 +25,17 @@ import (
 )
 
 const (
-	RouteHealth      = "/v1/health"
-	RoutePlan        = "/v1/plan"
-	RoutePlanPresent = "/v1/plan/present"
-	RoutePlanUpdate  = "/v1/plan/update"
-	RouteTranscript  = "/v1/transcript"
-	RouteStatus      = "/v1/status"
-	RouteMessage     = "/v1/message"
-	RouteStop        = "/v1/stop"
-	RouteSessionNew  = "/v1/session/new"
-	RouteBusy        = "/v1/busy"
+	RouteHealth          = "/v1/health"
+	RouteWorkspaceAction = "/v1/workspace/action"
+	RoutePlan            = "/v1/plan"
+	RoutePlanPresent     = "/v1/plan/present"
+	RoutePlanUpdate      = "/v1/plan/update"
+	RouteTranscript      = "/v1/transcript"
+	RouteStatus          = "/v1/status"
+	RouteMessage         = "/v1/message"
+	RouteStop            = "/v1/stop"
+	RouteSessionNew      = "/v1/session/new"
+	RouteBusy            = "/v1/busy"
 
 	QueryPlan       = "plan"
 	QueryTranscript = "transcript"
@@ -54,6 +55,8 @@ type HealthResponse struct {
 
 // PlanResponse is the plan endpoint response.
 type PlanResponse struct {
+	Pending     bool   `json:"pending"`
+	Error       string `json:"error,omitempty"`
 	Draft       string `json:"draft"`
 	Approved    string `json:"approved"`
 	HasApproved bool   `json:"hasApproved"`
@@ -128,6 +131,8 @@ type TranscriptActivity struct {
 
 // StatusResponse is the status endpoint response.
 type StatusResponse struct {
+	PlanPending     bool   `json:"planPending"`
+	PlanRevision    string `json:"planRevision,omitempty"`
 	Dir             string `json:"dir"`
 	Backend         string `json:"backend"`
 	PrimaryID       string `json:"primaryId"`
@@ -382,4 +387,24 @@ func (r *Registry) Cancel(id string) {
 	r.mu.Lock()
 	delete(r.pending, id)
 	r.mu.Unlock()
+}
+
+// WorkspaceAction is an explicit mobile action; Expected prevents stale plan approval.
+type WorkspaceAction struct {
+	Ticket   json.RawMessage `json:"ticket,omitempty"`
+	Action   string          `json:"action"`
+	Backend  string          `json:"backend,omitempty"`
+	Session  string          `json:"session,omitempty"`
+	Title    string          `json:"title,omitempty"`
+	Team     string          `json:"team,omitempty"`
+	Fresh    bool            `json:"fresh,omitempty"`
+	Text     string          `json:"text,omitempty"`
+	Expected string          `json:"expected,omitempty"`
+}
+
+func (r *Registry) Pending(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.pending[id]
+	return ok
 }

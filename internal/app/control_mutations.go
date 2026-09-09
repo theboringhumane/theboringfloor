@@ -13,6 +13,8 @@ import (
 // the sole owners of their respective state transitions.
 func (m *Model) applyControlMutations(ev state.Event) tea.Cmd {
 	switch ev.Kind {
+	case state.EvControlWorkspace:
+		return m.applyWorkspaceAction(ev)
 	case state.EvControlSend:
 		text := strings.TrimSpace(ev.ControlText)
 		if text == "" {

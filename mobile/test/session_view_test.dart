@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:theboringfloor/api/gateway_client.dart';
-import 'package:theboringfloor/components/loading_snake.dart';
 import 'package:theboringfloor/models/project.dart';
 import 'package:theboringfloor/store/session_store.dart';
 import 'package:theboringfloor/views/session_view.dart';
@@ -117,7 +116,9 @@ void main() {
     expect(transcriptRequests, 2);
   });
 
-  testWidgets('does not poll an idle session', (tester) async {
+  testWidgets('polls idle sessions slowly for work started elsewhere', (
+    tester,
+  ) async {
     var transcriptRequests = 0;
     final store = _store((request) async {
       if (request.url.path.endsWith('/status')) {
@@ -133,7 +134,7 @@ void main() {
     await _pumpSession(tester, store);
     await tester.pump(const Duration(seconds: 20));
 
-    expect(transcriptRequests, 1);
+    expect(transcriptRequests, 2);
   });
 
   testWidgets('does not queue a second poll while the first is in flight', (
@@ -200,7 +201,7 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Earlier message 0'), findsNothing);
-      expect(find.text('1 thought'), findsOneWidget);
+      expect(find.text('1 thought'), findsNothing);
 
       // Markdown and other content may finish sizing after the initial frame.
       // A reversed transcript remains at offset zero without an anchoring jump.
@@ -373,7 +374,7 @@ void main() {
       tester.widget<ListView>(find.byType(ListView)).controller!.offset,
       0,
     );
-    expect(find.text('First arrival'), findsOneWidget);
+    expect(find.text('First arrival'), findsNothing);
     expect(find.text('Second arrival'), findsOneWidget);
   });
 
@@ -402,154 +403,6 @@ void main() {
     refreshed = true;
 
     await expectLater(store.refresh(), completes);
-  });
-
-  testWidgets('groups consecutive activity into one expandable quiet row', (
-    tester,
-  ) async {
-    const member = 'Can you review this change?';
-    const olderAssistant = 'Older assistant answer with all of its detail.';
-    const newerAssistant = 'Newer assistant answer with all of its detail.';
-    const thinking = 'I should inspect the test coverage before responding.';
-    const tool = 'bash · gofmt -l internal/backend';
-    final store = _store((request) async {
-      if (request.url.path.endsWith('/status')) {
-        return _response(200, _status());
-      }
-      if (request.url.path.endsWith('/busy')) {
-        return _response(404, {'error': 'missing'});
-      }
-      return _response(200, {
-        'messages': [
-          _message('member', 'user', 'message', member, 1),
-          _message('older', 'assistant', 'message', olderAssistant, 2),
-          _message('thinking', 'worker', 'wthink', thinking, 3),
-          _message('tool', 'worker', 'wtool', tool, 4),
-          _message('thinking-2', 'worker', 'wthink', 'I should run it.', 5),
-          _message('tool-2', 'worker', 'wtool', 'bash · go test ./...', 6),
-          _message('newer', 'boss', 'message', newerAssistant, 7),
-        ],
-        'hasMore': false,
-      });
-    });
-
-    await _pumpSession(tester, store);
-
-    expect(find.text(member), findsOneWidget);
-    expect(find.text(olderAssistant), findsOneWidget);
-    expect(find.text(newerAssistant), findsOneWidget);
-    expect(find.text('2 thoughts · 2 bashes'), findsOneWidget);
-    expect(find.text(thinking), findsNothing);
-    expect(find.text(tool), findsNothing);
-    expect(find.byIcon(Icons.copy_outlined), findsNothing);
-
-    await tester.tap(find.byKey(const Key('activity-thinking')));
-    await tester.pump();
-    expect(find.text(thinking), findsOneWidget);
-    expect(find.text(tool), findsOneWidget);
-    await tester.tap(find.byKey(const Key('activity-thinking')));
-    await tester.pump();
-    expect(find.text(thinking), findsNothing);
-    expect(find.text(tool), findsNothing);
-  });
-
-  testWidgets(
-    'shows the running snake only on the newest activity group in a working office',
-    (tester) async {
-      final store = _store((request) async {
-        if (request.url.path.endsWith('/status')) {
-          return _response(200, _status());
-        }
-        if (request.url.path.endsWith('/busy')) {
-          return _response(200, _busy(true));
-        }
-        return _response(200, {
-          'messages': [
-            _message('older-thought', 'worker', 'wthink', 'Older thought.', 1),
-            _message('older-tool', 'worker', 'wtool', 'read · old.dart', 2),
-            _message('divider', 'assistant', 'message', 'Earlier answer.', 3),
-            _message(
-              'newer-thought',
-              'worker',
-              'wthink',
-              'Current thought.',
-              4,
-            ),
-            _message('newer-tool', 'worker', 'wtool', 'read · new.dart', 5),
-          ],
-          'hasMore': false,
-        });
-      });
-
-      await _pumpSession(tester, store);
-
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('activity-newer-thought')),
-          matching: find.byType(LoadingSnake),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byKey(const Key('activity-older-thought')),
-          matching: find.byType(LoadingSnake),
-        ),
-        findsNothing,
-      );
-    },
-  );
-
-  testWidgets('does not show activity snakes when the office is idle', (
-    tester,
-  ) async {
-    final store = _store((request) async {
-      if (request.url.path.endsWith('/status')) {
-        return _response(200, _status());
-      }
-      if (request.url.path.endsWith('/busy')) {
-        return _response(200, _busy(false));
-      }
-      return _response(200, {
-        'messages': [
-          _message('older-thought', 'worker', 'wthink', 'Older thought.', 1),
-          _message('older-tool', 'worker', 'wtool', 'read · old.dart', 2),
-          _message('divider', 'assistant', 'message', 'Earlier answer.', 3),
-          _message('newer-thought', 'worker', 'wthink', 'Newer thought.', 4),
-          _message('newer-tool', 'worker', 'wtool', 'read · new.dart', 5),
-        ],
-        'hasMore': false,
-      });
-    });
-
-    await _pumpSession(tester, store);
-
-    expect(find.byType(LoadingSnake), findsNothing);
-  });
-
-  testWidgets('does not show an activity snake when a message is newest', (
-    tester,
-  ) async {
-    final store = _store((request) async {
-      if (request.url.path.endsWith('/status')) {
-        return _response(200, _status());
-      }
-      if (request.url.path.endsWith('/busy')) {
-        return _response(200, _busy(true));
-      }
-      return _response(200, {
-        'messages': [
-          _message('thought', 'worker', 'wthink', 'Completed thought.', 1),
-          _message('tool', 'worker', 'wtool', 'read · done.dart', 2),
-          _message('answer', 'assistant', 'message', 'Newest answer.', 3),
-        ],
-        'hasMore': false,
-      });
-    });
-
-    await _pumpSession(tester, store);
-
-    expect(find.byType(LoadingSnake), findsNothing);
   });
 
   testWidgets('member messages offer read more while short messages do not', (
@@ -638,82 +491,6 @@ void main() {
       expect(clipboard, assistant);
     },
   );
-
-  testWidgets('activity rows do not copy on long press', (tester) async {
-    final store = _store((request) async {
-      if (request.url.path.endsWith('/status')) {
-        return _response(200, _status());
-      }
-      if (request.url.path.endsWith('/busy')) {
-        return _response(404, {'error': 'missing'});
-      }
-      return _response(200, {
-        'messages': [
-          _message('thought', 'worker', 'wthink', 'Inspect the code.', 1),
-          _message('tool', 'worker', 'wtool', 'read · session_view.dart', 2),
-        ],
-        'hasMore': false,
-      });
-    });
-    String? clipboard;
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, (call) async {
-          if (call.method == 'Clipboard.setData') {
-            clipboard =
-                (call.arguments as Map<Object?, Object?>)['text'] as String?;
-          }
-          return null;
-        });
-    addTearDown(() {
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(SystemChannels.platform, null);
-    });
-
-    await _pumpSession(tester, store);
-    await tester.longPress(find.byKey(const Key('activity-thought')));
-    await tester.pump();
-
-    expect(clipboard, isNull);
-    expect(find.text('Copied message'), findsNothing);
-  });
-
-  testWidgets('an expanded activity group remains open after refresh', (
-    tester,
-  ) async {
-    var refreshed = false;
-    final activity = [
-      _message('thought', 'worker', 'wthink', 'Inspect the code.', 1),
-      _message('tool', 'worker', 'wtool', 'read · session_view.dart', 2),
-    ];
-    final store = _store((request) async {
-      if (request.url.path.endsWith('/status')) {
-        return _response(200, _status());
-      }
-      if (request.url.path.endsWith('/busy')) {
-        return _response(404, {'error': 'missing'});
-      }
-      return _response(200, {
-        'messages': [
-          ...activity,
-          if (refreshed)
-            _message('answer', 'assistant', 'message', 'New answer', 3),
-        ],
-        'hasMore': false,
-      });
-    });
-
-    await _pumpSession(tester, store);
-    await tester.tap(find.byKey(const Key('activity-thought')));
-    await tester.pump();
-    expect(find.text('Inspect the code.'), findsOneWidget);
-
-    refreshed = true;
-    await store.refresh();
-    await tester.pump();
-
-    expect(find.text('Inspect the code.'), findsOneWidget);
-    expect(find.text('New answer'), findsOneWidget);
-  });
 
   testWidgets('prepends older pages without losing the retained viewport', (
     tester,

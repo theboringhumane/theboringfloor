@@ -92,7 +92,7 @@ jobs:
 
       - name: Build signed Android release APK
         working-directory: mobile
-        run: flutter build apk --release
+        run: flutter build apk --release --build-name "${{ steps.version.outputs.version }}" --build-number "${{ github.run_number }}"
 
       - name: Verify APK signature
         run: |

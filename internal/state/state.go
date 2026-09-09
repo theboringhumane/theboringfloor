@@ -542,7 +542,8 @@ const (
 	// internal/control's pending-request registry, because the model is only
 	// safe to read on the tea Update goroutine. Control-API WRITES do not use
 	// this kind — they reuse EvPlanPresent/EvPlanUpdate.
-	EvControlQuery EventKind = "control-query"
+	EvControlQuery     EventKind = "control-query"
+	EvControlWorkspace EventKind = "control-workspace"
 	// EvControlSend carries a remote-control message for the current boss turn.
 	EvControlSend EventKind = "control-send"
 	// EvControlStop requests that the current boss turn stop.
@@ -665,9 +666,10 @@ type Event struct {
 	// EvControlQuery. ControlReqID is the registry key the UI goroutine
 	// fulfills; ControlQuery names the projection ("plan"|"transcript"|
 	// "status"); ControlLimit bounds returned transcript rows (0 = default).
-	ControlReqID string `json:"controlReqId,omitempty"`
-	ControlQuery string `json:"controlQuery,omitempty"`
-	ControlLimit int    `json:"controlLimit,omitempty"`
+	ControlReqID string          `json:"controlReqId,omitempty"`
+	ControlAck   <-chan struct{} `json:"-"`
+	ControlQuery string          `json:"controlQuery,omitempty"`
+	ControlLimit int             `json:"controlLimit,omitempty"`
 	// ControlText carries trimmed message text for EvControlSend.
 	ControlText string `json:"controlText,omitempty"`
 	// ControlAttachments carries images that arrived with a control-plane message.

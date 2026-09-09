@@ -87,7 +87,7 @@ void main() {
     );
 
     expect(find.byType(NavigationDestination), findsNWidgets(3));
-    expect(find.text('Space'), findsOneWidget);
+    expect(find.text('Floors'), findsNWidgets(2));
     await tester.tap(find.text('Terminal'));
     await tester.pumpAndSettle();
     expect(find.text('Terminal'), findsNWidgets(2));

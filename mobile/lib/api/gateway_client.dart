@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/models.dart';
+import '../models/floor.dart';
 import 'endpoints.dart';
 
 class GatewayException implements Exception {
@@ -44,8 +45,11 @@ class GatewayClient {
     final request = http.Request(method, _uri(path, query))
       ..headers.addAll(_headers);
     if (body != null) request.body = jsonEncode(body);
-    final streamed = await _http.send(request);
-    final response = await http.Response.fromStream(streamed);
+    final streamed = await _http
+        .send(request)
+        .timeout(const Duration(seconds: 15));
+    final response = await http.Response.fromStream(streamed)
+        .timeout(const Duration(seconds: 15));
     dynamic decoded;
     if (response.body.isNotEmpty) {
       try {
@@ -183,6 +187,52 @@ class GatewayClient {
           rethrow;
       }
     }
+  }
+
+  Future<FloorData> floor(String id) async => FloorData.fromJson(
+    await _request('GET', '/api/v1/projects/$id/workspace')
+        as Map<String, dynamic>,
+  );
+  Future<void> saveTicket(String id, Map<String, dynamic> ticket) =>
+      _request('POST', '/api/v1/projects/$id/tickets', body: ticket);
+  Future<void> addTeam(String id, String name) =>
+      _request('POST', '/api/v1/projects/$id/teams', body: {'name': name});
+  Future<ProjectFilePage> files(String id, String path) async =>
+      ProjectFilePage.fromJson(
+        await _request(
+          'GET',
+          '/api/v1/projects/$id/files',
+          query: {'path': path},
+        ) as Map<String, dynamic>,
+      );
+  Future<FloorPlan> plan(String id) async => FloorPlan.fromJson(
+    await _request('GET', '/api/v1/projects/$id/plan') as Map<String, dynamic>,
+  );
+  Future<void> workspaceAction(String id, Map<String, dynamic> action) =>
+      _request('POST', '/api/v1/projects/$id/workspace/action', body: action);
+  Future<SessionData> archive(
+    String id,
+    FloorConversation conversation,
+    String dir,
+  ) async {
+    final json = await _request(
+      'GET',
+      '/api/v1/projects/$id/conversation',
+      query: {'backend': conversation.backend, 'session': conversation.id},
+    ) as Map<String, dynamic>;
+    return SessionData(
+      status: Status(
+        dir: dir,
+        backend: conversation.backend,
+        primaryId: conversation.id,
+        planDraftLen: 0,
+        planApprovedLen: 0,
+        chatCount: conversation.messages,
+      ),
+      messages: (json['messages'] as List? ?? [])
+          .map((m) => TranscriptMessage.fromJson(m as Map<String, dynamic>))
+          .toList(),
+    );
   }
 
   Future<ExecResult> exec({

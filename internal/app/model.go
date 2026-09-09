@@ -450,6 +450,8 @@ type btwSnapshot struct {
 
 // Model is the tea.Model for the whole app.
 type Model struct {
+	remotePlanPending                   bool
+	remotePlanError                     string
 	sessionWriter                       *sessionWriter
 	conversationTitle, conversationTeam string
 	freshConversation                   bool
@@ -1912,6 +1914,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.noticeErr("backend swap: brain.json save failed: " + msg.err.Error() + " — the swap holds for this session only")
 		}
 	case approveSentMsg:
+		m.remotePlanPending = false
+		m.remotePlanError = ""
 		// F3 — the plan→build flip rides SEND ACCEPTANCE: the approved
 		// plan's wire POST landed; NOW the office flips back (the pane
 		// hides with the mode flip), the buffer persists for restore, the
@@ -1936,6 +1940,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.playSound("send")
 		m.notice(fmt.Sprintf("[office] plan approved — sent to build (%d chars)", len(msg.plan)))
 	case approveErrMsg:
+		m.remotePlanPending = false
+		m.remotePlanError = msg.err.Error()
 		// F3 rollback — the tag-flip never happened: plan mode KEPT, the
 		// plan buffer untouched, the red row explains it in the transcript
 		// (the statusline twin rides the EvStatus below).
@@ -6868,6 +6874,9 @@ func (m *Model) backendName() string {
 // sessions, unanswered permission/question floats, the backlog queue.
 func (m *Model) backendSwapBlockers() []string {
 	var why []string
+	if m.remotePlanPending {
+		why = append(why, "plan approval in flight")
+	}
 	if hasPendingBoss(m.st) {
 		why = append(why, "boss turn in flight")
 	}

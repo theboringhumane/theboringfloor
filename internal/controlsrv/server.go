@@ -175,6 +175,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.health(w)
+	case control.RouteWorkspaceAction:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.workspaceAction(w, r)
 	case control.RoutePlan:
 		if !s.requireMethod(w, r, http.MethodGet) {
 			return
@@ -538,3 +543,52 @@ func (c *limitedConn) Close() error {
 }
 
 var _ http.Handler = (*Server)(nil)
+
+// Flush the accepted response before the UI executes a command that can restart
+// the office process. The acknowledgement also releases commands on disconnect.
+func (s *Server) workspaceAction(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxPlanBodyBytes)
+	defer r.Body.Close()
+	var body control.WorkspaceAction
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+	if d.Decode(&body) != nil {
+		s.writeError(w, 400, "invalid workspace action")
+		return
+	}
+	var extra any
+	if d.Decode(&extra) != io.EOF {
+		s.writeError(w, 400, "invalid workspace action")
+		return
+	}
+	select {
+	case s.readSlots <- struct{}{}:
+		defer func() { <-s.readSlots }()
+	default:
+		s.writeError(w, 503, "office busy")
+		return
+	}
+	id, reply := s.registry.NewRequest()
+	ack := make(chan struct{})
+	defer close(ack)
+	payload, _ := json.Marshal(body)
+	s.sink(state.Event{Kind: state.EvControlWorkspace, ControlReqID: id, ControlText: string(payload), ControlAck: ack})
+	timer := time.NewTimer(s.queryTimeout)
+	defer timer.Stop()
+	select {
+	case response := <-reply:
+		var failure control.ErrorResponse
+		if json.Unmarshal(response, &failure) == nil && failure.Error != "" {
+			s.writeError(w, 409, failure.Error)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write(response)
+		_ = http.NewResponseController(w).Flush()
+	case <-timer.C:
+		s.registry.Cancel(id)
+		s.writeError(w, 504, "office busy")
+	case <-r.Context().Done():
+		s.registry.Cancel(id)
+	}
+}

@@ -8,11 +8,19 @@ import '../components/working_chip.dart';
 import '../hooks/use_polling.dart';
 import '../models/models.dart';
 import '../store/session_store.dart';
+import 'floor_plan_view.dart';
+import '../models/floor.dart';
 
 class SessionView extends StatefulWidget {
-  const SessionView({super.key, required this.store, this.attachmentPicker});
+  const SessionView({
+    super.key,
+    required this.store,
+    this.attachmentPicker,
+    this.initialDraft,
+  });
   final SessionStore store;
   final AttachmentPicker? attachmentPicker;
+  final String? initialDraft;
   @override
   State<SessionView> createState() => _SessionViewState();
 }
@@ -20,9 +28,10 @@ class SessionView extends StatefulWidget {
 class _SessionViewState extends State<SessionView> {
   final composer = TextEditingController();
   final scrollController = ScrollController();
-  final expandedActivityIds = <String>{};
   final attachments = <Attachment>[];
   String? attachmentError;
+  String? _seenPlanRevision;
+  bool _reviewingPlan = false;
   static const _newestEndThreshold = 80.0;
   bool _atNewestEnd = true;
   bool _hasNewerContent = false;
@@ -36,6 +45,7 @@ class _SessionViewState extends State<SessionView> {
   @override
   void initState() {
     super.initState();
+    composer.text = widget.initialDraft ?? "";
     widget.store.addListener(_changed);
     _seenNewestMessageGeneration = widget.store.newestMessageGeneration;
     scrollController.addListener(_onScroll);
@@ -69,7 +79,38 @@ class _SessionViewState extends State<SessionView> {
         _hasNewerContent = true;
       }
     }
+    final status = widget.store.data?.status;
+    if (!_reviewingPlan &&
+        !widget.store.readOnly &&
+        status?.planPending == true &&
+        status!.planRevision != _seenPlanRevision) {
+      _seenPlanRevision = status.planRevision;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _reviewPlan();
+      });
+    }
     setState(() {});
+  }
+
+  Future<void> _reviewPlan() async {
+    if (_reviewingPlan) return;
+    _reviewingPlan = true;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Review plan')),
+          body: FloorPlanView(
+            client: widget.store.client,
+            project: widget.store.project,
+          ),
+        ),
+      ),
+    );
+    if (mounted) {
+      await widget.store.refresh();
+      _seenPlanRevision = widget.store.data?.status.planRevision;
+    }
+    _reviewingPlan = false;
   }
 
   void _onScroll() {
@@ -135,14 +176,6 @@ class _SessionViewState extends State<SessionView> {
     // In a reversed list, older pages grow at the far end. The framework keeps
     // the current viewport stable, so no offset compensation is necessary.
     await store.loadOlder();
-  }
-
-  void _toggleActivity(String id) {
-    setState(() {
-      if (!expandedActivityIds.add(id)) {
-        expandedActivityIds.remove(id);
-      }
-    });
   }
 
   Future<void> _chooseAttachmentSource() async {
@@ -221,11 +254,12 @@ class _SessionViewState extends State<SessionView> {
     final store = widget.store;
     // Keep the store and grouping algorithm chronological; reverse only this
     // presentation list so index zero is the newest transcript entry.
-    final entries = groupTranscript(store.messages).reversed
-        .toList(growable: false);
+    final entries = store.visibleMessages.reversed.toList(growable: false);
     return Polling(
-      interval: sessionRefreshInterval,
-      enabled: store.isWorking && TickerMode.valuesOf(context).enabled,
+      interval: store.isWorking
+          ? sessionRefreshInterval
+          : const Duration(seconds: 15),
+      enabled: !store.readOnly && TickerMode.valuesOf(context).enabled,
       restartToken: store.pollGeneration,
       onTick: store.refresh,
       child: Scaffold(
@@ -248,7 +282,8 @@ class _SessionViewState extends State<SessionView> {
                               right: 10,
                             ),
                             itemCount:
-                                entries.length + (store.loadingOlder ? 1 : 0),
+                                (entries.isEmpty ? 1 : entries.length) +
+                                (store.loadingOlder ? 1 : 0),
                             itemBuilder: (context, index) {
                               if (store.loadingOlder &&
                                   index == entries.length) {
@@ -265,24 +300,33 @@ class _SessionViewState extends State<SessionView> {
                                   ),
                                 );
                               }
-                              final entry = entries[index];
-                              return switch (entry) {
-                                MessageEntry(:final message) => MessageBubble(
-                                  message: message,
-                                  expanded: false,
-                                  onToggle: () {},
-                                ),
-                                ActivityEntry(:final group) => ActivityGroupRow(
-                                  group: group,
-                                  expanded: expandedActivityIds.contains(
-                                    group.messages.first.id,
+                              if (entries.isEmpty) {
+                                return Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        store.isWorking
+                                            ? 'The assistant is working. Its reply will appear here when ready.'
+                                            : 'Your conversation starts here.',
+                                      ),
+                                      if (store.hasMore)
+                                        TextButton(
+                                          onPressed: store.loadOlder,
+                                          child: const Text(
+                                            'Load earlier messages',
+                                          ),
+                                        ),
+                                    ],
                                   ),
-                                  onToggle: () =>
-                                      _toggleActivity(group.messages.first.id),
-                                  running: store.isWorking && index == 0,
-                                  officeWorking: store.isWorking,
-                                ),
-                              };
+                                );
+                              }
+                              return MessageBubble(
+                                key: ValueKey(entries[index].id),
+                                message: entries[index],
+                                expanded: false,
+                                onToggle: () {},
+                              );
                             },
                           ),
                         ),
@@ -298,21 +342,59 @@ class _SessionViewState extends State<SessionView> {
                         onPressed: () => Navigator.maybePop(context),
                       ),
                     ),
-                    Positioned(
-                      top: 8,
-                      right: 12,
-                      child: GlassIconButton(
-                        icon: Icons.more_horiz,
-                        tooltip: 'More',
-                        intensity: GlassIntensity.regular,
-                        onPressed: _showOverflowMenu,
+                    if (!store.readOnly &&
+                        store.data?.status.planPending != true)
+                      Positioned(
+                        top: 12,
+                        left: 72,
+                        right: 72,
+                        child: Column(
+                          children: [
+                            Text(
+                              store.project.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.titleSmall,
+                            ),
+                            Text(
+                              backendLabel(
+                                store.data?.status.backend ??
+                                    store.project.backend,
+                              ),
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      left: 16,
-                      bottom: 92,
-                      child: WorkingChip(working: store.isWorking),
-                    ),
+                    if (!store.readOnly &&
+                        store.data?.status.planPending == true)
+                      Positioned(
+                        top: 8,
+                        left: 72,
+                        right: 72,
+                        child: FilledButton.tonalIcon(
+                          onPressed: _reviewPlan,
+                          icon: const Icon(Icons.fact_check_outlined),
+                          label: const Text('Review plan'),
+                        ),
+                      ),
+                    if (!store.readOnly)
+                      Positioned(
+                        top: 8,
+                        right: 12,
+                        child: GlassIconButton(
+                          icon: Icons.more_horiz,
+                          tooltip: 'More',
+                          intensity: GlassIntensity.regular,
+                          onPressed: _showOverflowMenu,
+                        ),
+                      ),
+                    if (!store.readOnly)
+                      Positioned(
+                        left: 16,
+                        bottom: 92,
+                        child: WorkingChip(working: store.isWorking),
+                      ),
                     if (_hasNewerContent && !_atNewestEnd)
                       Positioned(
                         right: 16,
@@ -324,108 +406,112 @@ class _SessionViewState extends State<SessionView> {
                           label: const Text('Jump to latest'),
                         ),
                       ),
-                    Positioned(
-                      left: 16,
-                      right: 16,
-                      bottom: 12,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (attachments.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: SizedBox(
-                                height: 58,
-                                child: ListView.separated(
-                                  scrollDirection: Axis.horizontal,
-                                  itemCount: attachments.length,
-                                  separatorBuilder: (_, _) =>
-                                      const SizedBox(width: 8),
-                                  itemBuilder: (context, index) =>
-                                      AttachmentChip(
-                                        attachment: attachments[index],
-                                        onRemove: widget.store.sending
-                                            ? () {}
-                                            : () => setState(
-                                                () =>
-                                                    attachments.removeAt(index),
-                                              ),
-                                      ),
+                    if (!store.readOnly)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 12,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (attachments.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: SizedBox(
+                                  height: 58,
+                                  child: ListView.separated(
+                                    scrollDirection: Axis.horizontal,
+                                    itemCount: attachments.length,
+                                    separatorBuilder: (_, _) =>
+                                        const SizedBox(width: 8),
+                                    itemBuilder: (context, index) =>
+                                        AttachmentChip(
+                                          attachment: attachments[index],
+                                          onRemove: widget.store.sending
+                                              ? () {}
+                                              : () => setState(
+                                                  () => attachments.removeAt(
+                                                    index,
+                                                  ),
+                                                ),
+                                        ),
+                                  ),
                                 ),
                               ),
-                            ),
-                          if (attachmentError != null ||
-                              store.sendError != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 6),
+                            if (attachmentError != null ||
+                                store.sendError != null)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 6),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        attachmentError ?? store.sendError!,
+                                      ),
+                                    ),
+                                    if (store.sendError != null)
+                                      TextButton(
+                                        onPressed: store.sending ? null : _send,
+                                        child: const Text('Try again'),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            GlassPill(
+                              intensity: GlassIntensity.strong,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
                               child: Row(
                                 children: [
+                                  IconButton(
+                                    tooltip: 'Add attachment',
+                                    onPressed: widget.store.sending
+                                        ? null
+                                        : _chooseAttachmentSource,
+                                    icon: const Icon(Icons.add_circle_outline),
+                                  ),
                                   Expanded(
-                                    child: Text(
-                                      attachmentError ?? store.sendError!,
+                                    child: TextField(
+                                      controller: composer,
+                                      enabled: !widget.store.sending,
+                                      decoration: const InputDecoration(
+                                        border: InputBorder.none,
+                                        hintText: 'Follow up…',
+                                      ),
+                                      onChanged: (_) => setState(() {}),
+                                      onSubmitted: (_) => _send(),
                                     ),
                                   ),
-                                  if (store.sendError != null)
-                                    TextButton(
-                                      onPressed: store.sending ? null : _send,
-                                      child: const Text('Try again'),
-                                    ),
+                                  widget.store.sending
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(12),
+                                          child: SizedBox(
+                                            width: 22,
+                                            height: 22,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        )
+                                      : IconButton(
+                                          tooltip: 'Send follow-up',
+                                          onPressed: _canSend ? _send : null,
+                                          icon: Icon(
+                                            Icons.arrow_circle_right_rounded,
+                                            color: _canSend
+                                                ? Colors.blue
+                                                : null,
+                                          ),
+                                        ),
                                 ],
                               ),
                             ),
-                          GlassPill(
-                            intensity: GlassIntensity.strong,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  tooltip: 'Add attachment',
-                                  onPressed: widget.store.sending
-                                      ? null
-                                      : _chooseAttachmentSource,
-                                  icon: const Icon(Icons.add_circle_outline),
-                                ),
-                                Expanded(
-                                  child: TextField(
-                                    controller: composer,
-                                    enabled: !widget.store.sending,
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                      hintText: 'Follow up…',
-                                    ),
-                                    onChanged: (_) => setState(() {}),
-                                    onSubmitted: (_) => _send(),
-                                  ),
-                                ),
-                                widget.store.sending
-                                    ? const Padding(
-                                        padding: EdgeInsets.all(12),
-                                        child: SizedBox(
-                                          width: 22,
-                                          height: 22,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                          ),
-                                        ),
-                                      )
-                                    : IconButton(
-                                        tooltip: 'Send follow-up',
-                                        onPressed: _canSend ? _send : null,
-                                        icon: Icon(
-                                          Icons.arrow_circle_right_rounded,
-                                          color: _canSend ? Colors.blue : null,
-                                        ),
-                                      ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),

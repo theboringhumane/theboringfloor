@@ -153,7 +153,7 @@ class _SpaceViewState extends State<SpaceView> {
                   ),
                 ),
                 Text(
-                  'All Repos',
+                  'Floors',
                   style: AppFonts.serif(
                     context,
                     base: Theme.of(context).textTheme.displaySmall,

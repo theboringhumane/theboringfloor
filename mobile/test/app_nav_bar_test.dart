@@ -20,7 +20,7 @@ void main() {
         ),
       ),
     );
-    expect(find.text('Space'), findsOneWidget);
+    expect(find.text('Floors'), findsOneWidget);
     expect(find.text('Terminal'), findsOneWidget);
     expect(find.text('Settings'), findsOneWidget);
     await t.tap(find.text('Terminal'));
