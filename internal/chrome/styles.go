@@ -31,7 +31,8 @@ import (
 
 // Theme — every color slot the UI reads from.
 type Theme struct {
-	Name string
+	Name     string
+	Revision string // content identity for reimporting an edited custom palette
 
 	// Dark classifies the palette by its background (BarBg) luminance:
 	// dark palettes sit on dark terminal backgrounds, light ones on light.
@@ -86,6 +87,24 @@ type Theme struct {
 
 // themeList keeps the /themes order stable (map iteration is random).
 var themeList = []Theme{
+	{ // cockpit — phosphor instruments on a midnight command surface
+		Name: "cockpit", Dark: true,
+		Accent: lipgloss.Color("#67e8f9"), Err: lipgloss.Color("#ff6b8a"),
+		OK: lipgloss.Color("#73f0b8"), Info: lipgloss.Color("#75baff"),
+		Magenta: lipgloss.Color("#bba2ff"), Blue: lipgloss.Color("#75baff"),
+		White: lipgloss.Color("#dce9f5"), Black: lipgloss.Color("#07111c"),
+		Dim:   lipgloss.Color("#8095ad"),
+		BarBg: lipgloss.Color("#112235"), Border: lipgloss.Color("#31516b"),
+		PanelBg: lipgloss.Color("#09121f"), ToolColor: lipgloss.Color("#67e8f9"),
+		Warn: lipgloss.Color("#ffc078"), Question: lipgloss.Color("#ffe0a3"),
+		RoleBoss: lipgloss.Color("#67e8f9"), RoleHR: lipgloss.Color("#ff9db4"),
+		RoleDev: lipgloss.Color("#75baff"), RoleScout: lipgloss.Color("#73f0b8"),
+		RoleReviewer: lipgloss.Color("#bba2ff"), RoleRunner: lipgloss.Color("#ffc078"),
+		DiffAddBg: lipgloss.Color("#10302c"), DiffDelBg: lipgloss.Color("#351d2d"),
+		DiffAddFg: lipgloss.Color("#73f0b8"), DiffDelFg: lipgloss.Color("#ff9db4"),
+		DiffCtxFg: lipgloss.Color("#8095ad"), DiffGutterFg: lipgloss.Color("#58718c"),
+		ChromaStyle: "github-dark", Glamour: "dark",
+	},
 	{ // noir — fixed RGB colors, independent of the terminal palette
 		Name:   "noir",
 		Dark:   true,
@@ -232,6 +251,7 @@ var themeList = []Theme{
 }
 
 var themes = func() map[string]Theme {
+	themeList = append(themeList, additionalThemes()...)
 	m := make(map[string]Theme, len(themeList))
 	for _, t := range themeList {
 		m[t.Name] = t
@@ -245,7 +265,7 @@ func ThemeNames() []string {
 	for _, t := range themeList {
 		names = append(names, t.Name)
 	}
-	return names
+	return append(names, customThemeNames()...)
 }
 
 var current Theme
@@ -253,13 +273,14 @@ var current Theme
 // CurrentTheme returns the active theme.
 func CurrentTheme() Theme { return current }
 
+func ThemeKey() string { return current.Name + "@" + current.Revision }
+
 // DefaultDarkTheme / DefaultLightTheme are the palettes SetThemeAuto picks
 // for a dark / light terminal background when the user pinned nothing.
-// noir is the long-standing default dark look (and the boot-time fallback);
-// paper is the only light-background palette in the registry — every other
-// entry's BarBg measures dark (see styles_test.go's luminance check).
+// cockpit is the default dark look (and the boot-time fallback);
+// paper is the light default; other light palettes can be selected explicitly.
 const (
-	DefaultDarkTheme  = "noir"
+	DefaultDarkTheme  = "cockpit"
 	DefaultLightTheme = "paper"
 )
 
@@ -278,6 +299,10 @@ func ThemePinned() bool { return pinned }
 // auto-detection. Returns false (and changes nothing) for an unknown name.
 func SetTheme(name string) bool {
 	t, ok := themes[name]
+	if !ok {
+		ensureUserThemes()
+		t, ok = userThemes[name]
+	}
 	if !ok {
 		return false
 	}
@@ -340,7 +365,7 @@ func LoadPersistedTheme() string {
 }
 
 // PersistTheme writes the active theme name to ThemeConfigPath, mkdir -p'ing
-// first. Best effort: callers should ignore the error.
+// first. Callers can report a failure while retaining the session's selection.
 func PersistTheme() error {
 	p := ThemeConfigPath()
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -373,11 +398,8 @@ func MarkdownStyle() glan.StyleConfig {
 	if s.CodeBlock.Margin != nil {
 		s.CodeBlock.Margin = &zero
 	}
-	if current.Name == "noir" {
-		// keep the original noir look: explicit document ink
-		v := "252"
-		s.Document.Color = &v
-	}
+	ink := hexColor(current.White)
+	s.Document.Color = &ink
 	return s
 }
 
@@ -472,7 +494,7 @@ func applyTheme(t Theme) {
 	PanelBgColor = t.PanelBg
 
 	Bar = lipgloss.NewStyle().Background(BarBgColor).Foreground(White)
-	PanelBox = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).BorderBackground(t.PanelBg).Background(t.PanelBg)
+	PanelBox = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(t.Border).BorderBackground(t.PanelBg).Background(t.PanelBg)
 	TabActive = lipgloss.NewStyle().Background(Accent).Foreground(Black).Bold(true)
 	TabInactive = lipgloss.NewStyle().Foreground(Dim)
 	Header = lipgloss.NewStyle().Bold(true).Foreground(White)
@@ -592,4 +614,5 @@ func init() {
 	// Deliberately NOT a pin — the latch belongs to user choices.
 	current = themes[DefaultDarkTheme]
 	applyTheme(current)
+	office.SetTheme(DefaultDarkTheme)
 }

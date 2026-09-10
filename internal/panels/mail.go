@@ -72,7 +72,7 @@ func (m *Mail) revKeyOf(st state.OfficeState) string {
 	sb.Grow(64 + len(st.Mails)*64)
 	sb.WriteString(strconv.Itoa(m.w))
 	sb.WriteByte('|')
-	sb.WriteString(chrome.CurrentTheme().Name)
+	sb.WriteString(chrome.ThemeKey())
 	for _, it := range st.Mails {
 		sb.WriteByte('|')
 		sb.WriteString(it.ID)

@@ -112,6 +112,9 @@ func TopBar(st state.OfficeState, width int, infos ...projinfo.Info) string {
 	}
 	left += OnBar(White, " | agents ") +
 		OnBar(Info, agents)
+	if width >= 120 {
+		left = OnBarBold(Accent, " ◆ ") + left + OnBar(Dim, "  /  ") + OnBarBold(Accent, "COMMAND DECK")
+	}
 	right := rightSeg(clock, cwdBase(), infos)
 
 	gap := width - lipgloss.Width(left) - lipgloss.Width(right)

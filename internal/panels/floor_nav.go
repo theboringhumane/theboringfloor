@@ -21,11 +21,11 @@ type floorNavRow struct {
 func (f *Floors) navRows(w, h int, focused bool) []floorNavRow {
 	var rows []floorNavRow
 	add := func(text string) { rows = append(rows, floorNavRow{text: text, floor: -1, conversation: -1}) }
-	heading := " FLOORS"
+	heading := "00 / FLOORS"
 	if focused {
 		heading += " ◂"
 	}
-	add(chrome.PanelHeader.Render(heading))
+	add(chrome.InstrumentRule(heading, w-2))
 	add(chrome.PanelDim.Render(" Ctrl+E · projects"))
 	add("")
 	count := max(1, min(len(f.rows), (h-14)/2))
@@ -48,7 +48,7 @@ func (f *Floors) navRows(w, h int, focused bool) []floorNavRow {
 	rows = append(rows, floorNavRow{text: chrome.PanelAccent.Render(" + Add project"), floor: -1, conversation: -1, action: "a"})
 	add("")
 	row := f.Current()
-	add(chrome.PanelHeader.Render(" TEAMS"))
+	add(chrome.InstrumentRule("TEAMS", w-2))
 	var names []string
 	for _, team := range row.Teams {
 		names = append(names, team.Name)
@@ -57,7 +57,7 @@ func (f *Floors) navRows(w, h int, focused bool) []floorNavRow {
 		add(chrome.PanelDim.Render(" " + line))
 	}
 	add("")
-	add(chrome.PanelHeader.Render(" CONVERSATIONS"))
+	add(chrome.InstrumentRule("CONVERSATIONS", w-2))
 	rows = append(rows, floorNavRow{text: chrome.PanelAccent.Render(" + New conversation"), floor: -1, conversation: -1, action: "n"})
 	cs := f.conversations[row.Dir]
 	available := max(0, (h-len(rows)-3)/2)
@@ -86,6 +86,23 @@ func (f *Floors) NavView(w, h int, focused bool) string {
 		lines = append(lines, row.text)
 	}
 	body := workFit(strings.Join(lines, "\n"), w-1, max(1, h-2))
+	if h-len(rows) >= 9 && w >= 20 {
+		// Fill otherwise unused navigator space without moving any targets.
+		padded := strings.Split(body, "\n")
+		legend := []string{
+			chrome.InstrumentRule("FLIGHT CONTROLS", w-2),
+			" " + chrome.PanelAccent.Render("^N") + chrome.PanelDim.Render("  new conversation"),
+			" " + chrome.PanelAccent.Render("^E") + chrome.PanelDim.Render("  project navigator"),
+			" " + chrome.PanelAccent.Render("^W") + chrome.PanelDim.Render("  expand console"),
+			" " + chrome.PanelAccent.Render("^B") + chrome.PanelDim.Render("  office / browser"),
+			" " + chrome.PanelAccent.Render(" /") + chrome.PanelDim.Render("  command palette"),
+			"",
+		}
+		for i, line := range legend {
+			padded[len(padded)-len(legend)+i] = ansi.Truncate(line, w-2, "…")
+		}
+		body = strings.Join(padded, "\n")
+	}
 	foot := " n new · t team"
 	if focused {
 		foot = " Enter open · Esc back"
@@ -95,7 +112,7 @@ func (f *Floors) NavView(w, h int, focused bool) string {
 	}
 	body += "\n" + chrome.PanelDim.Render(ansi.Truncate(foot, w-2, "…")) + "\n"
 	return lipgloss.NewStyle().Width(w).Height(h).BorderStyle(lipgloss.NormalBorder()).BorderRight(true).
-		BorderForeground(chrome.Dim).Background(chrome.PanelBgColor).Render(body)
+		BorderForeground(chrome.CurrentTheme().Border).Background(chrome.PanelBgColor).Render(body)
 }
 
 func (f *Floors) NavClick(y, w, h int) tea.Cmd {

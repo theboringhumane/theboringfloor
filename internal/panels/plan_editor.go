@@ -123,7 +123,7 @@ func NewPlanEditor() *PlanEditor {
 	// rail for any row that still overflows (tables, long code lines).
 	rv.SoftWrap = true
 
-	e := &PlanEditor{ta: ta, rv: rv, mode: planModePlan, taTheme: chrome.CurrentTheme().Name}
+	e := &PlanEditor{ta: ta, rv: rv, mode: planModePlan, taTheme: chrome.ThemeKey()}
 	e.SetSize(30, 10)
 	return e
 }
@@ -197,7 +197,7 @@ func (e *PlanEditor) Update(msg tea.Msg) tea.Cmd {
 func (e *PlanEditor) View() string {
 	// theme switched under us? re-point the textarea chrome before drawing
 	// (reads the live chrome vars; zero cost when the theme is unchanged).
-	if theme := chrome.CurrentTheme().Name; theme != e.taTheme {
+	if theme := chrome.ThemeKey(); theme != e.taTheme {
 		applyTextareaStyles(&e.ta)
 		e.taTheme = theme
 	}
@@ -362,7 +362,7 @@ func (e *PlanEditor) renderReadOnly() {
 func (e *PlanEditor) renderKey() string {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(e.Value()))
-	return fmt.Sprintf("%016x|%d|%s|%s", h.Sum64(), e.w, e.mode, chrome.CurrentTheme().Name)
+	return fmt.Sprintf("%016x|%d|%s|%s", h.Sum64(), e.w, e.mode, chrome.ThemeKey())
 }
 
 // renderGlamour runs src through glamour at the body width with the active

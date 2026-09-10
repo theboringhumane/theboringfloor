@@ -76,7 +76,7 @@ func (b *Board) revKeyOf(st state.OfficeState) string {
 	sb.Grow(64 + len(st.Tasks)*32)
 	sb.WriteString(strconv.Itoa(b.w))
 	sb.WriteByte('|')
-	sb.WriteString(chrome.CurrentTheme().Name)
+	sb.WriteString(chrome.ThemeKey())
 	for _, t := range st.Tasks {
 		sb.WriteByte('|')
 		sb.WriteString(t.ID)

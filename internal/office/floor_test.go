@@ -93,8 +93,8 @@ func nameplateRow(t *testing.T, st state.OfficeState) string {
 	for _, c := range rows[plan.Nameplate.Y] {
 		b.WriteRune(c.Ch)
 	}
-	line := b.String()
-	return line[plan.Nameplate.X : plan.Nameplate.X+10]
+	line := []rune(b.String())
+	return string(line[plan.Nameplate.X : plan.Nameplate.X+10])
 }
 
 func TestNameplate(t *testing.T) {

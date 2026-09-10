@@ -7,7 +7,7 @@ import { SectionTag } from '@/components/section-tag'
 export const metadata: Metadata = {
   title: 'Layouts, themes & power | theboringfloor',
   description:
-    '/compact, /mode, /wide and /zen for the layout; five themes with live preview; and the /power governor that decides how hard the office renders.',
+    'A cockpit layout, 14 themes with live preview, VS Code theme imports and customization, and the /power rendering governor.',
 }
 
 function Code({ children }: { children: React.ReactNode }) {
@@ -52,11 +52,20 @@ const powerRows = [
 ]
 
 const themes = [
-  { name: 'noir', note: 'the default — dim room, accent ember' },
+  { name: 'cockpit', note: 'dark default, cyan instruments' },
+  { name: 'noir', note: 'dim room, accent ember' },
   { name: 'paper', note: 'light, for daylight desks' },
   { name: 'mono', note: 'greys only, no accent' },
   { name: 'dracula', note: 'the classic purple' },
   { name: 'solarized', note: 'the measured palette' },
+  { name: 'tokyo-night', note: 'blue neon' },
+  { name: 'catppuccin-mocha', note: 'dark pastel' },
+  { name: 'catppuccin-latte', note: 'light pastel' },
+  { name: 'nord', note: 'arctic blue' },
+  { name: 'gruvbox', note: 'warm retro' },
+  { name: 'one-dark', note: 'balanced charcoal' },
+  { name: 'rose-pine', note: 'muted rose and purple' },
+  { name: 'github-light', note: 'crisp daylight' },
 ]
 
 export default function LayoutThemesPowerPage() {
@@ -125,14 +134,15 @@ export default function LayoutThemesPowerPage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Themes</SectionTag>
             <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
-              Five paints, previewed before you commit.
+              Fourteen palettes. Bring your own, too.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              The office ships five themes. Pick one at launch with{' '}
-              <Code>--theme noir|paper|mono|dracula|solarized</Code>, or in-app with{' '}
-              <Code>/theme &lt;name&gt;</Code> — either way the choice persists to{' '}
-              <Code>~/.config/theboringfloor/theme</Code>. <Code>/themes</Code> lists
-              them without leaving the chat.
+              Every palette uses the same cockpit: tactical floor, live task meter,
+              agent network, dispatches and numbered tool consoles. Instruments
+              collapse when the terminal is small. Dark terminals default to Cockpit;
+              light terminals use Paper. Pick a palette at launch with{' '}
+              <Code>--theme tokyo-night</Code>, or save a choice in-app with{' '}
+              <Code>/theme &lt;name&gt;</Code>. <Code>/themes</Code> lists them all.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The pleasant part is the try-on: arrowing through the slash popover&apos;s{' '}
@@ -146,10 +156,38 @@ export default function LayoutThemesPowerPage() {
               ))}
             </div>
             <Shot
-              src="/shots/docs/theme-dracula.png"
-              alt="theboringfloor dracula theme applied to the floor and sidebar"
-              caption="theme dracula — the whole office, repainted live"
+              src="/shots/docs/cockpit-themes.png"
+              alt="The cockpit layout in all fourteen built-in palettes"
+              caption="one cockpit, fourteen palettes — simulated demo mission"
             />
+            <h3 className="mt-12 text-2xl font-semibold">Import a VS Code theme</h3>
+            <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
+              Use <Code>/theme import &quot;/path/to/My Theme.json&quot;</Code> or launch with{' '}
+              <Code>--import-theme ./my-theme.jsonc</Code>. The imported palette appears
+              in the picker as <Code>custom-my-theme</Code> and your choice is saved.
+              Installed VS Code extensions usually keep their files under{' '}
+              <Code>~/.vscode/extensions/&lt;extension&gt;/themes/</Code>; the extension&apos;s{' '}
+              <Code>package.json</Code> lists them in <Code>contributes.themes</Code>.
+            </p>
+            <h3 className="mt-10 text-2xl font-semibold">Edit any palette</h3>
+            <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
+              Run <Code>/theme export ~/my-theme.json</Code>, edit its{' '}
+              <Code>name</Code>, <Code>colors</Code> or <Code>tokenColors</Code>, then{' '}
+              <Code>/theme import ~/my-theme.json</Code>. Reimport the same name to
+              update it live. Exports require a new destination file. Saved imports
+              live in <Code>~/.config/theboringfloor/themes/</Code>, or under{' '}
+              <Code>$XDG_CONFIG_HOME</Code> when set. Edit those files directly and use{' '}
+              <Code>/theme reload</Code> to refresh the library.
+            </p>
+            <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
+              JSON/JSONC comments, trailing commas, relative local includes, transparent
+              hex colors and common TextMate scopes for diff syntax are supported.
+              Editor, status bar, border, button, terminal ANSI and diff colors map to
+              the cockpit; missing slots use light or dark defaults. VS Code-specific
+              components, semantic-token rules, complex language selectors and{' '}
+              <Code>.tmTheme</Code> references do not transfer. Import the JSON theme
+              file itself, rather than an extension package.
+            </p>
           </div>
         </section>
 

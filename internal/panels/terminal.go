@@ -125,11 +125,12 @@ type TermPanel struct {
 	cwd   string
 	w, h  int
 
-	focused  bool
-	scroll   int // rows up from the bottom (mouse wheel viewing)
-	spawnErr error
-	rev      uint64 // cheap change detection for View caching
-	cached   string
+	focused   bool
+	scroll    int // rows up from the bottom (mouse wheel viewing)
+	spawnErr  error
+	rev       uint64 // cheap change detection for View caching
+	cached    string
+	viewTheme string
 
 	sel    termSel   // the mouse text selection (header: MOUSE CONTRACT)
 	note   string    // copy verdict note on the badge row (dim, brief)
@@ -257,6 +258,7 @@ func (p *TermPanel) SetSize(w, h int) {
 	}
 	p.w, p.h = w, h
 	p.rev = 0 // invalidate render cache
+	p.cached = ""
 	if p.sess != nil && p.sess.Alive() {
 		cols, rows := p.sess.Size()
 		if cols != w || rows != p.bodyH() {
@@ -721,9 +723,10 @@ func (p *TermPanel) historyRows() []string {
 
 // View implements Tab.
 func (p *TermPanel) View() string {
-	if p.cached != "" {
+	if p.cached != "" && p.viewTheme == chrome.ThemeKey() {
 		return p.cached
 	}
+	p.viewTheme = chrome.ThemeKey()
 	var b strings.Builder
 
 	if !p.Alive() {
@@ -811,6 +814,10 @@ func (p *TermPanel) View() string {
 	// dim instead of screaming red in a one-row badge).
 	if p.note != "" && time.Since(p.noteAt) < termNoteWindow {
 		badge += chrome.DimText.Render(p.note)
+	}
+	grid := chrome.InfoText.Render(itoa(p.w) + "×" + itoa(p.bodyH()) + " ")
+	if gap := p.w - lipgloss.Width(badge) - lipgloss.Width(grid); gap > 1 {
+		badge += strings.Repeat(" ", gap) + grid
 	}
 	b.WriteString(badge)
 

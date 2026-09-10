@@ -183,6 +183,7 @@ func (t *Tabs) View() string {
 	}
 	// lipgloss v2: Width/Height INCLUDE the border — pass outer dims.
 	box := chrome.PanelBox.Width(t.w).Height(ch).Render(content)
+	box = chrome.InstrumentFrame(box, "03 / "+strings.ToUpper(t.tabs[t.active].Title()), "COMMAND CONSOLE", t.w)
 	return lipgloss.JoinVertical(lipgloss.Left, bar, box)
 }
 

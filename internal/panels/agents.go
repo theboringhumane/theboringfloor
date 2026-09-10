@@ -144,7 +144,7 @@ func (a *Agents) revKeyOf(st state.OfficeState) string {
 	sb.Grow(64 + len(st.Employees)*48)
 	sb.WriteString(strconv.Itoa(a.w))
 	sb.WriteByte('|')
-	sb.WriteString(chrome.CurrentTheme().Name)
+	sb.WriteString(chrome.ThemeKey())
 	sb.WriteByte('|')
 	sb.WriteString(a.bossName)
 	sb.WriteByte('|')

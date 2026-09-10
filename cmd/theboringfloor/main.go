@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -71,11 +72,30 @@ func main() {
 	session := flag.String("session", "", "resume this backend conversation id (explicit pin; beats the saved-session restore)")
 	sessionShort := flag.String("s", "", "shorthand for -session")
 	autokill := flag.Duration("autokill", 0, "exit after this duration (shots/CI)")
-	theme := flag.String("theme", "", "color theme: noir|paper|mono|dracula|solarized")
+	theme := flag.String("theme", "", "color theme: "+strings.Join(chrome.ThemeNames(), "|"))
+	importTheme := flag.String("import-theme", "", "import a local VS Code JSON/JSONC theme and select it")
 	backendName := flag.String("backend", "", "LLM transport: opencode|claudecode|codex (brain.json backend.name is the persisted default)")
 	printCfg := flag.Bool("print-default-config", false, "print the default brain.json and exit")
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *importTheme != "" {
+		name, err := chrome.ImportTheme(*importTheme)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Theme import:", err)
+			os.Exit(1)
+		}
+		if *theme == "" {
+			*theme = name
+		}
+		if !chrome.SetTheme(*theme) {
+			fmt.Fprintln(os.Stderr, "Unknown theme:", *theme)
+			os.Exit(1)
+		}
+		if err := chrome.PersistTheme(); err != nil {
+			fmt.Fprintln(os.Stderr, "Save theme:", err)
+			os.Exit(1)
+		}
+	}
 	if *projectDir != "" {
 		if err := os.Chdir(*projectDir); err != nil {
 			fmt.Fprintln(os.Stderr, "Open floor:", err)

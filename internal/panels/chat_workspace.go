@@ -30,19 +30,17 @@ func (c *Chat) workspaceDivider() string {
 	if c.searching {
 		return chrome.PanelAccent.Render(ansi.Truncate(fmt.Sprintf(" Find: %s  ·  %d matches · Enter next · Esc close", c.searchText, len(c.searchMatches)), c.w, "…"))
 	}
-	if c.workspaceBackend == "" {
-		return chrome.PanelDim.Render(fitPlain(strings.Repeat("─", c.w), c.w))
+	label := "COMMAND INPUT"
+	if c.workspaceBackend != "" {
+		label += " / " + c.workspaceBackend
 	}
-	label := " " + c.workspaceBackend
 	if c.workspaceTeam != "" {
 		label += " / " + c.workspaceTeam
 	}
 	if !c.follow {
-		label += " · reading history · End latest"
-	} else {
-		label += " · Ctrl+R find · Ctrl+W expand"
+		label = "HISTORY · End latest"
 	}
-	return chrome.PanelDim.Render(ansi.Truncate(label+" "+strings.Repeat("─", c.w), c.w, ""))
+	return chrome.InstrumentRule(label, c.w)
 }
 func (c *Chat) searchKey(k tea.KeyPressMsg) {
 	c.refreshSearch()

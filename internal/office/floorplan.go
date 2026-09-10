@@ -54,9 +54,26 @@ var ansiColors = map[string]string{
 // with chalk names; themes translate them. Values may be ANSI codes or hex —
 // lipgloss.Color accepts both.
 var floorThemes = map[string]map[string]string{
+	"cockpit": {
+		"black": "#09121f", "gray": "#31516b", "grey": "#31516b",
+		"white": "#b5c8dc", "whiteBright": "#dce9f5",
+		"yellow": "#67e8f9", "yellowBright": "#ffc078",
+		"cyan": "#75baff", "cyanBright": "#67e8f9",
+		"green": "#73f0b8", "greenBright": "#73f0b8",
+		"red": "#ff6b8a", "redBright": "#ff9db4",
+		"blue": "#75baff", "blueBright": "#75baff",
+		"magenta": "#bba2ff", "magentaBright": "#bba2ff",
+	},
 	"noir": nil, // identity — the hand-tuned default
 	"paper": {
-		"gray": "240", "grey": "240", "white": "238", "whiteBright": "255",
+		"black": "#ffffff", "gray": "#57606a", "grey": "#57606a",
+		"white": "#201f1e", "whiteBright": "#201f1e",
+		"yellow": "#9a6700", "yellowBright": "#9a6700",
+		"red": "#d1242f", "redBright": "#d1242f",
+		"green": "#1a7f37", "greenBright": "#1a7f37",
+		"cyan": "#0891b2", "cyanBright": "#0891b2",
+		"blue": "#0969da", "blueBright": "#0969da",
+		"magenta": "#a626a4", "magentaBright": "#a626a4",
 	},
 	"mono": {
 		"red": "#d5d8df", "green": "#d5d8df", "yellow": "#f1f3f6", "blue": "#d5d8df", "magenta": "#d5d8df",
@@ -82,6 +99,11 @@ var floorThemes = map[string]map[string]string{
 
 var ansiColorsBase = ansiColors // pristine default for theme resets
 
+// RegisterTheme supplies semantic floor colors for a bundled or imported palette.
+func RegisterTheme(name string, colors map[string]string) { floorThemes[name] = colors }
+
+var paletteKey string
+
 // SetTheme re-points the floor's color map at the given theme. Unknown names
 // restore the default noir palette (never errors).
 func SetTheme(name string) {
@@ -96,6 +118,11 @@ func SetTheme(name string) {
 		}
 	}
 	ansiColors = m
+	var key strings.Builder
+	for _, slot := range []string{"black", "gray", "white", "yellow", "red", "green", "cyan", "blue", "magenta", "whiteBright", "yellowBright", "redBright", "greenBright", "cyanBright", "blueBright", "magentaBright"} {
+		key.WriteString(m[slot])
+	}
+	paletteKey = key.String()
 }
 
 type Point struct {

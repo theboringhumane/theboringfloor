@@ -97,7 +97,11 @@ func (m Model) leftPaneView(w, h int) string {
 	if m.leftTab == leftTabBrowser && m.browser != nil {
 		content = m.browser.View()
 	} else {
-		content = office.CachedStyled(m.st, w, contentH)
+		telemetryH := chrome.CockpitTelemetryHeight(w, contentH)
+		content = office.CachedStyled(m.st, w, contentH-telemetryH)
+		if telemetryH > 0 {
+			content = lipgloss.JoinVertical(lipgloss.Left, content, chrome.CockpitTelemetry(m.st, w, telemetryH))
+		}
 	}
 	return lipgloss.NewStyle().Width(w).Height(h).Render(
 		lipgloss.JoinVertical(lipgloss.Left, m.leftStripView(w), content))

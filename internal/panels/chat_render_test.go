@@ -22,7 +22,7 @@ import (
 func chatDividerRow(rows []string) int {
 	for i, r := range rows {
 		t := strings.TrimSpace(r)
-		if t != "" && strings.Trim(t, "─") == "" {
+		if t != "" && (strings.Trim(t, "─") == "" || strings.HasPrefix(t, "─ COMMAND INPUT")) {
 			return i
 		}
 	}

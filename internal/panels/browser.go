@@ -1364,7 +1364,7 @@ func (b *Browser) bar() string {
 // (rev-key discipline, mail.go's pattern — a hit skips the whole pass).
 func (b *Browser) refreshBody() {
 	key := fmt.Sprintf("%d|%s|%d|%s|%s|%t|%s|%s|%t",
-		b.w, b.url, b.cursor, b.note, b.err, b.loading, chrome.CurrentTheme().Name,
+		b.w, b.url, b.cursor, b.note, b.err, b.loading, chrome.ThemeKey(),
 		b.shotStateRow(), b.ShotActive())
 	if key == b.rev {
 		return

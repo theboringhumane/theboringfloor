@@ -642,6 +642,7 @@ func BuildRows(st state.OfficeState, width, height int) []Row {
 		drawBubble(g, W, H, b.Text, p.X+1, p.Y)
 	}
 
+	stampCockpit(g, W, H)
 	return g
 }
 
@@ -761,8 +762,10 @@ func floorRenderRev(st state.OfficeState) string {
 	if st.BossDelegating { // nameplate "[delegat]" — a new render input
 		b.WriteString("D")
 	}
-	b.WriteString(ansiColors["gray"]) // theme epoch: re-paint on /theme
-	b.WriteString(ansiColors["yellow"])
+	if st.Offline {
+		b.WriteString("offline")
+	}
+	b.WriteString(paletteKey) // all imported colors participate in cache identity
 	return b.String()
 }
 

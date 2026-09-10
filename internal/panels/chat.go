@@ -2982,7 +2982,7 @@ type diffCacheEntry struct {
 // diffRows parses m.Text (unified diff body) into rows and paints chroma
 // spans from the matching lexer; results are cached per msg ID + theme.
 func (c *Chat) diffRows(m state.ChatMsg, path string) ([]diffRow, diffOp) {
-	if ent, ok := c.diffCache[m.ID]; ok && ent.theme == chrome.CurrentTheme().Name {
+	if ent, ok := c.diffCache[m.ID]; ok && ent.theme == chrome.ThemeKey() {
 		return ent.rows, ent.op
 	}
 	rows, op, oldBody, newBody := parseDiffBody(m.Text)
@@ -3014,7 +3014,7 @@ func (c *Chat) diffRows(m state.ChatMsg, path string) ([]diffRow, diffOp) {
 	if c.diffCache == nil {
 		c.diffCache = map[string]diffCacheEntry{}
 	}
-	c.diffCache[m.ID] = diffCacheEntry{theme: chrome.CurrentTheme().Name, rows: rows, op: op}
+	c.diffCache[m.ID] = diffCacheEntry{theme: chrome.ThemeKey(), rows: rows, op: op}
 	return rows, op
 }
 

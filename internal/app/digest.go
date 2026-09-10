@@ -37,12 +37,15 @@ func (m *Model) frameDigest() uint64 {
 	// stable active-theme identity rather than a color.Color interface: a
 	// /theme command or terminal BackgroundColorMsg can repaint every chrome
 	// surface without otherwise moving model state.
-	fmt.Fprintf(h, "|theme=%s", chrome.CurrentTheme().Name)
+	fmt.Fprintf(h, "|theme=%s", chrome.ThemeKey())
+	// Cockpit instruments include identity, connectivity and real usage.
+	fmt.Fprintf(h, "|%t|%s|%d|%d|%d|%d|%g", m.st.Offline, m.st.BackendName,
+		m.st.TokensIn, m.st.TokensOut, m.st.TokensCacheRead, m.st.TokensCacheWrite, m.st.CostUSD)
 	// the left pane's floor|browser switcher swaps the whole left region.
 	fmt.Fprintf(h, "|%d", m.leftTab)
 	fmt.Fprintf(h, "|%s|%s|%d|%d|%t|%t|%t|%t", m.st.Mode, m.st.StatusLine, len(m.queue), m.st.Tick, m.st.BossThinking, m.st.BossDelegating, m.permQ.front() != nil, m.question != nil)
 	for _, e := range m.st.Employees {
-		fmt.Fprintf(h, "|%s%s%s%s", e.ID, e.Sprite, e.Seat, e.Task)
+		fmt.Fprintf(h, "|%s%s%s%s%s", e.ID, e.Name, e.Sprite, e.Seat, e.Task)
 	}
 	for _, c := range m.st.Chat {
 		fmt.Fprintf(h, "|%s%t%s%d%s", c.ID, c.Pending, c.Kind, len(c.Text), c.Meta)

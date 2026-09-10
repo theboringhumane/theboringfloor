@@ -50,7 +50,7 @@ type slashCommand struct {
 // outcomes, never of wishes.
 var slashCommands = []slashCommand{
 	{"/help", "this list", ""},
-	{"/theme", "switch theme (persists)", "/theme <name>"},
+	{"/theme", "preview, import or customize themes", "/theme <name> | import <path> | export <path> | reload"},
 	{"/themes", "list themes", ""},
 	{"/thinking", "show/hide thinking blocks", "/thinking on|off"},
 	{"/tools", "show/hide tool one-liners", "/tools on|off"},
@@ -127,6 +127,12 @@ func (a *Agents) SetSelected(name string) {
 // live preview to the whole UI — a mid-sentence "/theme" fragment must
 // never preview).
 func slashFragmentOf(v string) (mode int, frag string, ok bool) {
+	words := strings.Fields(v)
+	if len(words) >= 2 && words[0] == "/theme" {
+		if len(words) > 2 || words[1] == "import" || words[1] == "export" || words[1] == "reload" {
+			return 0, "", false // file paths belong to the command, not the picker
+		}
+	}
 	r := []rune(v)
 	// tail word = runes after the last whitespace
 	ws := -1
@@ -140,7 +146,6 @@ func slashFragmentOf(v string) (mode int, frag string, ok bool) {
 	if strings.HasPrefix(tail, "/") {
 		return slashModeCmd, tail[1:], true
 	}
-	words := strings.Fields(v)
 	if tail == "" {
 		if len(words) == 1 && words[0] == "/theme" {
 			return slashModeTheme, "", true

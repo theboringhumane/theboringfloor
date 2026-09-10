@@ -104,6 +104,68 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 
 Config file: `~/.theboringfloor/configs/brain.json` (`theboringfloor --print-default-config`). Details: [backends](https://boringfloor.com/docs/backends) + [layout](https://boringfloor.com/docs/layout-themes-power).
 
+### Cockpit control plane
+
+Every theme now uses the cockpit layout: a tactical office grid, live
+task-completion meter, agent network, dispatch list, and numbered tool consoles.
+All 14 built-in palettes and imported VS Code themes supply their own colors;
+switching themes keeps the instruments and controls. Instruments use the office's
+actual state and collapse on short terminals. The default dark palette is
+Cockpit; light terminals use Paper, and explicit theme choices stay pinned.
+
+```bash
+theboringfloor --demo --theme cockpit
+# Inside a running office: /theme cockpit
+# Same cockpit, classic palette: /theme noir
+```
+
+![Cockpit command deck with simulated demo telemetry](docs/shots-go/cockpit.png)
+
+Reproduce the demo frame without starting a backend: `go run ./cmd/uishot --cockpit`.
+Add `--theme paper` (or any other theme name) to preview the same cockpit in that palette.
+
+![Cockpit layout in all 14 built-in themes](docs/shots-go/cockpit-themes.png)
+
+### Make it yours
+
+Choose from **Cockpit, Noir, Paper, Mono, Dracula, Solarized, Tokyo Night,
+Catppuccin Mocha, Catppuccin Latte, Nord, Gruvbox, One Dark, Rosé Pine, and
+GitHub Light**. Type `/theme ` and use the arrow keys to preview, Enter to save,
+or Escape to return to your previous palette. `/themes` lists every available name.
+
+Bring a local VS Code theme into the same picker:
+
+```text
+/theme import "/path/to/My Theme.json"
+/theme custom-my-theme
+```
+
+Or import at startup: `theboringfloor --import-theme ./my-theme.jsonc`.
+Look in `~/.vscode/extensions/<publisher.theme-version>/themes/` for an installed
+extension's theme file; its `package.json` lists the paths under `contributes.themes`.
+
+Customize any palette by exporting it, editing its `colors` or `tokenColors`,
+then importing the result:
+
+```text
+/theme export ~/my-floor-theme.json
+/theme import ~/my-floor-theme.json
+```
+
+The export uses VS Code's JSON format. Change `name` to give your palette a name.
+Imports are saved as `custom-<name>` in `~/.config/theboringfloor/themes/`
+(`$XDG_CONFIG_HOME/theboringfloor/themes/` when set). Reimport the same name to
+update it, or edit its saved JSON and run `/theme reload`. The selection survives
+restarts. Export refuses to overwrite an existing file.
+
+Supported: JSON/JSONC, comments, trailing commas, relative local `include` files,
+hex colors with transparency, and common TextMate syntax scopes for diff code.
+VS Code editor, status-bar, border, button, terminal ANSI and diff colors map to
+the cockpit's corresponding colors; omitted slots use dark/light defaults.
+Imports adapt a palette to this terminal UI: VS Code-specific components,
+semantic-token rules, complex language selectors, `.tmTheme` references and
+extension packages are not imported. Use the extension's JSON theme file.
+
 For OpenCode and Claude Code, the office primes the backend with the same manager charter before the first turn: the bundled [oikonomos](https://github.com/theboringhumane/oikonomos) protocol lands at `.opencode/oikonomos.md` in the served directory. On opencode the office merges `./.opencode/oikonomos.md` into `.opencode/opencode.json`'s `instructions` — a field-preserving merge, every other key survives. On claudecode it writes `CLAUDE.md`: created with `@.opencode/oikonomos.md` when absent, or — when you already keep one — an idempotent `<!-- theboringfloor charter -->` block appended below your content. Nothing member-owned is ever overwritten. Codex receives the bundled manager charter in its first prompt and uses its own CLI configuration.
 
 ## Peek

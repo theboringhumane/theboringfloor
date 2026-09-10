@@ -34,7 +34,7 @@ func bgLuminance(c color.Color) float64 {
 // light and monochrome themes.
 func TestPanelBackgroundOwnership(t *testing.T) {
 	defer restoreTheme()
-	for _, name := range []string{"noir", "paper", "mono", "dracula", "solarized"} {
+	for _, name := range ThemeNames() {
 		t.Run(name, func(t *testing.T) {
 			if !SetTheme(name) {
 				t.Fatalf("SetTheme(%q) returned false", name)

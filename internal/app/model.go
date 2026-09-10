@@ -3398,7 +3398,16 @@ func (m *Model) handleClick(msg tea.MouseClickMsg) tea.Cmd {
 	if m.browserActive() {
 		return nil
 	}
-	id, ok := office.HitAgent(m.st, msg.X-m.navigatorWidth(), msg.Y-1 /* topbar row */)
+	floorY := msg.Y - 2 // topbar and floor/browser switcher
+	floorH := m.middleH - 1
+	if m.mobile() {
+		floorH = m.floorBandH() - 1
+	}
+	floorH -= chrome.CockpitTelemetryHeight(m.floorW, floorH)
+	if floorY < 0 || floorY >= floorH {
+		return nil
+	}
+	id, ok := office.HitAgent(m.st, msg.X-m.navigatorWidth(), floorY)
 	if !ok {
 		return nil
 	}
@@ -5816,6 +5825,9 @@ const slashHelp = `commands:
   /help              this list
   /clear             empty the chat
   /theme <name>      switch theme (persists)
+  /theme import <path>  import a VS Code JSON/JSONC theme
+  /theme export <path>  export an editable VS Code theme
+  /theme reload     reload saved custom theme files
   /themes            list themes
   /power [mode]      show/set the power governor (auto|performance|saver)
   /notify [on|off]   OS desktop notifications while unfocused (persists)
@@ -5910,22 +5922,47 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		m.tabs.SetState(m.st)
 	case "/theme":
 		if len(fields) < 2 {
-			m.noticeErr("/theme: usage /theme <name>  (" + strings.Join(chrome.ThemeNames(), ", ") + ")")
+			m.notice("Use /theme <name>, /theme import <path>, /theme export <path>, or /theme reload. Palettes: " + strings.Join(chrome.ThemeNames(), ", "))
 			return nil
 		}
 		name := fields[1]
+		path := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(input), "/theme")), name))
+		switch name {
+		case "import":
+			imported, err := chrome.ImportTheme(path)
+			if err != nil {
+				m.noticeErr("Theme import: " + err.Error())
+				return nil
+			}
+			name = imported
+		case "export":
+			if err := chrome.ExportTheme(path); err != nil {
+				m.noticeErr("Theme export: " + err.Error())
+			} else {
+				m.notice("Theme exported to " + path + ". Edit its colors, then /theme import " + path)
+			}
+			return nil
+		case "reload":
+			problems := chrome.LoadUserThemes()
+			for _, err := range problems {
+				m.noticeErr("Theme library: " + err.Error())
+			}
+			name = chrome.CurrentTheme().Name
+		}
 		if !chrome.SetTheme(name) {
 			m.noticeErr(fmt.Sprintf("/theme: unknown theme %q (/themes)", name))
 			return nil
 		}
-		_ = chrome.PersistTheme() // best effort
-		office.SetTheme(name)     // floor palette follows chrome
+		if err := chrome.PersistTheme(); err != nil {
+			m.noticeErr("Theme applied for this session, but saving the selection failed: " + err.Error())
+		}
+		office.SetTheme(name) // floor palette follows chrome
 		m.chat.RefreshTheme()
 		m.tabs.SetState(m.st)
 		m.notice("theme → " + chrome.CurrentTheme().Name)
 	case "/themes":
 		m.notice("themes: " + strings.Join(chrome.ThemeNames(), "  ") +
-			"  (current: " + chrome.CurrentTheme().Name + ")")
+			"  (current: " + chrome.CurrentTheme().Name + "). Import: /theme import <path>. Customize: /theme export <path>. Library: " + chrome.UserThemeDir())
 	case "/power":
 		if len(fields) < 2 {
 			m.notice(fmt.Sprintf("power: %s (%s) · current tick %s — /power auto|performance|saver",
