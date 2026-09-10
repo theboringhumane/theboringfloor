@@ -22,7 +22,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] border border-border bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -30,7 +30,7 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function CmdBlock({ lines }: { lines: { t: string; dim?: boolean }[] }) {
   return (
-    <div className="border border-border bg-card p-6 font-mono text-xs leading-relaxed">
+    <div className="doc-brackets hairline bg-paper-2 p-6 font-mono text-xs leading-relaxed">
       {lines.map((line, index) => (
         <p key={index} className={line.dim ? 'text-muted-foreground' : undefined}>
           {line.t}
@@ -123,11 +123,11 @@ export default function ControlPlanePage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Remote control plane</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>07 · Remote control plane</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               A tailnet line from your phone to every live office.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -140,10 +140,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>1 · Start the gateway</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Start one stable front door for this machine.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -170,10 +170,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>2 · Get the token</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Mint once, then paste it into the app.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -187,10 +187,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>3 · Tailscale setup</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Put both devices on one encrypted tailnet.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -218,10 +218,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Gateway API</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               One authenticated API for every discovered project.
             </h2>
             <p className="mt-6 max-w-3xl text-pretty leading-relaxed text-muted-foreground">
@@ -231,9 +231,9 @@ export default function ControlPlanePage() {
               <Code>{'{"id","dir","name","live","backend","primaryId","port","version","savedAt","chatCount"}'}</Code>.
               Transcript <Code>at</Code> values are Unix milliseconds.
             </p>
-            <div className="mt-8 overflow-x-auto border border-border">
+            <div className="mt-8 overflow-x-auto hairline">
               <table className="w-full min-w-220 text-left text-sm">
-                <thead className="border-b border-border bg-card font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                <thead className="border-b border-rule bg-card mono-label">
                   <tr>
                     <th className="px-4 py-3 font-normal">Method path</th>
                     <th className="px-4 py-3 font-normal">What it does</th>
@@ -242,7 +242,7 @@ export default function ControlPlanePage() {
                 </thead>
                 <tbody>
                   {endpoints.map((endpoint, index) => (
-                    <tr key={`${endpoint.method} ${endpoint.path}`} className={index > 0 ? 'border-t border-border' : ''}>
+                    <tr key={`${endpoint.method} ${endpoint.path}`} className={index > 0 ? 'border-t border-rule' : ''}>
                       <td className="px-4 py-3 align-top font-mono text-xs text-accent">
                         {endpoint.method} {endpoint.path}
                       </td>
@@ -284,9 +284,9 @@ export default function ControlPlanePage() {
             </div>
 
             <h3 className="mt-12 text-xl font-semibold tracking-tight">Error codes</h3>
-            <div className="mt-6 overflow-x-auto border border-border">
+            <div className="mt-6 overflow-x-auto hairline">
               <table className="w-full text-left text-sm">
-                <thead className="border-b border-border bg-card font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                <thead className="border-b border-rule bg-card mono-label">
                   <tr>
                     <th className="px-4 py-3 font-normal">Status</th>
                     <th className="px-4 py-3 font-normal">Meaning</th>
@@ -294,7 +294,7 @@ export default function ControlPlanePage() {
                 </thead>
                 <tbody>
                   {errors.map(([status, meaning], index) => (
-                    <tr key={status} className={index > 0 ? 'border-t border-border' : ''}>
+                    <tr key={status} className={index > 0 ? 'border-t border-rule' : ''}>
                       <td className="px-4 py-3 font-mono text-xs text-accent">{status}</td>
                       <td className="px-4 py-3 leading-relaxed text-muted-foreground">{meaning}</td>
                     </tr>
@@ -333,10 +333,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Android app</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Three screens, scoped to the live office.
             </h2>
             <div className="mt-8 max-w-3xl space-y-4 text-pretty leading-relaxed text-muted-foreground">
@@ -359,10 +359,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Install the Android app</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Download the release APK, then install it on your phone.
             </h2>
             <div className="mt-6 max-w-3xl space-y-4 text-pretty leading-relaxed text-muted-foreground">
@@ -403,10 +403,10 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Signing key</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               A stable self-signed key keeps upgrades in place.
             </h2>
             <div className="mt-6 max-w-3xl space-y-4 text-pretty leading-relaxed text-muted-foreground">
@@ -432,7 +432,7 @@ export default function ControlPlanePage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>What this does not do in v1</SectionTag>
             <div className="max-w-3xl space-y-4 text-pretty text-lg leading-relaxed text-muted-foreground">

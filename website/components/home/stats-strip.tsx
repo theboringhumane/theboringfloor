@@ -1,35 +1,40 @@
-import { FolderGit2, LayoutGrid, ShieldCheck, Terminal } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Beat, Sheet } from '@/components/paper'
 
 const stats = [
-  { value: 'Floors', label: 'One per project', icon: LayoutGrid },
-  { value: 'Teams', label: 'Tickets + ownership', icon: FolderGit2 },
-  { value: '3 agents', label: 'Choose per conversation', icon: Terminal },
-  { value: 'Plan first', label: 'Review before build', icon: ShieldCheck },
+  { value: 'Floors', label: 'One per project' },
+  { value: 'Teams', label: 'Tickets + ownership' },
+  { value: '3 agents', label: 'Choose per conversation' },
+  { value: 'Plan first', label: 'Review before build' },
 ]
 
 export function StatsStrip() {
   return (
-    <section className="border-b border-border" aria-label="Product pillars">
-      <div className="grid grid-cols-2 md:grid-cols-4">
-        {stats.map((s, i) => (
-          <div
-            key={s.label}
-            className={cn(
-              'flex min-h-[9.5rem] flex-col justify-between p-6 md:p-8',
-              i < 2 && 'border-b border-border md:border-b-0',
-              i !== 3 && 'md:border-r md:border-border',
-              i % 2 === 0 && 'border-r border-border',
-            )}
-          >
-            <p className="font-sans text-3xl font-medium tracking-tight md:text-4xl">{s.value}</p>
-            <div className="mt-8 flex items-center gap-2 text-muted-foreground">
-              <s.icon className="size-3.5 shrink-0" aria-hidden />
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">{s.label}</span>
-            </div>
-          </div>
-        ))}
+    <Sheet className="border-b border-rule">
+      <div className="px-6 py-16 md:px-10 md:py-20 lg:px-14">
+        <Beat index="1.3" label="Read the figures" title="What the floor is made of.">
+          <table className="mt-8 w-full border-collapse text-left">
+            <caption className="sr-only">Product pillars</caption>
+            <thead>
+              <tr className="border-y border-rule">
+                <th scope="col" className="mono-label py-2 pr-4 font-normal">Item</th>
+                <th scope="col" className="mono-label py-2 font-normal">Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.map((s) => (
+                <tr key={s.label} className="border-b border-rule">
+                  <th scope="row" className="w-1/2 py-5 pr-4 align-baseline font-sans text-2xl font-medium tracking-tight text-ink md:text-3xl">
+                    {s.value}
+                  </th>
+                  <td className="py-5 align-baseline">
+                    <span className="mono-label">{s.label}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Beat>
       </div>
-    </section>
+    </Sheet>
   )
 }

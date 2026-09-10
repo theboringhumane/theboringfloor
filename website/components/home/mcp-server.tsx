@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { ScrollReveal } from '@/components/scroll-reveal'
-import { SectionTag } from '@/components/section-tag'
+import { Beat, Panel, Sheet } from '@/components/paper'
 
 const cards = [
   {
@@ -37,59 +37,67 @@ const cards = [
 
 export function McpServer() {
   return (
-    <section className="border-b border-border">
-      <div className="mx-auto max-w-7xl px-6 py-20">
+    <Sheet tone="panel" className="overflow-hidden border-t border-rule">
+
+      <div className="mx-auto max-w-7xl px-6 py-20 md:px-10 lg:px-14">
         <ScrollReveal>
-          <SectionTag>The office MCP server</SectionTag>
-          <h2 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-            Your coding agent can drive the office.
-          </h2>
-          <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-            <span className="font-mono text-foreground">thefloor_mcp</span> is the local MCP
-            server shipped with the office. A configured OpenCode, Claude Code, or Codex agent can present
-            plans, read the approved plan and recent transcript, search this project’s recent tail,
-            and check office status. The two plan-writing tools require a running office: without
-            one, they return an error. They only present or update drafts; the member reviews, edits,
-            and approves with ctrl+x twice.
-          </p>
+          <Beat
+            index="2.4"
+            label="Wire up the agent"
+            title="Your coding agent can drive the office."
+          >
+            <p className="max-w-2xl text-pretty text-sm leading-relaxed text-ink-soft">
+              <span className="font-mono text-ink">thefloor_mcp</span> is the
+              local MCP server shipped with the office. A configured OpenCode,
+              Claude Code, or Codex agent can present plans, read the approved
+              plan and recent transcript, search this project&apos;s recent tail,
+              and check office status. The two plan-writing tools require a
+              running office: without one, they return an error. They only
+              present or update drafts; the member reviews, edits, and approves
+              with ctrl+x twice.
+            </p>
+          </Beat>
         </ScrollReveal>
 
-        <ScrollReveal className="mt-10 border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <span className="font-mono text-xs text-muted-foreground">thefloor_mcp — agent tools</span>
-          </div>
-          <pre className="overflow-x-auto px-6 py-5 font-mono text-xs leading-relaxed text-muted-foreground">
-            {`plan_present { text }
+        <ScrollReveal className="mt-12">
+          <Panel label="thefloor_mcp — agent tools">
+            <pre className="overflow-x-auto font-mono text-xs leading-relaxed text-ink">
+              {`plan_present { text }
 plan_update { text }
 plan_get_approved {}
 transcript_read { limit? }
 transcript_search { query, limit? }
 office_status {}`}
-          </pre>
+            </pre>
+          </Panel>
         </ScrollReveal>
 
-        <ScrollReveal
-          stagger={0.06}
-          className="mt-6 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2 lg:grid-cols-3"
-        >
+        <ScrollReveal stagger={0.06} className="mt-12 border-t border-rule">
           {cards.map((card) => (
-            <div key={card.tool} className="flex flex-col gap-4 bg-background p-8">
-              <span className="font-mono text-xs text-muted-foreground">{card.tool}</span>
-              <h3 className="text-lg font-semibold tracking-tight">{card.title}</h3>
-              <p className="text-pretty text-sm leading-relaxed text-muted-foreground">{card.body}</p>
+            <div
+              key={card.tool}
+              className="grid grid-cols-1 items-start gap-x-8 gap-y-2 border-b border-rule py-6 md:grid-cols-[13rem_1fr]"
+            >
+              <span className="font-mono text-xs text-blue">{card.tool}</span>
+              <div>
+                <h3 className="text-base tracking-tight text-ink">{card.title}</h3>
+                <p className="mt-2 max-w-2xl text-pretty text-sm leading-relaxed text-ink-soft">
+                  {card.body}
+                </p>
+              </div>
             </div>
           ))}
         </ScrollReveal>
 
-        <ScrollReveal className="mt-6">
+        <ScrollReveal className="mt-8">
           <Link
             href="/docs/mcp-server"
-            className="inline-flex w-fit items-center border border-border px-4 py-2 font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:bg-secondary"
+            className="mono-label inline-flex w-fit items-center border-b border-rule pb-0.5 text-ink transition-colors hover:text-blue"
           >
             Read the MCP server docs
           </Link>
         </ScrollReveal>
       </div>
-    </section>
+    </Sheet>
   )
 }

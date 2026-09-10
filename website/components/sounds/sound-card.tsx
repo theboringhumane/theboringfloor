@@ -26,22 +26,18 @@ export function SoundCard({ sound }: { sound: SoundSpec }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 bg-background p-8">
+    <div className="doc-brackets hairline flex flex-col gap-4 bg-paper-2 p-6 md:p-7">
       <div className="flex items-baseline justify-between gap-4">
-        <h3 className="font-mono text-sm uppercase tracking-wider text-foreground">
-          {sound.name}
-        </h3>
-        <span className="font-mono text-xs text-muted-foreground">{sound.duration}</span>
+        <h3 className="font-mono text-sm uppercase tracking-[0.14em] text-ink">{sound.name}</h3>
+        <span className="mono-label text-ink-faint">{sound.duration}</span>
       </div>
-      <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-        {sound.meaning}
-      </p>
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4">
+      <p className="text-pretty text-sm leading-relaxed text-ink-soft">{sound.meaning}</p>
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-4 border-t border-rule pt-4">
         <button
           type="button"
           onClick={toggle}
           aria-label={`${playing ? 'Pause' : 'Play'} ${sound.name}`}
-          className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-1.5 font-mono text-xs uppercase tracking-wider text-foreground transition-colors hover:bg-secondary"
+          className="inline-flex items-center gap-2 border border-rule px-3 py-1.5 font-mono text-[0.6875rem] uppercase leading-none tracking-[0.14em] text-ink-soft transition-colors hover:border-ink hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
         >
           {playing ? (
             <Pause className="size-3" aria-hidden />
@@ -50,9 +46,7 @@ export function SoundCard({ sound }: { sound: SoundSpec }) {
           )}
           [{playing ? 'pause' : 'play'}]
         </button>
-        <p className="font-mono text-[11px] text-muted-foreground/70">
-          waveform: {sound.waveform}
-        </p>
+        <p className="font-mono text-[0.6875rem] text-ink-faint">waveform: {sound.waveform}</p>
       </div>
       <audio
         ref={audioRef}

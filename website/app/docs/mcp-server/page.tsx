@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] border border-border bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -107,11 +107,11 @@ export default function MCPServerPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>MCP server</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>06 · MCP server</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               Give your configured agent a local line to the office.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -122,10 +122,10 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Installation</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               It ships with the office and registers itself.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -142,15 +142,15 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Tools</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Six tools, all scoped to one office project.
             </h2>
-            <div className="mt-8 overflow-x-auto border border-border">
+            <div className="mt-8 overflow-x-auto hairline">
               <table className="w-full min-w-180 text-left text-sm">
-                <thead className="border-b border-border bg-card font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                <thead className="border-b border-rule bg-card mono-label">
                   <tr>
                     <th className="px-4 py-3 font-normal">Tool</th>
                     <th className="px-4 py-3 font-normal">Arguments</th>
@@ -160,7 +160,7 @@ export default function MCPServerPage() {
                 </thead>
                 <tbody>
                   {tools.map((tool, index) => (
-                    <tr key={tool.name} className={index > 0 ? 'border-t border-border' : ''}>
+                    <tr key={tool.name} className={index > 0 ? 'border-t border-rule' : ''}>
                       <td className="px-4 py-3 align-top font-mono text-xs text-accent">{tool.name}</td>
                       <td className="px-4 py-3 align-top font-mono text-xs text-foreground">{tool.args}</td>
                       <td className="px-4 py-3 align-top leading-relaxed text-muted-foreground">{tool.does}</td>
@@ -170,7 +170,7 @@ export default function MCPServerPage() {
                 </tbody>
               </table>
             </div>
-            <div className="mt-8 max-w-3xl border border-border bg-card p-5 font-mono text-xs leading-relaxed text-foreground">
+            <div className="mt-8 max-w-3xl doc-brackets hairline bg-paper-2 p-5 font-mono text-xs leading-relaxed text-foreground">
               {tools.map((tool) => (
                 <p key={tool.name}>{tool.example}</p>
               ))}
@@ -178,10 +178,10 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Plans</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Presentation is not execution.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -203,10 +203,10 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Live and on-disk reads</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Reads can fall back; writes cannot.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -224,10 +224,10 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Office control API</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Local-only, token-protected, and discovered per project.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -246,17 +246,17 @@ export default function MCPServerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {keepReading.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className="flex flex-col gap-2 bg-background p-6 transition-colors hover:bg-secondary"
                 >
-                  <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="mono-label">
                     {link.kicker}
                   </p>
                   <p className="font-medium text-foreground">{link.title}</p>

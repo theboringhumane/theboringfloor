@@ -1,16 +1,16 @@
-import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
+import { Beat, Panel, Sheet, Stamp } from '@/components/paper'
 
 const cards = [
   {
     id: '01',
     title: 'One file on disk',
-    body: 'Written in Go and shipped as a single static binary. No Electron, no Chromium, no runtime to install. The whole office is one file you can delete.',
+    body: 'Written in Go, shipped as a single static binary. No Electron, no Chromium, no runtime to install. The whole office is one file, and you can delete it.',
   },
   {
     id: '02',
     title: 'The floor moves when work moves',
-    body: "Sprites walk when the LLM transport says something happened — the opencode serve event stream, or a stream-json feed from your claude CLI — never on animation timers. Coffee steam and rack LEDs tick gently in the background, so an idle office stays cheap.",
+    body: "Sprites walk when the LLM transport says something happened — the opencode serve event stream, or a stream-json feed from your claude CLI. Never on animation timers. Coffee steam and rack LEDs tick gently in the background, so an idle office stays cheap.",
   },
   {
     id: '03',
@@ -35,83 +35,70 @@ const cards = [
   {
     id: '07',
     title: 'Built-in browsing',
-    body: 'The built-in browser renders pages as text and link rows. With Chrome installed, kitty-capable terminals can also show headless screenshots. External links open in your system browser; no terminal-browser package is required.',
+    body: 'The built-in browser renders pages as text and link rows. With Chrome installed, kitty-capable terminals can also show headless screenshots. External links open in your system browser; no terminal-browser package required.',
   },
+]
+
+const metrics = [
+  { value: '−25%', note: 'chat render hot path (4.07s → 3.06s)' },
+  { value: '−61%', note: 'sampled CPU in the tick profile' },
+  { value: '0', note: 'forced frames per second at idle' },
+  { value: '−28%', note: 'per-delta inbox ingestion (74.5s → 53.2s)' },
 ]
 
 export function UnderTheHood() {
   return (
-    <section id="under-the-hood" className="border-b border-border">
-      <div className="mx-auto max-w-7xl px-6 py-20">
-        <SectionTag>Under the hood</SectionTag>
-        <h2 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-          Kind to your machine.
-        </h2>
-        <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          A living office sounds expensive. It isn&apos;t. This is a terminal app that respects
-          the box it runs on — we sweat the boring parts carefully so the agents can be the
-          interesting ones.
-        </p>
+    <Sheet id="under-the-hood" className="relative border-t border-rule">
+      <div className="mx-auto max-w-7xl px-6 py-20 md:px-10">
+        <Beat index="3.2" label="Open the hood" title="Kind to your machine.">
+          <p className="max-w-2xl text-pretty leading-relaxed text-ink-soft">
+            A living office sounds expensive. It isn&apos;t. This is a terminal app that
+            respects the box it runs on — the boring parts are sweated carefully so the
+            agents can be the interesting ones.
+          </p>
 
-        <div className="mt-8 flex flex-wrap items-center gap-2 font-mono text-xs">
-          <span className="border border-border bg-card px-3 py-1.5 text-accent">
-            −25%
-            <span className="ml-2 text-muted-foreground">chat render hot path (4.07s → 3.06s)</span>
-          </span>
-          <span className="border border-border bg-card px-3 py-1.5 text-accent">
-            −61%
-            <span className="ml-2 text-muted-foreground">sampled CPU in the tick profile</span>
-          </span>
-          <span className="border border-border bg-card px-3 py-1.5 text-accent">
-            0
-            <span className="ml-2 text-muted-foreground">forced frames per second at idle</span>
-          </span>
-          <span className="border border-border bg-card px-3 py-1.5 text-accent">
-            −28%
-            <span className="ml-2 text-muted-foreground">per-delta inbox ingestion (74.5s → 53.2s)</span>
-          </span>
-        </div>
-        <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          measured on v0.2.11, this machine, full-suite runs
-        </p>
+          <div className="mt-9 flex flex-wrap items-center gap-2">
+            {metrics.map((m) => (
+              <Stamp key={m.note} tone="stamp" className="normal-case tracking-normal">
+                <span className="tracking-[0.14em]">{m.value}</span>
+                <span className="ml-1.5 text-ink-faint">{m.note}</span>
+              </Stamp>
+            ))}
+          </div>
+          <p className="mono-label mt-3 text-ink-faint">
+            measured on v0.2.11, this machine, full-suite runs
+          </p>
 
-        <ScrollReveal
-          stagger={0.06}
-          className="mt-14 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2 lg:grid-cols-3"
-        >
-          {cards.map((c) => (
-            <div key={c.id} className="flex flex-col gap-4 bg-background p-8">
-              <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
-              <h3 className="text-xl font-semibold tracking-tight">{c.title}</h3>
-              <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-                {c.body}
+          <ScrollReveal
+            stagger={0.06}
+            className="mt-14 grid grid-cols-1 gap-px border border-rule bg-rule md:grid-cols-2 lg:grid-cols-3"
+          >
+            {cards.map((c) => (
+              <div key={c.id} className="flex flex-col gap-4 bg-paper p-8">
+                <span className="font-mono text-xs text-ink-faint">{c.id}</span>
+                <h3 className="text-xl font-medium tracking-tight text-ink">{c.title}</h3>
+                <p className="text-pretty text-sm leading-relaxed text-ink-soft">{c.body}</p>
+              </div>
+            ))}
+          </ScrollReveal>
+
+          <Panel label="install.sh" className="mt-12">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <p className="overflow-x-auto font-mono text-xs leading-relaxed text-ink">
+                <span className="text-ink-faint">$ </span>
+                curl -fsSL https://boringfloor.com/install.sh | sh
+              </p>
+              <p className="mono-label shrink-0">
+                macOS · Linux · Windows · amd64 · arm64
               </p>
             </div>
-          ))}
-        </ScrollReveal>
-
-        <div className="mt-12 border border-border bg-card">
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <span className="size-2.5 rounded-full bg-destructive/70" />
-            <span className="size-2.5 rounded-full bg-chart-4/70" />
-            <span className="size-2.5 rounded-full bg-chart-2/70" />
-            <span className="ml-2 font-mono text-xs text-muted-foreground">install.sh</span>
-          </div>
-          <div className="flex flex-col gap-4 px-6 py-6 md:flex-row md:items-center md:justify-between">
-            <p className="overflow-x-auto font-mono text-xs leading-relaxed text-foreground">
-              <span className="text-muted-foreground">$ </span>
-              curl -fsSL https://boringfloor.com/install.sh | sh
+            <p className="mt-5 border-t border-rule pt-4 font-mono text-xs text-ink-faint">
+              Cross-compiled by GoReleaser, tagged publicly. House rule: zero new
+              dependencies without need.
             </p>
-            <p className="shrink-0 font-mono text-xs uppercase tracking-wider text-muted-foreground">
-              macOS · Linux · Windows · amd64 · arm64
-            </p>
-          </div>
-          <p className="border-t border-border px-6 py-3 font-mono text-xs text-muted-foreground">
-            Cross-compiled by GoReleaser, tagged publicly. House rule: zero new dependencies
-            without need.
-          </p>
-        </div>
+          </Panel>
+        </Beat>
       </div>
-    </section>
+    </Sheet>
   )
 }

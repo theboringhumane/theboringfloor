@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] border border-border bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -20,7 +20,7 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Chip({ combo, action }: { combo: string; action: string }) {
   return (
-    <span className="inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-xs">
+    <span className="inline-flex items-center gap-2 hairline px-3 py-1.5 font-mono text-xs">
       <span className="text-accent">{combo}</span>
       <span className="text-muted-foreground">{action}</span>
     </span>
@@ -31,11 +31,11 @@ export default function BrowserTabPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Docs — browser tab</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>11 · Docs — browser tab</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               The web, as text, one tab over.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -51,10 +51,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The text lane</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               HTML in, readable rows out.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -76,10 +76,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Getting around</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Links are a cursor, not a mouse.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -116,10 +116,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Opening pages</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               One slash command, the chat&apos;s open key — and the boss.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -154,17 +154,17 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Built-in first</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Members open; agents direct the office.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               Members use <Code>/open &lt;url&gt;</Code>. Agents use the office&apos;s
               own-line directives instead of launching a browser process themselves:
             </p>
-            <div className="mt-6 max-w-3xl border border-border bg-card p-5 font-mono text-xs leading-relaxed text-foreground">
+            <div className="mt-6 max-w-3xl doc-brackets hairline bg-paper-2 p-5 font-mono text-xs leading-relaxed text-foreground">
               <p>/open &lt;url&gt; <span className="text-muted-foreground">member opens a page</span></p>
               <p>⟦open-browser: URL⟧ <span className="text-muted-foreground">agent opens it in the member&apos;s tab</span></p>
               <p>⟦browser-screenshot: URL⟧ <span className="text-muted-foreground">agent renders a PNG for the member</span></p>
@@ -185,10 +185,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The premium lane</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Rendered screenshots, with no extra browser package.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -218,10 +218,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>URL policy</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Localhost always. https anywhere. Plain http by flag.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -244,10 +244,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Ceilings</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               What this doesn&apos;t do yet.
             </h2>
             <ul className="mt-6 flex max-w-2xl flex-col gap-3 leading-relaxed text-muted-foreground">
@@ -282,10 +282,10 @@ export default function BrowserTabPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
+            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden hairline bg-border md:grid-cols-3">
               {[
                 {
                   href: '/docs/keys-and-slash',

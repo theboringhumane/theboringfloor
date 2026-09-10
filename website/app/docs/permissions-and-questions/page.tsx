@@ -133,22 +133,19 @@ const keepReading = [
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <div className="mt-10 overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
+    <figure className="mt-10 m-0">
+      <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
+        <img
+          src={src}
+          alt={alt}
+          width={5086}
+          height={2896}
+          loading="lazy"
+          className="shot-img block h-auto w-full"
+        />
       </div>
-      <img
-        src={src}
-        alt={alt}
-        width={5086}
-        height={2896}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
-    </div>
+      <figcaption className="mono-label mt-3 text-ink-faint">{caption}</figcaption>
+    </figure>
   )
 }
 
@@ -158,7 +155,7 @@ function KeyChips({ keys }: { keys: { combo: string; action: string }[] }) {
       {keys.map((k) => (
         <span
           key={k.combo}
-          className="inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-xs"
+          className="inline-flex items-center gap-2 hairline px-3 py-1.5 font-mono text-xs"
         >
           <span className="text-accent">{k.combo}</span>
           <span className="text-muted-foreground">{k.action}</span>
@@ -172,11 +169,11 @@ export default function PermissionsAndQuestionsPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Permissions &amp; questions</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>08 · Permissions &amp; questions</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               The office asks before it acts.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -187,10 +184,10 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Permission queue</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Asks stack as 1 of N. None of them steals the screen.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -210,7 +207,7 @@ export default function PermissionsAndQuestionsPage() {
               <span className="font-mono text-foreground">/perm</span> re-opens an esc&apos;d
               prompt.
             </p>
-            <p className="mt-4 max-w-2xl border border-border bg-card p-5 text-pretty text-sm leading-relaxed text-muted-foreground">
+            <p className="mt-4 max-w-2xl doc-brackets hairline bg-paper-2 p-5 text-pretty text-sm leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">
                 What allow-always does not cover:
               </span>{' '}
@@ -229,10 +226,10 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Bypass mode</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               /bypass is the deliberate escape hatch.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -259,7 +256,7 @@ export default function PermissionsAndQuestionsPage() {
               respawns the backend so the mode actually reaches the agent; on claude,
               your session context resumes across the respawn.
             </p>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {bypassProtections.map((p) => (
                 <div key={p.label} className="bg-background p-6">
                   <p className="font-mono text-xs uppercase tracking-wider text-accent">
@@ -273,17 +270,17 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Question wizard</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Boss questions open as small wizards, not modal essays.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               When the boss needs a decision mid-dispatch, the ask opens as popover pages,
               classified automatically into four kinds:
             </p>
-            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {questionKinds.map((q) => (
                 <div key={q.kind} className="bg-background p-5">
                   <p className="font-mono text-xs uppercase tracking-wider text-accent">{q.kind}</p>
@@ -307,10 +304,10 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Concierge</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Send mid-turn and the concierge picks up.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -348,13 +345,13 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Honest edges</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               What this doesn&apos;t do yet.
             </h2>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {limits.map((l) => (
                 <div key={l.label} className="bg-background p-6">
                   <p className="font-mono text-xs uppercase tracking-wider text-accent">
@@ -367,17 +364,17 @@ export default function PermissionsAndQuestionsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {keepReading.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
                   className="flex flex-col gap-2 bg-background p-6 transition-colors hover:bg-secondary"
                 >
-                  <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="mono-label">
                     {l.kicker}
                   </p>
                   <p className="font-medium text-foreground">{l.title}</p>

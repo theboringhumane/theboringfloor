@@ -2,8 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
-import { SectionTag } from '@/components/section-tag'
-import { ScrollReveal } from '@/components/scroll-reveal'
+import { Chapter, Cue, Stamp } from '@/components/paper'
 
 export const metadata: Metadata = {
   title: 'Vision | theboringfloor',
@@ -65,212 +64,253 @@ const ceilings = [
   'You would rather not supervise anything. A floor you can read assumes someone reading it.',
 ]
 
+/** A numbered ledger row — the essay's lists print as rows, not cards. */
+function Row({ index, children }: { index: string; children: React.ReactNode }) {
+  return (
+    <li className="flex gap-4 py-4 md:gap-6">
+      <span className="mono-label mt-1 shrink-0 text-ink-faint">{index}</span>
+      <div className="min-w-0">{children}</div>
+    </li>
+  )
+}
+
 export default function VisionPage() {
   return (
-    <>
-      <SiteHeader />
-      <main>
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Our Vision</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+    <div className="paper-ground min-h-svh">
+      <div className="doc-frame">
+        <SiteHeader framed />
+        <main>
+          {/* Masthead */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 md:py-20 lg:px-14">
+
+            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
+              <span className="mono-label text-ink">00</span>
+              <span className="mono-label">Our vision</span>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+              <span className="mono-label hidden sm:inline">Eight chapters</span>
+            </div>
+
+            <h1 className="display-xl mt-8 max-w-[18ch] text-balance text-ink">
               The prompt box is a lonely place to work.
             </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              Working with an agent today means typing into a chat window, watching a spinner,
-              and reading a wall of text back. The work is happening — you just can&apos;t see
-              it. No desk, no board, no sign of who is doing what, or what finished while you
-              were away.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              theboringfloor is our answer: a terminal app where your agents clock in as
-              coworkers on a living ASCII floor, and the work stays where you can see it.
-            </p>
-          </div>
-        </section>
 
-        <section className="section-light border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>The problem</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              A spinner is not the work.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Agent work today is mechanical and transactional. You type, a spinner turns, a
-              wall of text comes back. Run two sessions and it gets worse: three panes, two of
-              them waiting on you, and no idea which one owns the auth change. You can&apos;t
-              see the work move, you can&apos;t ask the next thing while it thinks, and when
-              the window closes, everything it learned closes with it.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              That changes how you use the tool. You stop collaborating and start queuing
-              requests. The agent never becomes more than an API call — not because it
-              can&apos;t, but because there is nowhere for the work to stand still and be
-              seen.
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>What we believe</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              Familiarity builds trust. Trust builds collaboration.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              The office is one of the oldest shared-work interfaces we have. Desks you can
-              read at a glance. A board with the work on the wall. Someone to ask. Someone
-              keeping an eye on the team. Nobody needs onboarding to a desk.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Put an agent at one of those desks and something quiet happens. It walks to the
-              whiteboard when the problem is big. It refills the tea machine between batches.
-              You stop parsing logs and start reading a room — and you hand over more of the
-              work, because you can finally see the work.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              That is the bet: anthropomorphizing the floor is not decoration, it is interface
-              design. A system you can see is a system you can supervise.
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-7xl px-6 py-20">
-            <SectionTag>Meet the office</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              A floor of coworkers, not cursors.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              The floor runs on a roster, not a loop. Every worker has a name, a desk, and a
-              status line that says what it is doing right now.
-            </p>
-            <ScrollReveal
-              stagger={0.06}
-              className="mt-12 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2 lg:grid-cols-3"
-            >
-              {coworkers.map((c) => (
-                <div key={c.id} className="flex flex-col gap-4 bg-background p-8">
-                  <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
-                  <h3 className="text-xl font-semibold tracking-tight">{c.name}</h3>
-                  <p className="font-mono text-xs uppercase tracking-wider text-accent">{c.role}</p>
-                  <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-                    {c.body}
-                  </p>
-                </div>
-              ))}
-            </ScrollReveal>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>Talking to the office</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              A queue that never locks you out.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              A good boss is interruptible. Message the office mid-task, mid-batch, mid-turn —
-              nothing you send falls into a black hole.
-            </p>
-            <ul className="mt-10 flex max-w-2xl flex-col gap-3 border-l border-border pl-4">
-              {etiquette.map((line) => (
-                <li key={line} className="text-sm leading-relaxed text-foreground/90 md:text-base">
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>Memory</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              The office remembers, so you don&apos;t have to re-explain.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              A coworker who forgets everything overnight is not much of a coworker. The
-              office restores your last session when you open it,{' '}
-              <span className="font-mono text-foreground">-s</span> /{' '}
-              <span className="font-mono text-foreground">--session</span> pins a thread, and{' '}
-              <span className="font-mono text-foreground">/session</span> picks the room you
-              want to walk back into.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Under the floor, agentmemory keeps the lessons and the board state across
-              shifts. Close the terminal on Friday; walk back in on Tuesday and the office is
-              where you left it.
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>On the horizon</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              Built for coworkers, not one harness.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              The office runs on opencode or Claude Code, honestly and visibly — same floor,
-              same roster, either harness. The org, the floor, and the memory were built for
-              coworkers, whichever harness they arrive in.
-            </p>
-            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              We are at v0.2.x — the &quot;wave&quot; releases. Early, open, and building in
-              public. More seats, more office.
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 py-20">
-            <SectionTag>Honest ceilings</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              When the office is the wrong tool.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              We would rather lose you here than at hour ten of the wrong setup. Skip the
-              whole thing if:
-            </p>
-            <ul className="mt-10 flex max-w-2xl flex-col gap-3 border-l border-border pl-4">
-              {ceilings.map((line) => (
-                <li key={line} className="text-sm leading-relaxed text-foreground/90 md:text-base">
-                  {line}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
-            <h2 className="max-w-xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              A proper office, for agents.
-            </h2>
-            <p className="max-w-xl text-pretty leading-relaxed text-muted-foreground">
-              Tuesday at a good company: a floor with a hum to it, coworkers with names, work
-              you can see moving, a boss you can interrupt, and a team that remembers. That is
-              the whole idea — come walk the floor.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <Link
-                href="/get-started"
-                className="inline-flex items-center bg-foreground px-6 py-3 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
-              >
-                Get started
-              </Link>
-              <Link
-                href="/blog"
-                className="inline-flex items-center border border-border px-6 py-3 font-mono text-xs uppercase tracking-wider transition-colors hover:bg-secondary"
-              >
-                Read the blog
-              </Link>
+            <div className="mt-8 max-w-2xl space-y-4 text-pretty text-lg leading-relaxed text-ink-soft">
+              <p>
+                Working with an agent today means typing into a chat window, watching a spinner, and
+                reading a wall of text back. The work is happening — you just can&apos;t see it. No
+                desk, no board, no sign of who is doing what, or what finished while you were away.
+              </p>
+              <p>
+                theboringfloor is our answer: a terminal app where your agents clock in as coworkers
+                on a living ASCII floor, and the work stays where you can see it.
+              </p>
             </div>
-          </div>
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+
+            <div className="mt-8">
+              <Stamp tone="stamp">Open source</Stamp>
+            </div>
+          </section>
+
+          {/* I — the problem */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="I" title="Diagnose the spinner">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                A spinner is not the work.
+              </h3>
+              <div className="mt-6 max-w-2xl space-y-4 text-pretty leading-relaxed text-ink-soft">
+                <p>
+                  Agent work today is mechanical and transactional. You type, a spinner turns, a wall
+                  of text comes back. Run two sessions and it gets worse: three panes, two of them
+                  waiting on you, and no idea which one owns the auth change. You can&apos;t see the
+                  work move, you can&apos;t ask the next thing while it thinks, and when the window
+                  closes, everything it learned closes with it.
+                </p>
+                <p>
+                  That changes how you use the tool. You stop collaborating and start queuing
+                  requests. The agent never becomes more than an API call — not because it can&apos;t,
+                  but because there is nowhere for the work to stand still and be seen.
+                </p>
+              </div>
+            </Chapter>
+          </section>
+
+          {/* II — the bet */}
+          <section className="paper-panel relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="II" title="State the bet">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                Familiarity builds trust. Trust builds collaboration.
+              </h3>
+              <div className="mt-6 max-w-2xl space-y-4 text-pretty leading-relaxed text-ink-soft">
+                <p>
+                  The office is one of the oldest shared-work interfaces we have. Desks you can read
+                  at a glance. A board with the work on the wall. Someone to ask. Someone keeping an
+                  eye on the team. Nobody needs onboarding to a desk.
+                </p>
+                <p>
+                  Put an agent at one of those desks and something quiet happens. It walks to the
+                  whiteboard when the problem is big. It refills the tea machine between batches. You
+                  stop parsing logs and start reading a room — and you hand over more of the work,
+                  because you can finally see the work.
+                </p>
+                <p>
+                  That is the bet: anthropomorphizing the floor is not decoration, it is interface
+                  design. A system you can see is a system you can supervise.
+                </p>
+              </div>
+              <Cue className="mt-8 block">no onboarding required</Cue>
+            </Chapter>
+          </section>
+
+          {/* III — the roster */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="III" title="Read the roster">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                A floor of coworkers, not cursors.
+              </h3>
+              <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-ink-soft">
+                The floor runs on a roster, not a loop. Every worker has a name, a desk, and a status
+                line that says what it is doing right now.
+              </p>
+              <ol className="mt-10 divide-y divide-rule border-y border-rule">
+                {coworkers.map((c) => (
+                  <Row key={c.id} index={c.id}>
+                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                      <h3 className="font-mono text-sm uppercase tracking-[0.14em] text-ink">
+                        {c.name}
+                      </h3>
+                      <span className="mono-label text-stamp">{c.role}</span>
+                    </div>
+                    <p className="mt-2 max-w-2xl text-pretty text-sm leading-relaxed text-ink-soft">
+                      {c.body}
+                    </p>
+                  </Row>
+                ))}
+              </ol>
+            </Chapter>
+          </section>
+
+          {/* IV — etiquette */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="IV" title="Interrupt the boss">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                A queue that never locks you out.
+              </h3>
+              <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-ink-soft">
+                A good boss is interruptible. Message the office mid-task, mid-batch, mid-turn —
+                nothing you send falls into a black hole.
+              </p>
+              <ol className="mt-10 max-w-3xl divide-y divide-rule border-y border-rule">
+                {etiquette.map((line, i) => (
+                  <Row key={line} index={`4.${i + 1}`}>
+                    <p className="text-pretty text-sm leading-relaxed text-ink-soft md:text-base">
+                      {line}
+                    </p>
+                  </Row>
+                ))}
+              </ol>
+            </Chapter>
+          </section>
+
+          {/* V — memory */}
+          <section className="paper-panel relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="V" title="Keep the shift">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                The office remembers, so you don&apos;t have to re-explain.
+              </h3>
+              <div className="mt-6 max-w-2xl space-y-4 text-pretty leading-relaxed text-ink-soft">
+                <p>
+                  A coworker who forgets everything overnight is not much of a coworker. The office
+                  restores your last session when you open it,{' '}
+                  <span className="font-mono text-ink">-s</span> /{' '}
+                  <span className="font-mono text-ink">--session</span> pins a thread, and{' '}
+                  <span className="font-mono text-ink">/session</span> picks the room you want to walk
+                  back into.
+                </p>
+                <p>
+                  Under the floor, agentmemory keeps the lessons and the board state across shifts.
+                  Close the terminal on Friday; walk back in on Tuesday and the office is where you
+                  left it.
+                </p>
+              </div>
+            </Chapter>
+          </section>
+
+          {/* VI — the horizon */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="VI" title="Pick no favourite harness">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                Built for coworkers, not one harness.
+              </h3>
+              <div className="mt-6 max-w-2xl space-y-4 text-pretty leading-relaxed text-ink-soft">
+                <p>
+                  The office runs on opencode or Claude Code, honestly and visibly — same floor, same
+                  roster, either harness. The org, the floor, and the memory were built for
+                  coworkers, whichever harness they arrive in.
+                </p>
+                <p>
+                  We are at v0.2.x — the &quot;wave&quot; releases. Early, open, and building in
+                  public. More seats, more office.
+                </p>
+              </div>
+            </Chapter>
+          </section>
+
+          {/* VII — ceilings */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="VII" title="Admit the ceilings">
+              <h3 className="display-lg mt-8 max-w-3xl text-balance text-ink">
+                When the office is the wrong tool.
+              </h3>
+              <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-ink-soft">
+                We would rather lose you here than at hour ten of the wrong setup. Skip the whole
+                thing if:
+              </p>
+              <ol className="mt-10 max-w-3xl divide-y divide-rule border-y border-rule">
+                {ceilings.map((line, i) => (
+                  <Row key={line} index={`7.${i + 1}`}>
+                    <p className="text-pretty text-sm leading-relaxed text-ink-soft md:text-base">
+                      {line}
+                    </p>
+                  </Row>
+                ))}
+              </ol>
+            </Chapter>
+          </section>
+
+          {/* VIII — the close */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="VIII" title="Walk the floor">
+              <h3 className="display-lg mt-8 max-w-2xl text-balance text-ink">
+                A proper office, for agents.
+              </h3>
+              <p className="mt-6 max-w-xl text-pretty leading-relaxed text-ink-soft">
+                Tuesday at a good company: a floor with a hum to it, coworkers with names, work you
+                can see moving, a boss you can interrupt, and a team that remembers. That is the whole
+                idea — come walk the floor.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/get-started"
+                  className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+                >
+                  <Stamp className="transition-colors hover:border-ink hover:text-ink">
+                    Get started
+                  </Stamp>
+                </Link>
+                <Link
+                  href="/blog"
+                  className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+                >
+                  <Stamp className="transition-colors hover:border-ink hover:text-ink">
+                    Read the blog
+                  </Stamp>
+                </Link>
+              </div>
+            </Chapter>
+          </section>
+        </main>
+        <SiteFooter />
+      </div>
+    </div>
   )
 }

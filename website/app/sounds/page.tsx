@@ -2,8 +2,7 @@ import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
-import { SectionTag } from '@/components/section-tag'
-import { ScrollReveal } from '@/components/scroll-reveal'
+import { Chapter, Cue, Stamp } from '@/components/paper'
 import { SoundCard, type SoundSpec } from '@/components/sounds/sound-card'
 import { SITE_URL } from '@/lib/site'
 
@@ -70,66 +69,79 @@ const sounds: SoundSpec[] = [
 
 export default function SoundsPage() {
   return (
-    <>
-      <SiteHeader />
-      <main>
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Sounds</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+    <div className="paper-ground min-h-svh">
+      <div className="doc-frame">
+        <SiteHeader framed />
+        <main>
+          {/* Masthead */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 md:py-20 lg:px-14">
+
+            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
+              <span className="mono-label text-ink">00</span>
+              <span className="mono-label">Sounds</span>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+              <span className="mono-label hidden sm:inline">{sounds.length} specimens</span>
+            </div>
+
+            <h1 className="display-xl mt-8 max-w-[16ch] text-balance text-ink">
               The office&apos;s sonic weather.
             </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
+
+            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
               Seven synthesized chimes, deterministic and dim-lit every boot. Each has a single
               meaning — played and heard by the people actually running this office.
             </p>
-          </div>
-        </section>
 
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-7xl px-6 py-20">
-            <SectionTag>The library</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
-              One chime, one meaning.
-            </h2>
-            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              No notification soup. When the office makes a sound it is saying exactly one
-              thing — this is the whole vocabulary, served back as plain WAVs.
-            </p>
-            <ScrollReveal
-              stagger={0.06}
-              className="mt-14 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2"
-            >
-              {sounds.map((s) => (
-                <SoundCard key={s.name} sound={s} />
-              ))}
-            </ScrollReveal>
-            <p className="mt-4 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              16-bit mono 22050 Hz PCM · rendered by internal/sound, never sampled
-            </p>
-          </div>
-        </section>
-
-        <section className="border-b border-border">
-          <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
-            <SectionTag>From the terminal</SectionTag>
-            <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
-              These are synthesized at boot inside the office — no assets shipped in the binary —
-              and they play through the terminal&apos;s own player. Today, the site serves them
-              back as plain WAVs.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <Link
-                href="/get-started"
-                className="inline-flex items-center bg-foreground px-6 py-3 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
-              >
-                Open the office
-              </Link>
+            <div className="mt-8">
+              <Stamp tone="stamp">Synthesized at boot</Stamp>
             </div>
-          </div>
-        </section>
-      </main>
-      <SiteFooter />
-    </>
+          </section>
+
+          {/* I — the library of specimens */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="I" title="Hear the library">
+              <h3 className="display-lg mt-8 max-w-2xl text-balance text-ink">
+                One chime, one meaning.
+              </h3>
+              <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-ink-soft">
+                No notification soup. When the office makes a sound it is saying exactly one thing —
+                this is the whole vocabulary, served back as plain WAVs.
+              </p>
+              <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2">
+                {sounds.map((s) => (
+                  <SoundCard key={s.name} sound={s} />
+                ))}
+              </div>
+              <p className="mono-label mt-6 text-ink-faint">
+                16-bit mono 22050 Hz PCM · rendered by internal/sound, never sampled
+              </p>
+            </Chapter>
+          </section>
+
+          {/* II — provenance */}
+          <section className="paper-panel relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
+            <Chapter numeral="II" title="Trace the source">
+              <p className="mt-8 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
+                These are synthesized at boot inside the office — no assets shipped in the binary —
+                and they play through the terminal&apos;s own player. Today, the site serves them
+                back as plain WAVs.
+              </p>
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/get-started"
+                  className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+                >
+                  <Stamp className="transition-colors hover:border-ink hover:text-ink">
+                    Open the office
+                  </Stamp>
+                </Link>
+                <Cue>headphones optional</Cue>
+              </div>
+            </Chapter>
+          </section>
+        </main>
+        <SiteFooter />
+      </div>
+    </div>
   )
 }

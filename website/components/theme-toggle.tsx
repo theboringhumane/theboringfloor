@@ -12,6 +12,9 @@ const OPTIONS: { value: Theme; label: string; Icon: typeof Sun }[] = [
   { value: 'system', label: 'System', Icon: Monitor },
 ]
 
+const focusRing =
+  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue focus-visible:ring-offset-2 focus-visible:ring-offset-paper'
+
 export function ThemeToggle({ className }: { className?: string }) {
   const { theme, resolvedTheme, setTheme } = useTheme()
   const [open, setOpen] = useState(false)
@@ -48,19 +51,22 @@ export function ThemeToggle({ className }: { className?: string }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center justify-center p-2 text-muted-foreground transition-colors hover:text-foreground"
+        className={cn(
+          'inline-flex items-center justify-center border border-rule p-1.5 text-ink-soft transition-colors hover:border-ink-faint hover:text-ink',
+          focusRing,
+        )}
       >
         {mounted ? (
-          <ResolvedIcon className="size-4" aria-hidden />
+          <ResolvedIcon className="size-3.5" aria-hidden />
         ) : (
-          <span className="size-4" aria-hidden />
+          <span className="size-3.5" aria-hidden />
         )}
       </button>
       {open && (
         <div
           role="menu"
           aria-label="Theme"
-          className="absolute right-0 top-full z-50 mt-2 w-36 rounded-md border border-border bg-popover p-1 shadow-xl"
+          className="doc-brackets absolute right-0 top-full z-50 mt-2 w-36 border border-rule bg-paper-2 p-1"
         >
           {OPTIONS.map(({ value, label, Icon }) => (
             <button
@@ -72,11 +78,14 @@ export function ThemeToggle({ className }: { className?: string }) {
                 setTheme(value)
                 setOpen(false)
               }}
-              className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 font-mono text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:bg-accent/10 hover:text-foreground"
+              className={cn(
+                'flex w-full items-center gap-2 px-2.5 py-2 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-ink-soft transition-colors hover:text-ink',
+                focusRing,
+              )}
             >
               <Icon className="size-3.5" aria-hidden />
               <span className="flex-1 text-left">{label}</span>
-              {theme === value && <Check className="size-3.5 text-foreground" aria-hidden />}
+              {theme === value && <Check className="size-3.5 text-stamp" aria-hidden />}
             </button>
           ))}
         </div>

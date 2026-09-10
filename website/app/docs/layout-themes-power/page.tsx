@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] border border-border bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -20,7 +20,7 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Chip({ combo, action }: { combo: string; action: string }) {
   return (
-    <span className="inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-xs">
+    <span className="inline-flex items-center gap-2 hairline px-3 py-1.5 font-mono text-xs">
       <span className="text-accent">{combo}</span>
       <span className="text-muted-foreground">{action}</span>
     </span>
@@ -29,21 +29,18 @@ function Chip({ combo, action }: { combo: string; action: string }) {
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <figure className="mt-10 overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
+    <figure className="mt-10 m-0">
+      <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
+        <img
+          src={src}
+          alt={alt}
+          width={5086}
+          height={2896}
+          loading="lazy"
+          className="shot-img block h-auto w-full"
+        />
       </div>
-      <img
-        src={src}
-        alt={alt}
-        width={5086}
-        height={2896}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
+      <figcaption className="mono-label mt-3 text-ink-faint">{caption}</figcaption>
     </figure>
   )
 }
@@ -66,11 +63,11 @@ export default function LayoutThemesPowerPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Docs — layout, themes & power</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>12 · Docs — layout, themes & power</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               Shape the office to the terminal it&apos;s in.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -81,10 +78,10 @@ export default function LayoutThemesPowerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Layouts</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Normal is the floor plan. Everything else is a slash command.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -124,10 +121,10 @@ export default function LayoutThemesPowerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Themes</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Five paints, previewed before you commit.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -156,10 +153,10 @@ export default function LayoutThemesPowerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Power governor</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               The office goes cheap when nothing moves.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -169,10 +166,10 @@ export default function LayoutThemesPowerPage() {
               replies, walkers, open modals, ambient bubbles — and slows the tick the
               moment the floor goes quiet.
             </p>
-            <div className="mt-8 max-w-2xl overflow-x-auto border border-border">
+            <div className="mt-8 max-w-2xl overflow-x-auto hairline">
               <table className="w-full border-collapse text-left font-mono text-xs">
                 <thead>
-                  <tr className="border-b border-border">
+                  <tr className="border-b border-rule">
                     <th className="px-4 py-3 font-normal uppercase tracking-wider text-muted-foreground">
                       mode
                     </th>
@@ -189,7 +186,7 @@ export default function LayoutThemesPowerPage() {
                 </thead>
                 <tbody>
                   {powerRows.map((r) => (
-                    <tr key={r.mode} className="border-b border-border last:border-0">
+                    <tr key={r.mode} className="border-b border-rule last:border-0">
                       <td className="px-4 py-3 text-accent">{r.mode}</td>
                       <td className="px-4 py-3 text-muted-foreground">{r.busy}</td>
                       <td className="px-4 py-3 text-muted-foreground">{r.idle}</td>
@@ -218,10 +215,10 @@ export default function LayoutThemesPowerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Ceilings</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               What this doesn&apos;t do yet.
             </h2>
             <ul className="mt-6 flex max-w-2xl flex-col gap-3 leading-relaxed text-muted-foreground">
@@ -247,10 +244,10 @@ export default function LayoutThemesPowerPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
+            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden hairline bg-border md:grid-cols-3">
               {[
                 {
                   href: '/docs/keys-and-slash',

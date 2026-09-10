@@ -64,4 +64,4 @@ const sections: DocSection[] = [
   }
 ]
 
-export default function Page() { return <DocsArticle title="A floor for every project" intro="Projects, teams, tickets, source files, and conversations share one workspace. Floors stay on the far left, the office sits in the middle, and transcript and tools live on the right." sections={sections} /> }
+export default function Page() { return <DocsArticle title="A floor for every project" intro="Projects, teams, tickets, source files, and conversations share one workspace. Floors stay on the far left, the office sits in the middle, and transcript and tools live on the right." sections={sections} docNo="02" /> }
