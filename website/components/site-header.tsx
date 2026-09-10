@@ -152,7 +152,7 @@ export function SiteHeader({
         <div
           className={cn(
             'overflow-hidden border-t border-rule lg:hidden',
-            mobileOpen ? 'max-h-[28rem] bg-paper' : 'max-h-0 border-t-0',
+            mobileOpen ? 'max-h-[36rem] bg-paper' : 'max-h-0 border-t-0',
           )}
         >
           <nav

@@ -82,6 +82,9 @@ export function ChaosCanvas() {
     const ctx = canvas.getContext('2d')
     if (!ctx) return
 
+    // Hidden below md (see className) — don't spend a scroll trigger and a
+    // draw loop on a canvas nobody can see.
+    if (getComputedStyle(canvas).display === 'none') return
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
     const particles = makeParticles()
     let progress = reduced ? 1 : 0
@@ -216,7 +219,7 @@ export function ChaosCanvas() {
     <canvas
       ref={ref}
       aria-hidden="true"
-      className="pointer-events-none absolute inset-0 z-0 h-full w-full"
+      className="pointer-events-none absolute inset-0 z-0 hidden h-full w-full md:block"
     />
   )
 }

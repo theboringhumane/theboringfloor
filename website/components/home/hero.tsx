@@ -14,7 +14,7 @@ const INSTALL_WIN = `irm ${INSTALL_PS1} | iex`;
 /** The two ends of the hero animation, printed on the sheet's frame. */
 function FrameLabels({ className = "" }: { className?: string }) {
   return (
-    <div className={`mono-label flex items-center gap-3 text-ink-faint ${className}`} aria-hidden="true">
+    <div className={`mono-label hidden items-center gap-3 text-ink-faint md:flex ${className}`} aria-hidden="true">
       <span>⊢ Scrollback</span>
       <span className="h-px flex-1 bg-rule" />
       <span>The board ⊣</span>
@@ -141,7 +141,7 @@ export function Hero() {
             })}
           </div>
           <div className="flex items-stretch border border-rule bg-paper font-mono text-sm">
-            <code className="min-w-0 flex-1 overflow-x-auto px-4 py-3.5 text-ink">
+            <code className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap px-4 py-3.5 text-ink">
               <span className="text-ink-faint">
                 {os === "windows" ? "> " : "$ "}
               </span>
