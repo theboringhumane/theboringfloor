@@ -16,10 +16,38 @@ import { Community } from '@/components/home/community'
 import { ProductPlatform } from '@/components/home/product-platform'
 import { AgentsNeedAction } from '@/components/home/agents-need-action'
 
+const chapters = [
+  ['chapter-i', 'I.', 'The floor'],
+  ['chapter-ii', 'II.', 'The work'],
+  ['chapter-iii', 'III.', 'Under the floor'],
+  ['chapter-iv', 'IV.', 'Colophon'],
+]
+
 export default function Page() {
   return (
     <div className="page-grid">
-      <div className="page-frame">
+      {/* Index in the outer gutter — hidden until the viewport is wide enough
+          that it cannot cover the page frame. */}
+      <nav
+        aria-label="On this page"
+        className="fixed right-3 top-32 z-40 hidden w-28 2xl:block"
+      >
+        <p className="mono-label border-b border-rule pb-2 text-ink-faint">Index</p>
+        <ul className="mt-2 space-y-2">
+          {chapters.map(([id, numeral, title]) => (
+            <li key={id}>
+              <a
+                href={`#${id}`}
+                className="mono-label block leading-snug transition-colors hover:text-ink"
+              >
+                {numeral} {title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      <div className="page-frame relative">
         <SiteHeader framed />
         <main>
           <Hero />

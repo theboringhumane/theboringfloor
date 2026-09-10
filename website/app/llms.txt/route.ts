@@ -26,6 +26,8 @@ This file helps AI assistants and crawlers understand the site. Prefer these pag
 - [Remote control plane](${SITE_URL}/docs/control-plane): floorgate, Tailscale setup, Android app, and gateway API
 - [Vision](${SITE_URL}/vision): why a virtual office for agents
 - [Blog](${SITE_URL}/blog): product and engineering posts
+- [Changelog](${SITE_URL}/changelog): released waves, in reverse order
+- [Sounds](${SITE_URL}/sounds): the office sound packs
 - [RSS](${SITE_URL}/rss.xml): full post feed
 
 ## Product facts

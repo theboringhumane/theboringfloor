@@ -3,12 +3,24 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Database } from "lucide-react";
-import { ShaderBackground } from "@/components/ui/light-blue-plasma-shader-w-grain-interactive";
 
-import { INSTALL_PS1, INSTALL_SH } from "@/lib/site";
+import { Chapter, Panel, Sheet, Stamp } from "@/components/paper";
+import { ChaosCanvas } from "@/components/home/chaos-canvas";
+import { INSTALL_PS1, INSTALL_SH, SITE_NAME } from "@/lib/site";
 
 const INSTALL_UNIX = `curl -fsSL ${INSTALL_SH} | sh`;
 const INSTALL_WIN = `irm ${INSTALL_PS1} | iex`;
+
+/** The two ends of the hero animation, printed on the sheet's frame. */
+function FrameLabels({ className = "" }: { className?: string }) {
+  return (
+    <div className={`mono-label flex items-center gap-3 text-ink-faint ${className}`} aria-hidden="true">
+      <span>⊢ Scrollback</span>
+      <span className="h-px flex-1 bg-rule" />
+      <span>The board ⊣</span>
+    </div>
+  );
+}
 
 type Platform = "mac" | "linux" | "windows";
 
@@ -77,55 +89,32 @@ export function Hero() {
   }
 
   return (
-    <section
-      id="hero"
-      className="relative overflow-hidden border-b border-border bg-(--band-bg) text-(--band-fg)"
-    >
-      <ShaderBackground className="shot-img pointer-events-none absolute inset-y-0 right-0 w-[55%] opacity-40 max-md:opacity-25" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-(--band-bg) via-(--band-bg)/85 to-transparent" />
+    <Sheet id="hero" className="paper-ruled border-b border-rule">
+      <ChaosCanvas />
+      <div className="relative z-10 px-6 pb-16 pt-12 md:px-10 md:pb-20 md:pt-16 lg:px-14">
+        <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-rule pb-3">
+          <span className="mono-label text-ink">{SITE_NAME}</span>
+          <span className="mono-label">Terminal office · open source</span>
+        </div>
+        <FrameLabels />
 
-      <div className="relative px-6 pb-20 pt-16 md:px-10 md:pb-24 md:pt-20 lg:px-14">
-        <a
-          href="https://synehq.com/"
-          target="_blank"
-          rel="noreferrer"
-          className="mt-8 flex max-w-xl overflow-hidden border border-(--band-fg)/15 transition-colors hover:bg-(--band-fg)/4"
-        >
-          <div className="flex min-w-0 flex-1 flex-col justify-between p-2">
-            <p className="font-sans text-lg font-medium tracking-tight md:text-xl">
-              Talk to your data like a human.
-            </p>
-            <div className="flex items-center gap-2 text-(--band-fg)/45">
-              <Database className="size-3.5 shrink-0" aria-hidden />
-              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
-                Query data with AI agents
-              </span>
-            </div>
-          </div>
-          <div className="flex shrink-0 flex-col items-end border-l border-(--band-fg)/15 p-2">
-            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-(--band-fg)/40">
-              Sponsored
-            </span>
-            <img
-              className="h-7 w-auto"
-              src="https://framerusercontent.com/images/DpVtRdL2gGDwSRNF4GSIdB6Ajkg.svg?scale-down-to=512&width=840&height=299"
-              alt="Syne HQ"
-            />
-          </div>
-        </a>
-
-        <h1 className="mt-10 max-w-[14ch] font-sans text-[clamp(3.25rem,11vw,8rem)] font-medium leading-[0.9] tracking-[-0.05em]">
-          Give every project<br />
-          its own <span className="text-(--band-accent) italic">floor.</span>
+        <h1 className="display-xl mt-16 max-w-[13ch] text-balance text-ink md:mt-24">
+          Give every project its own <span className="italic">floor</span>.
         </h1>
-        <p className="mt-8 max-w-lg text-pretty font-sans text-base leading-relaxed text-(--band-fg)/50 md:text-lg">
-          Your projects, agent teams, tickets, and conversations in one terminal.
-          Plan the work, watch the office build, and keep the code in view.
-          Powered by OpenCode, Claude Code, or Codex — your choice for every conversation.
+        <p className="mt-8 max-w-xl text-pretty text-base leading-relaxed text-ink-soft md:text-lg">
+          Projects, agent teams, tickets and conversations in one terminal. Plan
+          the work, watch the office build it, keep the code in view. OpenCode,
+          Claude Code or Codex — picked per conversation.
         </p>
 
-        <div className="mt-12 flex max-w-xl flex-col">
-          <div className="flex border border-b-0 border-(--band-fg)/15">
+        <div className="mt-10 flex flex-wrap items-center gap-2">
+          <Stamp>Terminal UI</Stamp>
+          <Stamp>Android companion</Stamp>
+          <Stamp tone="stamp">Plan before build</Stamp>
+        </div>
+
+        <Panel label="Install" className="mt-10 max-w-2xl">
+          <div className="flex border border-rule border-b-0">
             {[
               { id: "mac" as const, label: "macOS", Icon: AppleMark },
               { id: "linux" as const, label: "Linux", Icon: LinuxMark },
@@ -139,10 +128,10 @@ export function Hero() {
                   aria-pressed={on}
                   aria-label={`${label} install`}
                   onClick={() => setOs(id)}
-                  className={`flex flex-1 items-center justify-center gap-2 px-3 py-2.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${
+                  className={`flex flex-1 items-center justify-center gap-2 px-3 py-2.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors ${
                     on
-                      ? "bg-(--band-fg)/10 text-(--band-fg)"
-                      : "text-(--band-fg)/40 hover:bg-(--band-fg)/5 hover:text-(--band-fg)/70"
+                      ? "bg-ink text-paper"
+                      : "text-ink-faint hover:text-ink"
                   }`}
                 >
                   <Icon className="size-3.5 shrink-0" />
@@ -151,9 +140,9 @@ export function Hero() {
               );
             })}
           </div>
-          <div className="flex items-stretch border border-(--band-fg)/15 bg-(--band-well) font-mono text-sm">
-            <code className="min-w-0 flex-1 overflow-x-auto px-4 py-3.5 text-(--band-fg)/75">
-              <span className="text-(--band-fg)/35">
+          <div className="flex items-stretch border border-rule bg-paper font-mono text-sm">
+            <code className="min-w-0 flex-1 overflow-x-auto px-4 py-3.5 text-ink">
+              <span className="text-ink-faint">
                 {os === "windows" ? "> " : "$ "}
               </span>
               {install}
@@ -161,28 +150,73 @@ export function Hero() {
             <button
               type="button"
               onClick={copyInstall}
-              className="shrink-0 border-l border-(--band-fg)/15 px-4 text-[11px] uppercase tracking-wider text-(--band-fg)/55 transition-colors hover:bg-(--band-fg)/5 hover:text-(--band-fg)"
+              className="shrink-0 border-l border-rule px-4 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft transition-colors hover:text-ink"
             >
               {copied ? "Copied" : "Copy"}
             </button>
           </div>
-        </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link
-            href="/get-started"
-            className="border border-(--band-fg)/80 bg-(--band-fg) px-6 py-3 font-mono text-xs uppercase tracking-wider text-(--band-on-fg) transition-opacity hover:opacity-90"
-          >
-            Open the office
-          </Link>
-          <Link
-            href="/get-started"
-            className="border border-(--band-fg)/25 px-6 py-3 font-mono text-xs uppercase tracking-wider text-(--band-fg)/80 transition-colors hover:bg-(--band-fg)/5"
-          >
-            Tour demo mode
-          </Link>
-        </div>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Link
+              href="/get-started"
+              className="bg-ink px-6 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-paper transition-opacity hover:opacity-90"
+            >
+              Open the office
+            </Link>
+            <Link
+              href="/get-started"
+              className="border border-rule px-6 py-3 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-soft transition-colors hover:text-ink"
+            >
+              Tour demo mode
+            </Link>
+          </div>
+        </Panel>
+
+        <a
+          href="https://synehq.com/"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-10 flex max-w-md overflow-hidden border border-rule transition-colors hover:bg-paper-2"
+        >
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-2 p-3">
+            <p className="text-base font-medium tracking-tight text-ink">
+              Talk to your data like a human.
+            </p>
+            <div className="flex items-center gap-2 text-ink-faint">
+              <Database className="size-3.5 shrink-0" aria-hidden />
+              <span className="font-mono text-[10px] uppercase tracking-[0.18em]">
+                Query data with AI agents
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2 border-l border-rule p-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-ink-faint">
+              Sponsored
+            </span>
+            <img
+              className="h-7 w-auto"
+              src="https://framerusercontent.com/images/DpVtRdL2gGDwSRNF4GSIdB6Ajkg.svg?scale-down-to=512&width=840&height=299"
+              alt="Syne HQ"
+            />
+          </div>
+        </a>
+
+        <Chapter
+          numeral="I."
+          title="The floor"
+          id="chapter-i"
+          className="mt-20 md:mt-28"
+          lede={
+            <>One office. Every project gets its own room in it.</>
+          }
+        >
+          <p className="mt-6 max-w-xl text-sm leading-relaxed text-ink-soft">
+            The floor is where the work is kept: a board, the threads, the
+            files, and the crew that clocked in. What follows is the tour.
+          </p>
+        </Chapter>
+        <FrameLabels className="mt-16" />
       </div>
-    </section>
+    </Sheet>
   );
 }

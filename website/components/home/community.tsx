@@ -1,6 +1,6 @@
 import { FolderGit2 } from 'lucide-react'
-import { SectionTag } from '@/components/section-tag'
 import { ScrollReveal } from '@/components/scroll-reveal'
+import { Beat, Cue, Panel, Sheet } from '@/components/paper'
 
 const DISCORD_INVITE = 'https://discord.gg/YPDsHVHTVf'
 const GITHUB_REPO = 'https://github.com/theboringhumane/theboringfloor'
@@ -45,93 +45,88 @@ function DiscordIcon({ className }: { className?: string }) {
 
 export function Community() {
   return (
-    <section id="community" className="border-b border-border">
-      <div className="mx-auto max-w-7xl px-6 py-20">
-        <SectionTag>Join the community</SectionTag>
-        <h2 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-          The office is open. Build this together.
-        </h2>
-        <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          theboringfloor grows in public waves, and the whole crew — the maintainer, the
-          regulars, and whoever walked in five minutes ago — argues about the next one in
-          the Discord. Come watch the waves land, tell us which part is boring in the wrong
-          way, or pick up an issue and ship a wave yourself. Contributors welcome; the
-          commit log has room.
-        </p>
-
-        <div className="mt-14 grid grid-cols-1 gap-10 lg:grid-cols-2">
-          <ScrollReveal direction="left" className="flex flex-col gap-5">
-            <p className="max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground">
-              No invite required, no application form. The Discord is where designs get
-              argued about before they ship, and the GitHub log is where the arguments
-              settle. Lurk as long as you like — the channel is the office hours, and the
-              office never closes.
-            </p>
-            <p className="max-w-lg text-pretty text-sm leading-relaxed text-muted-foreground">
-              When you&apos;re ready to do more than watch, the issue tracker is the work
-              board. Claim one, open a pull request, and your handle lands in the same
-              public log as everyone else&apos;s.
-            </p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <a
-                href={DISCORD_INVITE}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 bg-foreground px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-background transition-opacity hover:opacity-90"
-              >
-                <DiscordIcon className="size-3.5" />
-                Join the Discord
-              </a>
-              <a
-                href={GITHUB_REPO}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 border border-border px-5 py-2.5 font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:bg-secondary"
-              >
-                <FolderGit2 className="size-3.5" aria-hidden />
-                Contribute on GitHub
-              </a>
-            </div>
-          </ScrollReveal>
-
-          <ScrollReveal direction="right" className="border border-border bg-card">
-            <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-              <span className="size-2.5 rounded-full bg-destructive/70" />
-              <span className="size-2.5 rounded-full bg-chart-4/70" />
-              <span className="size-2.5 rounded-full bg-chart-2/70" />
-              <span className="ml-2 font-mono text-xs text-muted-foreground">
-                #the-floor — discord
-              </span>
-            </div>
-            <div className="flex flex-col gap-2.5 px-5 py-5 font-mono text-xs leading-relaxed">
-              {discordLog.map((l) => (
-                <p key={l.who}>
-                  <span className="text-accent">{l.who}</span>{' '}
-                  <span className="text-foreground/80">{l.text}</span>
-                </p>
-              ))}
-              <p className="mt-2 text-muted-foreground">
-                … and the next wave is already being argued about.
-              </p>
-            </div>
-          </ScrollReveal>
-        </div>
-
-        <ScrollReveal
-          stagger={0.06}
-          className="mt-12 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3"
+    <Sheet id="community" className="relative border-t border-rule">
+      <div className="mx-auto max-w-7xl px-6 py-20 md:px-10">
+        <Beat
+          index="3.5"
+          label="Pull up a chair"
+          title="The office is open. Build this together."
         >
-          {waysIn.map((c) => (
-            <div key={c.id} className="flex flex-col gap-4 bg-background p-8">
-              <span className="font-mono text-xs text-muted-foreground">{c.id}</span>
-              <h3 className="text-lg font-semibold tracking-tight">{c.title}</h3>
-              <p className="text-pretty text-sm leading-relaxed text-muted-foreground">
-                {c.body}
+          <p className="max-w-2xl text-pretty leading-relaxed text-ink-soft">
+            theboringfloor grows in public waves, and the whole crew — the maintainer, the
+            regulars, and whoever walked in five minutes ago — argues about the next one in
+            the Discord. Watch the waves land, tell us which part is boring in the wrong
+            way, or pick up an issue and ship a wave yourself. Contributors welcome; the
+            commit log has room.
+          </p>
+
+          <div className="mt-14 grid grid-cols-1 gap-10 lg:grid-cols-2">
+            <ScrollReveal direction="left" className="flex flex-col gap-5">
+              <p className="max-w-lg text-pretty text-sm leading-relaxed text-ink-soft">
+                No invite required, no application form. The Discord is where designs get
+                argued about before they ship, and the GitHub log is where the arguments
+                settle. Lurk as long as you like — the channel is the office hours, and the
+                office never closes.
               </p>
-            </div>
-          ))}
-        </ScrollReveal>
+              <p className="max-w-lg text-pretty text-sm leading-relaxed text-ink-soft">
+                When you&apos;re ready to do more than watch, the issue tracker is the work
+                board. Claim one, open a pull request, and your handle lands in the same
+                public log as everyone else&apos;s.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-3">
+                <a
+                  href={DISCORD_INVITE}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mono-label inline-flex items-center gap-2 bg-ink px-5 py-3 text-paper transition-opacity hover:opacity-90"
+                >
+                  <DiscordIcon className="size-3.5" />
+                  Join the Discord
+                </a>
+                <a
+                  href={GITHUB_REPO}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mono-label hairline inline-flex items-center gap-2 px-5 py-3 text-ink transition-colors hover:bg-panel"
+                >
+                  <FolderGit2 className="size-3.5" aria-hidden />
+                  Contribute on GitHub
+                </a>
+              </div>
+            </ScrollReveal>
+
+            <ScrollReveal direction="right">
+              <Panel label="#the-floor — discord">
+                <div className="flex flex-col gap-2.5 font-mono text-xs leading-relaxed">
+                  {discordLog.map((l) => (
+                    <p key={l.who}>
+                      <span className="text-blue">{l.who}</span>{' '}
+                      <span className="text-ink">{l.text}</span>
+                    </p>
+                  ))}
+                  <p className="mt-2 text-ink-faint">
+                    … and the next wave is already being argued about.
+                  </p>
+                </div>
+              </Panel>
+              <Cue className="mt-4 block">transcript excerpt, lightly trimmed</Cue>
+            </ScrollReveal>
+          </div>
+
+          <ScrollReveal
+            stagger={0.06}
+            className="mt-12 grid grid-cols-1 gap-px border border-rule bg-rule md:grid-cols-3"
+          >
+            {waysIn.map((c) => (
+              <div key={c.id} className="flex flex-col gap-4 bg-paper p-8">
+                <span className="font-mono text-xs text-ink-faint">{c.id}</span>
+                <h3 className="text-lg font-medium tracking-tight text-ink">{c.title}</h3>
+                <p className="text-pretty text-sm leading-relaxed text-ink-soft">{c.body}</p>
+              </div>
+            ))}
+          </ScrollReveal>
+        </Beat>
       </div>
-    </section>
+    </Sheet>
   )
 }

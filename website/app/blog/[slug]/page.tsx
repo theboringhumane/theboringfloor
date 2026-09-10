@@ -3,8 +3,10 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeSlug from 'rehype-slug'
 import { ArrowLeft } from 'lucide-react'
-import { getAllPosts, getPostBySlug, formatDate, categoryColors } from '@/lib/blog'
+import { getAllPosts, getPostBySlug, formatDate } from '@/lib/blog'
+import { Stamp } from '@/components/paper'
 import { SITE_NAME, SITE_URL } from '@/lib/site'
 
 export function generateStaticParams() {
@@ -93,49 +95,71 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
       />
       <main>
         <article itemScope itemType="https://schema.org/BlogPosting">
-          <header className="border-b border-border px-6 pb-10 pt-14 md:px-10 md:pb-12 md:pt-16 lg:px-14">
-            <Link
-              href="/blog"
-              className="inline-flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <ArrowLeft className="size-3" />
-              Back to blog
-            </Link>
+          <header className="relative border-b border-rule px-6 pb-12 pt-12 md:px-10 md:pb-14 md:pt-16 lg:px-14">
 
-            <div className="mt-8 flex flex-wrap gap-2">
-              {post.categories.map((c) => (
-                <span
-                  key={c}
-                  className={`border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider ${categoryColors[c]}`}
-                >
-                  {c}
-                </span>
-              ))}
+            {/* Running head */}
+            <div className="flex flex-wrap items-center gap-3 border-b border-rule pb-3">
+              <Link
+                href="/blog"
+                className="mono-label inline-flex items-center gap-2 text-ink-soft transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+              >
+                <ArrowLeft className="size-3" aria-hidden="true" />
+                Index
+              </Link>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+              <span className="mono-label hidden text-ink-faint sm:inline">{post.slug}</span>
             </div>
 
-            <h1
-              className="mt-6 max-w-[18ch] text-balance font-sans text-[clamp(2rem,6vw,3.75rem)] font-medium leading-[0.95] tracking-[-0.04em]"
-              itemProp="headline"
-            >
+            {post.categories.length > 0 && (
+              <div className="mt-8 flex flex-wrap gap-2">
+                {post.categories.map((c) => (
+                  <Stamp key={c}>{c}</Stamp>
+                ))}
+              </div>
+            )}
+
+            <h1 className="display-lg mt-6 max-w-[18ch] text-balance text-ink" itemProp="headline">
               {post.title}
             </h1>
 
-            <div className="mt-8 flex items-center gap-3 font-mono text-xs text-muted-foreground">
-              <span itemProp="author">{post.author}</span>
-              <span>·</span>
-              <time dateTime={post.date} itemProp="datePublished">
+            {post.description && (
+              <p className="mt-6 max-w-2xl text-pretty text-base leading-relaxed text-ink-soft">
+                {post.description}
+              </p>
+            )}
+
+            {/* Dateline */}
+            <div className="mono-label mt-8 flex flex-wrap items-center gap-3 border-t border-rule pt-3">
+              <time dateTime={post.date} itemProp="datePublished" className="text-ink">
                 {formatDate(post.date)}
               </time>
+              <span aria-hidden="true" className="text-ink-faint">
+                /
+              </span>
+              <span itemProp="author" className="text-ink-faint">
+                {post.author}
+              </span>
             </div>
 
             <meta itemProp="description" content={post.description} />
           </header>
 
-          <div
-            className="prose-blog border-b border-border px-6 py-12 md:px-10 md:py-14 lg:px-14"
-            itemProp="articleBody"
-          >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{post.content}</ReactMarkdown>
+          <div className="relative border-b border-rule px-6 py-12 md:px-10 md:py-16 lg:px-14">
+            <div className="prose-blog max-w-[68ch]" itemProp="articleBody">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSlug]}>
+                {post.content}
+              </ReactMarkdown>
+            </div>
+          </div>
+
+          <div className="px-6 py-10 md:px-10 lg:px-14">
+            <Link
+              href="/blog"
+              className="mono-label inline-flex items-center gap-2 text-ink-soft transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+            >
+              <ArrowLeft className="size-3" aria-hidden="true" />
+              Back to the index
+            </Link>
           </div>
         </article>
       </main>

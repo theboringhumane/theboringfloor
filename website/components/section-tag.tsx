@@ -10,11 +10,11 @@ export function SectionTag({
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-xs uppercase tracking-wider text-muted-foreground',
+        'mono-label inline-flex items-center gap-2 border border-rule px-2.5 py-1.5',
         className,
       )}
     >
-      <span className="size-2 bg-accent" aria-hidden="true" />
+      <span className="size-1.5 bg-stamp" aria-hidden="true" />
       {children}
     </div>
   )

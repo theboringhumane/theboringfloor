@@ -23,28 +23,25 @@ export const metadata: Metadata = {
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <figure className="overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
+    <figure className="m-0">
+      <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
+        <img
+          src={src}
+          alt={alt}
+          width={5086}
+          height={2896}
+          loading="lazy"
+          className="shot-img block h-auto w-full"
+        />
       </div>
-      <img
-        src={src}
-        alt={alt}
-        width={5086}
-        height={2896}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
+      <figcaption className="mono-label mt-3 text-ink-faint">{caption}</figcaption>
     </figure>
   )
 }
 
 function CmdBlock({ lines }: { lines: { t: string; dim?: boolean }[] }) {
   return (
-    <div className="border border-border bg-card p-6 font-mono text-xs leading-relaxed">
+    <div className="doc-brackets hairline bg-paper-2 p-6 font-mono text-xs leading-relaxed">
       {lines.map((l, i) => (
         <p key={i} className={l.dim ? 'text-muted-foreground' : undefined}>
           {l.t}
@@ -56,7 +53,7 @@ function CmdBlock({ lines }: { lines: { t: string; dim?: boolean }[] }) {
 
 function Key({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center border border-border px-2 py-0.5 font-mono text-xs text-accent">
+    <span className="inline-flex items-center hairline px-2 py-0.5 font-mono text-xs text-accent">
       {children}
     </span>
   )
@@ -66,11 +63,11 @@ export default function BackendsPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Backends</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>03 · Backends</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               The office doesn&apos;t care which brain the boss has.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -81,12 +78,12 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-7xl px-6 py-20">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h2 className="mono-label">
               Choose your conversation backend
             </h2>
-            <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
+            <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden hairline bg-border md:grid-cols-3">
               <div className="flex flex-col gap-3 bg-background p-8">
                 <h3 className="text-sm font-medium text-foreground">opencode (default)</h3>
                 <p className="text-sm leading-relaxed text-muted-foreground">
@@ -124,7 +121,7 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <div className="grid gap-10 md:grid-cols-2">
               <Shot
@@ -144,12 +141,12 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h2 className="mono-label">
               Picking it, three ways
             </h2>
-            <h3 className="mt-4 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight">
+            <h3 className="mt-4 max-w-2xl display-md text-balance text-ink">
               Flag beats env, env beats brain, brain beats default.
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -181,12 +178,12 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h2 className="mono-label">
               How the office primes your agent
             </h2>
-            <h3 className="mt-4 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight">
+            <h3 className="mt-4 max-w-2xl display-md text-balance text-ink">
               One charter, both brains — primed before the first turn.
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -233,12 +230,12 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
-            <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h2 className="mono-label">
               Swapping mid-flight
             </h2>
-            <h3 className="mt-4 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight">
+            <h3 className="mt-4 max-w-2xl display-md text-balance text-ink">
               <span className="font-mono">/backend</span> swaps live — but only from an idle office.
             </h3>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -280,7 +277,7 @@ export default function BackendsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>What this doesn&apos;t do yet</SectionTag>
             <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">

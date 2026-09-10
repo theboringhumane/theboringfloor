@@ -3,8 +3,8 @@ import { SiteFooter } from '@/components/site-footer'
 
 export default function BlogLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="page-grid">
-      <div className="page-frame">
+    <div className="paper-ground min-h-svh">
+      <div className="doc-frame">
         <SiteHeader framed />
         {children}
         <SiteFooter />

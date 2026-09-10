@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] border border-border bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -20,21 +20,18 @@ function Code({ children }: { children: React.ReactNode }) {
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <figure className="mt-10 overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
+    <figure className="mt-10 m-0">
+      <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
+        <img
+          src={src}
+          alt={alt}
+          width={5086}
+          height={2896}
+          loading="lazy"
+          className="shot-img block h-auto w-full"
+        />
       </div>
-      <img
-        src={src}
-        alt={alt}
-        width={5086}
-        height={2896}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
+      <figcaption className="mono-label mt-3 text-ink-faint">{caption}</figcaption>
     </figure>
   )
 }
@@ -43,12 +40,12 @@ type Key = { combo: string; action: string }
 
 function KeyTable({ keys }: { keys: Key[] }) {
   return (
-    <div className="mt-6 overflow-hidden border border-border">
+    <div className="mt-6 overflow-hidden hairline">
       {keys.map((k, i) => (
         <div
           key={k.combo}
           className={`flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:gap-6 ${
-            i > 0 ? 'border-t border-border' : ''
+            i > 0 ? 'border-t border-rule' : ''
           }`}
         >
           <span className="w-40 shrink-0 font-mono text-xs text-accent">{k.combo}</span>
@@ -68,15 +65,15 @@ function SlashGroup({
 }) {
   return (
     <div className="mt-8">
-      <h3 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <h3 className="mono-label">
         {title}
       </h3>
-      <div className="mt-3 overflow-hidden border border-border">
+      <div className="mt-3 overflow-hidden hairline">
         {commands.map((c, i) => (
           <div
             key={c.cmd}
             className={`flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:gap-6 ${
-              i > 0 ? 'border-t border-border' : ''
+              i > 0 ? 'border-t border-rule' : ''
             }`}
           >
             <span className="w-48 shrink-0 font-mono text-xs text-accent">{c.cmd}</span>
@@ -173,11 +170,11 @@ export default function KeysAndSlashPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Docs — keys & slash</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>13 · Docs — keys & slash</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               You don&apos;t memorize this list. The popover does.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -188,10 +185,10 @@ export default function KeysAndSlashPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The discovery surface</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               The slash popover is how you find everything.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -215,24 +212,24 @@ export default function KeysAndSlashPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Key table</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               The keys, by where your hands are.
             </h2>
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Navigation
             </h3>
             <KeyTable keys={navigationKeys} />
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Panes
             </h3>
             <KeyTable keys={paneKeys} />
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Chat composer
             </h3>
             <KeyTable keys={composerKeys} />
@@ -253,27 +250,27 @@ export default function KeysAndSlashPage() {
               <Code>/session</Code>, <Code>@</Code> — take paste as filter text.
             </p>
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Threads
             </h3>
             <KeyTable keys={threadKeys} />
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Terminal tab
             </h3>
             <KeyTable keys={terminalKeys} />
 
-            <h3 className="mt-10 font-mono text-xs uppercase tracking-wider text-muted-foreground">
+            <h3 className="mt-10 mono-label">
               Browser tab
             </h3>
             <KeyTable keys={browserKeys} />
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The model picker</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               /model swaps the boss&apos;s brain, and it writes back.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -307,10 +304,10 @@ export default function KeysAndSlashPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Slash reference</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               The full command table, grouped.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -352,7 +349,7 @@ export default function KeysAndSlashPage() {
               it until you approve them. See <Link href="/docs/plan-mode" className="text-foreground/90 underline underline-offset-4 transition-colors hover:text-accent">plan mode</Link>{' '}
               for the full workflow.
             </p>
-            <pre className="mt-6 max-w-2xl overflow-x-auto border border-border bg-card p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
+            <pre className="mt-6 max-w-2xl overflow-x-auto doc-brackets hairline bg-paper-2 p-4 font-mono text-sm leading-relaxed text-foreground"><code>{`⟦plan-present⟧
 # Goal
 Describe the work to review.
 ⟦/plan-present⟧
@@ -459,10 +456,10 @@ Describe the revised draft.
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Sounds & clipboard</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Two quiet channels worth knowing.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -494,10 +491,10 @@ Describe the revised draft.
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Ceilings</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               What this doesn&apos;t do yet.
             </h2>
             <ul className="mt-6 flex max-w-2xl flex-col gap-3 leading-relaxed text-muted-foreground">
@@ -519,10 +516,10 @@ Describe the revised draft.
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-3">
+            <div className="mt-8 grid grid-cols-1 gap-px overflow-hidden hairline bg-border md:grid-cols-3">
               {[
                 {
                   href: '/docs/plan-mode',

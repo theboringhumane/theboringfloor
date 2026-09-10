@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
-import { SectionTag } from '@/components/section-tag'
+import { Beat, Cue, Sheet, Stamp } from '@/components/paper'
 import { gsap, ScrollTrigger } from '@/lib/gsap'
 
 const tabs = [
@@ -127,79 +127,82 @@ export function FloorTour() {
 
   return (
     // Stable public anchor; do not rename.
-    <section id="toolkits" className="border-b border-border">
+    <Sheet id="toolkits" className="relative border-t border-rule">
       <div ref={wrapperRef} className="relative lg:h-[280vh]">
-        <div ref={pinRef} className="mx-auto max-w-7xl px-6 py-20 lg:py-0 lg:min-h-svh lg:flex lg:flex-col lg:justify-center">
-          <SectionTag>Why it feels human</SectionTag>
-
-          <h2 className="mt-6 max-w-2xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-5xl">
-            A boss you can talk to.
-            <br />
-            A team you can watch work.
-          </h2>
-
-          <div className="mt-14 grid grid-cols-1 gap-10 lg:grid-cols-[240px_1fr_1fr]">
-            <div className="flex flex-col gap-1 border border-border">
-              {tabs.map((t, i) => (
-                <button
-                  key={t.id}
-                  onClick={() => setActive(i)}
-                  className={cn(
-                    'flex items-center gap-3 border-b border-border px-4 py-4 text-left font-mono text-xs uppercase tracking-wider last:border-b-0 transition-colors duration-300',
-                    active === i
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-secondary',
-                  )}
-                >
-                  <span className="opacity-70">{t.id}</span>
-                  {t.label}
-                </button>
-              ))}
-            </div>
-
-            <div
-              ref={panelRef}
-              className="flex min-h-72 flex-col justify-between gap-6 border border-border bg-card p-6"
-            >
-              <div data-panel-item className="flex items-center gap-2 border-b border-border pb-3">
-                <span className="size-2.5 rounded-full bg-destructive/70" />
-                <span className="size-2.5 rounded-full bg-chart-4/70" />
-                <span className="size-2.5 rounded-full bg-chart-2/70" />
-              </div>
-              <div className="space-y-3 font-mono text-xs leading-relaxed text-muted-foreground">
-                <p data-panel-item className="text-foreground">
-                  {tab.heading.toUpperCase()}
-                </p>
-                {tab.log.map((line, i) => (
-                  <p
-                    key={i}
-                    data-panel-item
+        <div
+          ref={pinRef}
+          className="mx-auto max-w-7xl px-6 py-20 md:px-10 lg:flex lg:min-h-svh lg:flex-col lg:justify-center lg:py-0"
+        >
+          <Beat
+            index="3.3"
+            label="Walk the floor"
+            title="A boss you can talk to. A team you can watch work."
+          >
+            <div className="grid grid-cols-1 gap-10 lg:grid-cols-[240px_1fr_1fr]">
+              <div className="hairline flex flex-col divide-y divide-rule self-start">
+                {tabs.map((t, i) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setActive(i)}
                     className={cn(
-                      line.tone === 'success' && 'text-chart-2',
-                      line.tone === 'warning' && 'text-chart-4',
+                      'mono-label flex items-center gap-3 px-4 py-4 text-left transition-colors duration-300',
+                      active === i
+                        ? 'bg-panel text-ink'
+                        : 'text-ink-faint hover:bg-paper-2 hover:text-ink-soft',
                     )}
                   >
-                    {line.text}
-                  </p>
+                    <span className="opacity-70">{t.id}</span>
+                    {t.label}
+                  </button>
                 ))}
               </div>
-            </div>
 
-            <div className="flex flex-col gap-6 py-2">
-              <span className="font-mono text-xs text-muted-foreground">{tab.id}</span>
-              <h3 className="text-2xl font-semibold tracking-tight">{tab.heading}</h3>
-              <p className="text-pretty text-sm leading-relaxed text-muted-foreground">{tab.body}</p>
-              <ul className="flex flex-col gap-3 border-l border-border pl-4">
-                {tab.points.map((p) => (
-                  <li key={p} className="text-sm leading-relaxed text-foreground/90">
-                    {p}
-                  </li>
-                ))}
-              </ul>
+              <figure
+                ref={panelRef}
+                className="doc-brackets hairline flex min-h-72 flex-col justify-between gap-6 bg-paper-2 p-6"
+              >
+                <figcaption
+                  data-panel-item
+                  className="mono-label border-b border-rule pb-3"
+                >
+                  Fig. 3.3.{tab.id} — {tab.label}
+                </figcaption>
+                <div className="space-y-3 font-mono text-xs leading-relaxed text-ink-faint">
+                  <p data-panel-item className="text-ink">
+                    {tab.heading.toUpperCase()}
+                  </p>
+                  {tab.log.map((line, i) => (
+                    <p
+                      key={i}
+                      data-panel-item
+                      className={cn(
+                        line.tone === 'success' && 'text-blue',
+                        line.tone === 'warning' && 'text-stamp',
+                      )}
+                    >
+                      {line.text}
+                    </p>
+                  ))}
+                </div>
+              </figure>
+
+              <div className="flex flex-col gap-5 py-2">
+                <Stamp>{tab.id} / {tabs.length.toString().padStart(2, '0')}</Stamp>
+                <h4 className="display-md text-ink">{tab.heading}</h4>
+                <p className="text-pretty text-sm leading-relaxed text-ink-soft">{tab.body}</p>
+                <ul className="flex flex-col gap-3 border-l border-rule pl-4">
+                  {tab.points.map((p) => (
+                    <li key={p} className="text-sm leading-relaxed text-ink">
+                      {p}
+                    </li>
+                  ))}
+                </ul>
+                <Cue>scroll to advance the frame</Cue>
+              </div>
             </div>
-          </div>
+          </Beat>
         </div>
       </div>
-    </section>
+    </Sheet>
   )
 }

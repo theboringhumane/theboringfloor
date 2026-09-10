@@ -29,32 +29,54 @@ export function ScrollReveal({
     const el = ref.current
     if (!el) return
 
+    // Reduced motion: never hide anything, never animate.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
     const targets = stagger != null ? Array.from(el.children) : el
-    const from: gsap.TweenVars = { opacity: 0 }
-    if (direction === 'up') from.y = distance
-    if (direction === 'left') from.x = -distance
-    if (direction === 'right') from.x = distance
+    // Failsafe: content must never stay hidden because gsap/ScrollTrigger threw
+    // or never fired. A re-skin that eats the page is worse than no animation.
+    const reveal = () => gsap.set(targets, { opacity: 1, x: 0, y: 0 })
 
-    gsap.set(targets, from)
+    let st: ScrollTrigger | undefined
+    let fallback: ReturnType<typeof setTimeout> | undefined
 
-    const st = ScrollTrigger.create({
-      trigger: el,
-      start: 'top 82%',
-      once: true,
-      onEnter: () => {
-        gsap.to(targets, {
-          opacity: 1,
-          x: 0,
-          y: 0,
-          duration: 0.8,
-          delay,
-          ease: 'power3.out',
-          stagger: stagger ?? 0,
-        })
-      },
-    })
+    try {
+      const from: gsap.TweenVars = { opacity: 0 }
+      if (direction === 'up') from.y = distance
+      if (direction === 'left') from.x = -distance
+      if (direction === 'right') from.x = distance
 
-    return () => st.kill()
+      gsap.set(targets, from)
+      fallback = setTimeout(reveal, 3000)
+
+      st = ScrollTrigger.create({
+        trigger: el,
+        start: 'top 82%',
+        once: true,
+        onEnter: () => {
+          clearTimeout(fallback)
+          gsap.to(targets, {
+            opacity: 1,
+            x: 0,
+            y: 0,
+            duration: 0.8,
+            delay,
+            ease: 'power3.out',
+            stagger: stagger ?? 0,
+          })
+        },
+      })
+    } catch {
+      clearTimeout(fallback)
+      reveal()
+    }
+
+    return () => {
+      clearTimeout(fallback)
+      st?.kill()
+      // Unmount/re-run (React strict mode) must not leave the DOM at opacity 0.
+      reveal()
+    }
   }, [direction, delay, distance, stagger])
 
   // Clip sideways slides on a static parent so pre-enter translateX

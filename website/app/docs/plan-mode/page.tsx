@@ -33,4 +33,4 @@ const sections: DocSection[] = [
   }
 ]
 
-export default function Page() { return <DocsArticle title="Make the plan visible" intro="Substantial work starts with a plan. The boss presents it beside the conversation; you review, edit, and approve before implementation." sections={sections} /> }
+export default function Page() { return <DocsArticle title="Make the plan visible" intro="Substantial work starts with a plan. The boss presents it beside the conversation; you review, edit, and approve before implementation." sections={sections} docNo="05" /> }

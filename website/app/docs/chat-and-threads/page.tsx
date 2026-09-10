@@ -86,22 +86,19 @@ const keepReading = [
 
 function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
   return (
-    <div className="mt-10 overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
+    <figure className="mt-10 m-0">
+      <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
+        <img
+          src={src}
+          alt={alt}
+          width={5086}
+          height={2896}
+          loading="lazy"
+          className="shot-img block h-auto w-full"
+        />
       </div>
-      <img
-        src={src}
-        alt={alt}
-        width={5086}
-        height={2896}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
-    </div>
+      <figcaption className="mono-label mt-3 text-ink-faint">{caption}</figcaption>
+    </figure>
   )
 }
 
@@ -111,7 +108,7 @@ function KeyChips({ keys }: { keys: { combo: string; action: string }[] }) {
       {keys.map((k) => (
         <span
           key={k.combo}
-          className="inline-flex items-center gap-2 border border-border px-3 py-1.5 font-mono text-xs"
+          className="inline-flex items-center gap-2 hairline px-3 py-1.5 font-mono text-xs"
         >
           <span className="text-accent">{k.combo}</span>
           <span className="text-muted-foreground">{k.action}</span>
@@ -125,12 +122,12 @@ export default function ChatAndThreadsPage() {
   return (
     <>
       <SiteHeader />
-      <main>
-        <aside className="mx-auto max-w-5xl border-b border-border px-6 py-8 text-sm leading-relaxed text-muted-foreground">Press Ctrl+R to search the loaded transcript without losing your draft. Ctrl+N starts a titled conversation with its own team and backend; Ctrl+E opens project floors and saved conversations. Local conversation archives retain up to 10,000 messages, while the quick startup snapshot keeps 200. <Link href="/docs/workspaces" className="underline underline-offset-4">Read the workspace guide.</Link></aside>
-        <section className="border-b border-border">
+      <main className="relative paper-ground">
+        <aside className="mx-auto max-w-5xl border-b border-rule px-6 py-8 text-sm leading-relaxed text-muted-foreground">Press Ctrl+R to search the loaded transcript without losing your draft. Ctrl+N starts a titled conversation with its own team and backend; Ctrl+E opens project floors and saved conversations. Local conversation archives retain up to 10,000 messages, while the quick startup snapshot keeps 200. <Link href="/docs/workspaces" className="underline underline-offset-4">Read the workspace guide.</Link></aside>
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
-            <SectionTag>Chat &amp; threads</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <SectionTag>04 · Chat &amp; threads</SectionTag>
+            <h1 className="mt-8 max-w-3xl display-lg text-balance text-ink">
               The chat is the office, in writing.
             </h1>
             <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
@@ -142,10 +139,10 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The reply</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Replies stream in as markdown.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -171,10 +168,10 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Context recovery</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               A compact marker can restore the boss&apos;s recent context.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -198,10 +195,10 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Work threads</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               Sub-agent work hangs off the transcript as threads.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -212,7 +209,7 @@ export default function ChatAndThreadsPage() {
               action underneath. When the work returns, the row rolls up to a{' '}
               <span className="font-mono text-foreground">✓</span> summary.
             </p>
-            <div className="mt-8 max-w-3xl border border-border bg-card p-5 font-mono text-xs leading-relaxed">
+            <div className="mt-8 max-w-3xl doc-brackets hairline bg-paper-2 p-5 font-mono text-xs leading-relaxed">
               <p className="text-foreground">
                 ⠿ Explore Task — Scout question kinds recon (· 2 tool calls ✓ done)
               </p>
@@ -244,10 +241,10 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Thread focus</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               ctrl+f takes one thread fullscreen.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
@@ -273,13 +270,13 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Honest edges</SectionTag>
-            <h2 className="mt-6 max-w-2xl text-balance text-3xl font-semibold leading-tight tracking-tight md:text-4xl">
+            <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
               What this doesn&apos;t do yet.
             </h2>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {limits.map((l) => (
                 <div key={l.label} className="bg-background p-6">
                   <p className="font-mono text-xs uppercase tracking-wider text-accent">
@@ -303,17 +300,17 @@ export default function ChatAndThreadsPage() {
           </div>
         </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>Keep reading</SectionTag>
-            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border sm:grid-cols-2">
+            <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden hairline bg-border sm:grid-cols-2">
               {keepReading.map((l) => (
                 <Link
                   key={l.href}
                   href={l.href}
                   className="flex flex-col gap-2 bg-background p-6 transition-colors hover:bg-secondary"
                 >
-                  <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  <p className="mono-label">
                     {l.kicker}
                   </p>
                   <p className="font-medium text-foreground">{l.title}</p>

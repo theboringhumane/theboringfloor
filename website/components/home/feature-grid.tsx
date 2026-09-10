@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ScrollReveal } from '@/components/scroll-reveal'
+import { Beat, Sheet } from '@/components/paper'
 
 const features = [
   {
@@ -18,37 +19,50 @@ const features = [
 
 export function FeatureGrid() {
   return (
-    <section id="products" className="border-b border-border">
-      <div className="grid grid-cols-1 md:grid-cols-2">
-        {features.map((f, i) => (
-          <ScrollReveal
-            key={f.title}
-            direction={i === 0 ? 'left' : 'right'}
-            delay={i * 0.1}
-            className={
-              i === 0
-                ? 'flex flex-col-reverse border-b border-border md:border-b-0 md:border-r md:flex-row'
-                : 'flex flex-col-reverse border-b border-border md:border-b-0 md:flex-row'
-            }
-          >
-            <div className="flex flex-1 flex-col justify-center gap-4 px-6 py-10 md:px-10 lg:px-14">
-              <h3 className="text-2xl font-semibold tracking-tight">{f.title}</h3>
-              <p className="max-w-sm text-pretty text-sm leading-relaxed text-muted-foreground">
-                {f.description}
-              </p>
-              <Link
-                href="/docs"
-                className="inline-flex w-fit items-center border border-border px-4 py-2 font-mono text-xs uppercase tracking-wider text-foreground/80 transition-colors hover:bg-secondary"
+    <Sheet id="products" tone="panel" className="overflow-hidden border-t border-rule">
+
+      <div className="mx-auto max-w-7xl px-6 py-20 md:px-10 lg:px-14">
+        <Beat
+          index="2.2"
+          label="Read the index"
+          title="Two surfaces carry the day."
+        >
+          <p className="max-w-xl text-pretty text-sm leading-relaxed text-ink-soft">
+            Everything else on the floor hangs off these. One holds your
+            decisions. One holds the work.
+          </p>
+
+          <ScrollReveal stagger={0.1} className="mt-12 border-t border-rule">
+            {features.map((f, i) => (
+              <div
+                key={f.title}
+                className="grid grid-cols-1 items-start gap-6 border-b border-rule py-8 md:grid-cols-[3rem_1fr_16rem]"
               >
-                Learn more
-              </Link>
-            </div>
-            <div className="shrink-0 md:w-68">
-              <img src={f.visual} alt={f.title} className="shot-img h-full w-full object-cover" />
-            </div>
+                <span className="font-mono text-xs text-ink-faint">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <div className="flex flex-col gap-3">
+                  <h3 className="display-md text-ink">{f.title}</h3>
+                  <p className="max-w-md text-pretty text-sm leading-relaxed text-ink-soft">
+                    {f.description}
+                  </p>
+                  <Link
+                    href="/docs"
+                    className="mono-label w-fit border-b border-rule pb-0.5 text-ink transition-colors hover:text-blue"
+                  >
+                    Learn more
+                  </Link>
+                </div>
+                <img
+                  src={f.visual}
+                  alt={f.title}
+                  className="shot-img hairline w-full object-cover"
+                />
+              </div>
+            ))}
           </ScrollReveal>
-        ))}
+        </Beat>
       </div>
-    </section>
+    </Sheet>
   )
 }

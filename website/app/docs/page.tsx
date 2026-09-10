@@ -4,6 +4,7 @@ import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
 import { SITE_URL } from '@/lib/site'
+import { Figure } from '@/components/paper'
 
 export const metadata: Metadata = {
   title: 'Docs | theboringfloor',
@@ -107,99 +108,89 @@ const groups: { title: string; items: DocLink[] }[] = [
   },
 ]
 
-function Shot({ src, alt, caption }: { src: string; alt: string; caption: string }) {
-  return (
-    <figure className="overflow-hidden border border-border bg-(--shot-frame)">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <span className="size-2.5 rounded-full bg-destructive/70" />
-        <span className="size-2.5 rounded-full bg-chart-4/70" />
-        <span className="size-2.5 rounded-full bg-chart-2/70" />
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{caption}</span>
-      </div>
-      <img
-        src={src}
-        alt={alt}
-        width={1548}
-        height={1014}
-        loading="lazy"
-        className="shot-img block h-auto w-full"
-      />
-    </figure>
-  )
-}
-
 export default function DocsPage() {
+  let n = 0
   return (
     <>
       <SiteHeader />
-      <main>
-        <section className="border-b border-border">
-          <div className="mx-auto max-w-5xl px-6 pb-20 pt-16 md:pt-24">
+      <main className="relative paper-ground">
+        <section className="border-b border-rule">
+          <div className="mx-auto max-w-5xl px-6 lg:px-20 pb-20 pt-16 md:pt-24">
             <SectionTag>Documentation</SectionTag>
-            <h1 className="mt-8 max-w-3xl text-balance text-4xl font-semibold leading-tight tracking-tight md:text-6xl">
+            <h1 className="display-lg mt-8 max-w-3xl text-balance text-ink">
               Read the office manual.
             </h1>
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
+            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
               Everything shipped, documented the way it runs: install the office, pick a backend,
-              work the chat, and learn every panel. No dead links — each card below opens a real
-              page.
+              work the chat, and learn every panel. No dead links — every entry in the table of
+              contents below opens a real page.
             </p>
             <div className="mt-12">
-              <Shot
-                src="/shots/workspaces/transcript.webp"
-                alt="theboringfloor overview: the office floor, chat work thread, and panel sidebar"
-                caption="theboringfloor — floor, chat, and panels"
-              />
+              <Figure caption="theboringfloor — floor, chat, and panels">
+                <img
+                  src="/shots/workspaces/transcript.webp"
+                  alt="theboringfloor overview: the office floor, chat work thread, and panel sidebar"
+                  width={1548}
+                  height={1014}
+                  loading="lazy"
+                  className="shot-img block h-auto w-full"
+                />
+              </Figure>
             </div>
           </div>
         </section>
 
-        {groups.map((g) => (
-          <section key={g.title} className="border-b border-border">
-            <div className="mx-auto max-w-7xl px-6 py-16">
-              <h2 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
-                {g.title}
-              </h2>
-              <div
-                className={`mt-6 grid grid-cols-1 gap-px overflow-hidden border border-border bg-border md:grid-cols-2 ${
-                  g.items.length > 2 ? 'lg:grid-cols-3' : ''
-                }`}
-              >
-                {g.items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="group flex flex-col gap-3 bg-background p-8 transition-colors hover:bg-secondary"
-                  >
-                    <span className="text-sm font-medium text-foreground transition-colors group-hover:text-accent">
-                      {item.name}
-                    </span>
-                    <span className="text-sm leading-relaxed text-muted-foreground">
-                      {item.promise}
-                    </span>
-                    <span className="mt-auto pt-3 font-mono text-xs text-muted-foreground">
-                      {item.href}
-                    </span>
-                  </Link>
-                ))}
-              </div>
+        <section className="border-b border-rule">
+          <div className="mx-auto max-w-5xl px-6 lg:px-20 py-16 md:py-24">
+            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
+              <span className="mono-label text-ink">00</span>
+              <span className="mono-label">Table of contents</span>
             </div>
-          </section>
-        ))}
+            {groups.map((g) => (
+              <div key={g.title} className="mt-10">
+                <div className="flex items-center gap-3">
+                  <span className="mono-label text-ink-faint">{g.title}</span>
+                  <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+                </div>
+                <ol className="mt-2 border-t border-rule">
+                  {g.items.map((item) => {
+                    n += 1
+                    const no = String(n).padStart(2, '0')
+                    return (
+                      <li key={item.href} className="border-b border-rule">
+                        <Link
+                          href={item.href}
+                          className="group grid grid-cols-[2.5rem_1fr] items-baseline gap-x-4 gap-y-1 py-5 hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue md:grid-cols-[2.5rem_18rem_1fr]"
+                        >
+                          <span className="font-mono text-[0.6875rem] tracking-[0.14em] text-ink-faint">
+                            {no}
+                          </span>
+                          <span className="font-mono text-sm uppercase tracking-[0.08em] text-ink group-hover:underline group-hover:underline-offset-4">
+                            {item.name}
+                          </span>
+                          <span className="col-start-2 text-sm leading-relaxed text-ink-soft md:col-start-3">
+                            {item.promise}
+                          </span>
+                        </Link>
+                      </li>
+                    )
+                  })}
+                </ol>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        <section className="border-b border-border">
+        <section className="border-b border-rule">
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>The honest bit</SectionTag>
-            <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">
+            <p className="max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
               OpenCode, Claude Code, and Codex are supported. Capabilities vary by transport — the{' '}
-              <Link href="/docs/backends" className="text-foreground underline underline-offset-4 hover:text-accent">
+              <Link href="/docs/backends" className="text-ink underline underline-offset-4">
                 backends page
               </Link>{' '}
               says which brains are real right now. Never been here before? Start with{' '}
-              <Link
-                href="/docs/getting-started"
-                className="text-foreground underline underline-offset-4 hover:text-accent"
-              >
+              <Link href="/docs/getting-started" className="text-ink underline underline-offset-4">
                 getting started
               </Link>
               .

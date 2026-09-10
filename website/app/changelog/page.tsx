@@ -1,6 +1,9 @@
 import type { Metadata } from 'next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { SiteHeader } from '@/components/site-header'
+import { SiteFooter } from '@/components/site-footer'
+import { Stamp } from '@/components/paper'
 import { getAllReleases } from '@/lib/changelog'
 import { SITE_URL, GITHUB_REPO } from '@/lib/site'
 
@@ -28,69 +31,97 @@ export default async function ChangelogPage() {
   const releases = await getAllReleases()
 
   return (
-    <main>
-      <section className="border-b border-border px-6 py-14 md:px-10 md:py-16 lg:px-14">
-        <p className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-          <span className="h-px w-6 bg-border" aria-hidden />
-          Ship log
-        </p>
-        <h1 className="mt-6 max-w-[14ch] font-sans text-[clamp(2.75rem,8vw,5.5rem)] font-medium leading-[0.92] tracking-[-0.04em]">
-          Changelog
-        </h1>
-        <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground">
-          Every release, what changed, and why. See the full history on{' '}
-          <a
-            href={`${GITHUB_REPO}/releases`}
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-4 hover:text-foreground"
-          >
-            GitHub Releases
-          </a>
-          .
-        </p>
-      </section>
+    <div className="paper-ground min-h-svh">
+      <div className="doc-frame">
+        <SiteHeader framed />
+        <main>
+          {/* Masthead — the ledger's cover line. */}
+          <section className="relative border-b border-rule px-6 py-16 md:px-10 md:py-20 lg:px-14">
 
-      <section className="border-b border-border">
-        {releases.length === 0 && (
-          <p className="px-6 py-12 text-muted-foreground md:px-10 lg:px-14">
-            No releases found.
-          </p>
-        )}
-        {releases.map((release, i) => (
-          <article
-            key={release.tag}
-            className={[
-              'px-6 py-10 md:px-10 lg:px-14',
-              i < releases.length - 1 ? 'border-b border-border' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-          >
-            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
+              <span className="mono-label text-ink">00</span>
+              <span className="mono-label">Ship log</span>
+              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+              <span className="mono-label hidden sm:inline">
+                {releases.length} {releases.length === 1 ? 'entry' : 'entries'}
+              </span>
+            </div>
+
+            <h1 className="display-xl mt-8 max-w-[12ch] text-balance text-ink">Changelog</h1>
+
+            <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-ink-soft">
+              Every release, what changed, and why. See the full history on{' '}
               <a
-                href={release.url}
+                href={`${GITHUB_REPO}/releases`}
                 target="_blank"
                 rel="noreferrer"
-                className="font-mono text-lg font-semibold tracking-tight hover:underline"
+                className="underline underline-offset-4 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
               >
-                {release.tag}
+                GitHub Releases
               </a>
-              <span className="font-mono text-xs text-muted-foreground">
-                {formatDate(release.date)}
-              </span>
-              {release.name !== release.tag && (
-                <span className="text-sm text-muted-foreground">{release.name}</span>
-              )}
-            </div>
-            {release.body && (
-              <div className="prose prose-sm prose-neutral dark:prose-invert mt-4 max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_li]:my-0.5 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2 [&_code]:text-xs [&_code]:bg-secondary [&_code]:px-1 [&_code]:py-0.5 [&_code]:rounded">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{release.body}</ReactMarkdown>
-              </div>
+              .
+            </p>
+          </section>
+
+          {/* The ledger — one numbered, dated row per release. */}
+          <section className="relative border-b border-rule">
+
+            {releases.length === 0 && (
+              <p className="px-6 py-12 text-ink-soft md:px-10 lg:px-14">No releases found.</p>
             )}
-          </article>
-        ))}
-      </section>
-    </main>
+
+            <ol>
+              {releases.map((release, i) => (
+                <li
+                  key={release.tag}
+                  className={[
+                    'px-6 py-10 md:px-10 lg:px-14',
+                    i < releases.length - 1 ? 'border-b border-rule' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="hairline px-1.5 py-0.5 font-mono text-[0.6875rem] leading-none text-ink">
+                      {String(releases.length - i).padStart(2, '0')}
+                    </span>
+                    <time
+                      dateTime={release.date}
+                      className="mono-label whitespace-nowrap text-ink-faint"
+                    >
+                      {formatDate(release.date)}
+                    </time>
+                    <span className="h-px flex-1 bg-rule" aria-hidden="true" />
+                    <a
+                      href={release.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
+                    >
+                      <Stamp className="transition-colors hover:border-ink hover:text-ink">
+                        {release.tag}
+                      </Stamp>
+                    </a>
+                  </div>
+
+                  {release.name !== release.tag && (
+                    <h2 className="display-md mt-5 max-w-3xl text-balance text-ink">
+                      {release.name}
+                    </h2>
+                  )}
+
+                  {release.body && (
+                    <div className="prose-blog mt-5 max-w-3xl">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{release.body}</ReactMarkdown>
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
+        </main>
+        <SiteFooter />
+      </div>
+    </div>
   )
 }
