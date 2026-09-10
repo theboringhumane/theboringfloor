@@ -10,14 +10,19 @@ class Status {
     required this.chatCount,
     this.planPending = false,
     this.planRevision = "",
+    this.execution,
   });
   final String dir, backend, primaryId;
   final bool planPending;
   final String planRevision;
+  final ExecutionStatus? execution;
   final int planDraftLen, planApprovedLen, chatCount;
   factory Status.fromJson(Map<String, dynamic> j) => Status(
     planPending: j['planPending'] == true,
     planRevision: j['planRevision'] as String? ?? '',
+    execution: j['execution'] is Map<String, dynamic>
+        ? ExecutionStatus.fromJson(j['execution'] as Map<String, dynamic>)
+        : null,
     dir: j['dir'] as String,
     backend: j['backend'] as String,
     primaryId: j['primaryId'] as String? ?? '',
@@ -25,6 +30,25 @@ class Status {
     planApprovedLen: (j['planApprovedLen'] as num?)?.toInt() ?? 0,
     chatCount: (j['chatCount'] as num?)?.toInt() ?? 0,
   );
+}
+
+class ExecutionStatus {
+  const ExecutionStatus({
+    required this.state,
+    required this.summary,
+    this.action = '',
+    this.planSafety = '',
+  });
+  final String state, summary, action, planSafety;
+  bool get needsAttention =>
+      {'plan', 'permission', 'question', 'offline'}.contains(state);
+  factory ExecutionStatus.fromJson(Map<String, dynamic> json) =>
+      ExecutionStatus(
+        state: json['state'] as String? ?? 'unknown',
+        summary: json['summary'] as String? ?? 'Status unavailable',
+        action: json['action'] as String? ?? '',
+        planSafety: json['planSafety'] as String? ?? '',
+      );
 }
 
 class Busy {

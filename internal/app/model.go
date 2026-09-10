@@ -1615,6 +1615,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.TicketRunMsg:
 		m.frameNonce++
 		return m, m.sendTicketToDraft(x.Ticket)
+	case panels.TicketOpenMsg:
+		m.frameNonce++
+		return m, m.launchFloor(FloorLaunch{Dir: m.sessDir, Backend: x.Ticket.Backend, Session: x.Ticket.Session, Title: x.Ticket.Title, Team: x.Ticket.Team})
 	}
 
 	// Boot gate: until the splash is done (cascade + ready, 4s cap, or a

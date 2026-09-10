@@ -16,7 +16,12 @@ type ticketsLoaded struct {
 	floor workspace.Floor
 	err   error
 }
+type ticketSaved struct {
+	floor workspace.Floor
+	err   error
+}
 type TicketRunMsg struct{ Ticket workspace.Ticket }
+type TicketOpenMsg struct{ Ticket workspace.Ticket }
 type Tickets struct {
 	dir            string
 	demo           bool
@@ -31,6 +36,7 @@ type Tickets struct {
 	searching      bool
 	team           int
 	check          int
+	saving         bool
 }
 
 func NewTickets(dir string, demo bool) *Tickets {
@@ -117,7 +123,7 @@ func (b *Tickets) edit(t workspace.Ticket) {
 		checks = append(checks, c.Text)
 	}
 	b.editing = t
-	b.form = form(title, field("Title", t.Title), field("Description", t.Description), choice("Status", workspace.Statuses, s), choice("Priority", workspace.Priorities, p), choice("Team", teams, team), field("Owner", t.Owner), field("Checklist (separate items with ;)", strings.Join(checks, "; ")))
+	b.form = form(title, field("Title", t.Title), field("Description", t.Description), choice("Status", workspace.Statuses, s), choice("Priority", workspace.Priorities, p), choice("Team", teams, team), field("Owner", t.Owner), field("Checklist (separate items with ;)", strings.Join(checks, "; ")), field("Result summary", t.Result), field("Verification notes", t.Verification))
 }
 func (b *Tickets) save(t workspace.Ticket) tea.Cmd {
 	if b.demo {
@@ -134,12 +140,26 @@ func (b *Tickets) save(t workspace.Ticket) tea.Cmd {
 		if !found {
 			b.floor.Tickets = append(b.floor.Tickets, t)
 		}
+		b.form = nil
 		return nil
 	}
 	dir := b.dir
-	return func() tea.Msg { f, err := workspace.PutTicket(dir, t); return ticketsLoaded{f, err} }
+	b.saving = true
+	return func() tea.Msg { f, err := workspace.PutTicket(dir, t); return ticketSaved{f, err} }
 }
 func (b *Tickets) Update(msg tea.Msg) tea.Cmd {
+	if m, ok := msg.(ticketSaved); ok {
+		b.saving = false
+		if m.err != nil {
+			b.err = m.err.Error()
+			if b.form != nil {
+				b.form.err = b.err
+			}
+		} else {
+			b.floor, b.form, b.err = m.floor, nil, ""
+		}
+		return nil
+	}
 	if m, ok := msg.(floorsLoaded); ok && m.err == nil {
 		for _, floor := range m.floors {
 			if floor.Dir == b.dir {
@@ -156,6 +176,9 @@ func (b *Tickets) Update(msg tea.Msg) tea.Cmd {
 			b.floor = m.floor
 			b.team = min(b.team, len(b.floor.Teams))
 		}
+		return nil
+	}
+	if b.saving {
 		return nil
 	}
 	if b.form != nil {
@@ -181,6 +204,8 @@ func (b *Tickets) Update(msg tea.Msg) tea.Cmd {
 			t.Team = b.floor.Teams[i-1].ID
 		}
 		t.Owner = b.form.value(5)
+		t.Result = b.form.value(7)
+		t.Verification = b.form.value(8)
 		old := map[string]bool{}
 		for _, c := range t.Checklist {
 			old[c.Text] = c.Done
@@ -193,7 +218,6 @@ func (b *Tickets) Update(msg tea.Msg) tea.Cmd {
 		}
 		b.lane = b.form.fields[2].pick
 		b.selected = 0
-		b.form = nil
 		return b.save(t)
 	}
 	if p, ok := msg.(tea.PasteMsg); ok && b.searching {
@@ -290,6 +314,10 @@ func (b *Tickets) Update(msg tea.Msg) tea.Cmd {
 		if local {
 			return func() tea.Msg { return TicketRunMsg{t} }
 		}
+	case "o":
+		if local && t.Session != "" && t.Backend != "" {
+			return func() tea.Msg { return TicketOpenMsg{t} }
+		}
 	case "/":
 		b.searching = true
 	case "r":
@@ -323,13 +351,23 @@ func (b *Tickets) View() string {
 	if b.detail {
 		t, ok := b.current()
 		if ok {
-			rows := []string{head, "", chrome.PanelHeader.Render(t.ID + "  ·  " + t.Priority + "  ·  " + t.Status), "", chrome.PanelHeader.Render(t.Title), "", t.Description, "", chrome.PanelDim.Render("Team: " + b.teamName(t.Team) + "    Owner: " + t.Owner), "", chrome.PanelHeader.Render("CHECKLIST")}
+			rows := []string{head, "", chrome.PanelHeader.Render(t.ID + "  ·  " + t.Priority + "  ·  " + t.Status), "", chrome.PanelHeader.Render(t.Title), "", t.Description, "", chrome.PanelDim.Render("Team: " + b.teamName(t.Team) + "    Owner: " + t.Owner)}
+			if t.Session != "" {
+				rows = append(rows, chrome.PanelDim.Render("Conversation: "+t.Backend+" / "+t.Session))
+			}
+			if t.Result != "" {
+				rows = append(rows, "Result: "+t.Result)
+			}
+			if t.Verification != "" {
+				rows = append(rows, "Recorded verification: "+t.Verification)
+			}
+			rows = append(rows, "", chrome.PanelHeader.Render("CHECKLIST"))
 			if strings.HasPrefix(t.ID, "agent:") {
 				rows = append(rows, "Live agent task · status is managed by the backend.")
 			} else if len(t.Checklist) == 0 {
 				rows = append(rows, "No checklist yet. Press e to add acceptance criteria.")
 			}
-			start := max(0, b.check-max(0, b.h-17))
+			start := max(0, b.check-max(0, b.h-len(rows)-4))
 			for i := start; i < len(t.Checklist); i++ {
 				c := t.Checklist[i]
 				mark := "[ ]"
@@ -342,7 +380,7 @@ func (b *Tickets) View() string {
 				}
 				rows = append(rows, prefix+mark+" "+c.Text)
 			}
-			rows = append(rows, "", chrome.PanelDim.Render("e edit   m move   p priority   ↑↓ checklist   x toggle   s send to chat   Esc back"))
+			rows = append(rows, "", chrome.PanelDim.Render("e edit   m move   p priority   ↑↓ checklist   x toggle   s prepare   o conversation   Esc back"))
 			return workFit(strings.Join(rows, "\n"), b.w, b.h)
 		}
 	}

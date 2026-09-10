@@ -33,6 +33,10 @@ The board stores local tickets independently of agent sessions. It has Backlog, 
 
 Use `n` to create, `e` to edit, `m` to advance status, `p` to change priority, `t` to filter by team, and `/` to search. `Enter` opens details; `x` toggles the selected checklist item. In ticket details, `s` stages the ticket in the chat composer for review before sending. Existing agent tasks appear as read-only rows whose status remains managed by the backend.
 
+In v0.7.0, staging a local ticket also links the active conversation when one is available. Press `o` on a linked ticket to return to that conversation; the ordinary busy-switch guards still apply. Ticket handoffs carry acceptance criteria and request a final report of changes, checks, and limitations. Preparing a handoff does not advance ticket status. Result summaries and verification notes can be recorded in the editor; they are user-authored evidence, not automatically verified test results. Updates carrying an older ticket revision are refused so an edit does not silently overwrite a newer one.
+
+The Android Inbox collects pending plan reviews, blocked tickets, and review tickets across project floors. It reports observed office execution state, including deferred permissions and questions (which must be resolved on desktop). It refreshes while foregrounded; it is not a background execution service or push notification system. The new execution metadata and ticket linking require matching v0.7.0+ gateway and office binaries.
+
 The file explorer loads directories as you expand them. `Enter` opens a directory or source preview, `a` attaches a selected file to chat, and `PgUp` / `PgDn` scrolls the preview. `/` filters the loaded tree; `r` refreshes it. Previews include syntax highlighting and line numbers, are capped at 256 KiB, and reject paths outside the project. On narrow panes, `Esc` returns from preview to the tree.
 
 ## Codex

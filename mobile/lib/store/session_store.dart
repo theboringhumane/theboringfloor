@@ -38,7 +38,15 @@ class SessionStore extends ChangeNotifier {
   /// Views use this to distinguish live arrivals from older-page merges,
   /// without coupling transcript rendering to pagination state.
   int get newestMessageGeneration => _newestMessageGeneration;
-  bool get isWorking => data?.busy?.busy == true;
+  bool get isWorking => _working(data);
+  bool _working(SessionData? value) =>
+      value?.busy?.busy ??
+      {
+        'working',
+        'planning',
+        'permission',
+        'question',
+      }.contains(value?.status.execution?.state);
   Future<void> load() async {
     _pollGeneration += 1;
     loading = true;
@@ -84,11 +92,11 @@ class SessionStore extends ChangeNotifier {
       if (switched) _hasPagedOlder = false;
       final currentIds = conversationMessages(
         current.messages,
-        working: current.busy?.busy == true,
+        working: _working(current),
       ).map((message) => message.id).toSet();
       final hasNewMessages = conversationMessages(
         mergedMessages,
-        working: latest.busy?.busy == true,
+        working: _working(latest),
       ).any((message) => !currentIds.contains(message.id));
       final hasMore = _hasPagedOlder ? current.hasMore : latest.hasMore;
       final changed =
@@ -240,7 +248,10 @@ class SessionStore extends ChangeNotifier {
       left.planApprovedLen == right.planApprovedLen &&
       left.chatCount == right.chatCount &&
       left.planPending == right.planPending &&
-      left.planRevision == right.planRevision;
+      left.planRevision == right.planRevision &&
+      left.execution?.state == right.execution?.state &&
+      left.execution?.summary == right.execution?.summary &&
+      left.execution?.planSafety == right.execution?.planSafety;
 
   bool _sameBusy(Busy? left, Busy? right) =>
       left?.busy == right?.busy &&

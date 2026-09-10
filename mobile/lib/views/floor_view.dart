@@ -10,18 +10,32 @@ import 'session_view.dart';
 import 'floor_files_view.dart';
 import 'floor_plan_view.dart';
 import 'ticket_editor.dart';
+import 'ticket_view.dart';
 
 class FloorView extends StatefulWidget {
-  const FloorView({super.key, required this.client, required this.project});
+  const FloorView({
+    super.key,
+    required this.client,
+    required this.project,
+    this.initialTab = 0,
+    this.initialTicket,
+  });
   final GatewayClient client;
   final Project project;
+  final int initialTab;
+  final String? initialTicket;
   @override
   State<FloorView> createState() => _FloorViewState();
 }
 
 class _FloorViewState extends State<FloorView>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  late final TabController _tabs = TabController(
+    length: 4,
+    vsync: this,
+    initialIndex: widget.initialTab.clamp(0, 3),
+  );
+  bool _openedInitial = false;
   FloorData? _floor;
   String? _error;
   String _team = '';
@@ -49,6 +63,17 @@ class _FloorViewState extends State<FloorView>
           _floor = floor;
           _error = null;
         });
+        if (!_openedInitial && widget.initialTicket != null) {
+          _openedInitial = true;
+          final ticket = floor.tickets
+              .where((t) => t.id == widget.initialTicket)
+              .firstOrNull;
+          if (ticket != null) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _ticketDetails(ticket);
+            });
+          }
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = _errorText(e));
@@ -59,14 +84,17 @@ class _FloorViewState extends State<FloorView>
     if (_polling || _busy) return true;
     _polling = true;
     try {
-      final plan = await widget.client.plan(widget.project.id);
+      final status = await widget.client.status(widget.project.id);
       if (mounted &&
-          plan.draft.isNotEmpty &&
-          plan.draft != plan.approved &&
-          _seenDraft != plan.draft) {
+          status.planPending &&
+          (status.execution == null || status.execution!.state == 'plan') &&
+          _seenDraft != status.planRevision) {
         _tabs.animateTo(3);
+        _seenDraft = status.planRevision;
       }
-      _seenDraft = plan.draft;
+      if (!status.planPending) {
+        _seenDraft = status.planRevision;
+      }
       return true;
     } catch (_) {
       return false;
@@ -362,6 +390,61 @@ class _FloorViewState extends State<FloorView>
     if (saved == true) await _load();
   }
 
+  Future<void> _ticketDetails(FloorTicket ticket) async {
+    final floor = _floor;
+    if (floor == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => TicketView(
+          client: widget.client,
+          project: widget.project,
+          ticket: ticket,
+          teams: floor.teams,
+          onConversation: (c) async {
+            final status = await widget.client
+                .status(widget.project.id)
+                .catchError(
+                  (_) => const Status(
+                    dir: '',
+                    backend: '',
+                    primaryId: '',
+                    planDraftLen: 0,
+                    planApprovedLen: 0,
+                    chatCount: 0,
+                  ),
+                );
+            if (!mounted) return;
+            if (status.primaryId == c.id && status.backend == c.backend) {
+              await _openLive();
+            } else {
+              await _history(c);
+            }
+          },
+          onPrepare: (t) async {
+            final status = await _ensureLive();
+            await widget.client.workspaceAction(widget.project.id, {
+              'action': 'ticket-link',
+              'ticketId': t.id,
+              'expectedUpdated': t.updated,
+              'backend': status.backend,
+              'session': status.primaryId,
+            });
+            if (!mounted) return;
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => SessionView(
+                  store: SessionStore(widget.client, widget.project),
+                  initialDraft: t.prompt,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final floor = _floor;
@@ -615,13 +698,13 @@ class _FloorViewState extends State<FloorView>
                           (t) => Card(
                             margin: const EdgeInsets.only(bottom: 10),
                             child: ListTile(
-                              onTap: () => _editTicket(t),
+                              onTap: () => _ticketDetails(t),
                               title: Text(t.title),
                               subtitle: Text(
-                                '${t.id} · ${t.priority}${t.owner.isEmpty ? '' : ' · ${t.owner}'}',
+                                '${t.priority}${t.owner.isEmpty ? '' : ' · ${t.owner}'}${t.checklist.isEmpty ? '' : '\n${t.completedChecks}/${t.checklist.length} criteria checked'}${t.session.isEmpty ? '' : '\nConversation linked'}',
                               ),
                               trailing: const Icon(
-                                Icons.edit_outlined,
+                                Icons.chevron_right,
                                 size: 18,
                               ),
                             ),

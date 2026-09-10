@@ -11,6 +11,11 @@ export const metadata: Metadata = {
 
 const sections: DocSection[] = [
   {
+    id: 'android',
+    title: 'Your attention inbox on Android',
+    body: 'The Android companion opens to an **Inbox** of floors needing attention: presented plans, blocked tickets, and tickets ready for review. Switch to **All floors** to see observed execution states. Refreshes run while the app is open; interrupted connections are shown explicitly. This is not a push notification service.\n\nOpen a ticket to review its acceptance criteria, result summary, recorded verification notes, and linked conversation. **Prepare in live chat** links the active backend/session and stages a prompt for you to review and send. It does not advance the ticket status. Verification notes are authored records, not automatically verified checks. On desktop, `s` prepares a ticket and `o` opens its linked conversation.\n\nUse **office and gateway v0.7.0+** for execution states and ticket handoffs. Tool permissions and assistant questions still require the desktop office. Download the signed APK from [GitHub Releases](https://github.com/theboringhumane/theboringfloor/releases/latest), then set your gateway URL and token in Settings. Connection changes take effect immediately.'
+  },
+  {
     "id": "layout",
     "title": "Three panes, one workspace",
     "shot": "transcript",

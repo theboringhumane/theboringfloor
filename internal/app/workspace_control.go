@@ -23,6 +23,17 @@ func (m *Model) applyWorkspaceAction(ev state.Event) tea.Cmd {
 		failure = "Invalid workspace action"
 	} else {
 		switch action.Action {
+		case "ticket-link":
+			if action.Backend != m.backendName() || action.Session != m.PrimarySessionID() || m.execFloor != nil {
+				failure = "The active conversation changed. Open the ticket again."
+				break
+			}
+			_, err := workspace.LinkTicket(m.sessDir, action.TicketID, action.Backend, action.Session, action.ExpectedUpdated)
+			if err != nil {
+				failure = err.Error()
+			} else {
+				cmd = m.tickets.Refresh()
+			}
 		case "team-add":
 			_, err := workspace.AddTeam(m.sessDir, action.Text)
 			if err != nil {

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -125,28 +124,22 @@ func (m *Model) launchFloor(req FloorLaunch) tea.Cmd {
 	return tea.Quit
 }
 func (m *Model) sendTicketToDraft(t workspace.Ticket) tea.Cmd {
-	prompt := fmt.Sprintf("Work on ticket %s: %s\n\n%s", t.ID, t.Title, t.Description)
-	if t.Team != "" {
-		prompt += "\nTeam: " + t.Team
-	}
-	if t.Owner != "" {
-		prompt += "\nOwner: " + t.Owner
-	}
-	for _, c := range t.Checklist {
-		mark := "[ ]"
-		if c.Done {
-			mark = "[x]"
-		}
-		prompt += "\n" + mark + " " + c.Text
-	}
+	prompt := workspace.TicketPrompt(t)
 	if !m.chat.StageDraft(prompt) {
 		m.notice("Your draft is still in the composer. Send or clear it before staging this ticket.")
 		m.tabs.SetActive(0)
 		return nil
 	}
+	if m.st.Mode != state.ModeDemo && t.ID != "" && !strings.HasPrefix(t.ID, "agent:") && m.PrimarySessionID() != "" {
+		if _, err := workspace.LinkTicket(m.sessDir, t.ID, m.backendName(), m.PrimarySessionID(), t.Updated); err != nil {
+			m.notice("Ticket staged, but conversation link was not saved: " + err.Error())
+			m.tabs.SetActive(0)
+			return nil
+		}
+	}
 	m.tabs.SetActive(0)
 	m.notice("Ticket staged in the composer. Review it, then Enter to send.")
-	return nil
+	return m.tickets.Refresh()
 }
 func (m *Model) workspaceInit() {
 	dir := m.sessDir

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"os"
@@ -88,7 +89,11 @@ func (g *gateway) workspaceRoute(w http.ResponseWriter, r *http.Request, id, suf
 		}
 		floor, err := workspace.PutTicket(p.Dir, b)
 		if err != nil {
-			writeError(w, 400, err.Error())
+			status := http.StatusBadRequest
+			if errors.Is(err, workspace.ErrTicketConflict) {
+				status = http.StatusConflict
+			}
+			writeError(w, status, err.Error())
 		} else {
 			writeJSON(w, 200, floor)
 		}

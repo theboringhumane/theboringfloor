@@ -26,6 +26,8 @@ Floors stay on the left, the office lives in the middle, and transcripts and too
 
 [Project floors and workspaces](docs/workspaces.md): teams, persistent tickets, a project file explorer, conversation archives, and a choice of OpenCode, Claude Code, or Codex for each new conversation.
 
+[Android companion](mobile/README.md): an attention inbox for plan reviews, blocked work, and tickets ready for review. Tickets link their conversations, acceptance criteria, result summaries, and recorded verification notes. Download the signed APK from [Releases](https://github.com/theboringhumane/theboringfloor/releases/latest).
+
 Under the wallpaper it is real: the manager is **[Oikonomos](https://github.com/theboringhumane/oikonomos)**, employees are **opencode sub-agents**, the board combines **local tickets and agentmemory actions**, mail is **agentmemory signals**.
 
 ## Install

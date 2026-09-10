@@ -30,17 +30,20 @@ type Check struct {
 	Done bool   `json:"done"`
 }
 type Ticket struct {
-	ID          string  `json:"id"`
-	Title       string  `json:"title"`
-	Description string  `json:"description,omitempty"`
-	Status      string  `json:"status"`
-	Priority    string  `json:"priority"`
-	Team        string  `json:"team,omitempty"`
-	Owner       string  `json:"owner,omitempty"`
-	Session     string  `json:"session,omitempty"`
-	Checklist   []Check `json:"checklist,omitempty"`
-	Created     int64   `json:"created"`
-	Updated     int64   `json:"updated"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title"`
+	Description  string  `json:"description,omitempty"`
+	Status       string  `json:"status"`
+	Priority     string  `json:"priority"`
+	Team         string  `json:"team,omitempty"`
+	Owner        string  `json:"owner,omitempty"`
+	Session      string  `json:"session,omitempty"`
+	Backend      string  `json:"backend,omitempty"`
+	Result       string  `json:"result,omitempty"`
+	Verification string  `json:"verification,omitempty"`
+	Checklist    []Check `json:"checklist,omitempty"`
+	Created      int64   `json:"created"`
+	Updated      int64   `json:"updated"`
 }
 type Floor struct {
 	Dir     string   `json:"dir"`
@@ -61,6 +64,7 @@ type Conversation struct {
 var Statuses = []string{"backlog", "in-progress", "blocked", "review", "done"}
 var Priorities = []string{"P0", "P1", "P2", "P3"}
 var mu sync.Mutex
+var ErrTicketConflict = errors.New("ticket changed in another window; reload it before saving")
 
 func Root() string {
 	home := config.HomeOverride()
@@ -249,6 +253,9 @@ func PutTicket(dir string, t Ticket) (Floor, error) {
 	if !contains(Statuses, t.Status) || !contains(Priorities, t.Priority) {
 		return Floor{}, errors.New("invalid status or priority")
 	}
+	if t.Backend != "" && (!config.ValidBackendName(t.Backend) || t.Session == "") {
+		return Floor{}, errors.New("a conversation link needs a valid backend and session")
+	}
 	return Update(dir, func(f *Floor) error {
 		if t.Team != "" {
 			found := false
@@ -259,14 +266,18 @@ func PutTicket(dir string, t Ticket) (Floor, error) {
 				return errors.New("unknown team")
 			}
 		}
-		t.Updated = time.Now().UnixMilli()
 		for i, old := range f.Tickets {
 			if old.ID == t.ID {
+				if t.Updated != 0 && t.Updated != old.Updated {
+					return ErrTicketConflict
+				}
+				t.Updated = max(time.Now().UnixMilli(), old.Updated+1)
 				t.Created = old.Created
 				f.Tickets[i] = t
 				return nil
 			}
 		}
+		t.Updated = time.Now().UnixMilli()
 		if t.ID == "" {
 			t.ID = ID("TKT")
 		}
@@ -274,6 +285,50 @@ func PutTicket(dir string, t Ticket) (Floor, error) {
 		f.Tickets = append(f.Tickets, t)
 		return nil
 	})
+}
+
+// LinkTicket changes only a ticket's conversation identity. Staging a handoff
+// never changes status or checks: preparing work is not completing work.
+func LinkTicket(dir, id, backend, session string, expected int64) (Floor, error) {
+	if !config.ValidBackendName(backend) || session == "" {
+		return Floor{}, errors.New("conversation is not ready")
+	}
+	return Update(dir, func(f *Floor) error {
+		for i := range f.Tickets {
+			t := &f.Tickets[i]
+			if t.ID != id {
+				continue
+			}
+			if t.Updated != expected {
+				return ErrTicketConflict
+			}
+			t.Backend, t.Session = backend, session
+			t.Updated = max(time.Now().UnixMilli(), t.Updated+1)
+			return nil
+		}
+		return errors.New("ticket not found")
+	})
+}
+
+func TicketPrompt(t Ticket) string {
+	prompt := fmt.Sprintf("Work on ticket %s: %s\n\n%s", t.ID, t.Title, t.Description)
+	if t.Team != "" {
+		prompt += "\nTeam: " + t.Team
+	}
+	if t.Owner != "" {
+		prompt += "\nOwner: " + t.Owner
+	}
+	if len(t.Checklist) > 0 {
+		prompt += "\n\nAcceptance criteria:"
+	}
+	for _, c := range t.Checklist {
+		mark := "[ ]"
+		if c.Done {
+			mark = "[x]"
+		}
+		prompt += "\n" + mark + " " + c.Text
+	}
+	return prompt + "\n\nPlan first if this is substantial work. In your final reply, explain what changed, which acceptance criteria you verified, the checks you ran and their results, and any remaining limitations. Do not claim checks passed unless you ran them."
 }
 func AddTeam(dir, name string) (Floor, error) {
 	name = strings.TrimSpace(name)

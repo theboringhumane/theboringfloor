@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:theboringfloor/views/attention_view.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -72,9 +75,23 @@ Map<String, Object?> _status() => {
 };
 
 void main() {
-  testWidgets('renders three destinations and swaps tab bodies', (
-    tester,
-  ) async {
+  test(
+    'bootstrap opens locally before contacting a configured gateway',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'gateway_base_url': 'http://unreachable.invalid',
+        'gateway_token': 'test',
+      });
+      final bootstrap = await AppBootstrap.load().timeout(
+        const Duration(seconds: 1),
+      );
+      expect(bootstrap.settings.settings.configured, isTrue);
+      expect(bootstrap.projects.loading, isFalse);
+      expect(bootstrap.projects.projects, isEmpty);
+      expect(bootstrap.projects.error, isNull);
+    },
+  );
+  testWidgets('renders four destinations and swaps tab bodies', (tester) async {
     await tester.pumpWidget(
       _shell(
         _gateway((request) async {
@@ -86,7 +103,10 @@ void main() {
       ),
     );
 
-    expect(find.byType(NavigationDestination), findsNWidgets(3));
+    expect(find.byType(NavigationDestination), findsNWidgets(4));
+    expect(find.text('Inbox'), findsOneWidget);
+    await tester.tap(find.text('Floors'));
+    await tester.pumpAndSettle();
     expect(find.text('Floors'), findsNWidgets(2));
     await tester.tap(find.text('Terminal'));
     await tester.pumpAndSettle();
@@ -247,4 +267,42 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'saving connection settings immediately replaces gateway clients',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final settings = SettingsStore(
+        const GatewaySettings(
+          baseUrl: 'http://before.invalid',
+          token: 'before',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AppShell(
+            settings: settings,
+            client: _gateway(
+              (_) async => _response(200, {'projects': <Object>[]}),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final before = tester
+          .widget<AttentionView>(find.byType(AttentionView))
+          .store;
+      await settings.save(const GatewaySettings(baseUrl: '', token: 'after'));
+      await tester.pumpAndSettle();
+      final after = tester
+          .widget<AttentionView>(find.byType(AttentionView))
+          .store;
+      expect(identical(before, after), isFalse);
+      expect(after.client.baseUrl, '');
+      expect(after.client.token, 'after');
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(find.text('Settings'), findsNWidgets(2));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"testing"
 
 	"github.com/theboringhumane/theboringfloor/internal/control"
@@ -290,8 +291,8 @@ func TestControlStatusProjectionAndUnknownQuery(t *testing.T) {
 
 	var status control.StatusResponse
 	controlQuery(t, m, control.QueryStatus, 0, &status)
-	want := control.StatusResponse{PlanRevision: "094c729c5555efa040e55820e4ce0482f0c088930a67558ab5b33983657e5c9d", Dir: "/project", Backend: "opencode", PlanDraftLen: 2, PlanApprovedLen: 2, ChatCount: 2}
-	if status != want {
+	want := control.StatusResponse{Execution: m.executionStatus(true), PlanPending: true, PlanRevision: "094c729c5555efa040e55820e4ce0482f0c088930a67558ab5b33983657e5c9d", Dir: "/project", Backend: "opencode", PlanDraftLen: 2, PlanApprovedLen: 2, ChatCount: 2}
+	if !reflect.DeepEqual(status, want) {
 		t.Fatalf("status response = %#v, want %#v", status, want)
 	}
 

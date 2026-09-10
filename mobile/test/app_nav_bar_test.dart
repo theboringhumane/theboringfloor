@@ -3,15 +3,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:theboringfloor/components/app_nav_bar.dart';
 
 void main() {
-  testWidgets('nav bar renders three destinations and switches tabs', (
-    t,
-  ) async {
+  testWidgets('nav bar renders four destinations and switches tabs', (t) async {
     var index = 0;
     await t.pumpWidget(
       MaterialApp(
         home: StatefulBuilder(
           builder: (context, setState) => Scaffold(
-            body: Text(['Space view', 'Terminal view', 'Settings view'][index]),
+            body: Text(
+              [
+                'Inbox view',
+                'Space view',
+                'Terminal view',
+                'Settings view',
+              ][index],
+            ),
             bottomNavigationBar: AppNavBar(
               index: index,
               onChanged: (v) => setState(() => index = v),

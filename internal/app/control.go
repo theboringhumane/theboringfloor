@@ -68,8 +68,10 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 			draft = m.plan.Value()
 		}
 		approved := m.approvedPlanText()
+		pending := strings.TrimSpace(draft) != "" && draft != approved
 		payload = marshalControlResponse(control.StatusResponse{
-			PlanPending:     strings.TrimSpace(draft) != "" && draft != approved && m.planPaneVisible(),
+			Execution:       m.executionStatus(pending),
+			PlanPending:     pending,
 			PlanRevision:    fmt.Sprintf("%x", sha256.Sum256([]byte(draft))),
 			Dir:             m.memoryDir(),
 			Backend:         m.backendName(),

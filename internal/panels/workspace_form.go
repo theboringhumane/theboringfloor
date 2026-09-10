@@ -138,7 +138,7 @@ func workBox(s string, w, h int) string {
 
 func IsWorkspaceResult(msg tea.Msg) bool {
 	switch msg.(type) {
-	case floorsLoaded, filesLoaded, filePreview, ticketsLoaded:
+	case floorsLoaded, filesLoaded, filePreview, ticketsLoaded, ticketSaved:
 		return true
 	}
 	return false

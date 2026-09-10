@@ -8,10 +8,16 @@ import '../store/projects_store.dart';
 import '../utils/typography.dart';
 
 class SpaceView extends StatefulWidget {
-  const SpaceView({super.key, required this.store, required this.onOpen});
+  const SpaceView({
+    super.key,
+    required this.store,
+    required this.onOpen,
+    this.active = true,
+  });
 
   final ProjectsStore store;
   final ValueChanged<Project> onOpen;
+  final bool active;
 
   @override
   State<SpaceView> createState() => _SpaceViewState();
@@ -28,7 +34,15 @@ class _SpaceViewState extends State<SpaceView> {
   void initState() {
     super.initState();
     widget.store.addListener(_changed);
-    widget.store.load();
+    if (widget.active) widget.store.load();
+  }
+
+  @override
+  void didUpdateWidget(covariant SpaceView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && !widget.store.loading) {
+      widget.store.load();
+    }
   }
 
   @override
@@ -179,6 +193,23 @@ class _SpaceViewState extends State<SpaceView> {
               ],
             ),
           ),
+          if (widget.store.error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Could not refresh floors. Check the gateway in Settings.',
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: widget.store.load,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: widget.store.loading
                 ? const Center(child: CircularProgressIndicator())

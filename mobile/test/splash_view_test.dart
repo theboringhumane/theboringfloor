@@ -47,7 +47,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(SplashView), findsNothing);
-    expect(find.byType(NavigationDestination), findsNWidgets(3));
+    expect(find.byType(NavigationDestination), findsNWidgets(4));
   });
 
   testWidgets('shows a failed bootstrap and retries successfully', (
@@ -77,7 +77,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(attempts, 2);
-    expect(find.byType(NavigationDestination), findsNWidgets(3));
+    expect(find.byType(NavigationDestination), findsNWidgets(4));
   });
 
   testWidgets('turns a slow bootstrap into a retryable timeout', (

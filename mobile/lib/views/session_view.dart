@@ -83,6 +83,7 @@ class _SessionViewState extends State<SessionView> {
     if (!_reviewingPlan &&
         !widget.store.readOnly &&
         status?.planPending == true &&
+        (status?.execution == null || status?.execution?.state == 'plan') &&
         status!.planRevision != _seenPlanRevision) {
       _seenPlanRevision = status.planRevision;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -392,8 +393,29 @@ class _SessionViewState extends State<SessionView> {
                     if (!store.readOnly)
                       Positioned(
                         left: 16,
+                        right: 16,
                         bottom: 92,
-                        child: WorkingChip(working: store.isWorking),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child:
+                              store.data?.status.execution?.action == 'desktop'
+                              ? Chip(
+                                  avatar: const Icon(
+                                    Icons.desktop_windows_outlined,
+                                    size: 18,
+                                  ),
+                                  label: Text(
+                                    store.data!.status.execution!.state ==
+                                            'permission'
+                                        ? 'Permission needed on desktop'
+                                        : store.data!.status.execution!.state ==
+                                              'question'
+                                        ? 'Answer needed on desktop'
+                                        : 'Office connection interrupted',
+                                  ),
+                                )
+                              : WorkingChip(working: store.isWorking),
+                        ),
                       ),
                     if (_hasNewerContent && !_atNewestEnd)
                       Positioned(

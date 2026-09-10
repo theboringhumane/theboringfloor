@@ -52,6 +52,27 @@ class FloorTicket {
   String get priority => json['priority'] as String? ?? 'P2';
   String get team => json['team'] as String? ?? '';
   String get owner => json['owner'] as String? ?? '';
+  String get session => json['session'] as String? ?? '';
+  String get backend => json['backend'] as String? ?? '';
+  String get result => json['result'] as String? ?? '';
+  String get verification => json['verification'] as String? ?? '';
+  int get updated => (json['updated'] as num?)?.toInt() ?? 0;
+  int get completedChecks => checklist.where((c) => c['done'] == true).length;
+  String get prompt {
+    final lines = [
+      'Work on ticket $id: $title',
+      '',
+      description,
+      if (team.isNotEmpty) 'Team: $team',
+      if (owner.isNotEmpty) 'Owner: $owner',
+      if (checklist.isNotEmpty) '\nAcceptance criteria:',
+      for (final check in checklist)
+        '${check['done'] == true ? '[x]' : '[ ]'} ${check['text']}',
+      '\nPlan first if this is substantial work. In your final reply, explain what changed, which acceptance criteria you verified, the checks you ran and their results, and any remaining limitations. Do not claim checks passed unless you ran them.',
+    ];
+    return lines.join('\n');
+  }
+
   List<Map<String, dynamic>> get checklist => (json['checklist'] as List? ?? [])
       .map((c) => Map<String, dynamic>.from(c as Map))
       .toList();

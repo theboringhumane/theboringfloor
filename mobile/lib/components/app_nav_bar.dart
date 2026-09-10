@@ -10,6 +10,11 @@ class AppNavBar extends StatelessWidget {
     onDestinationSelected: onChanged,
     destinations: const [
       NavigationDestination(
+        icon: Icon(Icons.inbox_outlined),
+        selectedIcon: Icon(Icons.inbox),
+        label: 'Inbox',
+      ),
+      NavigationDestination(
         icon: Icon(Icons.dashboard_outlined),
         selectedIcon: Icon(Icons.dashboard),
         label: 'Floors',

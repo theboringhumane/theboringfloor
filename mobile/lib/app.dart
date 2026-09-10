@@ -8,6 +8,8 @@ import 'components/app_nav_bar.dart';
 import 'models/project.dart';
 import 'models/session.dart';
 import 'store/projects_store.dart';
+import 'store/attention_store.dart';
+import 'views/attention_view.dart';
 import 'store/settings_store.dart';
 import 'store/terminal_store.dart';
 import 'theme.dart';
@@ -33,10 +35,8 @@ class AppBootstrap {
     if (!settings.settings.configured) {
       return AppBootstrap(settings: settings, projects: projects);
     }
-    await projects.load();
-    if (projects.error case final error?) {
-      throw error;
-    }
+    // Boot only reads local settings. Views load remote data after navigation
+    // is available, so even a gateway that never answers cannot trap startup.
     return AppBootstrap(settings: settings, projects: projects);
   }
 }
@@ -147,6 +147,7 @@ class _AppShellState extends State<AppShell> {
   late GatewayClient client;
   late ProjectsStore projects;
   late TerminalStore terminal;
+  late AttentionStore attention;
   final Completer<void> _disposed = Completer<void>();
   Timer? _pollTimer;
   Project? _pendingSession;
@@ -158,11 +159,26 @@ class _AppShellState extends State<AppShell> {
         widget.client ?? widget.projects?.client ?? widget.settings.client();
     projects = widget.projects ?? ProjectsStore(client);
     terminal = TerminalStore(client);
+    attention = AttentionStore(client);
+    widget.settings.addListener(_settingsChanged);
+  }
+
+  void _settingsChanged() {
+    if (!mounted) return;
+    attention.dispose();
+    setState(() {
+      client = widget.settings.client();
+      projects = ProjectsStore(client);
+      terminal = TerminalStore(client);
+      attention = AttentionStore(client);
+    });
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    attention.dispose();
+    widget.settings.removeListener(_settingsChanged);
     if (!_disposed.isCompleted) {
       _disposed.complete();
     }
@@ -172,9 +188,11 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) => Scaffold(
     body: IndexedStack(
+      key: ValueKey(client),
       index: index,
       children: [
-        SpaceView(store: projects, onOpen: _open),
+        AttentionView(store: attention, active: index == 0),
+        SpaceView(store: projects, onOpen: _open, active: index == 1),
         TerminalView(store: terminal, cwd: ''),
         SettingsView(store: widget.settings),
       ],

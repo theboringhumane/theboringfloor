@@ -6,7 +6,38 @@ import (
 
 	"github.com/theboringhumane/theboringfloor/internal/control"
 	"github.com/theboringhumane/theboringfloor/internal/state"
+	"github.com/theboringhumane/theboringfloor/internal/workspace"
 )
+
+func TestTicketLinkRejectsChangedConversation(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	dir := t.TempDir()
+	floor, err := workspace.PutTicket(dir, workspace.Ticket{Title: "Review invitations", Status: "backlog", Priority: "P1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ticket := floor.Tickets[0]
+	m := New(&pinBackend{primary: "current-session"}, nil)
+	m.sessDir = dir
+	for _, session := range []string{"old-session", "current-session"} {
+		registry := controlReplies.Load()
+		id, reply := registry.NewRequest()
+		raw, _ := json.Marshal(control.WorkspaceAction{Action: "ticket-link", TicketID: ticket.ID, Backend: m.backendName(), Session: session, ExpectedUpdated: ticket.Updated})
+		m.applyWorkspaceAction(state.Event{Kind: state.EvControlWorkspace, ControlReqID: id, ControlText: string(raw)})
+		var response struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		json.Unmarshal(<-reply, &response)
+		if (session == "current-session") != response.OK {
+			t.Fatalf("session %s: %+v", session, response)
+		}
+	}
+	floor, _ = workspace.Load(dir)
+	if floor.Tickets[0].Session != "current-session" || floor.Tickets[0].Status != "backlog" {
+		t.Fatal(floor.Tickets[0])
+	}
+}
 
 func TestMobilePlanRejectsStaleApproval(t *testing.T) {
 	m := New(&recBackend{}, nil)

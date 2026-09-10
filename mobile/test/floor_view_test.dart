@@ -32,6 +32,7 @@ class FloorClient extends GatewayClient {
   String active = 'old';
   String backend = 'opencode';
   FloorPlan currentPlan = const FloorPlan();
+  ExecutionStatus? execution;
   @override
   Future<FloorData> floor(String id) async => FloorData(
     name: 'Developer platform',
@@ -93,6 +94,7 @@ class FloorClient extends GatewayClient {
 
   @override
   Future<Status> status(String id) async => Status(
+    execution: execution,
     dir: project.dir,
     backend: backend,
     primaryId: active,
@@ -268,6 +270,30 @@ void main() {
       expect(find.textContaining('secret.log'), findsNothing);
       expect(find.text('I will inspect the files.'), findsNothing);
       await shot(tester, 'transcript');
+    },
+  );
+  testWidgets(
+    'floor presents a plan after work ends even when its revision is unchanged',
+    (tester) async {
+      final client = FloorClient()
+        ..execution = const ExecutionStatus(
+          state: 'working',
+          summary: 'Working',
+        )
+        ..currentPlan = const FloorPlan(
+          draft: '# Proposed work\n\n1. Verify the implementation.',
+        );
+      await pumpFloor(tester, client);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Plan before building'), findsNothing);
+      client.execution = const ExecutionStatus(
+        state: 'plan',
+        summary: 'Review plan',
+      );
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('Plan before building'), findsOneWidget);
     },
   );
   testWidgets('chat automatically presents a new plan and respects dismissal', (

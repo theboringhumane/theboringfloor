@@ -25,6 +25,10 @@ class _TicketEditorState extends State<TicketEditor> {
     text: widget.ticket?.description,
   );
   late final _owner = TextEditingController(text: widget.ticket?.owner);
+  late final _result = TextEditingController(text: widget.ticket?.result);
+  late final _verification = TextEditingController(
+    text: widget.ticket?.verification,
+  );
   final _check = TextEditingController();
   late String _status = widget.ticket?.status ?? 'backlog';
   late String _priority = widget.ticket?.priority ?? 'P2';
@@ -38,6 +42,8 @@ class _TicketEditorState extends State<TicketEditor> {
     _title.dispose();
     _description.dispose();
     _owner.dispose();
+    _result.dispose();
+    _verification.dispose();
     _check.dispose();
     super.dispose();
   }
@@ -57,6 +63,8 @@ class _TicketEditorState extends State<TicketEditor> {
         'title': _title.text.trim(),
         'description': _description.text.trim(),
         'owner': _owner.text.trim(),
+        'result': _result.text.trim(),
+        'verification': _verification.text.trim(),
         'status': _status,
         'priority': _priority,
         'team': _team,
@@ -205,6 +213,39 @@ class _TicketEditorState extends State<TicketEditor> {
               ),
             ],
           ),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _result,
+            enabled: !_saving,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'Result summary',
+              hintText: 'What changed? What remains?',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _verification,
+            enabled: !_saving,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'Verification notes',
+              hintText: 'Checks run, outcomes, and evidence to review',
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'These are recorded notes, not automatically verified test results.',
+          ),
+          if (_status == 'done' && _checks.any((c) => c['done'] != true))
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Some acceptance criteria are still unchecked. Review them before marking this ticket done.',
+              ),
+            ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 12),

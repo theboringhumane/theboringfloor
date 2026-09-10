@@ -1,6 +1,7 @@
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { WorkspaceTour } from '@/components/home/workspace-tour'
+import { MobileOffice } from '@/components/home/mobile-office'
 import { Hero } from '@/components/home/hero'
 import { StatsStrip } from '@/components/home/stats-strip'
 import { FeatureGrid } from '@/components/home/feature-grid'
@@ -23,6 +24,7 @@ export default function Page() {
         <main>
           <Hero />
           <WorkspaceTour />
+          <MobileOffice />
           <StatsStrip />
           <AgentsNeedAction />
           <FeatureGrid />

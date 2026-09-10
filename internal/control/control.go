@@ -131,14 +131,24 @@ type TranscriptActivity struct {
 
 // StatusResponse is the status endpoint response.
 type StatusResponse struct {
-	PlanPending     bool   `json:"planPending"`
-	PlanRevision    string `json:"planRevision,omitempty"`
-	Dir             string `json:"dir"`
-	Backend         string `json:"backend"`
-	PrimaryID       string `json:"primaryId"`
-	PlanDraftLen    int    `json:"planDraftLen"`
-	PlanApprovedLen int    `json:"planApprovedLen"`
-	ChatCount       int    `json:"chatCount"`
+	Execution       *ExecutionStatus `json:"execution,omitempty"`
+	PlanPending     bool             `json:"planPending"`
+	PlanRevision    string           `json:"planRevision,omitempty"`
+	Dir             string           `json:"dir"`
+	Backend         string           `json:"backend"`
+	PrimaryID       string           `json:"primaryId"`
+	PlanDraftLen    int              `json:"planDraftLen"`
+	PlanApprovedLen int              `json:"planApprovedLen"`
+	ChatCount       int              `json:"chatCount"`
+}
+
+// ExecutionStatus describes work that is observable in the office, independent
+// of which panel is selected. Ready does not claim that any ticket passed review.
+type ExecutionStatus struct {
+	State      string `json:"state"`
+	Summary    string `json:"summary"`
+	Action     string `json:"action,omitempty"`
+	PlanSafety string `json:"planSafety"`
 }
 
 // BusyResponse is the busy endpoint response.
@@ -391,15 +401,17 @@ func (r *Registry) Cancel(id string) {
 
 // WorkspaceAction is an explicit mobile action; Expected prevents stale plan approval.
 type WorkspaceAction struct {
-	Ticket   json.RawMessage `json:"ticket,omitempty"`
-	Action   string          `json:"action"`
-	Backend  string          `json:"backend,omitempty"`
-	Session  string          `json:"session,omitempty"`
-	Title    string          `json:"title,omitempty"`
-	Team     string          `json:"team,omitempty"`
-	Fresh    bool            `json:"fresh,omitempty"`
-	Text     string          `json:"text,omitempty"`
-	Expected string          `json:"expected,omitempty"`
+	TicketID        string          `json:"ticketId,omitempty"`
+	ExpectedUpdated int64           `json:"expectedUpdated,omitempty"`
+	Ticket          json.RawMessage `json:"ticket,omitempty"`
+	Action          string          `json:"action"`
+	Backend         string          `json:"backend,omitempty"`
+	Session         string          `json:"session,omitempty"`
+	Title           string          `json:"title,omitempty"`
+	Team            string          `json:"team,omitempty"`
+	Fresh           bool            `json:"fresh,omitempty"`
+	Text            string          `json:"text,omitempty"`
+	Expected        string          `json:"expected,omitempty"`
 }
 
 func (r *Registry) Pending(id string) bool {
