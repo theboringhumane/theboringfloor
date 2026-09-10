@@ -306,24 +306,6 @@
   border-inline: 1px solid var(--frame-border);
 }
 
-/* Terminal screenshots are captured from the dark TUI — on a light page they
-   read as dark islands, so in light mode we flip them (member's call: "the
-   terminal images we can try invert filter"). CSS clamps invert() to 100%, so
-   the member's invert(2) == invert(1). Plain invert(1) also flips hue — the
-   office's blue accent turns orange-ish — so we pair it with
-   hue-rotate(180deg): invert == hue-flip + luminance-flip, and the extra 180°
-   rotation restores the original accent hues while keeping the luminance
-   flip. Picked over plain invert(1) on real side-by-side screenshots.
-   Scoped off .dark so dark mode renders the captures byte-identical; the rule
-   rides the <html> theme class the anti-FOUC script in app/layout.tsx stamps
-   before first paint, so there is no flash. Applied to the terminal shots
-   (home + docs), the hero plasma canvas, and the demo video frame. The hero
-   plasma deliberately takes the CSS-filter route (a) rather than theme-swapped
-   shader uniforms (b): one rule covers every dark-captured surface uniformly
-   and the WebGL shader keeps a single code path. */
-html:not(.dark) .shot-img {
-  filter: invert(1) hue-rotate(180deg);
-}
 
 /* ============================================================
    Document primitives — the paper design contract.

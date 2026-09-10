@@ -55,8 +55,8 @@ export function AgentsNeedAction() {
         <div className="aspect-video w-full border-t border-rule bg-(--shot-frame)">
           <iframe
             className="shot-img h-full w-full"
-            src="https://www.youtube.com/embed/6SmqEydHsFQ?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1"
-            title="Agents need action demo"
+            src="https://www.youtube.com/embed/YNrL5NMUvsA?autoplay=1&mute=1&playsinline=1&rel=0&modestbranding=1"
+            title="Give every project its own floor."
             loading="lazy"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             referrerPolicy="strict-origin-when-cross-origin"
