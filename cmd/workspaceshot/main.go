@@ -37,6 +37,7 @@ func main() {
 	width := flag.Int("width", 150, "columns")
 	height := flag.Int("height", 42, "rows")
 	theme := flag.String("theme", "noir", "UI theme")
+	backend := flag.String("backend", "codex", "backend label for the simulated conversation")
 	flag.Parse()
 	scratch, err := os.MkdirTemp("", "floor-ui-proof-")
 	must(err)
@@ -71,7 +72,7 @@ func main() {
 		{ID: "a3", From: "boss", At: now - 2000, Text: "Verified the narrow layout. The explorer keeps the file list readable and opens the selected preview in the available space."},
 	}
 	sf := app.Snapshot(root, "thread-files", state.OfficeState{Chat: chat})
-	sf.Backend = "codex"
+	sf.Backend = *backend
 	sf.Title = "Project file explorer"
 	sf.Team = "frontend"
 	must(app.SaveSession(root, sf))
@@ -84,7 +85,7 @@ func main() {
 	}
 	office.SetTheme(*theme)
 	cfg := config.Default()
-	cfg.Backend.Name = "codex"
+	cfg.Backend.Name = *backend
 	cfg.UI.Sounds = "off"
 	cfg.UI.Notifications = "off"
 	m := app.New(&fixtureBackend{id: "thread-files"}, cfg)

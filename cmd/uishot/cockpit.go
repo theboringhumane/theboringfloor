@@ -12,6 +12,10 @@ import (
 // cockpitShot uses the real app renderer with an explicitly simulated
 // mission. It starts neither a backend nor the terminal PTY.
 func cockpitShot(theme string) string {
+	return cockpitDriver(theme).m.Frame()
+}
+
+func cockpitDriver(theme string) *focusDriver {
 	chrome.SetTheme(theme)
 	office.SetTheme(theme)
 	d := newFocusDriver()
@@ -52,5 +56,5 @@ func cockpitShot(theme string) string {
 	d.send(state.Event{Kind: state.EvStatus, Text: "Demo mission · awaiting command"})
 	d.m.Frame() // compute the floor plan before seating the simulated crew
 	d.pump(18)
-	return d.m.Frame()
+	return d
 }

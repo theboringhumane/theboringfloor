@@ -1,0 +1,184 @@
+[
+  {
+    "id": "cockpit",
+    "dark": true,
+    "background": "#09121f",
+    "foreground": "#dce9f5",
+    "colors": [
+      "#67e8f9",
+      "#75baff",
+      "#73f0b8",
+      "#bba2ff",
+      "#ff6b8a"
+    ]
+  },
+  {
+    "id": "noir",
+    "dark": true,
+    "background": "#161619",
+    "foreground": "#d5d8df",
+    "colors": [
+      "#dfbb73",
+      "#7dc8c3",
+      "#8dc891",
+      "#c397d8",
+      "#e06c75"
+    ]
+  },
+  {
+    "id": "paper",
+    "dark": false,
+    "background": "#f0f1f4",
+    "foreground": "#201f1e",
+    "colors": [
+      "#9a6700",
+      "#0891b2",
+      "#1a7f37",
+      "#a626a4",
+      "#d1242f"
+    ]
+  },
+  {
+    "id": "mono",
+    "dark": true,
+    "background": "#181818",
+    "foreground": "#e4e4e4",
+    "colors": [
+      "#e4e4e4",
+      "#bcbcbc",
+      "#c6c6c6",
+      "#a8a8a8",
+      "#d0d0d0"
+    ]
+  },
+  {
+    "id": "dracula",
+    "dark": true,
+    "background": "#1e1f29",
+    "foreground": "#f8f8f2",
+    "colors": [
+      "#f1fa8c",
+      "#8be9fd",
+      "#50fa7b",
+      "#bd93f9",
+      "#ff5555"
+    ]
+  },
+  {
+    "id": "solarized",
+    "dark": true,
+    "background": "#012a38",
+    "foreground": "#839496",
+    "colors": [
+      "#b58900",
+      "#2aa198",
+      "#859900",
+      "#6c71c4",
+      "#dc322f"
+    ]
+  },
+  {
+    "id": "tokyo-night",
+    "dark": true,
+    "background": "#1a1b26",
+    "foreground": "#c0caf5",
+    "colors": [
+      "#7aa2f7",
+      "#7dcfff",
+      "#9ece6a",
+      "#bb9af7",
+      "#f7768e"
+    ]
+  },
+  {
+    "id": "catppuccin-mocha",
+    "dark": true,
+    "background": "#1e1e2e",
+    "foreground": "#cdd6f4",
+    "colors": [
+      "#cba6f7",
+      "#94e2d5",
+      "#a6e3a1",
+      "#f5c2e7",
+      "#f38ba8"
+    ]
+  },
+  {
+    "id": "catppuccin-latte",
+    "dark": false,
+    "background": "#eff1f5",
+    "foreground": "#4c4f69",
+    "colors": [
+      "#8839ef",
+      "#179299",
+      "#40a02b",
+      "#ea76cb",
+      "#d20f39"
+    ]
+  },
+  {
+    "id": "nord",
+    "dark": true,
+    "background": "#2e3440",
+    "foreground": "#eceff4",
+    "colors": [
+      "#88c0d0",
+      "#8fbcbb",
+      "#a3be8c",
+      "#b48ead",
+      "#bf616a"
+    ]
+  },
+  {
+    "id": "gruvbox",
+    "dark": true,
+    "background": "#282828",
+    "foreground": "#ebdbb2",
+    "colors": [
+      "#fabd2f",
+      "#8ec07c",
+      "#b8bb26",
+      "#d3869b",
+      "#fb4934"
+    ]
+  },
+  {
+    "id": "one-dark",
+    "dark": true,
+    "background": "#282c34",
+    "foreground": "#abb2bf",
+    "colors": [
+      "#61afef",
+      "#56b6c2",
+      "#98c379",
+      "#c678dd",
+      "#e06c75"
+    ]
+  },
+  {
+    "id": "rose-pine",
+    "dark": true,
+    "background": "#191724",
+    "foreground": "#e0def4",
+    "colors": [
+      "#c4a7e7",
+      "#9ccfd8",
+      "#9ccfd8",
+      "#c4a7e7",
+      "#eb6f92"
+    ]
+  },
+  {
+    "id": "github-light",
+    "dark": false,
+    "background": "#ffffff",
+    "foreground": "#24292f",
+    "colors": [
+      "#0969da",
+      "#0598bc",
+      "#1a7f37",
+      "#8250df",
+      "#cf222e"
+    ]
+  }
+]

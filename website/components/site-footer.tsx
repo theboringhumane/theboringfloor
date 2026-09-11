@@ -9,6 +9,7 @@ const columns = [
     title: "The product",
     links: [
       ["The office", "/#workspaces"],
+      ["Themes", "/#themes"],
       ["Plan mode", "/docs/plan-mode"],
       ["Mobile companion", "/#mobile"],
       ["Get started", "/get-started"],

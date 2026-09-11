@@ -1,3 +1,4 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
@@ -31,7 +32,7 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
   return (
     <figure className="mt-10 m-0">
       <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
-        <img
+        <ProductScreenshot
           src={src}
           alt={alt}
           width={5086}
@@ -130,8 +131,8 @@ export default function QueueBoardMemoryPage() {
             </p>
             <Shot
               src="/shots/docs/board-sync.png"
-              alt="theboringfloor board tab: DOING rows flipping to DONE behind a worker return, with the dim board sync note"
-              caption="board — two stranded DOING rows flipping to DONE"
+              alt="The current project board with tickets, priorities, owners, and work moving through five columns"
+              caption="project board — illustrative tickets across the workflow"
             />
           </div>
         </section>

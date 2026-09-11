@@ -1,8 +1,10 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
 import { SiteFooter } from '@/components/site-footer'
 import { SectionTag } from '@/components/section-tag'
+import { ThemeShowcase } from '@/components/home/theme-showcase'
 
 export const metadata: Metadata = {
   title: 'Layouts, themes & power | theboringfloor',
@@ -12,7 +14,7 @@ export const metadata: Metadata = {
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
+    <code className="break-all rounded-[0.2rem] hairline bg-card px-1 py-0.5 font-mono text-[0.85em] text-foreground">
       {children}
     </code>
   )
@@ -31,7 +33,7 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
   return (
     <figure className="mt-10 m-0">
       <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
-        <img
+        <ProductScreenshot
           src={src}
           alt={alt}
           width={5086}
@@ -51,22 +53,6 @@ const powerRows = [
   { mode: 'saver', busy: '400ms', idle: '2s', drift: '—' },
 ]
 
-const themes = [
-  { name: 'cockpit', note: 'dark default, cyan instruments' },
-  { name: 'noir', note: 'dim room, accent ember' },
-  { name: 'paper', note: 'light, for daylight desks' },
-  { name: 'mono', note: 'greys only, no accent' },
-  { name: 'dracula', note: 'the classic purple' },
-  { name: 'solarized', note: 'the measured palette' },
-  { name: 'tokyo-night', note: 'blue neon' },
-  { name: 'catppuccin-mocha', note: 'dark pastel' },
-  { name: 'catppuccin-latte', note: 'light pastel' },
-  { name: 'nord', note: 'arctic blue' },
-  { name: 'gruvbox', note: 'warm retro' },
-  { name: 'one-dark', note: 'balanced charcoal' },
-  { name: 'rose-pine', note: 'muted rose and purple' },
-  { name: 'github-light', note: 'crisp daylight' },
-]
 
 export default function LayoutThemesPowerPage() {
   return (
@@ -150,17 +136,10 @@ export default function LayoutThemesPowerPage() {
               pass it. <Code>enter</Code> commits what you land on. You never switch a
               theme blind.
             </p>
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              {themes.map((t) => (
-                <Chip key={t.name} combo={t.name} action={t.note} />
-              ))}
+            <div className="mt-10">
+              <ThemeShowcase documentation />
             </div>
-            <Shot
-              src="/shots/docs/cockpit-themes.png"
-              alt="The cockpit layout in all fourteen built-in palettes"
-              caption="one cockpit, fourteen palettes — simulated demo mission"
-            />
-            <h3 className="mt-12 text-2xl font-semibold">Import a VS Code theme</h3>
+            <h3 id="import-theme" className="mt-12 scroll-mt-24 text-2xl font-semibold">Import a VS Code theme</h3>
             <p className="mt-4 max-w-2xl leading-relaxed text-muted-foreground">
               Use <Code>/theme import &quot;/path/to/My Theme.json&quot;</Code> or launch with{' '}
               <Code>--import-theme ./my-theme.jsonc</Code>. The imported palette appears

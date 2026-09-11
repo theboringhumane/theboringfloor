@@ -1,3 +1,4 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
@@ -22,7 +23,7 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
   return (
     <figure className="mt-10 m-0">
       <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
-        <img
+        <ProductScreenshot
           src={src}
           alt={alt}
           width={5086}

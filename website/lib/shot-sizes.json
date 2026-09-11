@@ -1,0 +1,178 @@
+{
+  "/shots/themes/mono.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/cockpit.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/paper.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/noir.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/solarized.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/tokyo-night.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/catppuccin-mocha.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/dracula.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/catppuccin-latte.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/nord.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/one-dark.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/gruvbox.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/github-light.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/themes/rose-pine.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/ticket.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/board.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/files.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/floors.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/expanded-transcript.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/transcript.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/new-conversation.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/workspaces/plan.webp": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/backend-claude.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/board-sync.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/layout-compact.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/layout-normal.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/plan-gated.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/layout-wide.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/thread-focus.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/plan-presented.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/stop-unwind.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/slash-popover.png": {
+    "width": 1920,
+    "height": 1329
+  },
+  "/shots/docs/work-threads.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/chat-thinking.png": {
+    "width": 1920,
+    "height": 1208
+  },
+  "/shots/docs/office-overview.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/first-run-chat.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/concierge.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/permission-modal.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/batch-dispatch.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/question-modal.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/terminal-tab.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/theme-dracula.png": {
+    "width": 1920,
+    "height": 1198
+  },
+  "/shots/docs/git-tab.png": {
+    "width": 1920,
+    "height": 1217
+  },
+  "/shots/docs/model-picker.png": {
+    "width": 1920,
+    "height": 1198
+  }
+}

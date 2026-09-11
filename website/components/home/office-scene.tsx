@@ -3,8 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Pause, Play, RotateCw } from "lucide-react";
 import { BlueprintArt } from "./blueprint-art";
+import { OfficeAmbience } from "@/components/office-ambience";
 
 export function OfficeScene() {
+  const scene = useRef<HTMLDivElement>(null);
   const host = useRef<HTMLDivElement>(null);
   const controls = useRef<{
     paused: boolean;
@@ -36,7 +38,7 @@ export function OfficeScene() {
     };
   }, []);
   return (
-    <div className="office-scene">
+    <div ref={scene} className="office-scene">
       <div className="scene-topline">
         <span>
           <i /> THE FLOOR IS ALIVE
@@ -57,6 +59,7 @@ export function OfficeScene() {
       <div className="scene-bottomline">
         <span>YOUR IDEAS. THEIR NEXT SHIFT.</span>
         <div className="scene-controls">
+          <OfficeAmbience scene={scene} />
           {ready && (
             <>
               <button

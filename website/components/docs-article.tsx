@@ -1,3 +1,4 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -103,7 +104,7 @@ export function DocsArticle({
                     aria-label={`Open full-size image: ${s.title}`}
                     className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
                   >
-                    <img
+                    <ProductScreenshot
                       src={`/shots/workspaces/${s.shot}.webp`}
                       alt={s.alt || s.title}
                       width={1548}

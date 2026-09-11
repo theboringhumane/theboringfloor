@@ -66,6 +66,18 @@ In-repo architecture: [`../docs/architecture.md`](../docs/architecture.md). Hub:
 
 The homepage workspace tour uses actual app renders with illustrative fixtures from `cmd/workspaceshot`. Optimized lossless assets live in `public/shots/workspaces/`. `/docs/workspaces` covers floors, teams, tickets, files, backends, and storage; `/docs/plan-mode` documents automatic routing and the backend-specific planning limits.
 
+The tour uses GitHub Light with a matching light window frame. The palette gallery on the homepage and theme guide shows every built-in theme, with lazy-loaded thumbnails, full-size previews, keyboard selection, and copyable `/theme` commands. Palette colors come directly from `cmd/uishot --theme-catalog`, rather than a separate website color registry.
+
+To refresh the screenshot assets, install [freeze v0.2.2](https://github.com/charmbracelet/freeze) and the website dependencies, then run:
+
+```bash
+node scripts/product-shots.mjs           # themes, workspaces, and documentation
+node scripts/product-shots.mjs --gallery # themes and GitHub Light workspaces
+node scripts/product-shots.mjs --docs    # documentation only
+```
+
+The script compiles the Go fixture tools once, uses temporary app/config homes, renders ANSI through Freeze to SVG, and rasterizes optimized images with Sharp. It records intrinsic dimensions in `lib/shot-sizes.json`; `ProductScreenshot` uses them to reserve space before loading. Theme previews are rendered on a consistent canvas. `scripts/docs-shots.sh` remains a compatibility entry point. All captures are simulated UI examples; they do not make model calls. The documentation renderer uses the current command message flow independently of old integration proofs that assert previous layout geometry.
+
 Validate with `node_modules/.bin/tsc --noEmit` and `bun run build`. The production build also checks TypeScript. Preview the exported `out/` directory with a local static server.
 
 ## Cobalt design system
@@ -73,6 +85,8 @@ Validate with `node_modules/.bin/tsc --noEmit` and `bun run build`. The producti
 The marketing site uses an editorial grid, warm off-white surfaces, and cobalt blue. The shared palette is in `app/globals.css`; responsive layouts and component styles are in `app/blueprint.css`. `PageCover`, `SiteHeader`, and `SiteFooter` keep the content routes consistent.
 
 All geometric illustrations are original SVGs in `components/home/blueprint-art.tsx`. The homepage office is an original Three.js scene loaded separately from the initial page, with an SVG fallback when WebGL is unavailable. Stationary geometry is merged by material. Rendering is capped at 30 fps, stops offscreen or in background tabs, and respects reduced motion. The user can pause or rotate the scene. GSAP handles entrance and scroll motion; content remains readable without animation.
+
+The hero and `/sounds` offer an optional office soundscape: quiet ventilation, typing, printer movement, and a coffee machine. `lib/office-audio.ts` synthesizes it locally with Web Audio. Audio starts only after a click, has a low default level and a volume control, fades out when the scene leaves view or the tab is hidden, and disposes its timers and audio graph on navigation. The seven original downloadable notification chimes remain on `/sounds`, now linked in the main navigation.
 
 The product explorer uses real application captures with illustrative project data. Every view links to its corresponding guide and full-size screenshot. The journal supports search and category filtering. Install commands support macOS, Linux, and Windows, with clipboard feedback.
 

@@ -14,6 +14,11 @@ const products = [
     href: "/#workspaces",
   },
   {
+    name: "Themes",
+    detail: "Fourteen palettes. Find your kind of atmosphere.",
+    href: "/#themes",
+  },
+  {
     name: "Plan mode",
     detail: "Agree on the plan. Then put it in motion.",
     href: "/docs/plan-mode",
@@ -33,6 +38,7 @@ const navigation = [
   ["/vision", "Why boringfloor"],
   ["/docs", "Developers"],
   ["/blog", "Journal"],
+  ["/sounds", "Sounds"],
   ["/changelog", "Changelog"],
 ];
 

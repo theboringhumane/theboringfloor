@@ -1,3 +1,4 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import { ScrollReveal } from '@/components/scroll-reveal'
 import { Beat, Cue, Sheet, Stamp } from '@/components/paper'
 
@@ -41,7 +42,7 @@ export function PlanThenBuild() {
             <div className="mono-label border-b border-rule px-4 py-2.5">
               plan.md — plan mode
             </div>
-            <img
+            <ProductScreenshot
               src="/shots/workspaces/plan.webp"
               alt="theboringfloor plan mode: project floors, a markdown plan editor, and the conversation"
               width={1548}

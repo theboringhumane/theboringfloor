@@ -1,5 +1,6 @@
 'use client'
 
+import { ProductScreenshot } from "@/components/product-screenshot";
 import { useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
@@ -60,7 +61,7 @@ export function WorkspaceTour() {
               <p className="text-sm leading-relaxed text-ink-soft">{view.description}</p>
             </div>
             <a href={`/shots/workspaces/${view.id}.webp`} target="_blank" rel="noreferrer" className="block bg-panel" aria-label={`Open full-size image: ${view.label}`}>
-              <img src={`/shots/workspaces/${view.id}.webp`} width={1548} height={1014} alt={view.alt} loading="lazy" className="shot-img block h-auto w-full" />
+              <ProductScreenshot src={`/shots/workspaces/${view.id}.webp`} width={1548} height={1014} alt={view.alt} loading="lazy" className="shot-img block h-auto w-full" />
             </a>
             <div className="flex flex-wrap justify-between gap-2 border-t border-rule px-5 py-3"><span className="mono-label">Fig. 1.1 — actual app UI, illustrative data</span><Cue>click the image to inspect</Cue></div>
           </div>)}

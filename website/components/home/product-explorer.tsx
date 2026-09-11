@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductScreenshot } from "@/components/product-screenshot";
 import { useId, useState } from "react";
 import Link from "next/link";
 import {
@@ -110,7 +111,7 @@ export function ProductExplorer() {
               <i />
               <i />
             </span>
-            <span>theboringfloor — workspace</span>
+            <span>theboringfloor — GitHub Light</span>
             <a
               href={`/shots/workspaces/${view.shot}.webp`}
               target="_blank"
@@ -120,7 +121,7 @@ export function ProductExplorer() {
               View full size ↗
             </a>
           </div>
-          <img
+          <ProductScreenshot
             key={view.shot}
             src={`/shots/workspaces/${view.shot}.webp`}
             alt={view.heading + " Actual theboringfloor terminal interface."}

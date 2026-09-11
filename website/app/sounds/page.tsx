@@ -5,19 +5,20 @@ import { SiteFooter } from "@/components/site-footer";
 import { PageCover } from "@/components/page-cover";
 import { Chapter, Cue, Stamp } from "@/components/paper";
 import { SoundCard, type SoundSpec } from "@/components/sounds/sound-card";
+import { OfficeAmbience } from "@/components/office-ambience";
 import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Sounds",
   description:
-    "Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.",
+    "A quiet office soundscape and seven original chimes. Listen to room ambience, preview every notification sound, and explore how they work.",
   alternates: {
     canonical: "/sounds",
   },
   openGraph: {
     title: "Sounds · theboringfloor",
     description:
-      "Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.",
+      "A quiet office soundscape and seven original chimes. Listen to room ambience, preview every notification sound, and explore how they work.",
     url: `${SITE_URL}/sounds`,
     type: "website",
   },
@@ -88,6 +89,18 @@ export default function SoundsPage() {
           />
 
           {/* I — the library of specimens */}
+          <section className="soundscape-section" aria-labelledby="soundscape-title">
+            <div>
+              <span className="eyebrow">A LITTLE COMPANY WHILE YOU WORK</span>
+              <h2 id="soundscape-title">Settle into the office.</h2>
+              <p>Soft room tone. A few keys tapping. The printer waking up and coffee on its way. The same quiet atmosphere as the office on our homepage.</p>
+            </div>
+            <div className="soundscape-player">
+              <div className="soundscape-bars" aria-hidden="true">{Array.from({ length: 28 }, (_, i) => <i key={i} style={{ height: `${12 + ((i * 17 + i * i) % 45)}px` }} />)}</div>
+              <OfficeAmbience standalone />
+              <p>Start the sound when you’re ready.<br />It fades out when you leave this section.</p>
+            </div>
+          </section>
           <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
             <Chapter numeral="I" title="Hear the library">
               <h3 className="display-lg mt-8 max-w-2xl text-balance text-ink">

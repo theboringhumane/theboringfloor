@@ -16,6 +16,7 @@ import { HomeMotion } from "@/components/home/home-motion";
 import { OfficeScene } from "@/components/home/office-scene";
 import { BlueprintArt } from "@/components/home/blueprint-art";
 import { ProductExplorer } from "@/components/home/product-explorer";
+import { ThemeShowcase } from "@/components/home/theme-showcase";
 import { FeaturedNews } from "@/components/home/featured-news";
 import { InstallCommand } from "@/components/install-command";
 import { getAllPosts, formatDate } from "@/lib/blog";
@@ -221,9 +222,23 @@ export default function Page() {
             <ProductExplorer />
           </section>
 
+          <section id="themes" className="themes-section section-pad" aria-labelledby="themes-title">
+            <div className="section-kicker">
+              <span className="eyebrow">SAME OFFICE. YOUR KIND OF ATMOSPHERE.</span>
+              <span className="eyebrow">03 — THE THEMES</span>
+            </div>
+            <div className="section-heading-row" data-reveal>
+              <h2 className="section-title" id="themes-title">
+                Make yourself<br /><span className="blue-text">right at home.</span>
+              </h2>
+              <p className="section-lede">From first-light ideas to late-night breakthroughs. Find your favorite among 14 built-in palettes. Every corner of your office follows along.</p>
+            </div>
+            <ThemeShowcase />
+          </section>
+
           <section className="workflow-section" id="workflow">
             <div className="workflow-copy section-pad">
-              <span className="eyebrow">03 — A BETTER WAY TOGETHER</span>
+              <span className="eyebrow">04 — A BETTER WAY TOGETHER</span>
               <h2 className="section-title" data-reveal>
                 You set the direction.
                 <br />
@@ -329,7 +344,7 @@ export default function Page() {
             </div>
             <div className="mobile-copy">
               <span className="eyebrow">
-                04 — OUT OF OFFICE, STILL IN THE LOOP
+                05 — OUT OF OFFICE, STILL IN THE LOOP
               </span>
               <h2 className="section-title" data-reveal>
                 Big work.
@@ -419,7 +434,7 @@ export default function Page() {
           <section className="journal-section section-pad">
             <div className="section-kicker">
               <span className="eyebrow">NOTES FROM A WORK IN PROGRESS</span>
-              <span className="eyebrow">05 — THE JOURNAL</span>
+              <span className="eyebrow">06 — THE JOURNAL</span>
             </div>
             <div className="section-heading-row" data-reveal>
               <h2 className="section-title">Around the office.</h2>

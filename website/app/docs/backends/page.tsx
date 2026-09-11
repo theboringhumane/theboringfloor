@@ -1,3 +1,4 @@
+import { ProductScreenshot } from "@/components/product-screenshot";
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { SiteHeader } from '@/components/site-header'
@@ -25,7 +26,7 @@ function Shot({ src, alt, caption }: { src: string; alt: string; caption: string
   return (
     <figure className="m-0">
       <div className="doc-brackets hairline bg-paper-2 p-2 md:p-3">
-        <img
+        <ProductScreenshot
           src={src}
           alt={alt}
           width={5086}
@@ -131,8 +132,8 @@ export default function BackendsPage() {
               />
               <Shot
                 src="/shots/docs/backend-claude.png"
-                alt="theboringfloor on the claudecode backend: claude CLI child streaming a boss reply"
-                caption="claudecode — stream-json child"
+                alt="Current cockpit with a Claude Code conversation and a project file explorer plan"
+                caption="claudecode — illustrative project and plan"
               />
             </div>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
