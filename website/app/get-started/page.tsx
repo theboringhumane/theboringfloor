@@ -1,159 +1,183 @@
-import Link from 'next/link'
-import type { Metadata } from 'next'
-import { SiteHeader } from '@/components/site-header'
-import { SiteFooter } from '@/components/site-footer'
-import { Beat, Cue, Stamp } from '@/components/paper'
-
+import Link from "next/link";
+import type { Metadata } from "next";
+import { ArrowUpRight, Check, Terminal } from "lucide-react";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { PageCover } from "@/components/page-cover";
+import { InstallCommand } from "@/components/install-command";
+import { GITHUB_REPO } from "@/lib/site";
 export const metadata: Metadata = {
-  title: 'Get Started | theboringfloor',
-  description: 'Install theboringfloor, tour the office in demo mode, and connect your coding agents in minutes.',
-}
-
-/**
- * A mono specimen block. Lines starting with `#` print as faint comments; every
- * other line is a command and is reproduced verbatim — do not reformat, wrap or
- * "tidy" these strings.
- */
-function Specimen({ lines }: { lines: string[] }) {
-  return (
-    <div className="doc-brackets hairline overflow-x-auto bg-paper-2 p-5 font-mono text-xs leading-relaxed md:p-6">
-      {lines.map((line, i) =>
-        line.startsWith('#') ? (
-          <p key={line} className={i === 0 ? 'text-ink-faint' : 'mt-3 text-ink-faint'}>
-            {line}
-          </p>
-        ) : (
-          <p key={line} className="text-ink">
-            {line}
-          </p>
-        ),
-      )}
-    </div>
-  )
-}
-
-const installLines = ['# install the latest binary', 'curl -fsSL https://boringfloor.com/install.sh | sh']
-
-const runLines = [
-  '# tour the office',
-  'theboringfloor --demo',
-  '# start a live office (opencode is the default transport)',
-  'theboringfloor',
-  '# same office, on your Claude Code CLI',
-  'theboringfloor --backend claudecode',
-  '# or use your Codex CLI login',
-  'codex login',
-  'theboringfloor --backend codex',
-  '# or attach to an existing opencode server',
-  'theboringfloor --server http://127.0.0.1:4096',
-]
-
-const resumeLines = ['# inspect the defaults', 'theboringfloor --print-default-config']
-
+  title: "Get started",
+  description:
+    "Install theboringfloor on macOS, Linux, or Windows. Tour your new terminal office and connect OpenCode, Claude Code, or Codex.",
+  alternates: { canonical: "/get-started" },
+};
+const backends = [
+  {
+    name: "OpenCode",
+    note: "The default. Your office starts OpenCode for you.",
+    command: "theboringfloor",
+    link: "https://opencode.ai",
+  },
+  {
+    name: "Claude Code",
+    note: "Use your installed Claude CLI and existing account.",
+    command: "theboringfloor --backend claudecode",
+    link: "https://code.claude.com/docs/en/setup",
+  },
+  {
+    name: "Codex",
+    note: "Sign in to the Codex CLI, then bring it to the floor.",
+    command: "codex login\ntheboringfloor --backend codex",
+    link: "https://developers.openai.com/codex/cli",
+  },
+];
 export default function GetStartedPage() {
   return (
-    <div className="paper-ground min-h-svh">
-      <div className="doc-frame">
-        <SiteHeader framed />
-        <main>
-          {/* Masthead — the cover line of the install sheet. */}
-          <section className="relative border-b border-rule px-6 py-16 md:px-10 md:py-20 lg:px-14">
-
-            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
-              <span className="mono-label text-ink">00</span>
-              <span className="mono-label">Get started</span>
-              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
-              <span className="mono-label hidden sm:inline">macOS · Linux · Windows</span>
-            </div>
-
-            <h1 className="display-xl mt-8 max-w-[16ch] text-balance text-ink">
-              Open the office in minutes
-            </h1>
-
-            <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-ink-soft">
-              Install the native Go CLI, take a tour in demo mode, then run a live office with a
-              real boss and working sub-agents — on OpenCode, Claude Code, or Codex.
+    <div className="blue-site">
+      <SiteHeader framed />
+      <main id="main-content">
+        <PageCover
+          eyebrow="WELCOME ABOARD / GET STARTED"
+          title={
+            <>
+              Your next big thing
+              <br />
+              starts <span className="blue-text">right here.</span>
+            </>
+          }
+          description="A few minutes, one terminal, and a whole new team. Let’s get your office up and running."
+          art="floor"
+        >
+          <a href="#install" className="button-primary">
+            Let’s clock in <ArrowUpRight size={18} />
+          </a>
+          <Link href="/docs/getting-started" className="text-link">
+            The full setup guide <ArrowUpRight size={17} />
+          </Link>
+        </PageCover>
+        <section id="install" className="setup-step section-pad">
+          <div className="setup-step-copy">
+            <span className="eyebrow">01 / MAKE YOURSELF AT HOME</span>
+            <h2 className="section-title">
+              Open a terminal.
+              <br />
+              Open an office.
+            </h2>
+            <p>
+              The installer adds the native application and sets up agentmemory
+              as a reboot-safe service.
             </p>
-
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href="/docs"
-                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
-              >
-                <Stamp className="transition-colors hover:border-ink hover:text-ink">
-                  Read the docs
-                </Stamp>
-              </Link>
-              <Link
-                href="/vision"
-                className="focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue"
-              >
-                <Stamp className="transition-colors hover:border-ink hover:text-ink">
-                  Read our vision
-                </Stamp>
-              </Link>
-            </div>
-          </section>
-
-          {/* The three numbered steps, each with its specimen. */}
-          <section className="relative border-b border-rule px-6 py-14 md:px-10 md:py-16 lg:px-14">
-
-            <div className="flex flex-col gap-14">
-              <Beat index="01" label="Install the binary">
-                <div className="grid gap-6 md:grid-cols-2 md:items-start">
-                  <p className="max-w-prose text-sm leading-relaxed text-ink-soft">
-                    The installer places a native binary on your PATH and wires agentmemory as a
-                    reboot-safe service.
-                  </p>
-                  <Specimen lines={installLines} />
-                </div>
-              </Beat>
-
-              <Beat index="02" label="Run the office">
-                <div className="grid gap-6 md:grid-cols-2 md:items-start">
-                  <p className="max-w-prose text-sm leading-relaxed text-ink-soft">
-                    Live mode starts <span className="font-mono text-ink">opencode serve</span> by
-                    default — or one <span className="font-mono text-ink">claude</span> CLI process
-                    per session with{' '}
-                    <span className="font-mono text-ink">--backend claudecode</span> — and opens the
-                    boss chat.
-                  </p>
-                  <Specimen lines={runLines} />
-                </div>
-              </Beat>
-
-              <Beat index="03" label="Resume the shift">
-                <div className="grid gap-6 md:grid-cols-2 md:items-start">
-                  <p className="max-w-prose text-sm leading-relaxed text-ink-soft">
-                    Ctrl+E opens project floors; Ctrl+N starts a conversation with a backend and
-                    team. Your last chat returns automatically. Use{' '}
-                    <span className="font-mono text-ink">--session</span> to choose another.
-                  </p>
-                  <Specimen lines={resumeLines} />
-                </div>
-              </Beat>
-            </div>
-          </section>
-
-          {/* Marginalia — where the config lives. */}
-          <section className="relative border-b border-rule px-6 py-12 md:px-10 lg:px-14">
-            <div className="flex items-center gap-3">
-              <span className="mono-label text-ink">Config</span>
-              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
-            </div>
-            <p className="mt-6 max-w-2xl font-mono text-xs leading-relaxed text-ink-soft">
-              Config lives at <span className="text-ink">~/.theboringfloor/configs/brain.json</span>.
-              Pin the default transport with{' '}
-              <span className="text-ink">{`"backend": { "name": "claudecode" }`}</span> — opencode
-              stays the default otherwise; <span className="text-ink">/backend</span> swaps mid-flight
-              and persists. Inspect the defaults with{' '}
-              <span className="text-ink">theboringfloor --print-default-config</span>.
+            <ul className="check-list">
+              <li>
+                <Check size={16} /> macOS, Linux, and Windows
+              </li>
+              <li>
+                <Check size={16} /> Native Go binary
+              </li>
+              <li>
+                <Check size={16} /> Free and MIT licensed
+              </li>
+            </ul>
+          </div>
+          <div className="setup-command">
+            <InstallCommand />
+            <a
+              href={`${GITHUB_REPO}/releases/latest`}
+              target="_blank"
+              rel="noreferrer"
+              className="text-link"
+            >
+              Prefer a manual download? <ArrowUpRight size={15} />
+            </a>
+            <p>
+              On Windows, open a new PowerShell window after installation so the
+              new PATH takes effect.
             </p>
-            <Cue className="mt-6 block">one file, no wizard</Cue>
-          </section>
-        </main>
-        <SiteFooter />
-      </div>
+          </div>
+        </section>
+        <section className="setup-step section-pad">
+          <div className="setup-step-copy">
+            <span className="eyebrow">02 / TAKE A LOOK AROUND</span>
+            <h2 className="section-title">
+              Meet the office.
+              <br />
+              No keys needed.
+            </h2>
+            <p>
+              Try demo mode first. Walk the floor, explore the panels, and get a
+              feel for the workspace before connecting a coding backend.
+            </p>
+          </div>
+          <div className="demo-command">
+            <Terminal size={26} />
+            <span className="eyebrow">YOUR FIRST LOOK</span>
+            <code>theboringfloor --demo</code>
+            <span>Demo mode is a tour. Live agents come next.</span>
+          </div>
+        </section>
+        <section className="setup-backends section-pad">
+          <div className="section-kicker">
+            <span className="eyebrow">
+              03 / BRING YOUR FAVORITE INTELLIGENCE
+            </span>
+          </div>
+          <div className="section-heading-row">
+            <h2 className="section-title">
+              Same office.
+              <br />
+              Your kind of agent.
+            </h2>
+            <p className="section-lede">
+              Set up your preferred coding CLI and its authentication first.
+              Then start your live office.
+            </p>
+          </div>
+          <div className="backend-cards">
+            {backends.map((backend) => (
+              <article key={backend.name}>
+                <h3>{backend.name}</h3>
+                <p>{backend.note}</p>
+                <pre>
+                  <code>{backend.command}</code>
+                </pre>
+                <a
+                  href={backend.link}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-link"
+                >
+                  Set up {backend.name}
+                  <ArrowUpRight size={15} />
+                </a>
+              </article>
+            ))}
+          </div>
+          <p className="setup-note">
+            Your coding backend and model provider may have their own
+            subscriptions or usage costs.{" "}
+            <Link href="/docs/backends">Read about backends →</Link>
+          </p>
+        </section>
+        <section className="setup-next section-pad">
+          <span className="eyebrow">YOU’RE IN. MAKE YOURSELF AT HOME.</span>
+          <h2 className="section-title">Give your idea a floor.</h2>
+          <p>
+            Press <kbd>Ctrl + E</kbd> to open project floors. Use{" "}
+            <kbd>Ctrl + N</kbd> to start a conversation and choose your team.
+            Your last conversation returns when you come back.
+          </p>
+          <div>
+            <Link className="button-primary" href="/docs/workspaces">
+              Explore your workspace <ArrowUpRight size={18} />
+            </Link>
+            <Link className="text-link" href="/docs/keys-and-slash">
+              Learn the shortcuts <ArrowUpRight size={16} />
+            </Link>
+          </div>
+        </section>
+      </main>
+      <SiteFooter />
     </div>
-  )
+  );
 }

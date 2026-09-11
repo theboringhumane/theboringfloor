@@ -67,3 +67,19 @@ In-repo architecture: [`../docs/architecture.md`](../docs/architecture.md). Hub:
 The homepage workspace tour uses actual app renders with illustrative fixtures from `cmd/workspaceshot`. Optimized lossless assets live in `public/shots/workspaces/`. `/docs/workspaces` covers floors, teams, tickets, files, backends, and storage; `/docs/plan-mode` documents automatic routing and the backend-specific planning limits.
 
 Validate with `node_modules/.bin/tsc --noEmit` and `bun run build`. The production build also checks TypeScript. Preview the exported `out/` directory with a local static server.
+
+## Cobalt design system
+
+The marketing site uses an editorial grid, warm off-white surfaces, and cobalt blue. The shared palette is in `app/globals.css`; responsive layouts and component styles are in `app/blueprint.css`. `PageCover`, `SiteHeader`, and `SiteFooter` keep the content routes consistent.
+
+All geometric illustrations are original SVGs in `components/home/blueprint-art.tsx`. The homepage office is an original Three.js scene loaded separately from the initial page, with an SVG fallback when WebGL is unavailable. Stationary geometry is merged by material. Rendering is capped at 30 fps, stops offscreen or in background tabs, and respects reduced motion. The user can pause or rotate the scene. GSAP handles entrance and scroll motion; content remains readable without animation.
+
+The product explorer uses real application captures with illustrative project data. Every view links to its corresponding guide and full-size screenshot. The journal supports search and category filtering. Install commands support macOS, Linux, and Windows, with clipboard feedback.
+
+```bash
+bun run check         # TypeScript
+bun run build         # all static routes and share images
+bun run check:links   # validate exported local links, anchors, and assets
+```
+
+Cloudflare Pages serves the existing installer redirects in `public/_redirects`. Local static preview does not interpret those redirects; the install commands point to the production URLs. Google Analytics remains configured for production. The Vercel-only analytics injection was removed because this site is hosted on Cloudflare Pages.

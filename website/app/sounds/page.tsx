@@ -1,71 +1,72 @@
-import Link from 'next/link'
-import type { Metadata } from 'next'
-import { SiteHeader } from '@/components/site-header'
-import { SiteFooter } from '@/components/site-footer'
-import { Chapter, Cue, Stamp } from '@/components/paper'
-import { SoundCard, type SoundSpec } from '@/components/sounds/sound-card'
-import { SITE_URL } from '@/lib/site'
+import Link from "next/link";
+import type { Metadata } from "next";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { PageCover } from "@/components/page-cover";
+import { Chapter, Cue, Stamp } from "@/components/paper";
+import { SoundCard, type SoundSpec } from "@/components/sounds/sound-card";
+import { SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: 'Sounds',
+  title: "Sounds",
   description:
-    'Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.',
+    "Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.",
   alternates: {
-    canonical: '/sounds',
+    canonical: "/sounds",
   },
   openGraph: {
-    title: 'Sounds · theboringfloor',
+    title: "Sounds · theboringfloor",
     description:
-      'Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.',
+      "Seven synthesized office chimes, one meaning each — what every sound says, when it plays, and the WAV files themselves.",
     url: `${SITE_URL}/sounds`,
-    type: 'website',
+    type: "website",
   },
-}
+};
 
 const sounds: SoundSpec[] = [
   {
-    name: 'queued',
-    duration: '40ms',
-    waveform: 'sine 660Hz, -12dB',
-    meaning: 'argo stands the queue down — something just joined the backlog',
+    name: "queued",
+    duration: "40ms",
+    waveform: "sine 660Hz, -12dB",
+    meaning: "argo stands the queue down — something just joined the backlog",
   },
   {
-    name: 'send',
-    duration: '60ms',
-    waveform: 'glide 520→640Hz, -14dB',
-    meaning: 'message on its way',
+    name: "send",
+    duration: "60ms",
+    waveform: "glide 520→640Hz, -14dB",
+    meaning: "message on its way",
   },
   {
-    name: 'reply',
-    duration: '90ms',
-    waveform: 'two-tone C5→G5',
-    meaning: 'boss finished a turn',
+    name: "reply",
+    duration: "90ms",
+    waveform: "two-tone C5→G5",
+    meaning: "boss finished a turn",
   },
   {
-    name: 'done',
-    duration: '110ms',
-    waveform: 'rising triad C5-E5-G5',
-    meaning: 'task completed',
+    name: "done",
+    duration: "110ms",
+    waveform: "rising triad C5-E5-G5",
+    meaning: "task completed",
   },
   {
-    name: 'dispatch',
-    duration: '80ms',
-    waveform: 'brown-noise LP',
-    meaning: 'the dispatch left the office',
+    name: "dispatch",
+    duration: "80ms",
+    waveform: "brown-noise LP",
+    meaning: "the dispatch left the office",
   },
   {
-    name: 'alert',
-    duration: '140ms',
-    waveform: '2×55ms square 880Hz beeps / 30ms gap',
-    meaning: 'something needs you right now',
+    name: "alert",
+    duration: "140ms",
+    waveform: "2×55ms square 880Hz beeps / 30ms gap",
+    meaning: "something needs you right now",
   },
   {
-    name: 'error',
-    duration: '140ms',
-    waveform: 'descent 440→220Hz',
+    name: "error",
+    duration: "140ms",
+    waveform: "descent 440→220Hz",
     meaning: "something didn't make it",
   },
-]
+];
 
 export default function SoundsPage() {
   return (
@@ -73,29 +74,18 @@ export default function SoundsPage() {
       <div className="doc-frame">
         <SiteHeader framed />
         <main>
-          {/* Masthead */}
-          <section className="relative border-b border-rule px-6 py-16 md:px-10 md:py-20 lg:px-14">
-
-            <div className="flex items-baseline gap-4 border-b border-rule pb-3">
-              <span className="mono-label text-ink">00</span>
-              <span className="mono-label">Sounds</span>
-              <span className="h-px flex-1 bg-rule" aria-hidden="true" />
-              <span className="mono-label hidden sm:inline">{sounds.length} specimens</span>
-            </div>
-
-            <h1 className="display-xl mt-8 max-w-[16ch] text-balance text-ink">
-              The office&apos;s sonic weather.
-            </h1>
-
-            <p className="mt-6 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
-              Seven synthesized chimes, deterministic and dim-lit every boot. Each has a single
-              meaning — played and heard by the people actually running this office.
-            </p>
-
-            <div className="mt-8">
-              <Stamp tone="stamp">Synthesized at boot</Stamp>
-            </div>
-          </section>
+          <PageCover
+            eyebrow="THE SOUND OF WORK / OFFICE CHIMES"
+            title={
+              <>
+                A little sound.
+                <br />
+                <span className="blue-text">A little meaning.</span>
+              </>
+            }
+            description="Seven original chimes for the moments that matter. A message sent, a job done, a team that needs your attention."
+            art="network"
+          />
 
           {/* I — the library of specimens */}
           <section className="relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
@@ -104,8 +94,9 @@ export default function SoundsPage() {
                 One chime, one meaning.
               </h3>
               <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-ink-soft">
-                No notification soup. When the office makes a sound it is saying exactly one thing —
-                this is the whole vocabulary, served back as plain WAVs.
+                No notification soup. When the office makes a sound it is saying
+                exactly one thing — this is the whole vocabulary, served back as
+                plain WAVs.
               </p>
               <div className="mt-12 grid grid-cols-1 gap-6 md:grid-cols-2">
                 {sounds.map((s) => (
@@ -113,7 +104,8 @@ export default function SoundsPage() {
                 ))}
               </div>
               <p className="mono-label mt-6 text-ink-faint">
-                16-bit mono 22050 Hz PCM · rendered by internal/sound, never sampled
+                16-bit mono 22050 Hz PCM · rendered by internal/sound, never
+                sampled
               </p>
             </Chapter>
           </section>
@@ -122,9 +114,10 @@ export default function SoundsPage() {
           <section className="paper-panel relative border-b border-rule px-6 py-16 md:px-10 lg:px-14">
             <Chapter numeral="II" title="Trace the source">
               <p className="mt-8 max-w-2xl text-pretty text-lg leading-relaxed text-ink-soft">
-                These are synthesized at boot inside the office — no assets shipped in the binary —
-                and they play through the terminal&apos;s own player. Today, the site serves them
-                back as plain WAVs.
+                These are synthesized at boot inside the office — no assets
+                shipped in the binary — and they play through the
+                terminal&apos;s own player. Today, the site serves them back as
+                plain WAVs.
               </p>
               <div className="mt-8 flex flex-wrap items-center gap-3">
                 <Link
@@ -143,5 +136,5 @@ export default function SoundsPage() {
         <SiteFooter />
       </div>
     </div>
-  )
+  );
 }

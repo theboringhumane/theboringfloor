@@ -1,6 +1,6 @@
-@import 'tailwindcss';
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -58,125 +58,77 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Light is the DEFAULT theme (:root). The dark block below carries the exact
-   values this site shipped with when it was dark-only — dark is a variant,
-   not a redesign. */
 :root {
   color-scheme: light;
-  /* ---- Paper palette (the design contract). Warm manila stock, brown-black
-     ink, oxide-red stamp, ink-blue. Every legacy token below is REMAPPED onto
-     these, never deleted — docs/blog/OG surfaces still consume them. ---- */
-  --paper: oklch(0.918 0.012 84);
-  --paper-2: oklch(0.948 0.009 84);
-  --panel: oklch(0.868 0.045 82);
-  --ink: oklch(0.285 0.028 62);
-  --ink-soft: oklch(0.455 0.022 62);
-  --ink-faint: oklch(0.62 0.018 62);
-  --rule: oklch(0.285 0.028 62 / 18%);
-  --stamp: oklch(0.475 0.155 32);
-  --stamp-ink: oklch(0.96 0.012 84);
-  --blue: oklch(0.42 0.1 250);
-  --grain: 0.025;
-
+  --paper: #f7f8f2;
+  --paper-2: #edf1f0;
+  --panel: #e3ecfb;
+  --ink: #202727;
+  --ink-soft: #586260;
+  --ink-faint: #66716d;
+  --rule: #d8ddd5;
+  --stamp: #2357e9;
+  --stamp-ink: #ffffff;
+  --blue: #2357e9;
+  --grain: 0;
   --background: var(--paper);
   --foreground: var(--ink);
   --card: var(--paper-2);
   --card-foreground: var(--ink);
-  --popover: var(--paper-2);
+  --popover: var(--paper);
   --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: var(--paper);
+  --primary: var(--blue);
+  --primary-foreground: #ffffff;
   --secondary: var(--panel);
   --secondary-foreground: var(--ink);
   --muted: var(--paper-2);
   --muted-foreground: var(--ink-soft);
   --accent: var(--blue);
-  --accent-foreground: var(--paper);
-  --destructive: var(--stamp);
+  --accent-foreground: #ffffff;
+  --destructive: #bb3535;
   --border: var(--rule);
   --input: var(--rule);
   --ring: var(--blue);
   --chart-1: var(--blue);
-  --chart-2: oklch(0.52 0.1 160);
-  --chart-3: var(--stamp);
-  --chart-4: oklch(0.6 0.12 75);
-  --chart-5: oklch(0.55 0.08 210);
-  --radius: 0.25rem;
+  --chart-2: #4d9f89;
+  --chart-3: #6285ba;
+  --chart-4: #d5a058;
+  --chart-5: #729398;
+  --radius: 0.125rem;
   --sidebar: var(--paper-2);
   --sidebar-foreground: var(--ink);
   --sidebar-primary: var(--blue);
-  --sidebar-primary-foreground: var(--paper);
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: var(--panel);
   --sidebar-accent-foreground: var(--ink);
   --sidebar-border: var(--rule);
   --sidebar-ring: var(--blue);
   --canvas: var(--paper);
-  --grid-line: oklch(0.285 0.028 62 / 7%);
+  --grid-line: #2027270d;
   --frame-border: var(--rule);
   --band-bg: var(--panel);
   --band-fg: var(--ink);
   --band-accent: var(--blue);
   --band-on-fg: var(--paper);
-  --band-well: oklch(0.98 0.008 84 / 55%);
+  --band-well: #ffffff88;
   --shot-frame: var(--paper-2);
 }
-
 .dark {
   color-scheme: dark;
-  /* Carbon copy: the same document printed on dark stock. */
-  --paper: oklch(0.185 0.012 70);
-  --paper-2: oklch(0.228 0.012 70);
-  --panel: oklch(0.258 0.03 78);
-  --ink: oklch(0.93 0.012 84);
-  --ink-soft: oklch(0.72 0.012 84);
-  --ink-faint: oklch(0.56 0.012 84);
-  --rule: oklch(0.93 0.012 84 / 16%);
-  --stamp: oklch(0.66 0.15 32);
-  --stamp-ink: oklch(0.16 0.012 70);
-  --blue: oklch(0.68 0.11 250);
-  --grain: 0.045;
-
-  --background: var(--paper);
-  --foreground: var(--ink);
-  --card: var(--paper-2);
-  --card-foreground: var(--ink);
-  --popover: var(--paper-2);
-  --popover-foreground: var(--ink);
-  --primary: var(--ink);
-  --primary-foreground: var(--paper);
-  --secondary: var(--panel);
-  --secondary-foreground: var(--ink);
-  --muted: var(--paper-2);
-  --muted-foreground: var(--ink-soft);
-  --accent: var(--blue);
-  --accent-foreground: var(--paper);
-  --destructive: var(--stamp);
-  --border: var(--rule);
-  --input: var(--rule);
-  --ring: var(--blue);
-  --chart-1: var(--blue);
-  --chart-2: oklch(0.7 0.1 160);
-  --chart-3: var(--stamp);
-  --chart-4: oklch(0.74 0.12 75);
-  --chart-5: oklch(0.72 0.08 210);
-  --radius: 0.25rem;
-  --sidebar: var(--paper-2);
-  --sidebar-foreground: var(--ink);
-  --sidebar-primary: var(--blue);
-  --sidebar-primary-foreground: var(--paper);
-  --sidebar-accent: var(--panel);
-  --sidebar-accent-foreground: var(--ink);
-  --sidebar-border: var(--rule);
-  --sidebar-ring: var(--blue);
-  --canvas: var(--paper);
-  --grid-line: oklch(0.93 0.012 84 / 6%);
-  --frame-border: var(--rule);
-  --band-bg: var(--panel);
-  --band-fg: var(--ink);
-  --band-accent: var(--blue);
-  --band-on-fg: var(--paper);
-  --band-well: oklch(0.12 0.01 70 / 55%);
-  --shot-frame: var(--paper-2);
+  --paper: #101722;
+  --paper-2: #17202e;
+  --panel: #1c2b43;
+  --ink: #f2f5ef;
+  --ink-soft: #b3bfcc;
+  --ink-faint: #93a3b5;
+  --rule: #2d3949;
+  --stamp: #8caeff;
+  --stamp-ink: #101722;
+  --blue: #8caeff;
+  --primary-foreground: #101722;
+  --accent-foreground: #101722;
+  --grid-line: #dbe8ff0d;
+  --band-well: #10172288;
 }
 
 @layer base {
@@ -187,7 +139,6 @@
     @apply bg-background text-foreground;
   }
 }
-
 
 .prose-blog {
   font-size: 1rem;
@@ -306,6 +257,10 @@
   border-inline: 1px solid var(--frame-border);
 }
 
+/* Product captures retain their original colors in both website themes. */
+html:not(.dark) .shot-img {
+  filter: none;
+}
 
 /* ============================================================
    Document primitives — the paper design contract.
@@ -331,7 +286,7 @@
 }
 
 .paper-ruled::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -343,12 +298,20 @@
   );
   background-position: center top;
   /* the dash: 7px on, 5px off, running down the page */
-  mask-image: repeating-linear-gradient(to bottom, #000 0 7px, transparent 7px 12px);
-  -webkit-mask-image: repeating-linear-gradient(to bottom, #000 0 7px, transparent 7px 12px);
+  mask-image: repeating-linear-gradient(
+    to bottom,
+    #000 0 7px,
+    transparent 7px 12px
+  );
+  -webkit-mask-image: repeating-linear-gradient(
+    to bottom,
+    #000 0 7px,
+    transparent 7px 12px
+  );
 }
 
 .paper-ground::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -373,7 +336,7 @@
 }
 
 .doc-brackets::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -466,10 +429,9 @@
 
 @media (min-width: 1024px) {
   .doc-frame {
-    --doc-gutter: 3rem;
+    --doc-gutter: 0px;
     margin-inline: auto;
-    max-width: calc(96rem - 2rem);
+    max-width: 100rem;
     border-inline: 1px solid var(--rule);
   }
-
 }

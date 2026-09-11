@@ -1,9 +1,13 @@
-'use client'
+"use client";
 
-import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { cn } from '@/lib/utils'
-import { formatDate, type BlogCategory, type BlogPostMeta } from '@/lib/blog-types'
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import {
+  formatDate,
+  type BlogCategory,
+  type BlogPostMeta,
+} from "@/lib/blog-types";
 
 /* Selected state is carried by TWO signals, never colour alone: the pill
    inverts (ink stock, paper type) and the leading register mark flips from an
@@ -14,10 +18,10 @@ function FilterPill({
   selected,
   onSelect,
 }: {
-  label: string
-  count: number
-  selected: boolean
-  onSelect: () => void
+  label: string;
+  count: number;
+  selected: boolean;
+  onSelect: () => void;
 }) {
   return (
     <button
@@ -25,41 +29,66 @@ function FilterPill({
       aria-pressed={selected}
       onClick={onSelect}
       className={cn(
-        'flex w-full items-center justify-between gap-3 border px-2.5 py-1.5 text-left font-mono text-[0.6875rem] uppercase leading-none tracking-[0.14em] transition-colors',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue',
+        "flex w-full items-center justify-between gap-3 border px-2.5 py-1.5 text-left font-mono text-[0.6875rem] uppercase leading-none tracking-[0.14em] transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue",
         selected
-          ? 'border-ink bg-ink text-paper'
-          : 'border-rule text-ink-soft hover:border-ink hover:text-ink',
+          ? "border-ink bg-ink text-paper"
+          : "border-rule text-ink-soft hover:border-ink hover:text-ink",
       )}
     >
       <span className="flex items-center gap-2">
-        <span aria-hidden="true">{selected ? '■' : '□'}</span>
+        <span aria-hidden="true">{selected ? "■" : "□"}</span>
         {label}
       </span>
-      <span className={selected ? 'text-paper' : 'text-ink-faint'}>{count}</span>
+      <span className={selected ? "text-paper" : "text-ink-faint"}>
+        {count}
+      </span>
     </button>
-  )
+  );
 }
 
 export function BlogFilterList({
   posts,
   categoryCounts,
 }: {
-  posts: BlogPostMeta[]
-  categoryCounts: Record<string, number>
+  posts: BlogPostMeta[];
+  categoryCounts: Record<string, number>;
 }) {
-  const [filter, setFilter] = useState<string>('All')
+  const [filter, setFilter] = useState<string>("All");
+  const [query, setQuery] = useState("");
 
   const filtered = useMemo(() => {
-    if (filter === 'All') return posts
-    return posts.filter((p) => p.categories.includes(filter as BlogCategory))
-  }, [filter, posts])
+    const search = query.trim().toLowerCase();
+    return posts.filter(
+      (post) =>
+        (filter === "All" ||
+          post.categories.includes(filter as BlogCategory)) &&
+        (!search ||
+          `${post.title} ${post.description} ${post.categories.join(" ")}`
+            .toLowerCase()
+            .includes(search)),
+    );
+  }, [filter, posts, query]);
 
-  const categories = Object.keys(categoryCounts).sort()
+  const categories = Object.keys(categoryCounts).sort();
 
   return (
     <div className="grid grid-cols-1 gap-10 lg:grid-cols-[1fr_15rem] lg:gap-14">
-      <div className="flex flex-col divide-y divide-rule border-t border-rule">
+      <div className="order-2 flex flex-col divide-y divide-rule border-t border-rule lg:order-1">
+        {filtered.length === 0 && (
+          <div className="journal-empty">
+            <h2>No stories found.</h2>
+            <p>Try another search, or explore all the notes from the office.</p>
+            <button
+              onClick={() => {
+                setQuery("");
+                setFilter("All");
+              }}
+            >
+              Clear search and filters →
+            </button>
+          </div>
+        )}
         {filtered.map((post) => (
           <article key={post.slug}>
             <Link
@@ -67,7 +96,10 @@ export function BlogFilterList({
               className="group grid grid-cols-1 gap-3 py-6 transition-colors hover:bg-paper-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue sm:grid-cols-[9rem_1fr] sm:gap-6"
             >
               <div className="flex flex-row items-baseline gap-3 sm:flex-col sm:gap-1.5">
-                <time dateTime={post.date} className="mono-label whitespace-nowrap text-ink">
+                <time
+                  dateTime={post.date}
+                  className="mono-label whitespace-nowrap text-ink"
+                >
                   {formatDate(post.date)}
                 </time>
                 <span className="mono-label text-ink-faint">{post.author}</span>
@@ -100,7 +132,21 @@ export function BlogFilterList({
         ))}
       </div>
 
-      <div>
+      <div className="order-1 lg:order-2">
+        <label htmlFor="journal-search" className="mono-label">
+          Find a story
+        </label>
+        <input
+          id="journal-search"
+          className="journal-search"
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search the journal…"
+        />
+        <p className="journal-result-count" role="status">
+          {filtered.length} {filtered.length === 1 ? "story" : "stories"}
+        </p>
         <div className="flex items-center gap-3 border-b border-rule pb-2">
           <span className="mono-label text-ink">Filed under</span>
           <span className="h-px flex-1 bg-rule" aria-hidden="true" />
@@ -109,8 +155,8 @@ export function BlogFilterList({
           <FilterPill
             label="All"
             count={posts.length}
-            selected={filter === 'All'}
-            onSelect={() => setFilter('All')}
+            selected={filter === "All"}
+            onSelect={() => setFilter("All")}
           />
           {categories.map((c) => (
             <FilterPill
@@ -124,5 +170,5 @@ export function BlogFilterList({
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -1,196 +1,118 @@
-import { ImageResponse } from 'next/og'
-import { SITE_NAME, SITE_TAGLINE, SITE_URL } from '@/lib/site'
-
-export const alt = `${SITE_NAME} — ${SITE_TAGLINE}`
-export const size = {
-  width: 1200,
-  height: 630,
-}
-export const contentType = 'image/png'
-export const dynamic = 'force-static'
-
-/**
- * Literal sRGB equivalents of the paper tokens in app/globals.css.
- * Satori (next/og) does not resolve CSS custom properties, Tailwind classes,
- * or `oklch()` — it silently paints oklch() as black — so these are hex.
- * This exemption applies to the opengraph-image files only.
- */
-const PAPER = '#e8e3db' // oklch(0.918 0.012 84)
-const PAPER_2 = '#f1ede7' // oklch(0.948 0.009 84)
-const PANEL = '#e3d1b3' // oklch(0.868 0.045 82)
-const INK = '#34271c' // oklch(0.285 0.028 62)
-const INK_SOFT = '#60544a' // oklch(0.455 0.022 62)
-const RULE = 'rgba(52, 39, 28, 0.18)' // oklch(0.285 0.028 62 / 18%)
-const STAMP = '#a12d1a' // oklch(0.475 0.155 32)
-
-const BRACKET = 34
-const FRAME = 40
-
-/** Hairline registration bracket, drawn at one corner of the frame. */
-function Bracket({ top, left }: { top: boolean; left: boolean }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        position: 'absolute',
-        width: BRACKET,
-        height: BRACKET,
-        ...(top
-          ? { top: -1, borderTop: `2px solid ${INK}` }
-          : { bottom: -1, borderBottom: `2px solid ${INK}` }),
-        ...(left
-          ? { left: -1, borderLeft: `2px solid ${INK}` }
-          : { right: -1, borderRight: `2px solid ${INK}` }),
-      }}
-    />
-  )
-}
-
+import { ImageResponse } from "next/og";
+import { SITE_NAME, SITE_TAGLINE } from "@/lib/site";
+export const alt = `${SITE_NAME} — ${SITE_TAGLINE}`;
+export const size = { width: 1200, height: 630 };
+export const contentType = "image/png";
+export const dynamic = "force-static";
 export default function OpenGraphImage() {
   return new ImageResponse(
     (
       <div
         style={{
-          backgroundColor: PAPER,
-          color: INK,
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          position: 'relative',
-          width: '100%',
+          display: "flex",
+          width: "100%",
+          height: "100%",
+          background: "#f7f8f2",
+          color: "#202727",
+          flexDirection: "column",
         }}
       >
-        {/* faint ruled grid */}
         <div
           style={{
-            display: 'flex',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundImage: `linear-gradient(to right, ${RULE} 1px, transparent 1px), linear-gradient(to bottom, ${RULE} 1px, transparent 1px)`,
-            backgroundSize: '60px 60px',
-            opacity: 0.5,
-          }}
-        />
-
-        {/* document frame + corner registration brackets */}
-        <div
-          style={{
-            display: 'flex',
-            position: 'absolute',
-            top: FRAME,
-            left: FRAME,
-            right: FRAME,
-            bottom: FRAME,
-            border: `1px solid ${RULE}`,
+            display: "flex",
+            height: 88,
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "0 48px",
+            borderBottom: "1px solid #d8ddd5",
           }}
         >
-          <Bracket top left />
-          <Bracket top left={false} />
-          <Bracket top={false} left />
-          <Bracket top={false} left={false} />
+          <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+            <svg width="33" height="33" viewBox="0 0 32 32" fill="#2357e9">
+              <path d="M3 3h11v6H9v5h5v6H9v9H3V3Zm15 0h11v6H18V3Zm0 11h11v6H18v-6Zm0 9h11v6H18v-6Z" />
+            </svg>
+            <span style={{ fontSize: 27, letterSpacing: -1 }}>
+              theboringfloor.
+            </span>
+          </div>
+          <span style={{ fontSize: 14, color: "#586260" }}>
+            OPEN SOURCE. OPEN POSSIBILITIES.
+          </span>
         </div>
-
+        <div style={{ display: "flex", flex: 1 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              width: "69%",
+              padding: "54px 48px",
+              justifyContent: "space-between",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                fontSize: 89,
+                letterSpacing: -5,
+                lineHeight: 1.04,
+              }}
+            >
+              <span>Big ideas.</span>
+              <span>Meet your team.</span>
+            </div>
+            <span
+              style={{
+                fontSize: 23,
+                lineHeight: 1.45,
+                maxWidth: 530,
+                color: "#586260",
+              }}
+            >
+              Your projects. Your agents. One happy place to work.
+            </span>
+            <span style={{ fontSize: 17, color: "#2357e9" }}>
+              boringfloor.com →
+            </span>
+          </div>
+          <div
+            style={{
+              display: "flex",
+              position: "relative",
+              width: "31%",
+              background: "#2357e9",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg width="330" height="400" viewBox="0 0 330 400">
+              <path d="m35 263 130-74 130 74-130 74Z" fill="#123faf" />
+              <path d="m35 237 130-74 130 74-130 74Z" fill="#8eb5ff" />
+              <path d="m62 191 103-59 103 59-103 59Z" fill="#e3edff" />
+              <path d="m62 191 103 59v36L62 227Z" fill="#548af0" />
+              <path d="m165 250 103-59v36l-103 59Z" fill="#174abb" />
+              <path d="m105 151 60-34 60 34-60 34Z" fill="#fffdf5" />
+              <path d="m105 151 60 34v32l-60-34Z" fill="#6b9af4" />
+              <path d="m165 185 60-34v32l-60 34Z" fill="#123faf" />
+              <path d="M165 64v30m-15-15h30" stroke="#fffdf5" strokeWidth="5" />
+            </svg>
+          </div>
+        </div>
         <div
           style={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            justifyContent: 'space-between',
-            padding: '92px 96px',
-            width: '100%',
+            display: "flex",
+            height: 49,
+            alignItems: "center",
+            padding: "0 48px",
+            fontSize: 12,
+            borderTop: "1px solid #d8ddd5",
+            color: "#586260",
           }}
         >
-          {/* eyebrow */}
-          <div
-            style={{
-              alignItems: 'center',
-              color: INK_SOFT,
-              display: 'flex',
-              fontSize: 21,
-              justifyContent: 'space-between',
-              letterSpacing: '0.22em',
-              textTransform: 'uppercase',
-              width: '100%',
-            }}
-          >
-            <div style={{ alignItems: 'center', display: 'flex' }}>
-              <div style={{ display: 'flex', width: 12, height: 12, backgroundColor: STAMP, marginRight: 16 }} />
-              <div style={{ display: 'flex' }}>Terminal UI for coding agents</div>
-            </div>
-            <div style={{ display: 'flex' }}>Open source</div>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 92,
-                fontWeight: 700,
-                letterSpacing: '-0.055em',
-                lineHeight: 1,
-              }}
-            >
-              {SITE_NAME}
-            </div>
-            <div style={{ display: 'flex', height: 1, backgroundColor: RULE, margin: '34px 0 30px', width: '100%' }} />
-            <div
-              style={{
-                display: 'flex',
-                fontSize: 46,
-                letterSpacing: '-0.03em',
-                lineHeight: 1.15,
-                maxWidth: 840,
-              }}
-            >
-              {SITE_TAGLINE}
-            </div>
-          </div>
-
-          {/* footer line */}
-          <div
-            style={{
-              alignItems: 'center',
-              color: INK_SOFT,
-              display: 'flex',
-              fontSize: 19,
-              justifyContent: 'space-between',
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-              width: '100%',
-            }}
-          >
-            <div style={{ display: 'flex' }}>{SITE_URL.replace('https://', '')}</div>
-            <div
-              style={{
-                display: 'flex',
-                backgroundColor: PANEL,
-                border: `1px solid ${RULE}`,
-                color: INK,
-                padding: '8px 18px',
-              }}
-            >
-              OpenCode · Claude Code · Codex
-            </div>
-          </div>
+          THE OPEN-SOURCE TERMINAL OFFICE FOR OPENCODE, CLAUDE CODE, AND CODEX.
         </div>
-
-        {/* bottom edge tint, like a trimmed sheet */}
-        <div
-          style={{
-            display: 'flex',
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 10,
-            backgroundColor: PAPER_2,
-          }}
-        />
       </div>
     ),
-    size,
-  )
+    { ...size },
+  );
 }
