@@ -76,6 +76,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 |---|---|
 | [Docs hub](docs/README.md) | [Docs home](https://boringfloor.com/docs) |
 | [Project floors](docs/workspaces.md) | Teams, tickets, files, and Codex |
+| [Model selection](docs/models.md) | Native catalogs, saved choices, and backend limits |
 | [Architecture](docs/architecture.md) | [Vision](https://boringfloor.com/vision) |
 | [Website](website/README.md) | [Get started](https://boringfloor.com/get-started) |
 | [Commands (`cmd/`)](cmd/README.md) | [Sounds](https://boringfloor.com/sounds) |
@@ -87,7 +88,7 @@ Manual lives on the site. This repo keeps a thin index so GitHub readers land in
 - [Getting started](https://boringfloor.com/docs/getting-started) — curl, demo, live office, `--session`
 
 **Core**
-- [Backends](https://boringfloor.com/docs/backends) — opencode or claudecode, both primed with the same manager charter
+- [Backends](https://boringfloor.com/docs/backends) — OpenCode, Claude Code, or Codex
 - [Chat & work threads](https://boringfloor.com/docs/chat-and-threads)
 - [Plan mode](https://boringfloor.com/docs/plan-mode)
 - [MCP server](https://boringfloor.com/docs/mcp-server) — let your configured agent read the office and present plan drafts
@@ -247,7 +248,10 @@ The office control API listens only on loopback (`127.0.0.1`) on an ephemeral po
 | `@` | attach-file picker — type to filter, enter/tab attach |
 | `ctrl+v` | paste text — attaches the image instead when the clipboard holds one |
 | big paste | chat pastes >20 lines or >2000 chars collapse to a `[pasted N lines · M chars]` chip — one backspace unit, full text sent on submit |
-| `/model` · `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
+| `/model` | open the active backend's native main-model catalog; `/model <native-ref>` sets a model manually |
+| `/submodel` | pick a native agent type, then its model; `/submodel <agent>` opens its picker; `/submodel <agent> <native-ref>` sets a supported choice manually |
+| `/model` · `/submodel` | type to filter, enter to select, esc cancels browsing; applying waits for acknowledgment — [backend limits](docs/models.md) |
+| `/session` · `@` | pickers filter as you type — `N/M` badge, esc clears the filter, then closes |
 | `y` `a` `n` `esc` | answer a permission prompt — allow once / always / reject / defer |
 | click a tool row | expand what the tool returned (all kinds — capped, tail-kept; `no output as such` when there's none) |
 | `⟦recent-messages⟧` / `⟦recent-messages: N⟧` | agent-only context recovery marker — on its own line once per reply; sends the boss the latest 20 messages by default, or `N` clamped to 1..50 |

@@ -66,7 +66,7 @@ const (
 	PowerSaver       PowerMode = "saver"       // slow tick, coalesced renders, quieter office
 )
 
-// ModelRef — a provider/model string opencode understands ("anthropic/claude-sonnet-4-5").
+// ModelRef is an opaque backend-native model selection. OpenCode uses provider/model.
 type ModelRef string
 
 type BossConfig struct {
@@ -211,6 +211,9 @@ type Config struct {
 	// role) and is applied by writing agent.<name>.model into the project's
 	// .opencode/opencode.json.
 	AgentModels map[string]ModelRef `json:"agentModels"`
+	// ModelPreferences holds backend-scoped overrides; legacy fields remain
+	// OpenCode fallbacks until explicitly overridden here.
+	ModelPreferences map[string]BackendModelPreferences `json:"modelPreferences,omitempty"`
 }
 
 // Default returns the stock config (also the file skeleton written on first boot).

@@ -19,16 +19,10 @@
 package backend
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
-	"io"
-	"net/http"
-	"net/url"
-	"sort"
-
 	"github.com/theboringhumane/theboringfloor/internal/state"
+	"net/http"
+	"sort"
 )
 
 // ocProviderModel — one model entry inside a Provider's models map (only
@@ -67,43 +61,11 @@ func (b *liveBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error)
 	return providerModels(wrap), nil
 }
 
-// getProviderCtx — GET /provider with the caller's context honored (the
-// picker fetch carries a 10s timeout and esc-cancellation). Mirrors
-// doJSON's mechanics (baseURL lock, ?directory= query, x-opencode-directory
-// header, error-text unwrap) with NewRequestWithContext — file-local on
-// purpose: doJSONCtx rides in a sibling's parallel opencode.go work and
-// MUST NOT collide when both land.
 func (b *liveBackend) getProviderCtx(ctx context.Context, out *ocProviderList) error {
-	b.mu.Lock()
-	base := b.baseURL
-	b.mu.Unlock()
-	if base == "" {
-		return errors.New("backend not started")
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		base+"/provider?directory="+url.QueryEscape(b.directory), nil)
-	if err != nil {
+	if err := b.modelSelectionReady(ctx); err != nil {
 		return err
 	}
-	req.Header.Set("x-opencode-directory", url.QueryEscape(b.directory))
-	res, err := b.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	data, err := io.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return errors.New(httpErrorText(res.StatusCode, data))
-	}
-	if len(bytes.TrimSpace(data)) > 0 {
-		if err := json.Unmarshal(data, out); err != nil {
-			return err
-		}
-	}
-	return nil
+	return b.doJSONCtx(ctx, http.MethodGet, "/provider", nil, out)
 }
 
 // providerModels maps the wire shape to picker rows: CONNECTED providers

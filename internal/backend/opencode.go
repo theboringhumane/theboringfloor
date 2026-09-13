@@ -123,16 +123,13 @@ type liveBackend struct {
 	// path (degrade open — a stale pin must never hard-fail a boot).
 	primaryOverride string
 	freshStart      bool
-	// promptModelRejected latches when a serve rejects the per-prompt model
-	// override with a 400 (an older/foreign server without the /doc model
-	// field). From then on prompts go out without the override — degrade
-	// open, never fake success.
-	promptModelRejected bool
-	// promptAgentRejected latches when a serve rejects the per-prompt agent
-	// field (the plan/build routing tag on SendAgent prompts) with a 400 —
-	// the SAME degrade-open contract as promptModelRejected: one status
-	// note, one bare retry, then the field stays off and prompts ride bare
-	// for the rest of the run.
+	// Model selections are adapter-owned snapshots; app config remains app-owned.
+	modelMu       sync.Mutex       // serializes native config writes
+	modelRecovery *ocModelRecovery // guarded by modelMu; blocks inference until verified
+	bossModel     string           // guarded by mu
+	ctoModel      string
+	agentModels   map[string]string
+	// Only unsupported agent-field routing may degrade; the selected model stays.
 	promptAgentRejected bool
 	// sseNoteSig is the SSE status-note dedupe latch (D1): the last failure
 	// class reported by pump, "" when the stream is healthy/recovered. See
@@ -216,10 +213,14 @@ type liveBackend struct {
 }
 
 func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend {
+	cfg = cfgOrDefault(cfg)
 	b := &liveBackend{
 		directory:       directory,
 		optURL:          baseURL,
 		cfg:             cfg,
+		bossModel:       cfg.EffectiveModel(config.BackendNameDefault, ""),
+		ctoModel:        cfg.Backend.CTOModel,
+		agentModels:     cfg.AgentModelPreferences(config.BackendNameDefault),
 		fl:              newFlow(),
 		ctx:             newNormCtx(cfg),
 		conciergeID:     "",
@@ -270,6 +271,11 @@ func (b *liveBackend) SetBypassPermissions(on bool) error {
 // ApplyAgentModels writes the saved per-agent model choices into the local
 // OpenCode project config, which OpenCode reads when it dispatches an agent.
 func (b *liveBackend) ApplyAgentModels(models map[string]string) error {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
+	if err := b.modelRecoveryError(); err != nil {
+		return err
+	}
 	_, err := ensureAgentModels(b.directory, models)
 	return err
 }
@@ -289,11 +295,18 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	// reading its project config. A degradation never blocks the boot —
 	// failures surface on the status line only.
 	charterNotes := emitCharterNotes(emit, b.directory)
-	if len(b.cfg.AgentModels) > 0 {
-		models := make(map[string]string, len(b.cfg.AgentModels))
-		for name, ref := range b.cfg.AgentModels {
-			models[name] = string(ref)
-		}
+	b.mu.Lock()
+	models := make(map[string]string, len(b.agentModels))
+	for name, ref := range b.agentModels {
+		models[name] = ref
+	}
+	b.mu.Unlock()
+	u := b.optURL
+	if u == "" {
+		u = os.Getenv("OPENCODE_SERVER")
+	}
+	externalServer := u != ""
+	if len(models) > 0 && !externalServer {
 		if err := b.ApplyAgentModels(models); err != nil {
 			return err
 		}
@@ -306,10 +319,6 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] bypass permissions: on (ephemeral OPENCODE_CONFIG_CONTENT override)"})
 	}
 
-	u := b.optURL
-	if u == "" {
-		u = os.Getenv("OPENCODE_SERVER")
-	}
 	if u == "" {
 		spawnedURL, proc, exit, err := spawnServe(b.directory, bypass)
 		if err == nil && charterNotes.changed {
@@ -343,6 +352,16 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	b.mu.Lock()
 	b.baseURL = u
 	b.mu.Unlock()
+
+	if externalServer && len(models) > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		for name, ref := range models {
+			if err := b.SetModel(ctx, state.ModelTarget{Agent: name}, ref); err != nil {
+				return fmt.Errorf("restore OpenCode agent model: %w", err)
+			}
+		}
+	}
 
 	primary, err := b.resolvePrimary()
 	if err != nil {
@@ -414,8 +433,8 @@ func (b *liveBackend) Start(emit func(state.Event)) error {
 	if m := b.bossModelRef(); m != "" {
 		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override: " + m})
 	}
-	if b.cfg.Backend.CTOModel != "" {
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] cto model override: " + b.cfg.Backend.CTOModel})
+	if b.ctoModel != "" {
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] cto model override: " + b.ctoModel})
 	}
 
 	if !b.cfg.Boss.Concierge {
@@ -1761,25 +1780,15 @@ func (b *liveBackend) ResumeOffice(id string) error {
 // accepted (HTTP 204). Attachments that fail to read are skipped with a
 // status note rather than sinking the prompt (parts.go).
 //
-// The configured model override rides as {"model":{"providerID","modelID"}}
-// — the exact shape serve 1.18.19 documents in GET /doc for prompt_async
-// (verified 2026-08-21 against the spawned server). The attached model is
-// routed by target session (see promptModelOverride): boss/concierge
-// prompts take the boss override (cfg.Backend.BossModel, falling back to
-// the legacy cfg.Boss.Model), a CTO-seated session takes
-// cfg.Backend.CTOModel. A ModelRef without a "provider/model" slash is
-// ignored with a status note. If a serve ever rejects the model field with
-// 400 (an older/foreign server), the override latches off and the prompt
-// retries bare — degrade open, never fake it.
-//
-// The plan/build agent tag (SendAgent's one addition) rides as
-// {"agent":"plan"|"build"} alongside, ONLY when the app passes one —
-// plain sends ship no "agent" key at all (additive, exactly like the
-// model override). If a serve rejects the agent field with a 400, the
-// promptAgentRejected latch flips, the member hears ONE status note, the
-// prompt retries once without the field, and every later prompt ships
-// bare — degrade open, never fake it.
+// Model overrides ride as {"model":{"providerID","modelID"}}. A rejected
+// selection fails the send; only an unsupported agent field may retry without
+// that field, preserving the model. No prompt ever retries a default model.
 func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment, agent string) error {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
+	if err := b.modelRecoveryError(); err != nil {
+		return err
+	}
 	parts, skipped := payloadParts(text, atts)
 	if len(skipped) > 0 {
 		// The prompt still goes out with whatever parts survived — the
@@ -1788,12 +1797,15 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 			strings.Join(skipped, ", ") + " (file unreadable) — sent without it"})
 	}
 	payload := map[string]any{"parts": parts}
-	provider, model := splitModelRef(b.promptModelOverride(sessionID))
+	ref := b.promptModelOverride(sessionID)
+	if ref != "" && !validOpenCodeModelRef(ref) {
+		return fmt.Errorf("OpenCode model %q must be a provider/model reference", ref)
+	}
+	provider, model := splitModelRef(ref)
 	b.mu.Lock()
-	rejected := b.promptModelRejected
 	agentRejected := b.promptAgentRejected
 	b.mu.Unlock()
-	withModel := provider != "" && model != "" && !rejected
+	withModel := provider != "" && model != ""
 	if withModel {
 		payload["model"] = map[string]any{"providerID": provider, "modelID": model}
 	}
@@ -1803,7 +1815,7 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 	}
 	body, _ := json.Marshal(payload)
 	err := b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
-	if err != nil && withAgent && strings.Contains(strings.ToLower(err.Error()), "agent") {
+	if err != nil && withAgent && strings.HasPrefix(err.Error(), "status 400:") && strings.Contains(strings.ToLower(err.Error()), "agent") && !strings.Contains(strings.ToLower(err.Error()), "model") {
 		b.mu.Lock()
 		b.promptAgentRejected = true
 		b.mu.Unlock()
@@ -1817,29 +1829,17 @@ func (b *liveBackend) postPrompt(sessionID, text string, atts []state.Attachment
 		body, _ = json.Marshal(payload)
 		err = b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
 	}
-	if err != nil && withModel && strings.Contains(strings.ToLower(err.Error()), "model") {
-		b.mu.Lock()
-		b.promptModelRejected = true
-		b.mu.Unlock()
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override unavailable on this serve (400 rejected the model field) — continuing without it"})
-		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] boss model override unavailable in serve (see /doc session.prompt_async): retrying bare prompt"})
-		// Retry bare exactly once: the member-visible cost of the failed
-		// POST was zero (rejected before the turn started).
-		payload = map[string]any{"parts": parts}
-		body, _ = json.Marshal(payload)
-		err = b.doJSON(http.MethodPost, "/session/"+sessionID+"/prompt_async", body, nil)
+	if err != nil && withModel {
+		return fmt.Errorf("OpenCode prompt with selected model %q failed: %w", ref, err)
 	}
 	return err
 }
 
-// bossModelRef is the effective boss (primary-session) model override:
-// cfg.Backend.BossModel wins when set; the legacy cfg.Boss.Model stands
-// otherwise (an existing brain.json keeps working). "" = server default.
+// bossModelRef reads the adapter-owned selection, initialized by EffectiveModel.
 func (b *liveBackend) bossModelRef() string {
-	if s := strings.TrimSpace(b.cfg.Backend.BossModel); s != "" {
-		return s
-	}
-	return string(b.cfg.Boss.Model)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.bossModel
 }
 
 // promptModelOverride routes the model override for the prompt's target
@@ -1860,7 +1860,7 @@ func (b *liveBackend) promptModelOverride(sessionID string) string {
 	emp, ok := b.ctx.employees[sessionID]
 	b.mu.Unlock()
 	if ok && emp.Role == state.RoleCTO {
-		return b.cfg.Backend.CTOModel
+		return b.ctoModel
 	}
 	return b.bossModelRef()
 }

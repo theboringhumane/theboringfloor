@@ -1,23 +1,3 @@
-// model_picker_test.go — the interactive /model picker contract from the
-// model level (fakes only, never a real server):
-//
-//	(b) buildModelRows: sorted by provider then id, duplicates collapsed,
-//	    the configured boss.model marked Current, names flattened,
-//	    id-fallback for blank names;
-//	(c) bare /model: a backend with the listing seam opens the picker
-//	    (loading), the hop fills rows and the office state carries the
-//	    listing (reducer/state carry: later events never disturb it);
-//	(d) ACCEPT: enter on a row closes the picker and drives the EXISTING
-//	    /model-set path — cfg flips, the frozen "boss model → …" notice
-//	    lands, brain.json persists NOW;
-//	(e) FREE-FORM BACK-COMPAT: /model x/y sets directly, the picker never
-//	    opens; nothing about the existing code path changed;
-//	(f) FALLBACK: a backend WITHOUT the seam (pinBackend), or a FAILING
-//	    listing, keeps today's hint note + a dim picker-unavailable tail
-//	    (and a failed listing closes the opened card);
-//	(g) ESC: cancels with zero side effects — no notice, no cfg change;
-//	(h) YIELD: while a permission float owns the slot the picker hides
-//	    and its arrows walk the PERMISSION menu, resuming when it clears.
 package app
 
 import (
@@ -41,11 +21,23 @@ type modelsBackend struct {
 	models    []state.ModelInfo
 	listErr   error
 	listCalls int
+	setCalls  []modelSetCall
+	setErr    error
 }
 
 func (b *modelsBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error) {
 	b.listCalls++
 	return b.models, b.listErr
+}
+
+type modelSetCall struct {
+	target state.ModelTarget
+	ref    string
+}
+
+func (b *modelsBackend) SetModel(ctx context.Context, target state.ModelTarget, ref string) error {
+	b.setCalls = append(b.setCalls, modelSetCall{target, ref})
+	return b.setErr
 }
 
 // readBrain reloads brain.json as persistCfg wrote it (scratchHome
@@ -145,8 +137,8 @@ func TestModelPickerOpenAndStateCarry(t *testing.T) {
 	}
 }
 
-// (d) ACCEPT: the picker's ref drives the EXISTING /model-set path —
-// cfg flips, the frozen notice lands, brain.json persists immediately.
+// ACCEPT shares the asynchronous setter used by the manual slash command.
+// Only acknowledgment commits and persists the scoped preference.
 func TestModelPickerAcceptRoutesExistingPath(t *testing.T) {
 	scratchHome(t)
 	b := &modelsBackend{models: modelsFixture()}
@@ -160,19 +152,19 @@ func TestModelPickerAcceptRoutesExistingPath(t *testing.T) {
 	if m.ModelPickerOpen() {
 		t.Fatalf("every accept path closes the picker")
 	}
-	if got := string(m.cfg.Boss.Model); got != "anthropic/claude-sonnet-4-5" {
-		t.Fatalf("the pick must set cfg.Boss.Model via the existing path, got %q", got)
+	if got := m.cfg.EffectiveModel(m.backendName(), ""); got != "anthropic/claude-sonnet-4-5" {
+		t.Fatalf("the pick must set the scoped preference after backend acknowledgment, got %q", got)
 	}
 	last := lastChat(t, m)
 	if last.From != "office" || last.Meta == "error" {
 		t.Fatalf("the switch notice must be a clean dim office notice: from=%q meta=%q", last.From, last.Meta)
 	}
-	if !strings.HasPrefix(last.Text, "boss model → anthropic/claude-sonnet-4-5 (the backend honors it on the next send) · ") {
+	if !strings.HasPrefix(last.Text, "boss model · opencode → anthropic/claude-sonnet-4-5 (applied for future requests) · ") {
 		t.Fatalf("the EXACT free-form notice must land (consistency), got %q", last.Text)
 	}
 	// brain.json persists NOW — the picker-set model survives a restart.
 	cfg := readBrain(t)
-	if string(cfg.Boss.Model) != "anthropic/claude-sonnet-4-5" {
+	if cfg.EffectiveModel("opencode", "") != "anthropic/claude-sonnet-4-5" {
 		t.Fatalf("brain.json must carry the pick immediately, got %q", cfg.Boss.Model)
 	}
 	// and a RE-OPEN marks the freshly set model Current in the card.
@@ -183,8 +175,7 @@ func TestModelPickerAcceptRoutesExistingPath(t *testing.T) {
 	}
 }
 
-// (e) FREE-FORM BACK-COMPAT: /model x/y sets directly — the picker never
-// opens, the notice is the same one accept-produces, cfg persists.
+// Manual selection bypasses listing and preserves native reference syntax.
 func TestModelSlashFreeFormUnchanged(t *testing.T) {
 	scratchHome(t)
 	b := &modelsBackend{models: modelsFixture()} // the seam EXISTS — the arg path must not consult it
@@ -197,24 +188,21 @@ func TestModelSlashFreeFormUnchanged(t *testing.T) {
 	if m.ModelPickerOpen() {
 		t.Fatalf("/model x/y must NEVER open the picker")
 	}
-	if got := string(m.cfg.Boss.Model); got != "openai/gpt-5" {
+	if got := m.cfg.EffectiveModel(m.backendName(), ""); got != "openai/gpt-5" {
 		t.Fatalf("free-form must set cfg.Boss.Model verbatim, got %q", got)
 	}
 	last := lastChat(t, m)
-	if !strings.HasPrefix(last.Text, "boss model → openai/gpt-5 (the backend honors it on the next send) · ") {
-		t.Fatalf("the frozen free-form notice must not change: %q", last.Text)
+	if !strings.HasPrefix(last.Text, "boss model · opencode → openai/gpt-5 (applied for future requests) · ") {
+		t.Fatalf("the acknowledgment notice must name the backend: %q", last.Text)
 	}
-	// the malformed-ref guard is verbatim too.
+	// Native slash-less references are adapter-owned and pass through exactly.
 	m = runMsg(t, m, slashMsg{text: "/model gpt-5"})
-	last = lastChat(t, m)
-	if last.Meta != "error" || !strings.Contains(last.Text, "usage /model provider/model") {
-		t.Fatalf("the slash-less guard must stay: meta=%q text=%q", last.Meta, last.Text)
+	if got := b.setCalls[len(b.setCalls)-1]; got.ref != "gpt-5" || got.target.Agent != "" {
+		t.Fatalf("native ref must reach the boss setter unchanged: %+v", got)
 	}
 }
 
-// (f) FALLBACK #1: a backend WITHOUT the listing seam never opens the
-// picker — today's hint note lands verbatim, with the dim
-// picker-unavailable tail.
+// A backend without listing explains the manual selection path.
 func TestModelSlashFallbackNoSeam(t *testing.T) {
 	scratchHome(t)
 	m := New(&pinBackend{primary: "ses-live-9"}, nil)
@@ -225,8 +213,8 @@ func TestModelSlashFallbackNoSeam(t *testing.T) {
 	}
 	last := lastChat(t, m)
 	for _, want := range []string{
-		"boss model: server default — set with /model provider/model (the backend honors it on the next send)",
-		"(model picker unavailable on this backend",
+		"boss model · opencode: no saved override — set with /model <native-ref>",
+		"(model picker unavailable: listing is not supported by opencode",
 	} {
 		if !strings.Contains(last.Text, want) {
 			t.Fatalf("the fallback must contain %q:\n%s", want, last.Text)
@@ -252,7 +240,7 @@ func TestModelSlashFallbackListingError(t *testing.T) {
 	}
 	last := lastChat(t, m)
 	for _, want := range []string{
-		"boss model: server default — set with /model provider/model",
+		"boss model · opencode: no saved override — set with /model <native-ref>",
 		"model picker unavailable: opencode serve unreachable",
 	} {
 		if !strings.Contains(last.Text, want) {
@@ -281,13 +269,12 @@ func TestModelPickerEscZeroEffects(t *testing.T) {
 	if len(m.st.Chat) != before {
 		t.Fatalf("esc appends NOTHING (zero side effects), chat %d -> %d", before, len(m.st.Chat))
 	}
-	if got := string(m.cfg.Boss.Model); got != "" {
+	if got := m.cfg.EffectiveModel(m.backendName(), ""); got != "" {
 		t.Fatalf("esc must never change the configured model, got %q", got)
 	}
 }
 
-// (g-2) an esc racing the in-flight hop drops the late landing's picker
-// work — the card stays closed (the listing still rides the state).
+// Escape rejects a late listing; the previously accepted catalog is retained.
 func TestModelPickerEscBeatsLateListing(t *testing.T) {
 	scratchHome(t)
 	b := &modelsBackend{models: modelsFixture()}
@@ -303,7 +290,7 @@ func TestModelPickerEscBeatsLateListing(t *testing.T) {
 		t.Fatalf("a late landing must never re-open an esc'd picker")
 	}
 	if len(m.st.Models) != 5 {
-		t.Fatalf("the late listing still rides the office state, got %d rows", len(m.st.Models))
+		t.Fatalf("the previously accepted listing stays in office state, got %d rows", len(m.st.Models))
 	}
 }
 

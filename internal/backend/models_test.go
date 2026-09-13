@@ -10,6 +10,7 @@
 package backend
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -163,6 +164,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 
 	// Precedence: backend.bossModel wins over the legacy boss.model.
 	cfg.Boss.Model = "anthropic/claude-opus-4-1"
+	b = liveStubBackend(stub, srv, cfg)
 	if err := b.postPrompt("ses-boss", "again", nil, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +176,7 @@ func TestBossPromptModelOverride(t *testing.T) {
 	}
 	// Legacy alone still works (existing brain.json keeps functioning).
 	cfg.Backend.BossModel = ""
+	b = liveStubBackend(stub, srv, cfg)
 	if err := b.postPrompt("ses-boss", "legacy", nil, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -196,10 +199,8 @@ func TestBossPromptModelOverride(t *testing.T) {
 	payloadModel(t, body, false)
 }
 
-// TestMalformedModelSkippedOnWire: a slash-less bossModel is kept in the
-// config (validation-lite) but never reaches the wire — the serve needs
-// providerID AND modelID.
-func TestMalformedModelSkippedOnWire(t *testing.T) {
+// TestMalformedModelFailsBeforeWire prevents inference using a default model.
+func TestMalformedModelFailsBeforeWire(t *testing.T) {
 	stub := &modelStub{}
 	srv := stub.serve(t)
 
@@ -209,11 +210,12 @@ func TestMalformedModelSkippedOnWire(t *testing.T) {
 	log := &eventLog{}
 	b.fl.setEmit(log.emit)
 
-	if err := b.postPrompt("ses-boss", "hello", nil, ""); err != nil {
-		t.Fatal(err)
+	if err := b.postPrompt("ses-boss", "hello", nil, ""); err == nil {
+		t.Fatal("invalid saved selection must fail before inference")
 	}
-	body, _ := stub.lastPost("POST /session/ses-boss/prompt_async")
-	payloadModel(t, body, false)
+	if posts := stub.promptPosts(); len(posts) != 0 {
+		t.Fatalf("unexpected prompts: %v", posts)
+	}
 }
 
 // TestCTORoutedDispatchUsesCTOModel: a session the floor hired as the CTO
@@ -274,7 +276,9 @@ func TestCTORoutedDispatchUsesCTOModel(t *testing.T) {
 	payloadModel(t, body, false)
 
 	// Both knobs set: each session gets its OWN model.
-	cfg.Backend.BossModel = "anthropic/claude-sonnet-4"
+	if err := b.SetModel(context.Background(), state.ModelTarget{}, "anthropic/claude-sonnet-4"); err != nil {
+		t.Fatal(err)
+	}
 	if err := b.postPrompt("ses-cto", "review again", nil, ""); err != nil {
 		t.Fatal(err)
 	}

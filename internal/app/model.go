@@ -758,14 +758,16 @@ type Model struct {
 	parkedStatus   string // StatusLine saved at park, restored at unpark
 
 	// modelPick — the open /model picker card (bare /model when the
-	// backend lists models via the modelListBackend seam; nil = closed).
+	// backend lists models via optional catalog capabilities; nil = closed).
 	// APP-LEVEL float (model.go owns it outright, panels.ModelPickerFrame
 	// splices it over the composed frame): unlike the /session picker's
 	// chat-embedded card this one never touches the chat panel. While a
 	// permission/question float is up it yields keys and hides (a parked
 	// turn outranks browsing), resuming when the float clears. Pointer —
 	// the Model value copies share the component, like chat/social/gov.
-	modelPick *panels.ModelPicker
+	modelPick      *panels.ModelPicker
+	modelRequestID uint64
+	modelSelection *modelSelection
 
 	// activeThink — CallIDs with an OPEN boss EvThought stream (Done not
 	// yet seen). Model-owned (the reducer stays pure): the chat panel
@@ -2073,19 +2075,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// strike toward the backoff latch).
 		m.applyOlderPage(msg)
 	case modelsListMsg:
-		// the /model picker's async listing landed — picker + state field,
-		// both invisible to the digest, so cover the frame cache like slashMsg.
 		m.frameNonce++
 		m.handleModelsList(msg)
+	case modelAgentsListMsg:
+		m.frameNonce++
+		m.handleModelAgentsList(msg)
+	case modelApplyMsg:
+		m.frameNonce++
+		cmds = append(cmds, m.handleModelApply(msg))
 	case modelPickMsg:
-		// enter accepted a row: close the card and drive the EXISTING
-		// /model-set slash path (model_picker.go's acceptModelPick).
 		m.frameNonce++
-		m.acceptModelPick(msg.ref)
+		cmds = append(cmds, m.acceptModelPick(msg))
 	case modelPickCancelMsg:
-		// esc cancels with zero side effects: only the card closes.
-		m.frameNonce++
-		m.closeModelPicker()
+		if m.modelRequestActive(msg.request) && !m.modelSelection.applying {
+			m.frameNonce++
+			m.closeModelPicker()
+		}
 	case enqueueMsg:
 		if len(m.queue) >= queueCap {
 			m.noticeErr(fmt.Sprintf("backlog full (%d) — wait for the boss to catch up, or /queue clear", queueCap))
@@ -2798,6 +2803,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) tea.Cmd {
 	// permission/question float is up (a parked turn outranks browsing —
 	// the picker hides and waits, model_picker.go's contract).
 	if m.modelPick != nil && m.permQ.front() == nil && m.question == nil {
+		if m.modelSelection != nil && m.modelSelection.applying {
+			return nil
+		}
 		return m.modelPick.Key(msg)
 	}
 
@@ -5831,7 +5839,8 @@ const slashHelp = `commands:
   /themes            list themes
   /power [mode]      show/set the power governor (auto|performance|saver)
   /notify [on|off]   OS desktop notifications while unfocused (persists)
-  /model [ref]       show/set the boss model (provider/model)
+  /model [ref]       pick/set the active backend boss model
+  /submodel [agent] [ref]  pick/set a native sub-agent model
   /thinking on|off   show/hide thinking blocks
   /tools on|off      show/hide tool one-liners
   /diffs on|off      expand/collapse file diffs (ctrl+d toggles)
@@ -6002,19 +6011,16 @@ func (m *Model) applySlash(input string) tea.Cmd {
 		}
 		m.notice(fmt.Sprintf("notifications → %s · %s", mode, m.persistCfg()))
 	case "/model":
-		if len(fields) < 2 {
-			// bare /model: open the interactive picker when the backend
-			// lists models via the additive seam (model_picker.go); every
-			// seam-absent/failed-listing path lands the classic hint note.
+		if len(fields) == 1 {
 			return m.openModelPicker()
 		}
-		ref := fields[1]
-		if !strings.Contains(ref, "/") {
-			m.noticeErr("/model: usage /model provider/model (e.g. anthropic/claude-haiku-4-5)")
+		if len(fields) != 2 {
+			m.noticeErr("/model: usage /model [native-ref]")
 			return nil
 		}
-		m.cfg.Boss.Model = config.ModelRef(ref)
-		m.notice(fmt.Sprintf("boss model → %s (the backend honors it on the next send) · %s", ref, m.persistCfg()))
+		return m.applyModelSelection(state.ModelTarget{}, fields[1])
+	case "/submodel":
+		return m.applySubmodel(fields)
 	case "/thinking":
 		m.applyToggle("/thinking", fields, func(on bool) {
 			m.chat.SetShowThinking(on)
@@ -7048,14 +7054,15 @@ func (m *Model) finishBackendTransition(result backendBuildMsg) tea.Cmd {
 		emit, nb := m.emitFn, result.backend
 		return func() tea.Msg { return backendStartMsg{result: result, err: nb.Start(emit)} }
 	}
+	m.invalidateModelSelection()
 	m.backend = result.backend
 	cleanup := m.currentBackend.replace(result.backend)
 	return tea.Batch(cleanup, func() tea.Msg { return backendReadyMsg{result: result} })
 }
 
 // completeBackendTransition performs the new backend's setup after the
-// generation flip. It is separately scheduled from cleanup: both run outside
-// the input handler, and the replacement is already visible to new sends.
+// generation flip. Its reducer serializes config persistence with other
+// settings; transport startup and old-generation cleanup remain asynchronous.
 func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 	if result.transition != m.backendTransitionID {
 		if result.bypass {
@@ -7094,8 +7101,10 @@ func (m *Model) completeBackendTransition(result backendBuildMsg) tea.Cmd {
 	cmd := m.applyEvent(state.Event{Kind: state.EvStatus, Text: msg})
 	var saveCfg tea.Cmd
 	if m.cfg != nil {
-		cfg := m.cfg
-		saveCfg = func() tea.Msg { return backendConfigSaveMsg{err: config.Save(cfg)} }
+		// Serialize config writes with later model/settings acknowledgments.
+		// Only the save result may be delivered asynchronously.
+		err := config.Save(m.cfg)
+		saveCfg = func() tea.Msg { return backendConfigSaveMsg{err: err} }
 	}
 	return tea.Batch(cmd, saveCfg)
 }
@@ -7240,6 +7249,7 @@ func (m *Model) completeBypassStart(msg backendStartMsg) tea.Cmd {
 		m.backendTransitioning = false
 		return tea.Batch(stopDiscardedBackend(result.backend), m.respawnForBypass())
 	}
+	m.invalidateModelSelection()
 	m.backend = result.backend
 	cleanup := m.currentBackend.replace(result.backend)
 	m.bypassPerms = result.bypassValue

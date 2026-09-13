@@ -7,6 +7,55 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-13 · Fix Codex model lockout (@developer subagent) — tekton-4 (developer) · `issues`
+- summary: Confirms only `codex.go` was pre-tracked (my diff), and my four other scoped files are new/untracked from the larger uncommitted feature — consistent with the b
+- files: `internal/backend/codex.go`, `internal/backend/charter_codex_agentmodel_test.go`, `internal/backend/models_codex_test.go`, `internal/backend/models_codex.go`, `internal/backend/charter_codex_agentmodel.go`
+- verify: Note on flakes observed (not caused by my changes, none in my scope): two separate runs of the same `-run 'Codex|Agent|Model'`/full-package
+- proof: *Send-time check — before (the defect, from `codex.go:197-202` as read at brief time):**
+- ledgerId: led-1789273450863-76391bcc
+
+### 2026-09-13 · Harden Claude hook fallback (@developer subag... — tekton-3 (developer) · `issues`
+- summary: Read `claude.go`'s hook routing (line 649 originally), `claude_events.go`'s `mapClaudeControlRequest` (line ~1359 switch with no `hook_callback` case), and `cla
+- files: `internal/backend/claude.go`, `internal/backend/claude_events.go`, `internal/backend/claude_models_test.go`, `internal/backend/claude_models.go`, `cmd/claudestub/main.go`
+- verify: Fix restored immediately after; `gofmt -l` confirmed clean afterward.
+- proof: *Matching condition — before:**
+- ledgerId: led-1789273407714-e31270be
+
+### 2026-09-13 · Review model selection diff (@reviewer subagent) — theboringcto-1 (cto) · `issues`
+- summary: ## VERDICT
+- files: | Path | Why inspected |, |---|---|, | `internal/backend/opencode.go` | Req 1, | `internal/backend/models_opencode_selection.go` | Req 1, | `internal/backend/models_test.go` | Req 1, | `internal/backend/models_opencode_selection_test.go` | Req 1, | `internal/backend/claude_models.go` | Req 2, | `internal/backend/claude.go` | Req 2, | `internal/backend/claude_events.go` | Req 2, | `cmd/claudestub/main.go` | Req 2, | `internal/backend/claude_models_test.go` | Req 2, | `internal/app/model_selection.go` | Req 3
+- verify: Requirement 8 (secrets/leakage): **Satisfied.** Grepped all new/changed model-selection files for credential-shaped identifiers (`API_KEY`,
+- proof: (none)
+- ledgerId: led-1789272772746-e56a5907
+
+### 2026-09-13 · Draft v0.9.0 commit message (@general subagent) — tekton-2 (developer) · `issues`
+- summary: 1. **Convention**: read `git log -6 --format=%B` in full. Confirmed: subject is `type(scope): lowercase imperative summary`, no trailing period. Scope (`website
+- files: | Path | Why it mattered |, |---|---|, | `internal/state/state.go`, `internal/state/model_catalog.go` | Core `ModelInfo` shape + optional c, | `internal/config/config.go`, `internal/config/model_preferences.go` | Backend-scoped preference st, | `internal/backend/opencode.go`, `models_test.go` | Confirms the fail-outright-on-invalid-model beh, | `internal/backend/codex.go`, `models_codex.go` | Confirms `--model` at spawn and the explicit per-, | `internal/backend/claude.go`, `claude_models.go`, `charter_agentmodel.go` | Confirms control_reque, | `internal/app/model_picker.go`, `submodel.go`, `internal/panels/model_picker.go` | Confirms native, | `cmd/uishot/main.go`, `model_proof.go` | Confirms `--modelshot` was replaced wholesale with a dete, | `docs/models.md`, `README.md`, `docs/README.md` | New doc + index links |, | `.opencode/oikonomos.md`, `mobile/pubspec.yaml`, `website/package.json`, `mobile/.gitignore` | The, | `cmd/claudestub/main.go` | Confirms the fixture stub's `list_models`/`set_model` control_request h
+- verify: `git status --short` before and after my session is unchanged — I only ran `git log`, `git diff`, `git status`, `git tag`, `cat`, and read t
+- proof: ```
+- ledgerId: led-1789272472044-89e0f662
+
+### 2026-09-13 · Version and ignore hygiene (@developer subagent) — tekton-1 (developer) · `issues`
+- summary: Bumped `mobile/pubspec.yaml` version from `0.7.0+3` to `0.9.0+4` (only the `version:` line changed).
+- files: `mobile/pubspec.yaml`, `website/package.json`, `mobile/.gitignore`
+- verify: Diff between the two `git status --short` runs: `?? mobile/devtools_options.yaml` disappears; `M mobile/.gitignore`, `M mobile/pubspec.yaml`
+- proof: *`mobile/pubspec.yaml` version line**
+- ledgerId: led-1789272342717-4396cb3b
+
+### 2026-09-13 · Full release verification (@runner subagent) — hemerodromos-1 (runner) · `issues`
+- summary: Everything ran clean. Full gate is GREEN. Here's the complete report.
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1789272188092-a7de4c6d
+
+### 2026-09-13 · Map the release process (@explore subagent) — skopos-1 (scout) · `issues`
+- summary: Recon complete. Full report below.
+- files: | Path | Why read |, |---|---|, | `internal/state/state.go` | `ModelInfo` gains `Ref`/`Description`/`Disabled`/`IsDefault`, | `internal/config/config.go`, `internal/config/model_preferences.go`, | `internal/app/model.go`, `internal/app/model_selection.go`, | `internal/app/submodel.go`, `internal/app/submodel_test.go` | `/submodel` rewritten from OpenCode-, | `internal/app/model_picker.go`, `internal/app/model_picker_test.go` | boss `/model` slash path rew, | `internal/panels/model_picker.go`, `internal/panels/model_picker_native_test.go`, | `internal/panels/popover.go`, `internal/panels/popover_cmds_test.go` | Slash-help copy for `/model, | `internal/backend/claude.go` | Live Claude backend: `--model` at spawn, control_request/control_re, | `internal/backend/claude_models.go`, `internal/backend/claude_models_test.go`, | `internal/backend/claude_events.go`, `internal/backend/claude_dialog_kinds_test.go` | Wire types f
+- verify: ```
+- proof: ### 1. The change surface
+- ledgerId: led-1789271737135-7c9d6fbd
+
 ### 2026-09-07 · Fix activity review findings (@developer suba... — theboringcto-4 (cto) · `issues`
 - summary: Added optional `officeWorking` plumbing from `SessionView` through `ActivityGroupRow` into `ActivityBubble`, defaulting to `false`.
 - files: `mobile/lib/components/activity_bubble.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/activity_bubble_test.dart`
@@ -307,53 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ```go
 - ledgerId: led-1788792242958-f832492b
-
-### 2026-09-07 · Fix transcript bottom anchoring (@developer s... — tekton-25 (developer) · `issues`
-- summary: Rebuilt the transcript list around `ListView(reverse: true)`, so scroll offset `0` is the newest end on first paint without a post-frame scroll jump.
-- files: `mobile/lib/views/session_view.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788790896446-673213b3
-
-### 2026-09-07 · Compact grouped transcript UI (@developer sub... — tekton-24 (developer) · `done`
-- summary: Removed the per-message copy `IconButton`; no transcript row renders `Icons.copy_outlined`.
-- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788785056035-fe1db003
-
-### 2026-09-07 · Transcript activity grouping logic (@develope... — tekton-23 (developer) · `done`
-- summary: Added pure transcript-entry grouping logic that folds consecutive `wthink` and `wtool` messages into `ActivityEntry` values.
-- files: `mobile/lib/models/activity_group.dart`, `mobile/lib/models/models.dart`, `mobile/test/activity_group_test.dart`
-- verify: ```
-- proof: ```dart
-- ledgerId: led-1788784645412-54a3f88d
-
-### 2026-09-07 · Research agent transcript UIs (@general subag... — tekton-22 (developer) · `issues`
-- summary: # Manager Report — Research Task (RESEARCH ONLY)
-- files: none
-- verify: --
-- proof: ### (a) Comparison table
-- ledgerId: led-1788784643191-b4bafad5
-
-### 2026-09-07 · Run full Go test suite (@runner subagent) — hemerodromos-2 (runner) · `done`
-- summary: RESULT — PASS
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788779978974-90e6e641
-
-### 2026-09-07 · Fix failing Flutter tests (@developer subagent) — tekton-21 (developer) · `issues`
-- summary: Updated stale navigation/session-launch assertions to match the intended floating session UI and current tab titles.
-- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/app_test.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: | Failing test | Root cause | Classification | What changed |
-- ledgerId: led-1788778845123-5dd4a411
-
-### 2026-09-07 · Flutter image attach + send (@developer subag... — tekton-20 (developer) · `issues`
-- summary: Added the `Attachment` wire model with standard-base64 JSON serialization and client-side image count/type/size validation.
-- files: `mobile/lib/models/attachment.dart`, `mobile/lib/models/models.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/store/session_store.dart`, `mobile/lib/views/session_view.dart`, `mobile/lib/components/attachment_picker.dart`, `mobile/lib/components/attachment_chip.dart`, `mobile/test/attachment_test.dart`
-- verify: ```
-- proof: *Text-only request — unchanged legacy body**
-- ledgerId: led-1788778591350-9b93f03d
 

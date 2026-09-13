@@ -33,6 +33,9 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# DevTools generates this machine-local settings file on first run
+devtools_options.yaml
+
 # Symbolication related
 app.*.symbols
 

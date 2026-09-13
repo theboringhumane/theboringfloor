@@ -28,6 +28,9 @@ type codexBackend struct {
 	mu                       sync.Mutex
 	fl                       *flow
 	bin, dir, primary        string
+	model                    string
+	agentModels              map[string]string
+	staleAgentModels         bool
 	cmd                      *exec.Cmd
 	done                     chan struct{}
 	started, stopped, bypass bool
@@ -43,7 +46,27 @@ func NewCodex(bin, dir string, cfg *config.Config) state.Backend {
 	if dir == "" {
 		dir, _ = os.Getwd()
 	}
-	return &codexBackend{bin: bin, dir: dir, fl: newFlow(), cfg: cfgOrDefault(cfg)}
+	cfg = cfgOrDefault(cfg)
+	agentModels := cfg.AgentModelPreferences("codex")
+	// Codex has no native per-role model support: SetModel already refuses a
+	// non-empty target.Agent at pick time (models_codex.go), so this map can
+	// only be non-empty from a value that reached disk some other way (a
+	// hand-edited brain.json, or a future regression). Scrub it here, at
+	// config load, so a stray entry self-heals instead of latching every
+	// later send into codexAgentModelUnsupported() forever with no in-app
+	// remediation. Start emits the one-time member notice once fl is wired.
+	stale := false
+	for _, ref := range agentModels {
+		if ref != "" {
+			stale = true
+			break
+		}
+	}
+	if stale {
+		agentModels = map[string]string{}
+	}
+	return &codexBackend{bin: bin, dir: dir, fl: newFlow(), cfg: cfg,
+		model: cfg.EffectiveModel("codex", ""), agentModels: agentModels, staleAgentModels: stale}
 }
 func (b *codexBackend) Mode() state.Mode { return state.ModeLive }
 func (b *codexBackend) Start(emit func(state.Event)) error {
@@ -58,10 +81,18 @@ func (b *codexBackend) Start(emit func(state.Event)) error {
 		return fmt.Errorf("Codex CLI unavailable: install Codex and run codex login: %w", err)
 	}
 	b.bin, b.started = bin, true
+	notifyStale := b.staleAgentModels
 	b.mu.Unlock()
 	b.fl.setEmit(emit)
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[theboringfloor] backend: codex"})
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: "Codex ready · workspace sandbox · saved CLI login"})
+	if notifyStale {
+		// Exactly once per backend session: Start can only ever complete
+		// successfully once per instance (the started/stopped guard above
+		// rejects every later call), so this never repeats — including
+		// never repeating per send, since it no longer lives in send().
+		b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[codex] ignoring a saved per-agent model preference: Codex cannot honor per-agent model overrides, so every turn continues to use the boss model"})
+	}
 	return nil
 }
 func (b *codexBackend) PrimaryID() string { b.mu.Lock(); defer b.mu.Unlock(); return b.primary }
@@ -184,7 +215,27 @@ func (b *codexBackend) send(text string, atts []state.Attachment, agent string) 
 		b.mu.Unlock()
 		return errors.New("Codex is working; wait for the current turn or use /stop")
 	}
-	cmd := exec.Command(b.bin, codexArgs(b.primary, agent, b.bypass, images)...)
+	if b.model != "" {
+		if err := validateCodexModel(b.model); err != nil {
+			b.mu.Unlock()
+			return err
+		}
+	}
+	// A stale per-agent entry (b.agentModels) is never fatal here: Start
+	// already scrubbed any non-empty entry out of b.agentModels and told the
+	// member once (see NewCodex/Start). Only an invalid boss model above can
+	// fail a Codex send for model reasons.
+	args := codexArgs(b.primary, agent, b.bypass, images)
+	if b.model != "" {
+		// Put the native model option before the thread id and stdin marker.
+		// Both exec and exec resume accept it; never manufacture a provider prefix.
+		at := len(args) - 1
+		if b.primary != "" {
+			at--
+		}
+		args = append(args[:at], append([]string{"--model", b.model}, args[at:]...)...)
+	}
+	cmd := exec.Command(b.bin, args...)
 	cmd.Dir = b.dir
 	if b.primary == "" {
 		prompt = charter.Text + "\n\n" + prompt

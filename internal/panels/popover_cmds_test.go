@@ -50,3 +50,19 @@ func TestSlashCommandsAllReal(t *testing.T) {
 		}
 	}
 }
+
+func TestSlashModelPickerDescriptions(t *testing.T) {
+	for _, tc := range []struct{ fragment, description, usage string }{
+		{"model", "pick boss model or set a native model token", "/model [model]"},
+		{"submodel", "pick native agent type, then its model", "/submodel | /submodel <agent> [model]"},
+	} {
+		c := NewChat(nil)
+		c.slashOpen, c.slashMode, c.slashFrag = true, slashModeCmd, tc.fragment
+		c.SetSize(80, 24)
+		c.refilterSlash()
+		plain := ansi.Strip(c.renderSlashPopover())
+		if !strings.Contains(plain, tc.description) || !strings.Contains(plain, tc.usage) {
+			t.Fatalf("native model picker usage missing:\n%s", plain)
+		}
+	}
+}

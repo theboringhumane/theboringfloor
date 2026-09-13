@@ -905,9 +905,8 @@ func (b *stubBackend) ReconnectMCP(name string) error {
 // the call — the --stop frame proves the unwind.
 // ListModels — the /model picker's listing seam on the shot stub
 // (ADDITIVE, the app's modelListBackend type-assert): the SAME fixed
-// five-model gallery the demo backend serves (one fixture — the
-// --modelshot frame renders exactly what a demo member sees), so the
-// picker's fetch-hop resolves in-process within the 4s window.
+// five-model gallery the demo backend serves, so ordinary shot modes
+// can resolve the picker fetch in-process. --modelshot has its own fixtures.
 func (b *stubBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error) {
 	return backend.DemoModels(), nil
 }
@@ -1009,32 +1008,6 @@ func permWorkload(p *tea.Program) {
 func diffsWorkload(p *tea.Program) {
 	time.Sleep(2200 * time.Millisecond)
 	p.Send(tea.KeyPressMsg(tea.Key{Code: 'd', Mod: tea.ModCtrl}))
-}
-
-// modelshotWorkload (--modelshot) opens the /model PICKER for the final
-// frame — the "any model, any backend" gallery shot. The two stacked
-// permission asks are answered first (y·y — the modal floats over the
-// same region and would bury the card). The command is typed AFTER the
-// always-on queue typing (~3.6s), then the two-press dance run: the
-// first Enter only APPLIES the popover's "/model" row into the draft
-// (bare slash commands never auto-send — the same contract the stop/ask
-// proofs dance with), the second SENDS it; the stub's fixed five-model
-// listing answers in-process, so by the 4s frame the card shows every
-// row with the cursor clamped on the first.
-func modelshotWorkload(p *tea.Program) {
-	time.Sleep(2500 * time.Millisecond)
-	p.Send(tea.KeyPressMsg(tea.Key{Code: 'y', Text: "y"}))
-	time.Sleep(250 * time.Millisecond)
-	p.Send(tea.KeyPressMsg(tea.Key{Code: 'y', Text: "y"}))
-	time.Sleep(890 * time.Millisecond) // ~3.64s — the queue typing below has drained
-	for _, r := range "/model" {
-		p.Send(tea.KeyPressMsg(tea.Key{Code: r, Text: string(r)}))
-		time.Sleep(8 * time.Millisecond)
-	}
-	time.Sleep(80 * time.Millisecond)
-	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // apply the popover row into the draft
-	time.Sleep(90 * time.Millisecond)
-	p.Send(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})) // send the bare command — the picker opens
 }
 
 // askTypeLine types a line into the open boss question modal rune by rune
@@ -8140,7 +8113,7 @@ func main() {
 	stuck := flag.Bool("stuck", false, "boss-stuck-busy proof (synchronous): boss busy at 200ms, never completes — the W1 wedge watchdog (SetWedgeAfterForShot-seamed 30ms threshold) notes ONE \"boss turn wedged\" line in the ACTIVITY tab (zero transcript rows) + hint swap; the /stop leg then runs with AbortSessions stubbed to FAIL and the office still unwinds (placeholder collapsed, dim failure note, watchdog re-armed)")
 	freesend := flag.Bool("freesend", false, "free-queuing proof: boss busy 200–3000ms; two prompts sent DURING the window must hit backend.Send IMMEDIATELY (both ([stub] Send lines precede the turn-completed marker in the ordering trace) — frame 1 (t=2.2s) shows \"busy · 2 queued (server)\" + the \"turn 2 · your message rides next\" placeholder; frame 2 (t=3.6s) shows the drained FIFO pins + restored status line")
 	concierge := flag.Bool("concierge", false, "concierge routing proof (synchronous, two phases): A) boss busy mid-turn — two sends BOTH route to stub.SendConcierge (capture printed), the \"office routed: boss busy → concierge\" notice prints ONCE, office placeholders read \"office is answering…\", answers pin in place (INFO \"office ›\" bubbles), the agents roster pins \"office (concierge) answering\" → \"on call\"; B) after the boss turn completes, the next send hits the boss's Send and the concierge is NOT called (zero duplication)")
-	modelshot := flag.Bool("modelshot", false, "any-model gallery shot: answers the two stacked permission asks (y·y at ~2.5s) so the modal clears, then types \"/model\" AFTER the queue typing and runs the two-press dance (first Enter applies the popover row, second SENDS) so the final frame shows the /model picker OPEN over the frame with the stub's fixed five-model listing, cursor on row 1")
+	modelshot := flag.Bool("modelshot", false, "deterministic native model UI+routing proofs: three backend catalogs, boss and supported agent selections, persisted preferences, next-send capture, narrow frame, two identical runs")
 	at := flag.Int("at", 0, "capture the standard-script frame at ms-from-start instead of the usual 4s — e.g. 2920 catches the permission queue modal OPEN (the always-on queue typing's enter keys answer it from ~3.06s on, so the 4s frame has already advanced past it)")
 	notifications := flag.Bool("notifications", false, "OS desktop notification proof (synchronous): recording NotifyBus at the app seam — focused startup silent; blur opens the window; ONE boss-ask cohort ping (child coalesces, generic agent+tool copy); front-answer keeps the cohort silent; ONE completion ping (clipped reply); refocus silent; re-blur re-nudges; /notify off → zero captures + persisted brain.json")
 
@@ -8153,6 +8126,13 @@ func main() {
 	browser := flag.Bool("browser", false, "browser tab premium-lane proofs (synchronous, REAL fake binary on a pinned PATH + hermetic ghostty env). --lane kitty (default): the CONTROLLER legs — leg A resolves the zenbu lane and EMBEDS the fake child on the real PTY seam (its bytes paint the grid; the region frame wears the \" zenbu \" badge + \"▸ zenbu terminal-browser · <url>\" strip), then Close group-kills + reaps (no leak); leg B (fake exits immediately, ~180ms < 300ms) lands the text-mode fallback — exact dim note, \" text \" badge, fixture body, strip gone, URL state intact; leg S (the kitty STREAM passthrough): the fake streams TWO CHUNKED kitty frames under the SAME child i=1 + text chrome — the lane splits the stream (text rows carry ZERO base64; the View carries ZERO APC bytes), the frame wrapper re-emits BOTH generations to the OUTER terminal after renderer flushes as cursor-save + CUP(the absolute cell) + ONE cached a=T,t=d,q=2,C=1 APC under the STABLE office id (ZenbuOfficeID(child id, placement)) carrying the pane's body box c=/r= + cursor-restore — ZERO a=d between the generations (kitty's atomic same-id replace) — and Close flushes ESC_Ga=d,d=I directly (captured through the emit seam); leg K (the MID-CHAIN DEATH): the fake dies mid-chunked-frame (chunk 2 OSC-7-interleaved, chunk 3 UNTERMINATED — the wave-82 capture's shape) — grid + scrollback carry ZERO base64, Poll latches the text fallback. --lane live: the LIVE APP-GLUE legs — \"/open file://<fixture>\" typed through the REAL chat input spawns the embed through the pane's own Open (the strip renders INSIDE the left slot, right strip unmoved, NO text-lane hint row), esc FREEZES the session (keep-alive: alive behind the floor, PID unchanged) + returns to the floor, the ctrl+c quit path reaps it; the die leg lands the text fallback through the app (the exact dim note, the warm page, the no-flap latch). --lane keepalive: the freeze/thaw flip cycle — /open → ctrl+b (floor: the child FREEZES, PID stable + alive + ps T…, ONE a=d through the wrapper's diff) → ctrl+b (the SAME pid thaws; the RETAINED frame re-emits byte-identically — the parked fake emits zero new bytes — with ZERO a=d interleaved) → ctrl+b → ctrl+c (the quit path reaps the frozen child, the delete riding the direct seam); ONE spawn total. --lane hint: the text lane's \"why\" row through the LIVE app — PATH pinned to an EMPTY fixture dir (the probe misses by construction) under the hermetic ghostty stub, so ctrl+b shows the idle starter card wearing the dim \"text lane — terminal-browser not on PATH · …\" hint under the location bar and /open keeps it pinned over the warm text page. Every leg byte-identical twice")
 	browsertab := flag.Bool("browsertab", false, "browser TAB text-viewer proof on the LEFT pane's floor|browser slot (synchronous, REAL pinned-port stub server on 127.0.0.1:52731): \"/open http://…/fixture.html\" typed through the REAL chat input + slash popover flips the left slot to the browser (right strip unmoved) and renders the shared fixture as text rows — the \"▸ <url>\" bar, bold headings, the indexed link rows (\"link alpha [1]\", \"link beta [2]\", \"link gamma [3]\"), the 🖼 chip, the \" │ \" table rows — then pgdn scrolls the tail-marker row into view; two drives byte-identical")
 	flag.Parse()
+	if *modelshot {
+		if err := runModelProof(os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, "model proof:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if *websiteOut != "" {
 		if err := websiteShots(*websiteOut); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -8518,7 +8498,7 @@ func main() {
 	}
 
 	// keystroke workloads only reach the textarea / modal on the chat tab
-	if (*slash || *perm || *diffs || *debug || *think || *askAnswer || *askEsc || *askQueue || *modelshot) && *tab == defaultTab {
+	if (*slash || *perm || *diffs || *debug || *think || *askAnswer || *askEsc || *askQueue) && *tab == defaultTab {
 		*tab = "chat"
 	}
 
@@ -8732,9 +8712,6 @@ func main() {
 	}
 	if *diffs {
 		go diffsWorkload(p)
-	}
-	if *modelshot {
-		go modelshotWorkload(p)
 	}
 	// queue typing always runs — on the agents tab the keys are absorbed by
 	// the (non-text) panel; on chat they FREE-SEND (boss busy at 3050ms,

@@ -92,7 +92,7 @@ func TestClaudeInitializeLineBytes(t *testing.T) {
 		}
 		want.WriteString(`"` + k + `"`)
 	}
-	want.WriteString(`]}}`)
+	want.WriteString(`],"hooks":{"PreToolUse":[{"hookCallbackIds":["office-agent-model-default"],"matcher":"Agent|Task"}]}}}`)
 	if string(got) != want.String() {
 		t.Fatalf("initialize bytes drifted:\n got: %s\nwant: %s", got, want.String())
 	}

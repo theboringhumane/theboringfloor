@@ -18,7 +18,8 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 
 | Page | |
 |---|---|
-| [Backends](https://boringfloor.com/docs/backends) | `opencode` serve-attach or `claudecode` stream-json |
+| [Backends](https://boringfloor.com/docs/backends) | `opencode` serve-attach, `claudecode` stream-json, or `codex` exec JSONL |
+| [Model selection](models.md) | Native `/model` and `/submodel` catalogs, preferences, and backend limits |
 | [Chat & work threads](https://boringfloor.com/docs/chat-and-threads) | streaming replies, nested worker threads |
 | [Plan mode](https://boringfloor.com/docs/plan-mode) | draft, edit, approve → build |
 
@@ -51,6 +52,7 @@ Canonical manual is the **website**. This folder is the in-repo map: architectur
 | Path | |
 |---|---|
 | [architecture.md](architecture.md) | floor plan, packages, event → sprite |
+| [models.md](models.md) | main and native sub-agent model selection |
 | `shots-go/` | TUI stills (`go run ./cmd/uishot`, `go run ./cmd/floorshot` + [freeze](https://github.com/charmbracelet/freeze)) |
 | `shots/` | older floor SVGs |
 

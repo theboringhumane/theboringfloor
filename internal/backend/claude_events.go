@@ -91,10 +91,21 @@ func (u claudeUsage) zero() bool {
 //	         ...a&&{tool_use_id:a}}
 //
 // — there are NO flat question/options fields anywhere on the dialog wire.
+//
+// The hook_callback shape below (CallbackID + Input's nested
+// hook_event_name/tool_name/tool_input/subagent_type keys) is, unlike the
+// two subtypes above, an ASSUMPTION — unverified against a live CLI
+// transcript as of 2026-09-13; nothing has captured a real hook_callback
+// frame the way 2.1.247 was captured for can_use_tool/request_user_dialog.
+// claude.go's readLoop therefore answers every hook_callback control_request
+// on Subtype alone, never gating the ack on CallbackID or any Input key
+// parsing the way this code expects (see the comment at that match site):
+// a drifted field degrades to "no model injected," never to "no answer."
 type claudeControlRequest struct {
-	Subtype               string          `json:"subtype"`                // can_use_tool | request_user_dialog
+	CallbackID            string          `json:"callback_id"`
+	Subtype               string          `json:"subtype"`                // can_use_tool | request_user_dialog | hook_callback
 	ToolName              string          `json:"tool_name"`              // can_use_tool
-	Input                 map[string]any  `json:"input"`                  // can_use_tool: the tool call's input
+	Input                 map[string]any  `json:"input"`                  // can_use_tool: the tool call's input; hook_callback: ASSUMED {hook_event_name, tool_name, tool_input} envelope
 	Description           string          `json:"description"`            // can_use_tool: the CLI's own one-line summary
 	ToolUseID             string          `json:"tool_use_id"`            // can_use_tool; also dialogs raised by a tool
 	PermissionSuggestions json.RawMessage `json:"permission_suggestions"` // can_use_tool: standing-grant candidates
@@ -127,6 +138,7 @@ type claudeEvent struct {
 	// control frames
 	RequestID string               `json:"request_id"`
 	Request   claudeControlRequest `json:"request"`
+	Response  claudeControlAck     `json:"response"`
 
 	// assistant / user frames
 	Message claudeMessage `json:"message"`

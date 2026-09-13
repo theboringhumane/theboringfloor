@@ -12,8 +12,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-
-	"github.com/theboringhumane/theboringfloor/internal/config"
 )
 
 const opencodeSchemaURL = "https://opencode.ai/config.json"
@@ -70,12 +68,19 @@ func mergeAgentModel(cfg []byte, name, ref string) (merged []byte, changed bool,
 		if !ok {
 			return nil, false, fmt.Errorf("agent.%s.model is %T, not a string — refusing to rewrite a hand-shaped config", name, rawModel)
 		}
-		if model == ref {
+		if model == ref && ref != "" {
 			return cfg, false, nil
 		}
 	}
 
-	agentConfig["model"] = ref
+	if ref == "" {
+		if _, exists := agentConfig["model"]; !exists {
+			return cfg, false, nil
+		}
+		delete(agentConfig, "model")
+	} else {
+		agentConfig["model"] = ref
+	}
 	agents[name] = agentConfig
 	doc["agent"] = agents
 	out, err := json.MarshalIndent(doc, "", "  ")
@@ -114,11 +119,11 @@ func ensureAgentModels(dir string, models map[string]string) (changed bool, err 
 	var errs []error
 	for _, name := range names {
 		ref := models[name]
-		if !config.ValidAgentName(name) {
+		if !validOpenCodeAgentName(name) {
 			errs = append(errs, fmt.Errorf("invalid agent name %q", name))
 			continue
 		}
-		if !config.ValidModelRef(ref) {
+		if ref != "" && !validOpenCodeModelRef(ref) {
 			errs = append(errs, fmt.Errorf("invalid model ref %q for agent %q", ref, name))
 			continue
 		}

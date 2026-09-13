@@ -118,8 +118,8 @@ func TestMergeAgentModelFailsClosed(t *testing.T) {
 
 func TestEnsureAgentModelsWritesProjectConfigAndContinuesAfterInvalidEntry(t *testing.T) {
 	dir := t.TempDir()
-	changed, err := ensureAgentModels(dir, map[string]string{"bad name": "azure/nope", "explore": "azure/claude-sonnet-5"})
-	if !changed || err == nil || !strings.Contains(err.Error(), `invalid agent name "bad name"`) {
+	changed, err := ensureAgentModels(dir, map[string]string{"": "azure/nope", "explore": "azure/claude-sonnet-5"})
+	if !changed || err == nil || !strings.Contains(err.Error(), `invalid agent name ""`) {
 		t.Fatalf("changed=%v err=%v", changed, err)
 	}
 	cfgPath := filepath.Join(dir, ".opencode", "opencode.json")

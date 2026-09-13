@@ -301,19 +301,16 @@ type ChatMsg struct {
 	Meta string `json:"meta,omitempty"`
 }
 
-// ModelInfo — one switchable boss model of the /model picker (bare
-// /model). Provider + ID are the wire halves of the "provider/model"
-// ModelRef the free-form /model command already sets; Name is the
-// serve's optional display label ("Claude Sonnet 4.5") — empty means the
-// ID renders (the picker never blanks a row). Fed on demand by the
-// backend's ListModels seam (GET /provider on the live wire; fixed
-// fixtures in demo/harness stubs) — never by an event: listings answer
-// a click, they don't stream, so no EvModels kind exists (the same
-// call-and-render shape the /session picker's ListSessions uses).
+// ModelInfo describes a backend-native selection returned on demand by
+// ModelLister. Ref is authoritative when present; ID remains an opaque token.
 type ModelInfo struct {
-	Provider string `json:"provider"`
-	ID       string `json:"id"`
-	Name     string `json:"name,omitempty"`
+	Provider    string `json:"provider"`
+	ID          string `json:"id"`
+	Name        string `json:"name,omitempty"`
+	Ref         string `json:"ref,omitempty"`
+	Description string `json:"description,omitempty"`
+	Disabled    bool   `json:"disabled,omitempty"`
+	IsDefault   bool   `json:"isDefault,omitempty"`
 }
 
 // QuestionOption is one selectable answer of a boss question popover.

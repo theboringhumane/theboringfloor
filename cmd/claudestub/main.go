@@ -261,7 +261,11 @@ func (s *stub) logCapture(line string) {
 type stubIn struct {
 	Type      string `json:"type"`
 	RequestID string `json:"request_id"`
-	Message   struct {
+	Request   struct {
+		Subtype string `json:"subtype"`
+		Model   string `json:"model"`
+	} `json:"request"`
+	Message struct {
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -374,8 +378,18 @@ func main() {
 		case "control_response":
 			s.onControlResponse(in.Response.RequestID, in.Response.Response.Behavior, in.Response.Response.Answer)
 		case "control_request":
-			// interrupt: settle immediately, claude-style (a result closes the turn)
-			s.emit(resultLine("res-interrupted", 0, 0, 0, 0, 0))
+			switch in.Request.Subtype {
+			case "initialize", "list_models":
+				payload := json.RawMessage(`{"models":[{"value":"default","displayName":"Default","resolvedModel":"claude-stub-4","description":"Native default"},{"value":"sonnet","displayName":"Sonnet","description":"Fixture model"},{"value":"haiku","displayName":"Haiku","description":"Fixture model"}],"agents":[{"name":"Explore","description":"Read-only exploration"},{"name":"general-purpose","description":"General tasks"}],"hooks_applied":true}`)
+				line, _ := json.Marshal(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": in.RequestID, "response": payload}})
+				s.emit(string(line))
+			case "set_model":
+				line, _ := json.Marshal(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": in.RequestID, "response": map[string]any{}}})
+				s.emit(string(line))
+			case "interrupt":
+				// Only interrupt settles a turn; catalog/model controls never do.
+				s.emit(resultLine("res-interrupted", 0, 0, 0, 0, 0))
+			}
 		}
 	}
 }

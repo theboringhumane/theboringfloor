@@ -1,58 +1,73 @@
-// submodel.go — /submodel records opencode child-agent model overrides.
 package app
 
 import (
-	"fmt"
+	"sort"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/theboringhumane/theboringfloor/internal/config"
+	"github.com/theboringhumane/theboringfloor/internal/panels"
+	"github.com/theboringhumane/theboringfloor/internal/state"
 )
 
-// agentModelBackend is the optional seam for backends that can persist
-// per-sub-agent model overrides into their own config.
-type agentModelBackend interface {
-	ApplyAgentModels(models map[string]string) error
+// Native agent names and model tokens belong to the adapter. Never map them
+// onto the office's visual roles or impose OpenCode syntax on other backends.
+func (m *Model) applySubmodel(fields []string) tea.Cmd {
+	switch len(fields) {
+	case 1:
+		return m.openModelAgentPicker()
+	case 2:
+		return m.openTargetModelPicker(state.ModelTarget{Agent: fields[1]})
+	case 3:
+		return m.applyModelSelection(state.ModelTarget{Agent: fields[1]}, fields[2])
+	default:
+		m.noticeErr("/submodel: usage /submodel [native-agent] [native-ref]")
+		return nil
+	}
 }
 
-// applySubmodel handles the /submodel slash command. fields is the
-// whitespace-split command line, with fields[0] == "/submodel".
-func (m *Model) applySubmodel(fields []string) tea.Cmd {
-	const usage = "/submodel: usage /submodel <agent> provider/model (agents: explore, developer, general)"
-	if len(fields) != 3 {
-		m.noticeErr(usage)
-		return nil
-	}
-
-	agent, ref := fields[1], fields[2]
-	if !config.ValidAgentName(agent) {
-		m.noticeErr(fmt.Sprintf("/submodel: unknown agent %s — try explore, developer, or general", agent))
-		return nil
-	}
-	if !config.ValidModelRef(ref) {
-		m.noticeErr("/submodel: model must look like provider/model (e.g. azure/claude-sonnet-5)")
-		return nil
-	}
-
-	if m.cfg.AgentModels == nil {
-		m.cfg.AgentModels = map[string]config.ModelRef{}
-	}
-	m.cfg.AgentModels[agent] = config.ModelRef(ref)
-	m.notice(fmt.Sprintf("sub-agent model → %s = %s · %s", agent, ref, m.persistCfg()))
-
-	ab, ok := m.backend.(agentModelBackend)
+func (m *Model) openModelAgentPicker() tea.Cmd {
+	req, ctx, ok := m.newModelRequest(state.ModelTarget{}, true)
 	if !ok {
-		m.notice("/submodel: recorded, but this backend cannot apply sub-agent models (opencode only)")
 		return nil
 	}
-	models := make(map[string]string, len(m.cfg.AgentModels))
-	for name, model := range m.cfg.AgentModels {
-		models[name] = string(model)
+	_, _, agents, _ := m.currentBackend.modelGeneration()
+	if !agents {
+		m.invalidateModelSelection()
+		m.notice("/submodel: " + req.backend + " cannot list native agent types — try /submodel <agent> <native-ref> when supported")
+		return nil
 	}
+	m.makeModelPicker(req)
+	current := m.currentBackend
 	return func() tea.Msg {
-		if err := ab.ApplyAgentModels(models); err != nil {
-			return chatNoticeMsg{text: "/submodel: " + err.Error()}
-		}
-		return nil
+		var agents []state.ModelAgentInfo
+		err := current.leaseModel(ctx, req.generation, func(b state.Backend) error {
+			var err error
+			agents, err = b.(state.ModelAgentLister).ListModelAgents(ctx)
+			return err
+		})
+		return modelAgentsListMsg{request: req, agents: agents, err: err}
 	}
+}
+
+func (m *Model) handleModelAgentsList(msg modelAgentsListMsg) {
+	if !m.modelRequestActive(msg.request) {
+		return
+	}
+	if msg.err != nil {
+		m.invalidateModelSelection()
+		m.noticeErr("/submodel: " + msg.request.backend + " agent listing failed: " + msg.err.Error() + " — try /submodel <agent> <native-ref>")
+		return
+	}
+	agents := append([]state.ModelAgentInfo(nil), msg.agents...)
+	sort.SliceStable(agents, func(i, j int) bool { return agents[i].Name < agents[j].Name })
+	rows := make([]panels.ModelPickRow, 0, len(agents))
+	seen := map[string]bool{}
+	for _, agent := range agents {
+		if agent.Name == "" || seen[agent.Name] {
+			continue
+		}
+		seen[agent.Name] = true
+		rows = append(rows, panels.ModelPickRow{ID: agent.Name, Ref: agent.Name, Name: agent.Name, Description: agent.Description})
+	}
+	m.modelPick.SetRows(rows)
 }

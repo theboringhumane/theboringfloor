@@ -94,7 +94,15 @@ type liveClaudeBackend struct {
 	interruptSeq      int
 	interruptArm      bool // an interrupt is already in flight for the live turn(s)
 
-	writeMu sync.Mutex // single-writer stdin guard
+	writeMu        sync.Mutex // single-writer stdin guard
+	modelMu        sync.Mutex // orders model changes, session replacements and user sends
+	modelRef       string
+	modelUncertain bool
+	procWriteErr   error // partial JSONL control frame: no further writes until respawn
+	agentModelRefs map[string]string
+	controlSeq     int
+	controls       map[string]*claudeControlPending
+	initialization *claudeInitialization
 
 	ctx          *claudeNormCtx
 	thoughtSlots map[string]*thoughtSlot
@@ -145,14 +153,17 @@ var _ state.Backend = (*liveClaudeBackend)(nil)
 // (THEFLOOR_CLAUDE_BIN, then PATH's `claude`).
 func newClaudeBackend(bin, directory string, cfg *config.Config) *liveClaudeBackend {
 	b := &liveClaudeBackend{
-		directory:     directory,
-		cfg:           cfgOrDefault(cfg),
-		bin:           bin,
-		fl:            newFlow(),
-		ctx:           newClaudeNormCtx(cfgOrDefault(cfg)),
-		thoughtSlots:  make(map[string]*thoughtSlot),
-		chatSlots:     make(map[string]*thoughtSlot),
-		questionStash: make(map[string][]state.QuestionItem),
+		directory:      directory,
+		cfg:            cfgOrDefault(cfg),
+		bin:            bin,
+		fl:             newFlow(),
+		ctx:            newClaudeNormCtx(cfgOrDefault(cfg)),
+		thoughtSlots:   make(map[string]*thoughtSlot),
+		chatSlots:      make(map[string]*thoughtSlot),
+		questionStash:  make(map[string][]state.QuestionItem),
+		modelRef:       cfgOrDefault(cfg).EffectiveModel(config.BackendNameClaude, ""),
+		agentModelRefs: cfgOrDefault(cfg).AgentModelPreferences(config.BackendNameClaude),
+		controls:       make(map[string]*claudeControlPending),
 	}
 	b.browserBridge = browsertools.NewBridge(func(e state.Event) { b.fl.emit(e) })
 	return b
@@ -219,6 +230,8 @@ func (b *liveClaudeBackend) PrimaryOverride(id string) {
 // (id "" pre-init — the Start boot convention: roster lookups key on the
 // manager ROLE), one status.
 func (b *liveClaudeBackend) NewOffice() (string, error) {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
 	if b.fl.isStopped() {
 		return "", errors.New("backend stopped")
 	}
@@ -228,7 +241,7 @@ func (b *liveClaudeBackend) NewOffice() (string, error) {
 	old := b.primaryID
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass, b.modelRef)
 	if err != nil {
 		return "", err // the old session is still seated — the app restores the pre-btw surfaces
 	}
@@ -266,6 +279,8 @@ func (b *liveClaudeBackend) NewOffice() (string, error) {
 // teardown ladder as NewOffice; events mirror opencode.go's SwapPrimary
 // (fire the old row, hire the pinned manager, one status).
 func (b *liveClaudeBackend) SwapPrimary(id string) error {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
 	if b.fl.isStopped() {
 		return errors.New("backend stopped")
 	}
@@ -275,7 +290,7 @@ func (b *liveClaudeBackend) SwapPrimary(id string) error {
 	old := b.primaryID
 	b.mu.Unlock()
 
-	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, id, bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, id, bypass, b.modelRef)
 	if err != nil {
 		return err // the old session is still seated
 	}
@@ -413,7 +428,7 @@ func claudeChildEnv(directory string) []string {
 // the permission wiring (see below). The returned
 // exitCh carries the process's eventual Wait result (the scan-era reaper
 // owns cmd.Wait — callers never re-Wait).
-func spawnClaude(bin, directory, resumeID string, bypass bool) (*exec.Cmd, io.WriteCloser, io.Reader, <-chan error, *cappedErrBuf, error) {
+func spawnClaude(bin, directory, resumeID string, bypass bool, model ...string) (*exec.Cmd, io.WriteCloser, io.Reader, <-chan error, *cappedErrBuf, error) {
 	// --permission-prompt-tool stdio is the permission-modal lifeline:
 	// headless `claude -p` only wires canUseTool to the stdio control
 	// channel when the flag rides the spawn (the CLI's own SDK spawn
@@ -440,6 +455,9 @@ func spawnClaude(bin, directory, resumeID string, bypass bool) (*exec.Cmd, io.Wr
 	}
 	if resumeID != "" {
 		argv = append(argv, "--resume", resumeID)
+	}
+	if len(model) > 0 && model[0] != "" {
+		argv = append(argv, "--model", model[0])
 	}
 	cmd := exec.Command(bin, argv...)
 	isolateProcessGroup(cmd)
@@ -507,6 +525,8 @@ func (c *cappedErrBuf) String() string {
 // child that exits early. A pre-Start PrimaryOverride pin wins over the
 // wire id (see the seam).
 func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
 	b.fl.setEmit(emit)
 	bin := b.bin
 	if bin == "" {
@@ -535,7 +555,7 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	// TestClaudeStartSeatsFloorBeforeInit pins that prefix's order.
 	_, claudeCharterNotes := EnsureClaudeCharter(b.directory)
 
-	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, "", bypass, b.modelRef)
 	if err != nil {
 		return err
 	}
@@ -588,7 +608,7 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 	// The reader owns stdout from here; system/init pins the boss session
 	// WHENEVER it arrives (typically after the first Send) — Start never
 	// waits on it. The death watch parks on the child exit channel only.
-	go b.readLoop(stdout)
+	go b.readLoop(stdout, proc)
 	go b.watchProc(proc, exitCh, wait)
 	return nil
 }
@@ -601,7 +621,7 @@ func (b *liveClaudeBackend) Start(emit func(state.Event)) error {
 // claude -p emits init only after the first stdin user line, so nothing
 // upstream may block on it. A PrimaryOverride pin wins over the wire id.
 // Unknown frames never log-spam; a malformed line earns ONE dim status.
-func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
+func (b *liveClaudeBackend) readLoop(stdout io.Reader, proc *exec.Cmd) {
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for sc.Scan() {
@@ -622,6 +642,56 @@ func (b *liveClaudeBackend) readLoop(stdout io.Reader) {
 			b.rawFrameHook(raw)
 		}
 		b.mu.Lock()
+		if b.proc != proc {
+			b.mu.Unlock()
+			return
+		}
+		// hook_callback shape: ASSUMED, unverified against a live CLI
+		// transcript as of 2026-09-13 — unlike can_use_tool and
+		// request_user_dialog above (both annotated with CLI 2.1.247
+		// binary evidence in claude_events.go), nothing has captured a
+		// real claude hook_callback frame to confirm callback_id,
+		// input.hook_event_name, input.tool_name, input.tool_input, or
+		// tool_input.subagent_type. Claude Code BLOCKS the PreToolUse
+		// dispatch on a control_response for every hook_callback it
+		// sends; if we never answer one, the sub-agent dispatch wedges
+		// with no error visible to the member. So the match here is
+		// deliberately permissive and answers on subtype ALONE — never
+		// gated on callback_id or any inner field, which is exactly the
+		// part schema drift could break. agentModelHookResultLocked
+		// reads those same possibly-drifted fields to decide whether to
+		// inject a saved per-agent model; on any mismatch it already
+		// falls back to {} (a well-formed "hook ran, no changes" ack,
+		// the same shape a recognized-but-inapplicable hook already
+		// returns today) — so unrecognized shapes degrade to "no model
+		// injected," never to "no answer."
+		if raw.Type == "control_request" && raw.Request.Subtype == "hook_callback" {
+			result := b.agentModelHookResultLocked(raw.Request)
+			b.mu.Unlock()
+			// Use this reader's child, never a replacement child's stdin.
+			b.writeMu.Lock()
+			b.mu.Lock()
+			stdin := b.procStdin
+			current := b.proc == proc
+			b.mu.Unlock()
+			if current && stdin != nil {
+				_, _ = stdin.Write(append(claudeHookResponseLine(raw.RequestID, result), '\n'))
+			}
+			b.writeMu.Unlock()
+			continue
+		}
+		if raw.Type == "control_response" {
+			b.handleControlResponseLocked(proc, raw.Response)
+			var warnings []string
+			if init := b.initialization; init != nil && init.requestID == raw.Response.RequestID {
+				warnings = b.agentModelWarningsLocked()
+			}
+			b.mu.Unlock()
+			for _, warning := range warnings {
+				b.fl.emit(state.Event{Kind: state.EvStatus, Text: "[claude] " + warning})
+			}
+			continue
+		}
 		if raw.Type == "system" && raw.Subtype == "init" {
 			b.initDone = true
 			if b.resumeID == "" {
@@ -842,6 +912,7 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	err := <-exitCh
 	note := "[theboringfloor] claude process exited before this turn completed"
 	b.mu.Lock()
+	b.failControlsLocked(proc, errors.New("claude process exited"))
 	current := b.proc == proc
 	errBuf := b.procErr
 	bypass := b.bypassPermissions
@@ -940,7 +1011,7 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	bin := b.bin
 	bypass := b.bypassPermissions // a death-respawn keeps the boot's mode
 	b.mu.Unlock()
-	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, resume, bypass)
+	proc, stdin, stdout, exitCh, errBuf, err := spawnClaude(bin, b.directory, resume, bypass, b.modelRef)
 	if err != nil {
 		return err
 	}
@@ -957,7 +1028,7 @@ func (b *liveClaudeBackend) respawnForSend() error {
 	// the re-initialize is the documented contract and costs one line).
 	b.writeInitialize()
 	go b.watchProc(proc, exitCh, wait)
-	go b.readLoop(stdout) // the resume's own init lands as a mapped note
+	go b.readLoop(stdout, proc) // the resume's own init lands as a mapped note
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
 		"[claude] respawned with --resume %s", shortTitle(resume, 24))})
 	return nil
@@ -973,6 +1044,7 @@ func (b *liveClaudeBackend) respawnForSend() error {
 func (b *liveClaudeBackend) teardownProc() {
 	b.mu.Lock()
 	proc := b.proc
+	b.failControlsLocked(proc, errors.New("claude process replaced or stopped"))
 	stdin := b.procStdin
 	wait := b.procWait
 	b.proc = nil
@@ -1029,7 +1101,7 @@ func (b *liveClaudeBackend) swapProc(proc *exec.Cmd, stdin io.WriteCloser, stdou
 	// rendered dialog kinds (same contract as respawnForSend).
 	b.writeInitialize()
 	go b.watchProc(proc, exitCh, wait)
-	go b.readLoop(stdout)
+	go b.readLoop(stdout, proc)
 }
 
 // ---------------------------------------------------------------- send
@@ -1133,10 +1205,27 @@ func claudeAttachmentPrompt(text string, prepared []preparedAttachment) string {
 // reaches stdin; echoText stays the original user text so path references
 // remain transport detail rather than transcript noise.
 func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []string) error {
+	b.modelMu.Lock()
+	defer b.modelMu.Unlock()
 	trimmed := strings.TrimSpace(wireText)
 	echoTrimmed := strings.TrimSpace(echoText)
 	if trimmed == "" || b.fl.isStopped() {
 		return nil
+	}
+	// A partial control frame invalidates this child's JSONL stream. Wait for
+	// the death watch to settle its turns before the normal resume path runs.
+	b.mu.Lock()
+	broken, proc, wait := b.procWriteErr, b.proc, b.procWait
+	b.mu.Unlock()
+	if broken != nil && proc != nil {
+		if wait == nil {
+			return broken
+		}
+		select {
+		case <-wait:
+		case <-time.After(claudeControlTimeout):
+			return broken
+		}
 	}
 	meta := state.AttachMeta(attachmentNames)
 	b.mu.Lock()
@@ -1157,7 +1246,7 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 	}
 
 	b.mu.Lock()
-	respawn := b.died && b.initDone
+	respawn := b.died && (b.initDone || b.procWriteErr != nil)
 	if respawn {
 		b.died = false // claim the respawn under lock — second racer sees died=false
 	}
@@ -1183,6 +1272,9 @@ func (b *liveClaudeBackend) send(wireText, echoText string, attachmentNames []st
 			ID: deadID, From: "boss", Text: "[theboringfloor] backend not started", At: nowMs(), Pending: false,
 		}})
 		return nil
+	}
+	if err := b.reconcileModelBeforeSend(); err != nil {
+		return err
 	}
 	b.mu.Lock()
 	b.chatSeq++
@@ -1334,14 +1426,16 @@ func claudeInitializeLine(seq int, kinds []string) []byte {
 		Type      string `json:"type"`
 		RequestID string `json:"request_id"`
 		Request   struct {
-			Subtype              string   `json:"subtype"`
-			SupportedDialogKinds []string `json:"supportedDialogKinds"`
+			Subtype              string         `json:"subtype"`
+			SupportedDialogKinds []string       `json:"supportedDialogKinds"`
+			Hooks                map[string]any `json:"hooks,omitempty"`
 		} `json:"request"`
 	}
 	v.Type = "control_request"
 	v.RequestID = fmt.Sprintf("office-init-%d", seq)
 	v.Request.Subtype = "initialize"
 	v.Request.SupportedDialogKinds = kinds
+	v.Request.Hooks = map[string]any{"PreToolUse": []any{map[string]any{"matcher": "Agent|Task", "hookCallbackIds": []string{claudeAgentModelHook}}}}
 	body, _ := json.Marshal(v)
 	return body
 }
@@ -1350,14 +1444,20 @@ func claudeInitializeLine(seq int, kinds []string) []byte {
 // process (Start and the --resume respawn path). Best-effort: a failed
 // write earns ONE status line and the session continues undeclared (the
 // CLI then never sends the gated dialog kinds — fail-closed, never a
-// stuck dialog). The CLI's control_response answer is ignored by the
-// read loop's open-ended mapping ("control_response" -> nil).
+// stuck dialog). Its acknowledgment also supplies the native model and agent catalogs.
 func (b *liveClaudeBackend) writeInitialize() {
 	b.mu.Lock()
 	b.initSeq++
 	seq := b.initSeq
+	init := &claudeInitialization{proc: b.proc, requestID: fmt.Sprintf("office-init-%d", seq), done: make(chan struct{})}
+	b.initialization = init
+	b.modelUncertain = false
+	b.procWriteErr = nil
 	b.mu.Unlock()
 	if err := b.writeLine(claudeInitializeLine(seq, claudeRenderedDialogKinds)); err != nil {
+		b.mu.Lock()
+		b.finishInitializationLocked(init, nil, err)
+		b.mu.Unlock()
 		b.fl.emit(state.Event{Kind: state.EvStatus,
 			Text: "[claude] initialize (supportedDialogKinds) write failed: " + shortTitle(err.Error(), 100)})
 	}
@@ -1838,6 +1938,7 @@ func (b *liveClaudeBackend) Stop() error {
 
 	b.mu.Lock()
 	proc := b.proc
+	b.failControlsLocked(proc, errors.New("claude process replaced or stopped"))
 	stdin := b.procStdin
 	wait := b.procWait
 	b.proc = nil

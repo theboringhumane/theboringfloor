@@ -48,6 +48,7 @@ type demoBackend struct {
 	pendingPerm     map[string]permHold // permission request id -> hold
 	pendingQuestion map[string]permHold // question request id -> hold
 	review          reviewLatch         // the CTO's once-per-drained-board latch
+	modelSelections map[string]string   // guarded by mu; demo-only preferences
 	lastAgent       string              // recorded plan/build tag (SendAgent) — the tour acks normally
 	pulseIdx        int
 	ambientBeat     int
@@ -70,8 +71,12 @@ type demoBackend struct {
 }
 
 func newDemoBackend(cfg *config.Config) *demoBackend {
+	cfg = cfgOrDefault(cfg)
+	selections := cfg.AgentModelPreferences(cfg.Backend.ResolvedName())
+	selections[""] = cfg.EffectiveModel(cfg.Backend.ResolvedName(), "")
 	return &demoBackend{
 		cfg:             cfg,
+		modelSelections: selections,
 		fl:              newFlow(),
 		taskByID:        make(map[string]state.BoardTask),
 		blockedIDs:      make(map[string]bool),
@@ -761,6 +766,9 @@ func (b *demoBackend) doReturn(employeeID, taskID, subject, body string) {
 // demo mode too. ctx is unused (no hop to bound) — the seam keeps it for
 // interface parity.
 func (b *demoBackend) ListModels(ctx context.Context) ([]state.ModelInfo, error) {
+	if err := b.demoModelReady(ctx); err != nil {
+		return nil, err
+	}
 	return DemoModels(), nil
 }
 
