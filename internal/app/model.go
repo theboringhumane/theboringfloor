@@ -461,6 +461,10 @@ type Model struct {
 	tickets                             *panels.Tickets
 	focusPanel                          bool
 	floorNavFocused                     bool
+	// floorStatusInFlight guards the periodic floor-status sweep against
+	// piling up overlapping probes: a tick only starts a new sweep when the
+	// previous one's FloorStatusMsg has already come back.
+	floorStatusInFlight bool
 
 	backend        state.Backend
 	currentBackend *currentBackend // shared across value-copy tea updates
@@ -1567,7 +1571,20 @@ func (m Model) State() state.OfficeState {
 // Init arms the first power-governed tick plus the boot splash's own
 // frame ticker; applyEvent re-arms the office tick every cycle.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.tickCmd(), bootTick(), m.floors.Refresh(), m.files.Refresh(), m.tickets.Refresh())
+	return tea.Batch(m.tickCmd(), bootTick(), m.floors.Refresh(), m.files.Refresh(), m.tickets.Refresh(),
+		m.floors.StatusSweepCmd(), floorStatusTick())
+}
+
+// floorStatusTickMsg re-arms the persistent floor-status sweep every
+// panels.FloorStatusInterval. It never starts a sweep itself: Update only
+// batches in a new panels.Floors.StatusSweepCmd() when the previous one's
+// panels.FloorStatusMsg has already returned, so a slow or hung office
+// cannot pile up overlapping probes — a tick is simply dropped (the
+// schedule itself is unaffected; it keeps re-arming on time regardless).
+type floorStatusTickMsg struct{}
+
+func floorStatusTick() tea.Cmd {
+	return tea.Tick(panels.FloorStatusInterval, func(time.Time) tea.Msg { return floorStatusTickMsg{} })
 }
 
 // tickCmd re-arms the animation tick at the delay the governor picks for
@@ -1620,6 +1637,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.TicketOpenMsg:
 		m.frameNonce++
 		return m, m.launchFloor(FloorLaunch{Dir: m.sessDir, Backend: x.Ticket.Backend, Session: x.Ticket.Session, Title: x.Ticket.Title, Team: x.Ticket.Team})
+	case floorStatusTickMsg:
+		// The schedule always re-arms; the sweep itself only restarts once
+		// the previous one's FloorStatusMsg has returned (overlap
+		// suppression), so a slow office drops a tick instead of stacking
+		// probes.
+		cmd := floorStatusTick()
+		if !m.floorStatusInFlight {
+			m.floorStatusInFlight = true
+			cmd = tea.Batch(cmd, m.floors.StatusSweepCmd())
+		}
+		return m, cmd
+	case panels.FloorStatusMsg:
+		m.floorStatusInFlight = false
+		m.frameNonce++
+		return m, m.floors.Update(x)
 	}
 
 	// Boot gate: until the splash is done (cascade + ready, 4s cap, or a

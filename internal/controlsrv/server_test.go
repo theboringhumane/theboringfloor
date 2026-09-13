@@ -42,6 +42,8 @@ var controlRouteCoverageCases = []routeCoverageCase{
 	{"RouteStop", http.MethodPost, http.MethodGet, control.RouteStop, ""},
 	{"RouteSessionNew", http.MethodPost, http.MethodGet, control.RouteSessionNew, ""},
 	{"RouteBusy", http.MethodGet, http.MethodPost, control.RouteBusy, ""},
+	{"RoutePermissionAnswer", http.MethodPost, http.MethodGet, control.RoutePermissionAnswer, `{"permissionId":"perm-1","response":"once"}`},
+	{"RouteQuestionAnswer", http.MethodPost, http.MethodGet, control.RouteQuestionAnswer, `{"requestId":"que-1","answers":[["main"]]}`},
 }
 
 type fakeSink struct {
@@ -56,16 +58,44 @@ func (f *fakeSink) send(event state.Event) {
 	f.mu.Lock()
 	f.events = append(f.events, event)
 	f.mu.Unlock()
-	if (event.Kind != state.EvControlQuery && event.Kind != state.EvControlWorkspace) || !f.respond {
+	var payload []byte
+	switch event.Kind {
+	case state.EvControlQuery, state.EvControlWorkspace:
+		if !f.respond {
+			return
+		}
+		payload = cannedPayload(event.ControlQuery)
+	case state.EvControlPermissionAnswer:
+		if !f.respond {
+			return
+		}
+		payload = cannedAnswerPayload(event.ControlPermissionID)
+	case state.EvControlQuestionAnswer:
+		if !f.respond {
+			return
+		}
+		payload = cannedAnswerPayload(event.ControlQuestionID)
+	default:
 		return
 	}
-	payload := cannedPayload(event.ControlQuery)
 	go func() {
 		if f.release != nil {
 			<-f.release
 		}
 		f.registry.Fulfill(event.ControlReqID, payload)
 	}()
+}
+
+// cannedAnswerPayload lets tests exercise both the answer-write happy path
+// and its 409 conflict mapping without a real Model: an id of "wrong"
+// simulates the office rejecting a stale/unknown/no-longer-pending prompt id
+// (the real 409 verdict is exercised end-to-end in internal/app's
+// control_answer_test.go against the actual permission/question state).
+func cannedAnswerPayload(id string) []byte {
+	if id == "wrong" {
+		return []byte(`{"error":"no prompt pending with that id"}`)
+	}
+	return []byte(`{"ok":true}`)
 }
 
 func (f *fakeSink) snapshot() []state.Event {
@@ -382,6 +412,141 @@ func TestBusyRouteHappyPath(t *testing.T) {
 		t.Fatalf("event count = %d, want 1", len(events))
 	}
 	assertQuery(t, events[0], control.QueryBusy, 0)
+}
+
+func TestPermissionAnswerRoute(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+
+	status, got := request(t, client, http.MethodPost, baseURL+control.RoutePermissionAnswer,
+		bytes.NewBufferString(`{"permissionId":"perm-1","response":"once"}`), auth)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"ok":true}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 || events[0].Kind != state.EvControlPermissionAnswer ||
+		events[0].ControlPermissionID != "perm-1" || events[0].ControlPermissionResponse != "once" {
+		t.Fatalf("event = %#v", events)
+	}
+}
+
+func TestPermissionAnswerConflict(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	status, got := request(t, &http.Client{Timeout: time.Second}, http.MethodPost, baseURL+control.RoutePermissionAnswer,
+		bytes.NewBufferString(`{"permissionId":"wrong","response":"once"}`), "Bearer "+testToken)
+	if status != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"error":"no prompt pending with that id"}`, got)
+}
+
+func TestPermissionAnswerValidation(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	for _, test := range []struct{ name, body string }{
+		{"empty permissionId", `{"permissionId":"","response":"once"}`},
+		{"empty response", `{"permissionId":"perm-1","response":""}`},
+		{"non JSON", "not json"},
+		{"trailing JSON", `{"permissionId":"perm-1","response":"once"}{}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, http.MethodPost, baseURL+control.RoutePermissionAnswer, bytes.NewBufferString(test.body), auth)
+			if status != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body = %s", status, got)
+			}
+		})
+	}
+	if events := fake.snapshot(); len(events) != 0 {
+		t.Fatalf("invalid permission answers emitted events = %#v", events)
+	}
+}
+
+func TestQuestionAnswerRoute(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+
+	status, got := request(t, client, http.MethodPost, baseURL+control.RouteQuestionAnswer,
+		bytes.NewBufferString(`{"requestId":"que-1","answers":[["main"],["ship it"]]}`), auth)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"ok":true}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 || events[0].Kind != state.EvControlQuestionAnswer || events[0].ControlQuestionID != "que-1" ||
+		len(events[0].ControlQuestionAnswers) != 2 || events[0].ControlQuestionReject {
+		t.Fatalf("event = %#v", events)
+	}
+}
+
+func TestQuestionAnswerRejectRoute(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, true, time.Second)
+	status, got := request(t, &http.Client{Timeout: time.Second}, http.MethodPost, baseURL+control.RouteQuestionAnswer,
+		bytes.NewBufferString(`{"requestId":"que-1","reject":true}`), "Bearer "+testToken)
+	if status != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"ok":true}`, got)
+	events := fake.snapshot()
+	if len(events) != 1 || !events[0].ControlQuestionReject || len(events[0].ControlQuestionAnswers) != 0 {
+		t.Fatalf("event = %#v", events)
+	}
+}
+
+func TestQuestionAnswerConflict(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	status, got := request(t, &http.Client{Timeout: time.Second}, http.MethodPost, baseURL+control.RouteQuestionAnswer,
+		bytes.NewBufferString(`{"requestId":"wrong","answers":[["x"]]}`), "Bearer "+testToken)
+	if status != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body = %s", status, got)
+	}
+	assertJSONEqual(t, `{"error":"no prompt pending with that id"}`, got)
+}
+
+func TestQuestionAnswerValidation(t *testing.T) {
+	_, fake, baseURL := newTestServer(t, false, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	auth := "Bearer " + testToken
+	for _, test := range []struct{ name, body string }{
+		{"empty requestId", `{"requestId":"","answers":[["x"]]}`},
+		{"no answers and no reject", `{"requestId":"que-1"}`},
+		{"non JSON", "not json"},
+		{"trailing JSON", `{"requestId":"que-1","answers":[["x"]]}{}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, http.MethodPost, baseURL+control.RouteQuestionAnswer, bytes.NewBufferString(test.body), auth)
+			if status != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body = %s", status, got)
+			}
+		})
+	}
+	if events := fake.snapshot(); len(events) != 0 {
+		t.Fatalf("invalid question answers emitted events = %#v", events)
+	}
+}
+
+func TestPermissionAndQuestionAnswerAuthAndMethodErrors(t *testing.T) {
+	_, _, baseURL := newTestServer(t, true, time.Second)
+	client := &http.Client{Timeout: time.Second}
+	for _, test := range []struct {
+		name, method, path, auth string
+		want                     int
+	}{
+		{"permission answer auth", http.MethodPost, control.RoutePermissionAnswer, "", http.StatusUnauthorized},
+		{"question answer auth", http.MethodPost, control.RouteQuestionAnswer, "", http.StatusUnauthorized},
+		{"permission answer method", http.MethodGet, control.RoutePermissionAnswer, "Bearer " + testToken, http.StatusMethodNotAllowed},
+		{"question answer method", http.MethodGet, control.RouteQuestionAnswer, "Bearer " + testToken, http.StatusMethodNotAllowed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			status, got := request(t, client, test.method, baseURL+test.path, nil, test.auth)
+			if status != test.want {
+				t.Fatalf("status = %d, want %d; body = %s", status, test.want, got)
+			}
+		})
+	}
 }
 
 func TestMessageValidation(t *testing.T) {

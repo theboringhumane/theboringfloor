@@ -236,6 +236,64 @@ func TestMessageAndBusyJSONShape(t *testing.T) {
 	}
 }
 
+func TestBusyResponseZeroValueOmitsPendingPromptFields(t *testing.T) {
+	// A response with nothing pending must marshal to EXACTLY the same JSON
+	// as before the pending-prompt fields existed — an older client's parse
+	// is byte-for-byte unaffected.
+	got, err := json.Marshal(BusyResponse{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"busy":false,"pendingBoss":false,"thinking":false,"delegating":false,"questionParked":false}`
+	if string(got) != want {
+		t.Fatalf("BusyResponse{} JSON = %s, want %s", got, want)
+	}
+}
+
+func TestBusyResponseWithPendingPromptJSONShape(t *testing.T) {
+	got, err := json.Marshal(BusyResponse{
+		Busy: true, QuestionParked: true,
+		PendingPermissionID:   "perm-1",
+		PendingPermissionText: "eval document.title",
+		PendingQuestionID:     "que-1",
+		PendingQuestionText:   "which branch?",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"busy":true,"pendingBoss":false,"thinking":false,"delegating":false,"questionParked":true,"pendingPermissionId":"perm-1","pendingPermissionText":"eval document.title","pendingQuestionId":"que-1","pendingQuestionText":"which branch?"}`
+	if string(got) != want {
+		t.Fatalf("BusyResponse JSON = %s, want %s", got, want)
+	}
+}
+
+func TestPermissionAnswerRequestJSONShape(t *testing.T) {
+	b, err := json.Marshal(PermissionAnswerRequest{PermissionID: "perm-1", Response: "once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(b), `{"permissionId":"perm-1","response":"once"}`; got != want {
+		t.Fatalf("PermissionAnswerRequest JSON = %s, want %s", got, want)
+	}
+}
+
+func TestQuestionAnswerRequestJSONShape(t *testing.T) {
+	b, err := json.Marshal(QuestionAnswerRequest{RequestID: "que-1", Answers: [][]string{{"main"}, {"ship it"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(b), `{"requestId":"que-1","answers":[["main"],["ship it"]]}`; got != want {
+		t.Fatalf("QuestionAnswerRequest JSON = %s, want %s", got, want)
+	}
+	b, err = json.Marshal(QuestionAnswerRequest{RequestID: "que-1", Reject: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(b), `{"requestId":"que-1","reject":true}`; got != want {
+		t.Fatalf("QuestionAnswerRequest reject JSON = %s, want %s", got, want)
+	}
+}
+
 func TestTranscriptMessageWithoutAttachmentsJSONShape(t *testing.T) {
 	message, err := json.Marshal(TranscriptMessage{ID: "m1", From: "boss", Kind: "chat", Text: "hello", At: 42})
 	if err != nil {

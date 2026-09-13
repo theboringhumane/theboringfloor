@@ -238,6 +238,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.read(w, control.QueryBusy, 0)
+	case control.RoutePermissionAnswer:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.permissionAnswer(w, r)
+	case control.RouteQuestionAnswer:
+		if !s.requireMethod(w, r, http.MethodPost) {
+			return
+		}
+		s.questionAnswer(w, r)
 	default:
 		s.writeError(w, http.StatusNotFound, "not found")
 	}
@@ -433,6 +443,112 @@ func (s *Server) messageWrite(w http.ResponseWriter, r *http.Request) {
 	}
 	s.sink(state.Event{Kind: state.EvControlSend, ControlText: text, ControlAttachments: attachments})
 	s.writeJSON(w, http.StatusOK, control.OKResponse{OK: true})
+}
+
+// permissionAnswer answers the office's currently displayed permission
+// prompt. Validation mirrors planWrite/messageWrite's shape; the actual
+// verdict (including the id-mismatch 409) comes back from the UI goroutine
+// through answerWrite, never guessed here.
+func (s *Server) permissionAnswer(w http.ResponseWriter, r *http.Request) {
+	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || contentType != "application/json" {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPlanBodyBytes)
+	defer r.Body.Close()
+	var request control.PermissionAnswerRequest
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := ensureEOF(decoder); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	permissionID := strings.TrimSpace(request.PermissionID)
+	response := strings.TrimSpace(request.Response)
+	if permissionID == "" || response == "" {
+		s.writeError(w, http.StatusBadRequest, "missing permissionId or response")
+		return
+	}
+	s.answerWrite(w, state.Event{
+		Kind:                      state.EvControlPermissionAnswer,
+		ControlPermissionID:       permissionID,
+		ControlPermissionResponse: response,
+	})
+}
+
+// questionAnswer answers the office's currently open boss question, or
+// rejects it outright when Reject is true. Same validation shape and
+// id-mismatch round trip as permissionAnswer.
+func (s *Server) questionAnswer(w http.ResponseWriter, r *http.Request) {
+	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || contentType != "application/json" {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxPlanBodyBytes)
+	defer r.Body.Close()
+	var request control.QuestionAnswerRequest
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(&request); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := ensureEOF(decoder); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	requestID := strings.TrimSpace(request.RequestID)
+	if requestID == "" {
+		s.writeError(w, http.StatusBadRequest, "missing requestId")
+		return
+	}
+	if !request.Reject && len(request.Answers) == 0 {
+		s.writeError(w, http.StatusBadRequest, "missing answers")
+		return
+	}
+	s.answerWrite(w, state.Event{
+		Kind:                   state.EvControlQuestionAnswer,
+		ControlQuestionID:      requestID,
+		ControlQuestionAnswers: request.Answers,
+		ControlQuestionReject:  request.Reject,
+	})
+}
+
+// answerWrite emits a permission/question answer event and waits for the UI
+// goroutine's verdict through the SAME pending-request registry reads use.
+// A fulfilled ErrorResponse means the id did not match anything currently
+// pending — mapped to 409, never a silent 200 against a stale/wrong prompt.
+// A fulfilled OKResponse means the answer actually landed on the model.
+func (s *Server) answerWrite(w http.ResponseWriter, ev state.Event) {
+	select {
+	case s.readSlots <- struct{}{}:
+		defer func() { <-s.readSlots }()
+	default:
+		s.writeError(w, http.StatusServiceUnavailable, "office busy")
+		return
+	}
+	id, reply := s.registry.NewRequest()
+	ev.ControlReqID = id
+	s.sink(ev)
+	timer := time.NewTimer(s.queryTimeout)
+	defer timer.Stop()
+	select {
+	case payload := <-reply:
+		var failure control.ErrorResponse
+		if json.Unmarshal(payload, &failure) == nil && failure.Error != "" {
+			s.writeError(w, http.StatusConflict, failure.Error)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(payload)
+	case <-timer.C:
+		s.registry.Cancel(id)
+		s.writeError(w, http.StatusGatewayTimeout, "office busy")
+	}
 }
 
 func (s *Server) writeAttachmentError(w http.ResponseWriter, err error) {

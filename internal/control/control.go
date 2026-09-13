@@ -36,6 +36,13 @@ const (
 	RouteStop            = "/v1/stop"
 	RouteSessionNew      = "/v1/session/new"
 	RouteBusy            = "/v1/busy"
+	// RoutePermissionAnswer answers the office's currently displayed
+	// permission prompt. RouteQuestionAnswer answers its currently open
+	// boss question. Both are 409 (not a silent 200) when the request's id
+	// does not match what the office is actually parked on — see
+	// PermissionAnswerRequest and QuestionAnswerRequest.
+	RoutePermissionAnswer = "/v1/permission/answer"
+	RouteQuestionAnswer   = "/v1/question/answer"
 
 	QueryPlan       = "plan"
 	QueryTranscript = "transcript"
@@ -85,6 +92,28 @@ type MessageRequest struct {
 // OKResponse is a successful mutation response.
 type OKResponse struct {
 	OK bool `json:"ok"`
+}
+
+// PermissionAnswerRequest is the body accepted by RoutePermissionAnswer.
+// PermissionID must match the office's currently displayed permission
+// prompt — a mismatch (including no prompt pending at all) is a 409, never
+// a silent success against an unrelated or stale prompt. Response is
+// "once"|"always"|"reject", exactly the keyboard's y/a/n answer.
+type PermissionAnswerRequest struct {
+	PermissionID string `json:"permissionId"`
+	Response     string `json:"response"`
+}
+
+// QuestionAnswerRequest is the body accepted by RouteQuestionAnswer.
+// RequestID must match the office's currently open boss question — same
+// 409-on-mismatch contract as PermissionAnswerRequest. Answers mirrors
+// state.Backend's AnswerQuestion shape: one []string per asked question
+// page. Reject routes to RejectQuestion instead of AnswerQuestion and
+// Answers is ignored when Reject is true.
+type QuestionAnswerRequest struct {
+	RequestID string     `json:"requestId"`
+	Answers   [][]string `json:"answers,omitempty"`
+	Reject    bool       `json:"reject,omitempty"`
 }
 
 // TranscriptResponse is the transcript endpoint response.
@@ -158,6 +187,20 @@ type BusyResponse struct {
 	Thinking       bool `json:"thinking"`
 	Delegating     bool `json:"delegating"`
 	QuestionParked bool `json:"questionParked"`
+	// PendingPermissionID/PendingPermissionText identify the office's
+	// currently DISPLAYED permission prompt, if any, so a remote client can
+	// render it and answer it via RoutePermissionAnswer. Both fields are
+	// omitted (the zero value) when no permission prompt is pending —
+	// ADDITIVE, an older client's parse of a response with nothing pending
+	// is unaffected.
+	PendingPermissionID   string `json:"pendingPermissionId,omitempty"`
+	PendingPermissionText string `json:"pendingPermissionText,omitempty"`
+	// PendingQuestionID/PendingQuestionText identify the office's currently
+	// OPEN boss question, if any, so a remote client can render it and
+	// answer it via RouteQuestionAnswer. Both fields are omitted when no
+	// question is open. ADDITIVE, same as the permission pair above.
+	PendingQuestionID   string `json:"pendingQuestionId,omitempty"`
+	PendingQuestionText string `json:"pendingQuestionText,omitempty"`
 }
 
 // ErrorResponse is the body used for control API errors.

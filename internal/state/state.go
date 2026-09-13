@@ -547,6 +547,21 @@ const (
 	EvControlStop EventKind = "control-stop"
 	// EvControlNew requests a new boss session.
 	EvControlNew EventKind = "control-new"
+	// EvControlPermissionAnswer answers the office's currently DISPLAYED
+	// permission prompt from a remote client (control.RoutePermissionAnswer).
+	// It applies through the SAME queue bookkeeping and backend seam the
+	// keyboard's y/a/n answer uses (internal/app's permAnswerMsg case): the
+	// answer only lands when ControlPermissionID matches the displayed
+	// front. A mismatch — including no prompt pending at all — fulfills
+	// ControlReqID with an ErrorResponse instead of a silent no-op success,
+	// so controlsrv can reply 409 rather than a false 200.
+	EvControlPermissionAnswer EventKind = "control-permission-answer"
+	// EvControlQuestionAnswer answers the office's currently OPEN boss
+	// question from a remote client (control.RouteQuestionAnswer). Same
+	// id-match/409 contract as EvControlPermissionAnswer, checked against
+	// the open question hold's batched wire ids. ControlQuestionReject
+	// routes to RejectQuestion instead of AnswerQuestion.
+	EvControlQuestionAnswer EventKind = "control-question-answer"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -673,6 +688,24 @@ type Event struct {
 	// It is only meaningful when Kind is EvControlSend. Paths are absolute and the
 	// files are already persisted by the control server before the event is emitted.
 	ControlAttachments []Attachment `json:"controlAttachments,omitempty"`
+	// ControlPermissionID/ControlPermissionResponse are meaningful only for
+	// EvControlPermissionAnswer. ControlPermissionID must match the office's
+	// currently displayed permission prompt id; ControlPermissionResponse is
+	// "once"|"always"|"reject" exactly like the keyboard's y/a/n answer.
+	ControlPermissionID       string `json:"controlPermissionId,omitempty"`
+	ControlPermissionResponse string `json:"controlPermissionResponse,omitempty"`
+	// ControlQuestionID/ControlQuestionAnswers/ControlQuestionReject are
+	// meaningful only for EvControlQuestionAnswer. ControlQuestionID must
+	// match one of the office's currently open question hold's batched wire
+	// ids. ControlQuestionAnswers is the FULL accumulated answer set — one
+	// []string per asked question page, mirroring state.Backend's
+	// AnswerQuestion([][]string) shape — submitted in one call rather than
+	// paged like the keyboard wizard. ControlQuestionReject routes to
+	// RejectQuestion instead of AnswerQuestion and ControlQuestionAnswers is
+	// ignored when it is true.
+	ControlQuestionID      string     `json:"controlQuestionId,omitempty"`
+	ControlQuestionAnswers [][]string `json:"controlQuestionAnswers,omitempty"`
+	ControlQuestionReject  bool       `json:"controlQuestionReject,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the
@@ -772,6 +805,37 @@ type SessionRow struct {
 // and the demo backend emits "[demo] abort ok".
 type SessionAborter interface {
 	AbortSessions() error
+}
+
+// ServerAttachable — the floor-handoff seam (ADDITIVE; deliberately NOT
+// folded into Backend, same convention as ConciergeCapable/SessionAborter
+// above — harness stubs stay untouched, the app type-asserts it).
+//
+// A floor switch that leaves the departing floor's in-flight turn running
+// (rather than killing it) needs to hand its live `opencode serve` process
+// to a detached background office, which attaches to it with --server
+// instead of spawning a fresh one. ServerURL exposes the resolved attach
+// URL for exactly that handoff; ReleaseServe marks the serve as handed
+// off so this backend's own Stop() stops signalling a process it no
+// longer owns.
+//
+// ServerURL returns the resolved URL ONLY when this process itself
+// spawned the serve and still owns a live one — an empty string means
+// "cannot hand off", NEVER "hand off to nothing": a backend attached to
+// an externally-provided URL (cfg.Backend.Server / the baseURL arg / env
+// OPENCODE_SERVER), one whose serve has already died, or one already
+// released must all return "".
+//
+// ReleaseServe is a one-way latch: call it ONLY after the detached
+// office that received --server <ServerURL()> is confirmed healthy.
+// From then on ServerURL returns "" (a serve cannot be handed off
+// twice) and this backend's Stop() no longer signals the process group
+// for that serve — it only releases this process's own handle. Calling
+// it before the detached office is confirmed healthy risks the one
+// outcome that must never happen: a serve with no owner at all.
+type ServerAttachable interface {
+	ServerURL() string
+	ReleaseServe()
 }
 
 // ---------------------------------------------------------------- older-history pagination (ADDITIVE)

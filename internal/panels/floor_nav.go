@@ -32,18 +32,24 @@ func (f *Floors) navRows(w, h int, focused bool) []floorNavRow {
 	start := max(0, f.selected-count+1)
 	for i := start; i < min(len(f.rows), start+count); i++ {
 		r := f.rows[i]
-		mark := "  "
-		if r.Dir == f.dir {
-			mark = "● "
-		}
-		label := ansi.Truncate(mark+r.Name, max(1, w-3), "…")
-		if i == f.selected {
-			label = chrome.TabActive.Render(label)
-		} else {
-			label = chrome.PanelHeader.Render(label)
+		current := r.Dir == f.dir
+		st := f.StatusOf(r.Dir)
+		glyph, glyphColor := floorGlyph(current, st)
+		var label string
+		switch {
+		case i == f.selected:
+			// Same reasoning as floors.go: no nested Render() inside the
+			// TabActive wrap, so the glyph's shape (not colour) carries the
+			// signal on a highlighted row.
+			label = chrome.TabActive.Render(ansi.Truncate(glyph+" "+r.Name, max(1, w-3), "…"))
+		case glyphColor != nil:
+			name := ansi.Truncate(r.Name, max(1, w-5), "…")
+			label = glyphColor(glyph) + " " + chrome.PanelHeader.Render(name)
+		default:
+			label = chrome.PanelHeader.Render(ansi.Truncate(glyph+" "+r.Name, max(1, w-3), "…"))
 		}
 		rows = append(rows, floorNavRow{text: " " + label, floor: i, conversation: -1})
-		add(chrome.PanelDim.Render(fmt.Sprintf("   %d teams · %d tickets", len(r.Teams), len(r.Tickets))))
+		add(chrome.PanelDim.Render(fmt.Sprintf("   %d teams · %d tickets%s", len(r.Teams), len(r.Tickets), floorStatusLabel(current, st))))
 	}
 	rows = append(rows, floorNavRow{text: chrome.PanelAccent.Render(" + Add project"), floor: -1, conversation: -1, action: "a"})
 	add("")

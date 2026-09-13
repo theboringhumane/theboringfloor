@@ -279,8 +279,18 @@ func main() {
 		if controlServer == nil {
 			return
 		}
-		if err := control.RemoveDiscovery(controlDir); err != nil {
-			fmt.Fprintf(os.Stderr, "[theboringfloor] control discovery cleanup: %v\n", err)
+		// A floor handoff (internal/app's handoffCurrentFloor — the
+		// opencode busy/idle floor-switch path) may already have freed this
+		// directory's discovery slot and let a detached child claim it
+		// with a DIFFERENT pid before this shutdown runs. RemoveDiscovery
+		// deletes unconditionally by path — it never checks ownership — so
+		// calling it here regardless would erase the child's just-written
+		// record out from under it. Only remove the file while it still
+		// names THIS process.
+		if d, ok := control.ReadDiscovery(controlDir); !ok || d.PID == os.Getpid() {
+			if err := control.RemoveDiscovery(controlDir); err != nil {
+				fmt.Fprintf(os.Stderr, "[theboringfloor] control discovery cleanup: %v\n", err)
+			}
 		}
 		if err := controlServer.Close(); err != nil {
 			fmt.Fprintf(os.Stderr, "[theboringfloor] control server cleanup: %v\n", err)

@@ -33,6 +33,11 @@ type Floors struct {
 	err               string
 	loading           bool
 	backend           string
+	// status is the last completed sweep of OTHER floors' live/busy state,
+	// shared verbatim by floor_nav.go so the two renderers cannot drift.
+	// Nil until the first FloorStatusMsg arrives; every row before then (or
+	// for a floor the sweep never reached) renders as not-running.
+	status FloorStatus
 }
 
 func NewFloors(dir, backend string, demo bool) *Floors {
@@ -88,6 +93,10 @@ func (f *Floors) NewConversation() {
 	f.form = form("NEW CONVERSATION · "+row.Name, field("Title", ""), choice("Backend", backends, selected), choice("Team", teams, 0))
 }
 func (f *Floors) Update(msg tea.Msg) tea.Cmd {
+	if m, ok := msg.(FloorStatusMsg); ok {
+		f.status = m.Status
+		return nil
+	}
 	if m, ok := msg.(ticketsLoaded); ok && m.err == nil {
 		for i, floor := range f.rows {
 			if floor.Dir == m.floor.Dir {
@@ -205,17 +214,24 @@ func (f *Floors) View() string {
 	start := max(0, f.selected-max(0, (f.h-9)/3))
 	for i := start; i < len(f.rows); i++ {
 		r := f.rows[i]
-		prefix := "  "
-		if r.Dir == f.dir {
-			prefix = "● "
+		current := r.Dir == f.dir
+		st := f.StatusOf(r.Dir)
+		glyph, glyphColor := floorGlyph(current, st)
+		var name string
+		switch {
+		case i == f.selected:
+			// Selected rows are wrapped in one TabActive.Render call; a
+			// second, already-styled Render() nested inside it would emit a
+			// reset that clobbers the surrounding accent background, so the
+			// marker is left uncoloured here — its distinct shape still
+			// conveys the state under the highlight.
+			name = chrome.TabActive.Render(" " + glyph + " " + r.Name + " ")
+		case glyphColor != nil:
+			name = glyphColor(glyph) + " " + chrome.PanelHeader.Render(r.Name)
+		default:
+			name = chrome.PanelHeader.Render(glyph + " " + r.Name)
 		}
-		name := prefix + r.Name
-		if i == f.selected {
-			name = chrome.TabActive.Render(" " + name + " ")
-		} else {
-			name = chrome.PanelHeader.Render(name)
-		}
-		left = append(left, name, chrome.PanelDim.Render(fmt.Sprintf("  %d teams · %d tickets", len(r.Teams), len(r.Tickets))), "")
+		left = append(left, name, chrome.PanelDim.Render(fmt.Sprintf("  %d teams · %d tickets%s", len(r.Teams), len(r.Tickets), floorStatusLabel(current, st))), "")
 	}
 	row := f.Current()
 	right := []string{chrome.PanelHeader.Render(row.Name), chrome.PanelDim.Render(row.Dir), "", chrome.PanelHeader.Render("TEAMS")}

@@ -7,6 +7,90 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-13 · Full release verification (@runner subagent) — hemerodromos-2 (runner) · `issues`
+- summary: ## VERDICT — `RELEASE-READY`
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1789292278744-a4de47b4
+
+### 2026-09-13 · Draft release commit message (@general subagent) — tekton-11 (developer) · `issues`
+- summary: Read `git log -6 --format=%B` in full (pasted below). Confirmed the current convention: subject is `type(scope): lowercase imperative summary`, no trailing peri
+- files: | Path | Why it mattered |, |---|---|, | `internal/app/workspace.go` | `launchFloor`: confirms the busy-refusal-only behavior is now split , | `internal/app/floor_handoff.go`, | `internal/state/state.go` | New additive `ServerAttachable{ServerURL, ReleaseServe}` capability in, | `internal/backend/opencode.go` | `liveBackend.released` latch; `ServerURL()`/`ReleaseServe()` impl, | `internal/control/control.go` | New routes `RoutePermissionAnswer`/`RouteQuestionAnswer`, `Permiss, | `internal/controlsrv/server.go` | `permissionAnswer`/`questionAnswer`/`answerWrite` handlers, | `internal/app/control_mutations.go`, `internal/app/control.go` | `applyControlPermissionAnswer`/`a, | `internal/panels/floor_status.go`, | `internal/panels/floors.go`, `internal/panels/floor_nav.go` | Both renderers wired to the shared `, | `internal/app/model.go` | `floorStatusTickMsg`/`floorStatusTick` re-arm loop with `floorStatusInFl
+- verify: Line-length check on the drafted body (`awk 'length($0)>76'` against the draft file) returned **no matches** — every line is ≤76 columns.
+- proof: ```
+- ledgerId: led-1789292074798-2cff1da2
+
+### 2026-09-13 · Hand off live serve intact (@developer subagent) — tekton-10 (developer) · `issues`
+- summary: Everything is in order. Now compiling the final return.
+- files: `internal/state/state.go`, `internal/backend/opencode.go`, `internal/backend/opencode_handoff_test.go` (new), `internal/app/floor_handoff.go`, `internal/app/floor_handoff_test.go`, `cmd/theboringfloor/main.go`, `internal/backend/backend.go`
+- verify: Both processes predate my session by hours (uptimes 35m / 13m20s at time of check, vs. my whole test run taking under 3 minutes) — this is t
+- proof: *1. The new interface** (`internal/state/state.go`):
+- ledgerId: led-1789282801897-da92957b
+
+### 2026-09-13 · Detach floor on switch (@developer subagent) — tekton-7 (developer) · `issues`
+- summary: Read `launchFloor`, main.go's shutdown sequence, and the `--server` flag before writing anything (findings quoted in PROOF below): `--server` **does** support a
+- files: `internal/app/workspace.go`, `cmd/theboringfloor/main.go`, `internal/app/floor_handoff.go` (new), `internal/app/floor_handoff_unix.go` (new), `internal/app/floor_handoff_other.go` (new), `internal/app/floor_handoff_test.go` (new)
+- verify: That one line is the **pre-existing office process running this very session** (the tool managing my own dispatch) — present before my tests
+- proof: *1. `--server` finding (requirement 1), quoted verbatim:**
+- ledgerId: led-1789281904458-f6181c3d
+
+### 2026-09-13 · Answer routes for prompts (@developer subagent) — tekton-8 (developer) · `issues`
+- summary: Now I have everything needed for the final report.
+- files: `internal/control/control.go`, `internal/control/control_test.go`, `internal/controlsrv/server.go`, `internal/controlsrv/server_test.go`, `internal/app/control_mutations.go`, `internal/app/control_answer_test.go` (new), `internal/state/state.go`, `internal/app/control.go`
+- verify: ```
+- proof: *New route constants + request types** (`internal/control/control.go`):
+- ledgerId: led-1789281679406-385a9ad4
+
+### 2026-09-13 · Needs-you floor badge (@developer subagent) — tekton-9 (developer) · `issues`
+- summary: Added `NeedsYou bool` to `FloorState`, additively, documented so a caller can't misuse it independent of `Live`.
+- files: `internal/panels/floor_status.go`, `internal/panels/floor_status_test.go`, `internal/panels/floors_test.go`, `internal/panels/floor_nav_test.go`, No changes to `floors.go` or `floor_nav.go`
+- verify: ```
+- proof: *`FloorState` — before:**
+- ledgerId: led-1789281156023-32763cfd
+
+### 2026-09-13 · Floor nav live badges (@developer subagent) — tekton-6 (developer) · `issues`
+- summary: Added a shared `FloorStatus`/`FloorState` model (`internal/panels/floor_status.go`) keyed by `control.DirHash(dir)` — never by display name — so two floors that
+- files: `internal/panels/floor_status.go` (new), `internal/panels/floors.go`, `internal/panels/floor_nav.go`, `internal/app/model.go`, `internal/panels/floor_status_test.go` (new), `internal/panels/floors_test.go` (new), `internal/panels/floor_nav_test.go` (new)
+- verify: ```
+- proof: *Shared status type** (`internal/panels/floor_status.go`):
+- ledgerId: led-1789275552159-43d2afad
+
+### 2026-09-13 · Phase 0 spike detached turn (@developer subag... — tekton-5 (developer) · `issues`
+- summary: ## VERDICT — `MIXED`
+- files: `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/spike/spawner.go`, `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/spike/spawner`, `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/spike/go.mod`, `/var/folders/d4/5hc5gjcd18x7np_cy6yzbwm80000gn/T/opencode/spike/status.txt`, `spawner.log`, **Zero files touched inside `/Users/theboringhumane/Projects/lynxlabs/theboringoffice`.**, `git status --short`, ```, M .opencode/office-ledger.md, M internal/app/model.go, M internal/panels/floor_nav.go, M internal/panels/floors.go, ?? .claude/settings.json
+- verify: (All four are concurrent-agent activity in this shared office, present before and growing during my session — confirmed by the `.opencode/of
+- proof: | Backend | Binary available | Survives spawner death | Turn completes without spawner | Output retrievable on resume | Tested or inferred |
+- ledgerId: led-1789275223662-34d7f58b
+
+### 2026-09-13 · Scout the attach seam (@explore subagent) — skopos-5 (scout) · `issues`
+- summary: Unchanged (both pre-existing/concurrent, not touched by me). Here is the complete recon report.
+- files: | Path | Why read |, |---|---|, | `internal/control/control.go`, | `internal/controlsrv/server.go`, | `internal/app/control.go` (278 lines, full) | `applyControl`, | `internal/app/control_mutations.go` (36 lines, full) | `applyControlMutations`, | `internal/app/workspace_control.go` (149 lines, full) | `applyWorkspaceAction`, | `internal/state/state.go`, | `internal/app/model.go`, | `internal/app/sessions.go` (460-535) | `persistOfficeSession`/`PersistSession`, | `internal/app/workspace.go` (full, 178 lines) | `launchFloor`, | `internal/backend/backend.go` (60-100) | `flow.emit`
+- verify: No `edit`/`write`/`bash -c "...>file"` mutation was issued; every command was `read`, `bash` (wc/grep/sed -n, all non-mutating), or `grep`.
+- proof: ### 1. What the control API can already do
+- ledgerId: led-1789274912656-a1a9adda
+
+### 2026-09-13 · Scout the floors feature (@explore subagent) — skopos-2 (scout) · `issues`
+- summary: Read-only recon of the "floor" (project) concept end-to-end: its data structure, persistence, the panel that lists/launches floors, the exact switch path from p
+- files: | Path | Why read |, |---|---|, | `internal/office/floor.go`, `floorplan.go`, `cockpit.go` | Ruled out, | `internal/projects/projects.go` | The on-disk project registry + live-office HTTP health probing, | `internal/workspace/store.go` | **The actual `Floor` struct** and its persistence, | `internal/workspace/files.go` | File-explorer tab backing the floor's project dir, | `internal/panels/floors.go` | The `Floors` panel: lists floors, builds `FloorLaunchMsg` on Enter/n, | `internal/panels/floor_nav.go` | The persistent left-rail floor navigator, | `internal/app/model.go`, | `internal/app/workspace.go` | **`launchFloor`**, | `internal/app/workspace_control.go` | Mobile/control-plane "conversation" action, | `internal/app/sessions.go` (460-535) | `persistOfficeSession`/`PersistSession`
+- verify: ?? .claude/settings.json
+- proof: ### 1. Define a floor
+- ledgerId: led-1789274422048-9486a877
+
+### 2026-09-13 · Scout backend lifecycle on switch (@explore s... — skopos-3 (scout) · `issues`
+- summary: All read-only; only a pre-existing untracked file (not created by me) shows. No diffs.
+- files: | Path | Why |, |---|---|, | `internal/state/state.go` | The `Backend` interface + optional capability interfaces, | `internal/backend/backend.go` | Shared `flow` lifecycle plumbing, | `internal/backend/opencode.go` | Full live opencode backend: spawn, Start, Send, Stop, AbortSessio, | `internal/backend/claude.go` | Full live claude CLI backend: spawn, Start, Send, Stop, AbortSessio, | `internal/backend/codex.go` | Full codex backend: per-turn, | `internal/backend/process_unix.go` / `process_other.go` | Process-group isolation, | `internal/app/model.go`, | `internal/app/sessions.go`, | `internal/app/session_picker.go`, | `internal/app/workspace.go` | `launchFloor`
+- verify: Only `read`, `glob`, and `grep` tool calls were used; no `edit`/`write`/`bash` mutation commands, no `go test`, no git mutations, `THEFLOOR_
+- proof: *1. The backend interface** (`internal/state/state.go:688-721`):
+- ledgerId: led-1789274418085-a817b0ac
+
+### 2026-09-13 · Scout control plane multi-project (@explore s... — skopos-4 (scout) · `issues`
+- summary: Read-only recon of the control plane (`internal/control`, `internal/controlsrv`), the launcher/gateway (`cmd/floorgate`), the project registry (`internal/projec
+- files: | Path | Why |, |---|---|, | `internal/control/control.go` | Wire routes/types, `Discovery` struct, `WriteDiscovery`/`ReadDisco, | `internal/controlsrv/server.go` | Loopback HTTP server bound per office (`net.Listen("tcp","127.0., | `internal/projects/projects.go` | `List`/`Get`/`Discovery`, concurrent health-probing of every pro, | `internal/projects/projects_test.go` | `TestListProbesConcurrently`, | `cmd/floorgate/gateway.go` | Stateless proxy: routing, `/start` launcher, `/projects`, `/busy`, `/, | `cmd/floorgate/workspace.go` | `/workspace`, `/tickets`, `/conversation` routes, | `cmd/floorgate/exec.go`, `process_unix.go` | Confirms process-group isolation (`Setpgid: true`), | `cmd/theboringfloor/main.go` | The actual office binary the gateway spawns, | `internal/headless/headless.go`, `cmd/headless/main.go` | Confirmed these are unrelated to "headle, | `mobile/lib/store/attention_store.dart` | The Android attention inbox
+- verify: Every other command run was `read`/`glob`/`grep` (no file operations). No `go test`, `flutter test`, build, or git-mutation command was ever
+- proof: *1. One office per project — CONFIRMED.**
+- ledgerId: led-1789274397139-488c88f8
+
 ### 2026-09-13 · Fix Codex model lockout (@developer subagent) — tekton-4 (developer) · `issues`
 - summary: Confirms only `codex.go` was pre-tracked (my diff), and my four other scoped files are new/untracked from the larger uncommitted feature — consistent with the b
 - files: `internal/backend/codex.go`, `internal/backend/charter_codex_agentmodel_test.go`, `internal/backend/models_codex_test.go`, `internal/backend/models_codex.go`, `internal/backend/charter_codex_agentmodel.go`
@@ -272,88 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ## 1. Dependency chain to `jni`/`jni_flutter`
 - ledgerId: led-1788795951627-97278451
-
-### 2026-09-07 · Client paging by user messages (@developer su... — tekton-9 (developer) · `done`
-- summary: Merged older transcript pages by message ID and timestamp instead of raw-list concatenation, preventing duplicate IDs while preserving chronological order even 
-- files: `mobile/lib/store/session_store.dart`, `mobile/test/session_store_test.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: ```dart
-- ledgerId: led-1788795884462-fb85f148
-
-### 2026-09-07 · Fix typography review blockers (@developer su... — theboringcto-2 (cto) · `issues`
-- summary: Removed the runtime-fetching bypass from `AppFonts`, so all typography helpers and theme slots now invoke the real `google_fonts` loaders even with network fetc
-- files: `mobile/lib/utils/typography.dart`, `mobile/lib/views/settings_view.dart`, `mobile/test/typography_test.dart`, `mobile/test/theme_test.dart`, `mobile/test/settings_view_test.dart`, `mobile/test/font_assets_test.dart`
-- verify: ```
-- proof: ### `AppFonts` bypass removal
-- ledgerId: led-1788795315691-9fda982a
-
-### 2026-09-07 · Bundle font assets offline (@developer subagent) — tekton-5 (developer) · `issues`
-- summary: Bundled static TTF assets for Inter, Space Grotesk, Playfair Display, and JetBrains Mono under `assets/fonts/`.
-- files: `mobile/pubspec.yaml`, `mobile/lib/main.dart`, `mobile/test/font_assets_test.dart`, `mobile/assets/fonts/*.ttf`, `mobile/assets/fonts/LICENSES/Inter-OFL.txt`, `mobile/assets/fonts/LICENSES/SpaceGrotesk-OFL.txt`, `mobile/assets/fonts/LICENSES/PlayfairDisplay-OFL.txt`, `mobile/assets/fonts/LICENSES/JetBrainsMono-OFL.txt`
-- verify: ```
-- proof: ```yaml
-- ledgerId: led-1788794950084-086353e2
-
-### 2026-09-07 · Review typography diff (@reviewer subagent) — theboringcto-1 (cto) · `done`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788794578355-d74bd2bf
-
-### 2026-09-07 · Apply typography to components (@developer su... — tekton-4 (developer) · `done`
-- summary: Applied `AppFonts` to shared component typography without changing widget constructors, layout, colors, sizes, weights, scrolling, or interaction behavior.
-- files: `mobile/lib/components/message_bubble.dart`, `mobile/lib/components/markdown_body.dart`, `mobile/lib/components/code_block.dart`, `mobile/lib/components/project_tile.dart`, `mobile/lib/components/empty_state.dart`, `mobile/lib/components/attachment_chip.dart`, `mobile/lib/components/transcript_attachment_chip.dart`, `mobile/lib/utils/markdown_theme.dart`, `mobile/test/markdown_body_test.dart`, `mobile/test/message_bubble_test.dart`
-- verify: ```
-- proof: | Component | Element | Font family applied |
-- ledgerId: led-1788794318660-62e2d9a4
-
-### 2026-09-07 · Typography foundation (@developer subagent) — tekton-2 (developer) · `issues`
-- summary: Added `google_fonts ^6.3.3` and resolved it in `pubspec.lock` (`google_fonts` declares Dart SDK `^3.9.0`, compatible with this app’s `^3.13.2`).
-- files: `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/lib/theme.dart`, `mobile/lib/utils/typography.dart`, `mobile/test/typography_test.dart`, `mobile/test/theme_test.dart`
-- verify: ```
-- proof: ```dart
-- ledgerId: led-1788794211284-1c8b0e74
-
-### 2026-09-07 · Apply typography to views (@developer subagent) — tekton-3 (developer) · `issues`
-- summary: Applied `AppFonts.serif` exactly once to the **All Repos** home hero title, preserving the existing `displaySmall` style.
-- files: `mobile/lib/views/space_view.dart`, `mobile/lib/views/terminal_view.dart`, `mobile/lib/views/settings_view.dart`, `mobile/lib/views/project_picker.dart`, `mobile/test/space_view_test.dart`, `mobile/test/terminal_view_test.dart`, `mobile/test/settings_view_test.dart`
-- verify: ```
-- proof: | Screen | Element | Font family applied |
-- ledgerId: led-1788794084396-d63ad0d5
-
-### 2026-09-07 · Fix stale Claude prompt test (@developer suba... — tekton-1 (developer) · `done`
-- summary: Updated `TestClaudeSendWithWritesQuotedPathReferences` to assert the complete Claude attachment prompt, including the explicit non-inlined-image disclosure.
-- files: `internal/backend/claude_attachment_test.go`
-- verify: The live-Claude tests self-skipped because `THEFLOOR_LIVE_CLAUDE=1` was intentionally not set.
-- proof: | Old expected attachment prompt suffix | New expected attachment prompt suffix |
-- ledgerId: led-1788793933492-1d928ad2
-
-### 2026-09-07 · Backend image delivery audit (@developer suba... — tekton-29 (developer) · `issues`
-- summary: Added table-driven tests that use real temporary PNG files to prove OpenCode payloads contain:
-- files: `internal/backend/claude.go`, `internal/backend/parts_test.go`
-- verify: ```
-- proof: ### OpenCode `prompt_async` body captured by the real-PNG unit test
-- ledgerId: led-1788792517112-32c9eef0
-
-### 2026-09-07 · Office app attachment delivery (@developer su... — tekton-28 (developer) · `issues`
-- summary: Passed `ev.ControlAttachments` directly to `currentBackendSend` for `EvControlSend`; text-only sends still pass a nil attachment slice.
-- files: `internal/app/control_mutations.go`, `internal/app/control.go`, `internal/app/control_attachments_test.go`
-- verify: ```
-- proof: *`EvControlSend` branch — before**
-- ledgerId: led-1788792510828-466acb70
-
-### 2026-09-07 · Mobile transcript attachment chips (@develope... — tekton-30 (developer) · `done`
-- summary: Added `TranscriptAttachment` metadata parsing to transcript messages; absent/null/malformed attachment data safely resolves to an empty or filtered list.
-- files: `mobile/lib/models/transcript.dart`, `mobile/lib/components/message_bubble.dart`, `mobile/lib/components/transcript_attachment_chip.dart`, `mobile/test/message_bubble_test.dart`, `mobile/test/transcript_attachment_test.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: Transcript JSON decoded by the mobile client:
-- ledgerId: led-1788792443841-b28315c1
-
-### 2026-09-07 · Event attachment field (@developer subagent) — tekton-26 (developer) · `issues`
-- summary: Added additive `Event.ControlAttachments []Attachment` immediately after `ControlText`.
-- files: `internal/state/state.go`, `internal/state/event_attachments_test.go`
-- verify: ```
-- proof: ```go
-- ledgerId: led-1788792242958-f832492b
 

@@ -210,6 +210,15 @@ type liveBackend struct {
 	// reads the same on-disk config, so it keeps the mode for free).
 	bypassPermissions bool
 	started           bool
+	// released latches state.ServerAttachable's ReleaseServe: this
+	// process's spawned serve has been handed off to a detached office
+	// (internal/app's handoffCurrentFloor) and is no longer ours to
+	// signal. One-way — set once, on a floor-switch handoff whose
+	// detached child already answered healthy — and read by both
+	// ServerURL (an already-released serve can never be handed off
+	// again) and Stop (skips the process-group kill for exactly this
+	// serve; every other Stop path is unchanged).
+	released bool
 }
 
 func newLiveBackend(baseURL, directory string, cfg *config.Config) *liveBackend {
@@ -840,6 +849,37 @@ func (b *liveBackend) forgetConciergeLocked() string {
 
 // ---------------------------------------------------------------- stop
 
+// ServerURL implements state.ServerAttachable: the resolved attach URL of
+// this backend's OWN spawned `opencode serve`, or "" when there is
+// nothing this process can hand off — an externally-attached server
+// (b.proc nil: optURL/env/cfg.Backend.Server won, Start never spawned),
+// a serve that has already died (handleServeExit clears b.proc the
+// instant it does, together with the serveDied latch) or been stopped
+// (b.fl.isStopped), or one already released by an earlier handoff.
+func (b *liveBackend) ServerURL() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.proc == nil || b.released || b.baseURL == "" {
+		return ""
+	}
+	if b.fl.isStopped() {
+		return ""
+	}
+	return b.baseURL
+}
+
+// ReleaseServe implements state.ServerAttachable: latches this backend's
+// spawned serve as handed off. One-way (see the interface doc) — callers
+// must only reach this after the detached office that received
+// --server <ServerURL()> is confirmed healthy. From this call on,
+// ServerURL returns "" and Stop() no longer signals the process group
+// for this serve, only releases this process's own *os.Process handle.
+func (b *liveBackend) ReleaseServe() {
+	b.mu.Lock()
+	b.released = true
+	b.mu.Unlock()
+}
+
 func (b *liveBackend) Stop() error {
 	if b.fl.isStopped() {
 		return nil
@@ -874,6 +914,7 @@ func (b *liveBackend) Stop() error {
 	b.netCancel = nil
 	proc := b.proc
 	exit := b.procExit
+	released := b.released
 	b.proc = nil
 	b.procExit = nil
 	b.mu.Unlock()
@@ -883,6 +924,16 @@ func (b *liveBackend) Stop() error {
 	}
 	if cancel != nil {
 		cancel()
+	}
+	if proc != nil && proc.Process != nil && released {
+		// ReleaseServe (state.ServerAttachable) already handed this serve
+		// to a detached office that a readiness probe confirmed healthy —
+		// it is running this office's still-live turn now, not ours to
+		// signal. Every other Stop() path below is unchanged: this is
+		// the ONLY branch that skips the process-group kill. Just drop
+		// this process's own handle so Stop retains nothing.
+		_ = proc.Process.Release()
+		return nil
 	}
 	if proc != nil && proc.Process != nil {
 		// spawnServe's reaper is the sole cmd.Wait owner. Ask the child to

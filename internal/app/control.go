@@ -82,13 +82,26 @@ func (m *Model) applyControl(ev state.Event) tea.Cmd {
 		})
 	case control.QueryBusy:
 		pendingBoss := hasPendingBoss(m.st)
-		payload = marshalControlResponse(control.BusyResponse{
+		response := control.BusyResponse{
 			Busy:           m.controlWorking(),
 			PendingBoss:    pendingBoss,
 			Thinking:       m.st.BossThinking,
 			Delegating:     m.st.BossDelegating,
 			QuestionParked: m.questionParked,
-		})
+		}
+		// A remote client needs to SEE the prompt to answer it — expose the
+		// DISPLAYED permission front and the OPEN question's current page,
+		// matching exactly what the keyboard's own popover shows (and what
+		// RoutePermissionAnswer/RouteQuestionAnswer will accept as an id).
+		if p := m.permQ.front(); p != nil {
+			response.PendingPermissionID = p.ID
+			response.PendingPermissionText = p.Summary
+		}
+		if m.question != nil && m.question.Cursor >= 0 && m.question.Cursor < len(m.question.Items) {
+			response.PendingQuestionID = m.question.IDs[0]
+			response.PendingQuestionText = m.question.Items[m.question.Cursor].Question
+		}
+		payload = marshalControlResponse(response)
 	default:
 		if strings.HasPrefix(ev.ControlQuery, control.QueryTranscript+"?page=1&before=") {
 			before, err := url.QueryUnescape(strings.TrimPrefix(ev.ControlQuery, control.QueryTranscript+"?page=1&before="))
