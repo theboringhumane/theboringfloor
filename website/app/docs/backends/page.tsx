@@ -279,6 +279,54 @@ export default function BackendsPage() {
         </section>
 
         <section className="border-b border-rule">
+          <div className="mx-auto max-w-5xl px-6 py-20">
+            <h2 className="mono-label">
+              Codex: surviving an interrupted turn
+            </h2>
+            <h3 className="mt-4 max-w-2xl display-md text-balance text-ink">
+              Nothing resumes. What already finished comes back, clearly marked.
+            </h3>
+            <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              A codex turn cannot outlive the office that started it. The{' '}
+              <code className="font-mono text-xs text-foreground">codex</code> CLI runs one
+              turn per <code className="font-mono text-xs text-foreground">codex exec</code>{' '}
+              process and the office reads its stdout synchronously — kill the office (a floor
+              switch, a crash) and the turn dies with it. That ceiling belongs to the Codex CLI&apos;s
+              own event model, not to a shortcoming in this office&apos;s design.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              It gets worse before it gets better: Codex only ever emits or records{' '}
+              <strong className="font-medium text-foreground">completed</strong> items. There is
+              no partial-item shape anywhere on the wire or on disk. Whatever it was mid-way
+              through generating the instant the office died was never written down by anyone —
+              gone, by design, and no mechanism recovers it.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              What the CLI does keep is a durable, incremental record of everything that finished
+              before that — one entry per completed item, appended as it lands, keyed by the
+              thread id. The office now persists that thread id the moment Codex names it, not
+              only at clean shutdown, so a hard-killed office can still find its own thread on the
+              next boot.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              So on startup, an office on the codex backend whose last turn never reached
+              completion replays every completed item it can find back into the transcript —
+              messages, reasoning, tool calls — each one visibly marked as recovered so it is never
+              mistaken for a live reply. A leading notice states the count and says plainly that
+              whatever codex was still generating at the moment of death was never saved and
+              isn&apos;t part of what follows. Recovery restores completed history; it does not
+              resume the interrupted turn.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              A turn that finished cleanly recovers nothing — it is already in the transcript.
+              A turn with nothing to recover — no persisted thread, no matching store, an
+              unreadable file — recovers nothing either, and stays completely silent about it: no
+              notice, no row. A member who never lost a turn never learns this feature exists.
+            </p>
+          </div>
+        </section>
+
+        <section className="border-b border-rule">
           <div className="mx-auto flex max-w-5xl flex-col items-start gap-6 px-6 py-20">
             <SectionTag>What this doesn&apos;t do yet</SectionTag>
             <p className="max-w-2xl text-pretty text-lg leading-relaxed text-muted-foreground">

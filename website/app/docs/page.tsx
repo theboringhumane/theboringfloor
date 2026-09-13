@@ -52,6 +52,12 @@ const groups: { title: string; items: DocLink[] }[] = [
           "OpenCode, Claude Code, and Codex — choose a backend for each conversation.",
       },
       {
+        href: "/docs/models",
+        name: "Model selection",
+        promise:
+          "/model and /submodel, per backend — native catalogs, badges, and each backend's real limits.",
+      },
+      {
         href: "/docs/chat-and-threads",
         name: "Chat & work threads",
         promise:
