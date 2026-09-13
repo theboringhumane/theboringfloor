@@ -272,21 +272,43 @@ export default function KeysAndSlashPage() {
           <div className="mx-auto max-w-5xl px-6 py-20">
             <SectionTag>The model picker</SectionTag>
             <h2 className="mt-6 max-w-2xl display-md text-balance text-ink md:text-4xl">
-              /model swaps the boss&apos;s brain, and it writes back.
+              /model swaps the boss&apos;s brain, /submodel swaps a role&apos;s — both write back.
             </h2>
             <p className="mt-6 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              Find <Code>/model</Code> in the popover, then hand it the full id as{' '}
-              <Code>/model provider/model</Code> — for example{' '}
-              <Code>/model anthropic/claude-sonnet-4-5</Code>. From then on the choice
-              rides every boss prompt as a{' '}
-              <Code>{'{"model":{"providerID","modelID"}}'}</Code> pair, and the command
-              writes back to brain.json like <Code>/power</Code> and{' '}
+              Find <Code>/model</Code> in the popover — it opens the active
+              backend&apos;s own native catalog. Each backend takes its own reference
+              format: OpenCode wants <Code>provider/model</Code> (e.g.{' '}
+              <Code>anthropic/claude-sonnet-4-5</Code>), Claude Code takes a native
+              alias (<Code>sonnet</Code>, <Code>opus[1m]</Code>), Codex takes its own
+              tokens (e.g. <Code>gpt-5.4</Code>). If discovery is unavailable, hand it
+              that reference directly: <Code>/model &lt;native-ref&gt;</Code>. Either
+              way the command writes back to brain.json like <Code>/power</Code> and{' '}
               <Code>/theme</Code> do, so the next boot keeps it.
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-              One honest caveat from the engine room: role models ride as best-effort
-              notes. Which model a sub-agent actually gets is opencode&apos;s call at
-              dispatch time, not the office&apos;s.
+              <Code>/submodel</Code> is the same idea one level down: pick a native
+              agent type, then its model, where the backend supports one.{' '}
+              <Code>/submodel &lt;agent&gt;</Code> opens that type&apos;s picker,{' '}
+              <Code>/submodel &lt;agent&gt; &lt;native-ref&gt;</Code> sets it directly.
+              Native agent names come from the backend itself, not the floor
+              roster&apos;s roles.
+            </p>
+            <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
+              One honest caveat, and it&apos;s per backend rather than one blanket
+              line: OpenCode fails the send outright if a saved model turns out
+              invalid, rather than silently retrying without it. Claude Code injects a
+              saved per-agent model at dispatch through a <Code>PreToolUse</Code> hook.
+              Codex has no native per-role model support at all —{' '}
+              <Code>/submodel</Code> refuses a per-agent choice there with an explicit
+              error instead of pretending to honor it. The full breakdown, catalog by
+              catalog, lives on{' '}
+              <Link
+                href="/docs/models"
+                className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-accent"
+              >
+                model selection
+              </Link>
+              .
             </p>
             <p className="mt-4 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
               The picker filters as you type: a <Code>filter: …</Code> row shows the
@@ -299,8 +321,8 @@ export default function KeysAndSlashPage() {
             </p>
             <Shot
               src="/shots/docs/model-picker.png"
-              alt="theboringfloor /model command: picking the boss model as provider/model"
-              caption="/model — the boss model rides every prompt and persists"
+              alt="theboringfloor /model command: picking the boss model from the active backend's native catalog"
+              caption="/model — the boss model, picked from your backend's own catalog"
             />
           </div>
         </section>
@@ -443,7 +465,8 @@ Describe the revised draft.
             <SlashGroup
               title="Boss & memory"
               commands={[
-                { cmd: '/model provider/model', does: 'boss model — rides every prompt, persists' },
+                { cmd: '/model [native-ref]', does: "boss model — the active backend's own catalog, persists per backend" },
+                { cmd: '/submodel [agent] [native-ref]', does: 'model for one native agent type, where the backend supports it' },
                 { cmd: '/memory [filter]', does: 'completed dispatches from the project ledger, newest first' },
               ]}
             />
