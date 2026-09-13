@@ -562,6 +562,20 @@ const (
 	// the open question hold's batched wire ids. ControlQuestionReject
 	// routes to RejectQuestion instead of AnswerQuestion.
 	EvControlQuestionAnswer EventKind = "control-question-answer"
+	// EvPrimaryLearned — a backend has just resolved (or changed) the id
+	// of the primary ("boss") session/thread it is driving, and wants that
+	// id durable on disk PROMPTLY rather than waiting for the periodic
+	// cheap-write loop or a clean shutdown (ADDITIVE). PrimaryID carries
+	// the new value. Emitted today by codex.go's readTurn the moment the
+	// CLI's own thread.started line names a thread id: a hard kill mid-turn
+	// (e.g. a floor switch handoff) must not forget an id that was already
+	// known for minutes — PrimaryID() already exposes the same value, this
+	// event only tells the app WHEN to persist it sooner. The reducer
+	// passes this through untouched (unknown-kind default); the app's own
+	// persistOfficeSession does the actual write, deduped against the last
+	// id it already saved so a thread spanning many turns does not trigger
+	// a redundant save on every turn that merely repeats the same id.
+	EvPrimaryLearned EventKind = "primary-learned"
 )
 
 // Event — the wire between backend and the tea.Model. Only fields relevant
@@ -706,6 +720,10 @@ type Event struct {
 	ControlQuestionID      string     `json:"controlQuestionId,omitempty"`
 	ControlQuestionAnswers [][]string `json:"controlQuestionAnswers,omitempty"`
 	ControlQuestionReject  bool       `json:"controlQuestionReject,omitempty"`
+	// PrimaryID carries the backend's newly learned/changed primary
+	// ("boss") session/thread id for EvPrimaryLearned (ADDITIVE). Never
+	// populated on any other kind.
+	PrimaryID string `json:"primaryId,omitempty"`
 }
 
 // MCPServer is one configured MCP server with its live status as the

@@ -465,6 +465,11 @@ type Model struct {
 	// piling up overlapping probes: a tick only starts a new sweep when the
 	// previous one's FloorStatusMsg has already come back.
 	floorStatusInFlight bool
+	// codexRecoveryApplied guards codexRecoveredMsg against a second
+	// reduction in the same office run — Init() fires codexRecoveryCmd
+	// exactly once per tea.Program, but a stray redelivery must still be
+	// inert instead of duplicating the recovered rows (codex_recovery.go).
+	codexRecoveryApplied bool
 
 	backend        state.Backend
 	currentBackend *currentBackend // shared across value-copy tea updates
@@ -815,6 +820,11 @@ type Model struct {
 	// persist), sessLast throttles the 5s cheap-write loop off EvTick.
 	sessDir  string
 	sessLast time.Time
+	// lastPrimaryLearnedID dedupes state.EvPrimaryLearned (codex.go's
+	// thread.started -> prompt-persist seam): a thread spans many turns
+	// and repeats the same id on every one, so only an ACTUAL change
+	// forces the extra synchronous save below — a repeat is a no-op.
+	lastPrimaryLearnedID string
 
 	// agentmemoryOK — the /memory header's probe-state latch: the live
 	// backend's boot status line announces the agentmemory probe verdict
@@ -1572,7 +1582,11 @@ func (m Model) State() state.OfficeState {
 // frame ticker; applyEvent re-arms the office tick every cycle.
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.tickCmd(), bootTick(), m.floors.Refresh(), m.files.Refresh(), m.tickets.Refresh(),
-		m.floors.StatusSweepCmd(), floorStatusTick())
+		m.floors.StatusSweepCmd(), floorStatusTick(),
+		// codex-only, best-effort, silent on any gate miss — see
+		// codex_recovery.go. backendName()/sessDir are read here
+		// (synchronous, no I/O); every file read happens inside the cmd.
+		codexRecoveryCmd(m.backendName(), m.sessDir))
 }
 
 // floorStatusTickMsg re-arms the persistent floor-status sweep every
@@ -1719,6 +1733,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.fireNotification("permission", permNotifyBody(p.Agent, p.ToolName))
 			}
 		}
+	case codexRecoveredMsg:
+		// codex-turn recovery result (codex_recovery.go): appends
+		// already-settled history rows, or nothing at all — never sets
+		// busy, never sends to the backend. Returns immediately so no
+		// other reducer touches it.
+		m.applyCodexRecovery(msg)
+		return m, nil
 	case tea.KeyPressMsg:
 		// keys can mutate panel ephemera (textarea, scroll) the state
 		// digest can't see — invalidate the frame cache conservatively.
@@ -3764,6 +3785,22 @@ func (m *Model) applyEventCore(ev state.Event) tea.Cmd {
 			m.activity.Add(line)
 			m.activityAdds++
 		}
+	}
+
+	// EvPrimaryLearned: a backend just resolved (or changed) its primary
+	// id and wants it durable NOW rather than on the next 5s cheap-write
+	// tick or only at clean shutdown (codex.go's thread.started signal —
+	// a hard kill mid-turn, e.g. a floor-switch handoff, must not forget
+	// an id that was already known for minutes). Dedup against the last
+	// id THIS app already saved for it: only an actual change forces the
+	// SYNCHRONOUS save (persistOfficeSession(true), same call the quit
+	// path uses) — a repeat of an id already on disk is a no-op, so a
+	// thread spanning many turns does not rewrite session.json every turn.
+	// This runs on the Update goroutine, never on the backend's stdout
+	// scan goroutine, so a slow disk here cannot stall a turn in flight.
+	if ev.Kind == state.EvPrimaryLearned && ev.PrimaryID != "" && ev.PrimaryID != m.lastPrimaryLearnedID {
+		m.lastPrimaryLearnedID = ev.PrimaryID
+		m.persistOfficeSession(true)
 	}
 
 	if ev.Kind == state.EvTick {

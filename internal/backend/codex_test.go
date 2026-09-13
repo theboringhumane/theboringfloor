@@ -128,6 +128,138 @@ JSON
 		t.Fatal("normal sends bypassed sandbox")
 	}
 }
+
+// TestCodexPrimaryLearnedOnceOnThreadStarted covers the prompt-persist seam
+// (state.EvPrimaryLearned): thread.started must emit it exactly once, even
+// across a second send that resumes the SAME thread and repeats the exact
+// same thread_id in its own thread.started line (a thread spans many
+// turns — the second must not re-fire).
+func TestCodexPrimaryLearnedOnceOnThreadStarted(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "codex-fake")
+	script := `#!/bin/sh
+cat >/dev/null
+cat <<'JSON'
+{"type":"thread.started","thread_id":"thread-durable"}
+{"type":"item.completed","item":{"id":"answer","type":"agent_message","text":"ok"}}
+{"type":"turn.completed"}
+JSON
+`
+	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	b := NewCodex(bin, dir, nil).(*codexBackend)
+	var events []state.Event
+	if err := b.Start(func(e state.Event) { events = append(events, e) }); err != nil {
+		t.Fatal(err)
+	}
+	defer b.Stop()
+	if err := b.Send("first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Send("second"); err != nil { // resumes the same thread
+		t.Fatal(err)
+	}
+	count, got := 0, ""
+	for _, e := range events {
+		if e.Kind == state.EvPrimaryLearned {
+			count++
+			got = e.PrimaryID
+		}
+	}
+	if count != 1 {
+		t.Fatalf("EvPrimaryLearned fired %d times, want 1 (same thread id repeated across turns)", count)
+	}
+	if got != "thread-durable" {
+		t.Fatalf("EvPrimaryLearned.PrimaryID = %q, want %q", got, "thread-durable")
+	}
+	if b.PrimaryID() != "thread-durable" {
+		t.Fatalf("PrimaryID() = %q, want %q", b.PrimaryID(), "thread-durable")
+	}
+}
+
+// TestCodexPrimaryLearnedFiresAgainOnGenuinelyNewThread covers the other
+// half of the dedup: a DIFFERENT thread id (e.g. after /new mints a fresh
+// thread) must still emit its own EvPrimaryLearned rather than latching
+// silent after the first turn ever seen.
+func TestCodexPrimaryLearnedFiresAgainOnGenuinelyNewThread(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "codex-fake")
+	args := filepath.Join(dir, "args")
+	t.Setenv("CODEX_TEST_ARGS", args)
+	script := `#!/bin/sh
+printf '%s\n' "$@" >> "$CODEX_TEST_ARGS"
+cat >/dev/null
+n=$(grep -c '^exec$' "$CODEX_TEST_ARGS")
+cat <<JSON
+{"type":"thread.started","thread_id":"thread-$n"}
+{"type":"turn.completed"}
+JSON
+`
+	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	b := NewCodex(bin, dir, nil).(*codexBackend)
+	var events []state.Event
+	if err := b.Start(func(e state.Event) { events = append(events, e) }); err != nil {
+		t.Fatal(err)
+	}
+	defer b.Stop()
+	if err := b.Send("first"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.NewOffice(); err != nil { // clears b.primary -> a fresh thread next turn
+		t.Fatal(err)
+	}
+	if err := b.Send("second"); err != nil {
+		t.Fatal(err)
+	}
+	var ids []string
+	for _, e := range events {
+		if e.Kind == state.EvPrimaryLearned {
+			ids = append(ids, e.PrimaryID)
+		}
+	}
+	if len(ids) != 2 || ids[0] == ids[1] {
+		t.Fatalf("EvPrimaryLearned ids = %v, want two distinct ids (one per genuinely new thread)", ids)
+	}
+}
+
+// TestCodexNoPrimaryLearnedWithoutThreadStarted covers a turn whose stdout
+// never carries thread.started (e.g. it fails before Codex assigns one):
+// PrimaryID() and the event stream must both stay exactly as they started.
+func TestCodexNoPrimaryLearnedWithoutThreadStarted(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "codex-fake")
+	script := `#!/bin/sh
+cat >/dev/null
+cat <<'JSON'
+{"type":"item.completed","item":{"id":"answer","type":"agent_message","text":"ok, no thread id here"}}
+{"type":"turn.completed"}
+JSON
+`
+	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	b := NewCodex(bin, dir, nil).(*codexBackend)
+	var events []state.Event
+	if err := b.Start(func(e state.Event) { events = append(events, e) }); err != nil {
+		t.Fatal(err)
+	}
+	defer b.Stop()
+	if err := b.Send("hello"); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range events {
+		if e.Kind == state.EvPrimaryLearned {
+			t.Fatalf("unexpected EvPrimaryLearned without a thread.started line: %+v", e)
+		}
+	}
+	if b.PrimaryID() != "" {
+		t.Fatalf("PrimaryID() = %q, want empty (never learned)", b.PrimaryID())
+	}
+}
+
 func TestCodexStopSettlesRunningTurn(t *testing.T) {
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "codex-fake")

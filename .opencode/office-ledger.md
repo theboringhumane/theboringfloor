@@ -7,6 +7,62 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-13 · Full release verification (@runner subagent) — hemerodromos-3 (runner) · `issues`
+- summary: Git status unchanged (no source touched by this run — the `.opencode/office-ledger.md` diff and untracked files predate my run). All 12 requirements executed. C
+- files: (none)
+- verify: (none)
+- proof: (none)
+- ledgerId: led-1789316121228-a5de4947
+
+### 2026-09-13 · De-flake claude model test (@developer subagent) — tekton-17 (developer) · `issues`
+- summary: Reproduced `TestClaudeModelStartupResumeAndOfficePreserveSelection` failing in isolation at ~10% (2/20 in the first batch, confirmed again with a debug-instrume
+- files: `internal/backend/claude_models_test.go`, `internal/backend/models_codex_test.go` was **not** modified
+- verify: No test in this package was newly skipped, removed, or `-short`-gated by me.)
+- proof: *Pre-fix failure count out of 20 (requirement 1):** 2 of 20 failed (10%), one raw failure pasted:
+- ledgerId: led-1789315193627-269e2bf8
+
+### 2026-09-13 · Persist codex thread id early (@developer sub... — tekton-15 (developer) · `issues`
+- summary: Added an additive `state.EventKind` (`EvPrimaryLearned`) and `Event.PrimaryID` field so a backend can tell the app "a primary/thread id was just learned/changed
+- files: `internal/state/state.go`, `internal/backend/codex.go`, `internal/backend/codex_test.go`, `internal/app/model.go`, `internal/app/codex_primary_persist_test.go` (new), No other files were touched. `internal/app/codex_recovery.go`/`codex_recovery_test.go` and `internal
+- verify: ```
+- proof: *Before — how the thread id used to reach `session.json` (quoted, file:line):**
+- ledgerId: led-1789314023446-6ba644a1
+
+### 2026-09-13 · Surface recovered codex output (@developer su... — tekton-16 (developer) · `issues`
+- summary: All good, re-verified. Now producing the final report.
+- files: `internal/app/codex_recovery.go` (new), `internal/app/codex_recovery_test.go` (new), `internal/app/model.go`
+- verify: (gofmt and vet produced no output — clean; both exit codes confirmed 0 in-session. Full-package test run took 219.7s, longer than the brief'
+- proof: *Startup seam quoted** (`internal/app/model.go`, `Init()` — the ONLY place recovery is kicked off):
+- ledgerId: led-1789313962832-40b435c3
+
+### 2026-09-13 · Codex rollout store parser (@developer subagent) — tekton-14 (developer) · `issues`
+- summary: Everything checks out. Compiling the final report.
+- files: `internal/backend/codex_rollout.go`, `internal/backend/codex_rollout_test.go`
+- verify: `~/.codex` is entirely outside this repo — `git status` cannot and does not track it. Confirming plainly: every command I ran against `~/.co
+- proof: *Requirement 1 — what I actually observed in the real store** (six-plus real files inspected, ranging from 1 to 19,045 lines):
+- ledgerId: led-1789313397425-560f226d
+
+### 2026-09-13 · Scout codex nanny seam (@explore subagent) — skopos-7 (scout) · `issues`
+- summary: Read-only recon of the codex backend's per-turn lifecycle, its stdout wire protocol, thread/session identity, `codex exec resume` semantics (via zero-cost `--he
+- files: | Path | Why read |, |---|---|, | `internal/backend/codex.go`, | `internal/backend/models_codex.go` (223 lines, full) | Confirms model discovery uses a SEPARATE `a, | `internal/backend/charter_codex_agentmodel.go`, | `internal/backend/codex_test.go`, | `internal/backend/backend.go` (152 lines, full) | The shared `flow` type, | `internal/backend/process_unix.go` (22 lines, full) | `isolateProcessGroup`/`signalProcessGroup`, | `internal/state/state.go:688-762` | `Backend` interface, | `internal/app/sessions.go`, `internal/app/session_picker.go`, `internal/app/conversations.go` (gre, | `~/.codex/` directory listing | Located the rollout store, `session_index.jsonl`, `sessions/YYYY/M, | 6 real `rollout-*.jsonl` files under `~/.codex/sessions/2026/09/13/` and `2026/09/11/`
+- verify: No `edit`/`write` tool calls were made. No `go test`, `go build`, or git-mutating command was run. Only `read`, `grep`, `glob`, `bash` (read
+- proof: ### 1. The per-turn lifecycle, precisely
+- ledgerId: led-1789311723035-19d85221
+
+### 2026-09-13 · Scout nanny supervision and IPC (@explore sub... — skopos-8 (scout) · `issues`
+- summary: Read-only recon of every prior-art seam for spawning/discovering/authenticating/talking-to/reaping a second long-lived process in this repo: the discovery-recor
+- files: | Path | Why |, |---|---|, | `internal/app/floor_handoff.go` | Newest detached-spawn + health-poll + fail-safe release example, | `internal/app/floor_handoff_unix.go` / `floor_handoff_other.go` | `Setpgid` build-tag split, reimp, | `internal/control/control.go` | `Discovery` struct, `WriteDiscovery`/`ReadDiscovery`/`Stale`/`DirH, | `internal/controlsrv/server.go` | Loopback HTTP server, bearer auth, | `cmd/floorgate/gateway.go` | On-demand office launcher, | `cmd/floorgate/process_unix.go` / `process_other.go` | `isolateOfficeProcessGroup` build-tag pair,, | `internal/backend/opencode.go` | `spawnServe`, `watchServeExit`/`handleServeExit`, `ServerAttachab, | `internal/backend/process_unix.go` / `process_other.go` | `isolateProcessGroup`/`signalProcessGrou, | `cmd/theboringfloor/main.go` | Flags, | `.goreleaser.yaml` | Build matrix
+- verify: `.claude/settings.json` is untracked pre-existing office tooling, present before and after — untouched by this recon. No `edit`/`write`/muta
+- proof: ### 1. How a detached process is spawned today — THE SPAWN RECIPE
+- ledgerId: led-1789311636830-3aebaad5
+
+### 2026-09-13 · Scout claude nanny seam (@explore subagent) — skopos-6 (scout) · `issues`
+- summary: Read-only recon complete. No files were created, edited, or deleted — `git status --short` is identical before and after (the single untracked `.claude/settings
+- files: | Path | Why read |, |---|---|, | `internal/backend/claude.go`, | `internal/backend/claude_events.go`, | `internal/backend/claude_models.go`, | `cmd/claudestub/main.go`, | `internal/backend/process_unix.go` | `isolateProcessGroup`/`signalProcessGroup`, | `internal/state/state.go:721-754, 800-839` | `state.Backend` interface + the `ServerAttachable` ha, | `internal/backend/backend.go:1-152` | The shared `flow` type, | `internal/backend/charter_claude.go:123-138` (partial) | `EnsureClaudeCharter`, | `internal/backend/abort_timeout_test.go`, `opencode_handoff_test.go`
+- verify: All other commands were `read`, `glob`, `grep`, `wc -l`, `bash` running only `grep`/`wc` (no writes), and one `agentmemory_memory_recall` (z
+- proof: ### 1. The full wire contract (stdin ↔ stdout)
+- ledgerId: led-1789311599687-0fa912c1
+
 ### 2026-09-13 · Claude and codex detach spike (@developer sub... — tekton-12 (developer) · `issues`
 - summary: ## VERDICT
 - files: All created under the pre-approved scratch dir; **zero repo files were created, edited, or deleted.*, `/var/folders/.../opencode/spike-cc/child.go`, `child`, `/var/folders/.../opencode/spike-cc/harness.go`, `harness`, `/var/folders/.../opencode/spike-cc/harness_claude.go`, `harness_claude`, `/var/folders/.../opencode/spike-cc/harness_codex.go`, `harness_codex`, `child.log`, `child2.log`, `claude_harness.log`, `codex_harness.log`, `harness.out`, `harness2.out`,, Repo git status (unchanged apart from concurrent office activity, ```, $ git status --short, M .opencode/office-ledger.md, M internal/app/floor_handoff.go, M internal/app/floor_handoff_test.go
@@ -300,60 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: *Working session — before**
 - ledgerId: led-1788797899087-99a78e99
-
-### 2026-09-07 · Draft release commit message (@general subagent) — tekton-12 (developer) · `issues`
-- summary: 1. **House style internalized** by reading full bodies of waves 114, 113, and 112 (`git log -1 --format=%B <sha>` for `53258b3`, `17c73c6`, `af63eef`). Observed
-- files: | Path | Why it mattered |, |---|---|, | `internal/state/state.go` | New `Event.ControlAttachments []Attachment` field, | `internal/control/attachments.go`, | `internal/control/control.go`, | `internal/controlsrv/server.go`, | `internal/app/control.go`, | `internal/app/control_mutations.go` | `currentBackendSend` now forwards `ev.ControlAttachments` in, | `internal/backend/claude.go`, | `internal/backend/parts_test.go` | New proof-test for existing OpenCode real-image-part delivery (, | `cmd/floorgate/gateway_test.go` | Fixture update only, for the new `"working"` JSON field |, | `mobile/lib/hooks/use_polling.dart` | `Polling` gains `enabled`, `restartToken`, failure backoff, 
-- verify: (No file under my control was ever touched by `edit`/`write`/`bash -c "... > file"` — every command above is a read: `git log`, `git diff`,
-- proof: ```
-- ledgerId: led-1788797753438-2bff1c0f
-
-### 2026-09-07 · Poll transcript while working (@developer sub... — tekton-13 (developer) · `issues`
-- summary: Wired transcript polling to the existing gateway **`/busy`** signal (`Busy.busy`), not a new transcript `working` field.
-- files: `mobile/lib/hooks/use_polling.dart`, `mobile/lib/store/session_store.dart`, `mobile/lib/views/session_view.dart`, `mobile/test/session_store_test.dart`, `mobile/test/session_view_test.dart`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788797555206-62f6c915
-
-### 2026-09-07 · Full release verification (@runner subagent) — hemerodromos-1 (runner) · `issues`
-- summary: ## VERDICT
-- files: (none)
-- verify: (none)
-- proof: (none)
-- ledgerId: led-1788797180402-a7de4c6d
-
-### 2026-09-07 · Scout transcript polling state (@explore suba... — skopos-3 (scout) · `issues`
-- summary: `mobile/lib/views/session_view.dart` — transcript screen; now wraps the Scaffold in `Polling`
-- files: `mobile/lib/views/session_view.dart`, `mobile/lib/store/session_store.dart`, `mobile/lib/hooks/use_polling.dart`, `mobile/lib/api/gateway_client.dart`, `mobile/lib/api/endpoints.dart`, `mobile/lib/models/session.dart`, `mobile/lib/models/transcript.dart`, `mobile/lib/models/project.da, `mobile/lib/app.dart`, `internal/control/control.go`, `internal/app/control.go`, `internal/controlsrv/server.go`, `cmd/floo, `mobile/test/session_store_test.dart`, `mobile/test/session_view_test.dart`
-- verify: `Polling.maxConsecutiveFailures` (default 3) with exponential backoff means after 3 consecutive `refresh()` failures polling stops entirely
-- proof: | concern | file:line | current behavior | what a developer must change |
-- ledgerId: led-1788797139658-6cb909cd
-
-### 2026-09-07 · Untrack Gradle build artifact (@developer sub... — tekton-10 (developer) · `done`
-- summary: Added the narrow Android Gradle output ignore rule to `mobile/.gitignore`: `/android/build/`.
-- files: `mobile/.gitignore`, `mobile/android/build/reports/problems/problems-report.html`
-- verify: ```
-- proof: `mobile/.gitignore` now contains:
-- ledgerId: led-1788797046603-34ca6a12
-
-### 2026-09-07 · Remove NDK dependency from app (@developer su... — tekton-7 (developer) · `issues`
-- summary: Removed `google_fonts` from the Flutter dependency graph; regenerated `pubspec.lock` removes `jni`, `jni_flutter`, `objective_c`, `path_provider*`, `code_assets
-- files: `mobile/pubspec.yaml`, `mobile/pubspec.lock`, `mobile/lib/utils/typography.dart`, `mobile/lib/main.dart`, `mobile/test/font_assets_test.dart`, `mobile/test/typography_test.dart`, `mobile/test/theme_test.dart`, `mobile/test/settings_view_test.dart`, `mobile/test/space_view_test.dart`, `mobile/test/terminal_view_test.dart`, `mobile/test/message_bubble_test.dart`, `mobile/test/markdown_body_test.dart`
-- verify: There are no `jni`, `jni_flutter`, or `path_provider` entries.
-- proof: ### `_withFamily`
-- ledgerId: led-1788796101218-0447b0be
-
-### 2026-09-07 · Repair local Android NDK (@developer subagent) — tekton-6 (developer) · `issues`
-- summary: Renamed the malformed NDK directory without deleting it:
-- files: `/Users/theboringhumane/Library/Android/sdk/ndk/28.2.13676358.broken-20260907`, `/Users/theboringhumane/Library/Android/sdk/ndk/28.2.13676358.reinstall-incomplete-20260907`, No repo file was manually modified. `git status --short` currently contains existing/concurrent work, ```text, M .opencode/office-ledger.md, M internal/app/control.go, M internal/app/control_mutations.go, M internal/app/control_test.go, M internal/backend/claude.go, M internal/backend/claude_attachment_test.go, M internal/backend/parts_test.go, M internal/control/attachments.go
-- verify: ```
-- proof: | NDK version/path | `source.properties` present? | Healthy? |
-- ledgerId: led-1788796093139-4296301e
-
-### 2026-09-07 · Count user messages for paging (@developer su... — tekton-8 (developer) · `done`
-- summary: Changed transcript page assembly to count only messages where `From == "user"` against `limit`.
-- files: `internal/app/control.go`, `internal/app/control_test.go`
-- verify: ```
-- proof: ```text
-- ledgerId: led-1788796023957-05092dbf
 

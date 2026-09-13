@@ -165,6 +165,27 @@ func claudeModelFrames(t *testing.T, path string) []map[string]any {
 	return frames
 }
 
+// claudeModelLaunchContains reports whether the argv-log line at 0-based
+// index idx contains want. Out-of-range or not-yet-written lines report
+// false rather than failing — callers poll this from claudeWait so a
+// slow-to-start child never turns into a flake (see
+// TestClaudeModelStartupResumeAndOfficePreserveSelection for why this
+// exists: two spawns issued back-to-back from the same goroutine
+// guarantee FORK order, since spawnClaude's cmd.Start() is synchronous,
+// but NOT which child's own argv-log write reaches disk first — each
+// child is a full `go test` binary whose cold-start latency after fork
+// varies with machine load).
+func claudeModelLaunchContains(argv string, idx int, want string) bool {
+	data, _ := os.ReadFile(argv)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if idx >= len(lines) {
+		return false
+	}
+	var args []string
+	_ = json.Unmarshal([]byte(lines[idx]), &args)
+	return strings.Contains(strings.Join(args, " "), want)
+}
+
 func TestClaudeModelCatalogNativeRefsAndAgents(t *testing.T) {
 	b, log, _, _ := claudeModelFixture(t, "", nil)
 	models, err := b.ListModels(context.Background())
@@ -316,6 +337,21 @@ func TestClaudeModelStartupResumeAndOfficePreserveSelection(t *testing.T) {
 	if err := b.SwapPrimary("resume-model-test"); err != nil {
 		t.Fatal(err)
 	}
+	// SwapPrimary's replacement process and NewOffice's replacement
+	// process are two independent OS forks issued back-to-back with no
+	// intervening IPC: cmd.Start() guarantees FORK order (both spawns
+	// are synchronous, single-goroutine, sequential Go calls — see
+	// spawnClaude/claude.go), but NOT which child's own argv-log write
+	// lands on disk first, since each child is a full `go test` binary
+	// whose cold-start latency after fork varies with machine load.
+	// Wait for the swap's own launch to be OBSERVABLY recorded (its
+	// argv line present with the expected --resume flag) before
+	// triggering the next spawn, so the file's line order is pinned to
+	// launch order by construction instead of racing two child
+	// processes' writes against each other.
+	claudeWait(t, "swapped-primary launch recorded", time.Second, func() bool {
+		return claudeModelLaunchContains(argv, 1, "--resume resume-model-test")
+	})
 	if _, err := b.NewOffice(); err != nil {
 		t.Fatal(err)
 	}

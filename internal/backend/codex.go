@@ -323,8 +323,21 @@ func (b *codexBackend) readTurn(r io.Reader, cmd *exec.Cmd, turn string, stderr 
 		}
 		if e.Type == "thread.started" && e.ThreadID != "" {
 			b.mu.Lock()
+			changed := b.primary != e.ThreadID
 			b.primary = e.ThreadID
 			b.mu.Unlock()
+			// Tell the app to persist this id PROMPTLY (state.EvPrimaryLearned)
+			// instead of waiting for the ~5s cheap-write loop or a clean
+			// shutdown: a hard kill mid-turn must not forget a thread id
+			// that was already known for minutes. emit() only enqueues the
+			// event on the tea program (see flow.emit / backend.go) — the
+			// actual disk write happens later on the app's own goroutine,
+			// so this never blocks the stdout scan below. Only emit on an
+			// actual change: a thread spans many turns and repeats the
+			// same thread_id on every one of them.
+			if changed {
+				b.fl.emit(state.Event{Kind: state.EvPrimaryLearned, PrimaryID: e.ThreadID})
+			}
 		}
 		if e.Type == "turn.completed" {
 			completed = true
