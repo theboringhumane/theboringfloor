@@ -1,5 +1,7 @@
-// floor_handoff_test.go — launchFloor's opencode-detach / claude+codex-
-// refusal gate and the handoffCurrentFloor helper it drives.
+// floor_handoff_test.go — launchFloor's busy-floor handoff gate (every
+// backend hands off when busy; only opencode also carries the in-flight
+// turn via --server, and only claude/codex post the tradeoff notice) and
+// the handoffCurrentFloor helper it drives.
 //
 // Every test injects floorHandoffSpawn/floorHandoffReady (package vars —
 // same seam convention as SpawnTerminal/BackendFactory) so nothing here
@@ -19,7 +21,7 @@ import (
 // stubHandoffSeams installs fake floorHandoffSpawn/floorHandoffReady for the
 // duration of the test and returns a recorder of what launchFloor asked for.
 type handoffSpawnCall struct {
-	dir, session, serverURL string
+	dir, backendName, session, serverURL string
 }
 
 func stubHandoffSeams(t *testing.T, ready bool, spawnErr error) (calls *[]handoffSpawnCall, killed *bool) {
@@ -28,8 +30,8 @@ func stubHandoffSeams(t *testing.T, ready bool, spawnErr error) (calls *[]handof
 	killed = new(bool)
 	origSpawn, origReady := floorHandoffSpawn, floorHandoffReady
 	t.Cleanup(func() { floorHandoffSpawn, floorHandoffReady = origSpawn, origReady })
-	floorHandoffSpawn = func(dir, session, serverURL string) (func(), error) {
-		*calls = append(*calls, handoffSpawnCall{dir: dir, session: session, serverURL: serverURL})
+	floorHandoffSpawn = func(dir, backendName, session, serverURL string) (func(), error) {
+		*calls = append(*calls, handoffSpawnCall{dir: dir, backendName: backendName, session: session, serverURL: serverURL})
 		if spawnErr != nil {
 			return nil, spawnErr
 		}
@@ -83,6 +85,38 @@ func lastNotice(m Model) state.ChatMsg {
 	return m.st.Chat[len(m.st.Chat)-1]
 }
 
+// TestHandoffRespawnsUnderTheDepartingBackend — the detached child must be
+// pinned to the backend the departing floor was actually running. The
+// session id handed to it is that backend's OWN primary (claude's uuid,
+// codex's thread id), so respawning under a different backend would try to
+// resume a claude or codex conversation as an opencode one and silently
+// lose it. This regressed once: the spawn hardcoded "--backend opencode"
+// back when only opencode was ever handed off.
+func TestHandoffRespawnsUnderTheDepartingBackend(t *testing.T) {
+	for _, backendName := range []string{"opencode", "claudecode", "codex"} {
+		t.Run(backendName, func(t *testing.T) {
+			t.Setenv("THEFLOOR_HOME", t.TempDir())
+			departing := t.TempDir()
+			target := t.TempDir()
+			calls, _ := stubHandoffSeams(t, true, nil)
+
+			m := busyModel(t, departing, backendName, "sess-"+backendName)
+			if cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"}); cmd == nil {
+				t.Fatal("a busy floor must hand off and proceed, got nil cmd")
+			}
+			if len(*calls) != 1 {
+				t.Fatalf("floorHandoffSpawn calls = %d, want 1", len(*calls))
+			}
+			if got := (*calls)[0].backendName; got != backendName {
+				t.Errorf("detached child spawned with --backend %q, want the DEPARTING floor's backend %q", got, backendName)
+			}
+			if got := (*calls)[0].session; got != "sess-"+backendName {
+				t.Errorf("detached child pinned to session %q, want %q", got, "sess-"+backendName)
+			}
+		})
+	}
+}
+
 // TestLaunchFloorIdleOpencodeSkipsHandoff — an idle floor has no in-flight
 // turn to rescue and its conversation is already resumable from the
 // persisted session, so switching away from it must take the cheap
@@ -123,7 +157,9 @@ func TestLaunchFloorIdleOpencodeSkipsHandoff(t *testing.T) {
 
 // TestLaunchFloorBusyOpencodeHandsOffAndProceeds — requirement 7 leg 1: a
 // busy opencode floor switch spawns a handoff (pinned to the departing
-// floor's own dir + session) and proceeds with the switch.
+// floor's own dir + session), proceeds with the switch, and posts NO
+// tradeoff notice — for opencode nothing was lost, so there is nothing to
+// disclose (requirement 5).
 func TestLaunchFloorBusyOpencodeHandsOffAndProceeds(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	departing := t.TempDir()
@@ -131,6 +167,7 @@ func TestLaunchFloorBusyOpencodeHandsOffAndProceeds(t *testing.T) {
 	calls, killed := stubHandoffSeams(t, true, nil)
 
 	m := busyModel(t, departing, "opencode", "sess-a")
+	before := len(m.st.Chat)
 	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
 
 	if cmd == nil {
@@ -154,44 +191,82 @@ func TestLaunchFloorBusyOpencodeHandsOffAndProceeds(t *testing.T) {
 	if *killed {
 		t.Error("a successful handoff must not kill the detached office it just verified healthy")
 	}
+	if len(m.st.Chat) != before {
+		t.Errorf("opencode handoff posted a notice %q, want none — nothing was lost for opencode", lastNotice(m).Text)
+	}
 }
 
-// TestLaunchFloorBusyClaudeRefusedWithAccurateMessage — requirement 7 leg
-// 2: claude keeps today's refusal, but the message names the backend and
-// never claims a floor is backgrounded when it is not.
-func TestLaunchFloorBusyClaudeRefusedWithAccurateMessage(t *testing.T) {
+// TestLaunchFloorBusyClaudeHandsOffWithTradeoffNotice — requirement 5 leg
+// 2: a busy claude floor is now handed off (not refused), spawns with its
+// own primary session id, passes no --server (claude has no
+// state.ServerAttachable seam), and posts the tradeoff notice — the
+// conversation continues in the background, but the in-flight turn did
+// not survive and needs re-running.
+func TestLaunchFloorBusyClaudeHandsOffWithTradeoffNotice(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	departing := t.TempDir()
+	target := t.TempDir()
+	calls, killed := stubHandoffSeams(t, true, nil)
+
+	m := busyModel(t, departing, "claudecode", "sess-a")
+	before := len(m.st.Chat)
+	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
+
+	if cmd == nil {
+		t.Fatal("a busy claudecode floor must now hand off and proceed (quit), got nil cmd")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatalf("proceeding cmd() = %#v, want tea.QuitMsg", cmd())
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("floorHandoffSpawn calls = %d, want 1 — a busy claudecode floor must be handed off", len(*calls))
+	}
+	if (*calls)[0].dir != departing {
+		t.Errorf("handoff spawned for dir %q, want the DEPARTING floor %q", (*calls)[0].dir, departing)
+	}
+	if (*calls)[0].session != "sess-a" {
+		t.Errorf("handoff spawned with session %q, want claude's own primary %q", (*calls)[0].session, "sess-a")
+	}
+	if (*calls)[0].serverURL != "" {
+		t.Errorf("spawn serverURL = %q, want empty — claude has no ServerAttachable seam", (*calls)[0].serverURL)
+	}
+	if *killed {
+		t.Error("a successful handoff must not kill the detached office it just verified healthy")
+	}
+	if len(m.st.Chat) != before+1 {
+		t.Fatalf("chat length after handoff = %d, want %d (exactly one tradeoff notice appended)", len(m.st.Chat), before+1)
+	}
+	notice := lastNotice(m)
+	want := "claudecode floor moved to the background — its conversation keeps running there, but the turn in progress (boss turn in flight) did not survive the switch and will need to be re-run."
+	if notice.Text != want {
+		t.Errorf("tradeoff notice = %q, want %q", notice.Text, want)
+	}
+	if notice.Meta == "error" {
+		t.Errorf("tradeoff notice Meta = %q, want a non-error notice (this is a disclosure, not a failure)", notice.Meta)
+	}
+}
+
+// TestLaunchFloorIdleClaudeSkipsHandoff — an idle claude floor has no
+// in-flight turn to disclose or rescue, so it takes the cheap exec-replace
+// path exactly like an idle opencode floor, and posts no notice.
+func TestLaunchFloorIdleClaudeSkipsHandoff(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	departing := t.TempDir()
 	target := t.TempDir()
 	calls, _ := stubHandoffSeams(t, true, nil)
 
-	m := busyModel(t, departing, "claudecode", "sess-a")
+	m := idleModel(t, departing, "claudecode", "sess-a")
+	before := len(m.st.Chat)
 	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
 
-	if cmd != nil {
-		t.Fatal("a busy claudecode floor must still refuse the switch, got a proceeding cmd")
-	}
-	if m.execFloor != nil {
-		t.Fatalf("execFloor must stay nil on a refused switch, got %+v", m.execFloor)
+	if cmd == nil {
+		t.Fatal("idle claudecode switch must proceed (quit), got nil cmd")
 	}
 	if len(*calls) != 0 {
-		t.Fatalf("claudecode must never attempt a detach handoff, got %d spawn call(s)", len(*calls))
+		t.Fatalf("floorHandoffSpawn calls = %d, want 0 — an idle floor must not be handed off", len(*calls))
 	}
-	// The refusal must be a way forward, not just a wall: it names the
-	// backend, why this floor is busy, and the exact command that opens the
-	// TARGET floor as its own office in a second terminal.
-	wantTarget, err := workspace.Canonical(target)
-	if err != nil {
-		t.Fatalf("canonicalizing target: %v", err)
-	}
-	notice := lastNotice(m)
-	want := "claudecode floors cannot run in the background yet — this one is busy (boss turn in flight). " +
-		"Leave it running here and open the other floor in a second terminal:  theboringfloor --project " + wantTarget
-	if notice.Text != want {
-		t.Errorf("refusal notice = %q, want %q", notice.Text, want)
-	}
-	if notice.Meta != "error" {
-		t.Errorf("refusal notice Meta = %q, want %q (an error toast)", notice.Meta, "error")
+	if len(m.st.Chat) != before {
+		t.Errorf("idle switch posted a notice %q, want none", lastNotice(m).Text)
 	}
 }
 
@@ -226,30 +301,102 @@ func TestLaunchFloorBusySameFloorReselectIsNotAnError(t *testing.T) {
 	}
 }
 
-// TestLaunchFloorBusyCodexRefusedWithAccurateMessage — same leg for codex,
+// TestLaunchFloorBusyCodexHandsOffWithTradeoffNotice — same leg for codex,
 // confirming the gate reads the CURRENT backend name rather than a
-// hardcoded assumption (requirement 5).
-func TestLaunchFloorBusyCodexRefusedWithAccurateMessage(t *testing.T) {
+// hardcoded assumption (requirement 5), and that codex's own primary
+// session id (not claude's or opencode's) is the one pinned.
+func TestLaunchFloorBusyCodexHandsOffWithTradeoffNotice(t *testing.T) {
 	t.Setenv("THEFLOOR_HOME", t.TempDir())
 	departing := t.TempDir()
 	target := t.TempDir()
-	stubHandoffSeams(t, true, nil)
+	calls, _ := stubHandoffSeams(t, true, nil)
 
-	m := busyModel(t, departing, "codex", "sess-a")
+	m := busyModel(t, departing, "codex", "sess-b")
+	before := len(m.st.Chat)
+	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
+
+	if cmd == nil {
+		t.Fatal("a busy codex floor must now hand off and proceed (quit), got nil cmd")
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("floorHandoffSpawn calls = %d, want 1 — a busy codex floor must be handed off", len(*calls))
+	}
+	if (*calls)[0].session != "sess-b" {
+		t.Errorf("handoff spawned with session %q, want codex's own primary %q", (*calls)[0].session, "sess-b")
+	}
+	if (*calls)[0].serverURL != "" {
+		t.Errorf("spawn serverURL = %q, want empty — codex has no ServerAttachable seam", (*calls)[0].serverURL)
+	}
+	if len(m.st.Chat) != before+1 {
+		t.Fatalf("chat length after handoff = %d, want %d (exactly one tradeoff notice appended)", len(m.st.Chat), before+1)
+	}
+	notice := lastNotice(m)
+	want := "codex floor moved to the background — its conversation keeps running there, but the turn in progress (boss turn in flight) did not survive the switch and will need to be re-run."
+	if notice.Text != want {
+		t.Errorf("tradeoff notice = %q, want %q", notice.Text, want)
+	}
+	if notice.Meta == "error" {
+		t.Errorf("tradeoff notice Meta = %q, want a non-error notice (this is a disclosure, not a failure)", notice.Meta)
+	}
+}
+
+// TestLaunchFloorIdleCodexSkipsHandoff — the codex counterpart of
+// TestLaunchFloorIdleClaudeSkipsHandoff.
+func TestLaunchFloorIdleCodexSkipsHandoff(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	departing := t.TempDir()
+	target := t.TempDir()
+	calls, _ := stubHandoffSeams(t, true, nil)
+
+	m := idleModel(t, departing, "codex", "sess-b")
+	before := len(m.st.Chat)
+	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
+
+	if cmd == nil {
+		t.Fatal("idle codex switch must proceed (quit), got nil cmd")
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("floorHandoffSpawn calls = %d, want 0 — an idle floor must not be handed off", len(*calls))
+	}
+	if len(m.st.Chat) != before {
+		t.Errorf("idle switch posted a notice %q, want none", lastNotice(m).Text)
+	}
+}
+
+// TestLaunchFloorHandoffAbortsForClaudeExactlyAsOpencode — requirement 5:
+// the abort-on-failed-handoff path is backend-agnostic. A claude floor
+// whose detached office never becomes healthy aborts the switch, reaps
+// the half-started child, restores the departing floor's own discovery
+// record, and posts NO tradeoff notice (the handoff never succeeded, so
+// there is nothing to disclose — only the abort's own error notice).
+func TestLaunchFloorHandoffAbortsForClaudeExactlyAsOpencode(t *testing.T) {
+	t.Setenv("THEFLOOR_HOME", t.TempDir())
+	departing := t.TempDir()
+	target := t.TempDir()
+	origTimeout, origPoll := handoffReadyTimeout, handoffPollInterval
+	handoffReadyTimeout, handoffPollInterval = 30*time.Millisecond, 5*time.Millisecond
+	t.Cleanup(func() { handoffReadyTimeout, handoffPollInterval = origTimeout, origPoll })
+	calls, killed := stubHandoffSeams(t, false, nil)
+
+	m := busyModel(t, departing, "claudecode", "sess-a")
+	before := len(m.st.Chat)
 	cmd := m.launchFloor(FloorLaunch{Dir: target, Backend: "opencode"})
 
 	if cmd != nil {
-		t.Fatal("a busy codex floor must still refuse the switch")
+		t.Fatal("an aborted claude handoff must never quit — the switch must never proceed")
 	}
-	wantTarget, err := workspace.Canonical(target)
-	if err != nil {
-		t.Fatalf("canonicalizing target: %v", err)
+	if len(*calls) != 1 {
+		t.Fatalf("floorHandoffSpawn calls = %d, want 1 (the one attempt)", len(*calls))
+	}
+	if !*killed {
+		t.Error("an aborted handoff must reap the half-started detached office")
+	}
+	if len(m.st.Chat) != before+1 {
+		t.Fatalf("chat length after aborted handoff = %d, want %d (exactly the abort's own error notice, no tradeoff notice)", len(m.st.Chat), before+1)
 	}
 	notice := lastNotice(m)
-	want := "codex floors cannot run in the background yet — this one is busy (boss turn in flight). " +
-		"Leave it running here and open the other floor in a second terminal:  theboringfloor --project " + wantTarget
-	if notice.Text != want {
-		t.Errorf("refusal notice = %q, want %q", notice.Text, want)
+	if notice.Meta != "error" {
+		t.Errorf("abort must surface an error notice, got Meta=%q text=%q", notice.Meta, notice.Text)
 	}
 }
 

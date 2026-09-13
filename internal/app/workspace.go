@@ -61,24 +61,31 @@ func (m *Model) workspaceEditing() bool {
 }
 func (m *Model) launchFloor(req FloorLaunch) tea.Cmd {
 	m.floorNavFocused = false
-	// The floor being LEFT decides the policy, not the target: opencode is
-	// proven to survive detaching (spike findings — an `opencode serve`
-	// child outlives its spawner when nothing signals its process group,
-	// and a headless office boots + answers its control API), so a busy
-	// opencode floor is handed off to a detached background office instead
-	// of being refused (handoffCurrentFloor, called below). claude and
-	// codex are NOT proven safe to detach yet (claude's turn rides
-	// stdin/stdout pipes that die with this process; codex's send() blocks
-	// synchronously inside the dying process) — they keep today's
-	// busy-refusal, only with an accurate per-backend message instead of
-	// the old generic one.
+	// The floor being LEFT decides the policy, not the target. EVERY
+	// backend is handed off when busy now, via the same
+	// handoffCurrentFloor path: opencode is proven to survive detaching
+	// fully — an `opencode serve` child outlives its spawner and the
+	// detached office can attach to that same serve (state.ServerAttachable),
+	// so its in-flight turn survives the switch too. claude and codex
+	// cannot keep an in-flight turn alive across the switch (claude's turn
+	// rides stdin/stdout pipes that die with this process; codex's send()
+	// blocks synchronously inside the dying process), but BOTH persist
+	// their conversation outside this process (Claude Code's own session
+	// store, resumed with --resume; codex's own thread store, resumed with
+	// `codex exec resume`) and the detached child is already pinned to
+	// that same session id — so the floor and its conversation still
+	// survive, only the turn in flight does not. That is strictly better
+	// than the old outright refusal, so the busy-refusal branch is gone:
+	// the only thing that can still stop a busy switch is a handoff that
+	// never becomes healthy (handoffCurrentFloor's own abort path, which
+	// is backend-agnostic).
 	leavingBackend := m.backendName()
-	// Computed once: the same predicate decides whether a non-opencode
-	// floor is refused and whether an opencode floor is worth handing off.
-	// An IDLE floor has nothing in flight to preserve, so it takes the
-	// cheap path (plain exec-replace) rather than paying for a detached
-	// office nobody asked for — spawning a background process per switch
-	// would leak an office for every floor a member merely browses past.
+	// Computed once: this predicate decides whether the departing floor
+	// (of ANY backend) is worth handing off. An IDLE floor has nothing in
+	// flight to preserve, so it takes the cheap path (plain exec-replace)
+	// rather than paying for a detached office nobody asked for —
+	// spawning a background process per switch would leak an office for
+	// every floor a member merely browses past.
 	leavingBusy := len(m.backendSwapBlockers()) > 0
 	dir, err := workspace.Canonical(req.Dir)
 	if err != nil {
@@ -122,23 +129,6 @@ func (m *Model) launchFloor(req FloorLaunch) tea.Cmd {
 		m.tabs.SetActive(0)
 		return nil
 	}
-	// A busy claude or codex floor cannot be backgrounded, so refusing here
-	// would otherwise be a dead end. Point the member at the one thing that
-	// does work — running the target floor as its own office in a second
-	// terminal — instead of telling them only what they cannot do. Checked
-	// after the canonicalize and same-floor no-op above, so the message can
-	// name the real target path and re-selecting the current floor while
-	// busy is never an error.
-	if leavingBackend != config.BackendNameDefault && leavingBusy {
-		m.noticeErr(fmt.Sprintf(
-			"%s floors cannot run in the background yet — this one is busy (%s). Leave it running here and open the other floor in a second terminal:  theboringfloor --project %s",
-			leavingBackend,
-			strings.Join(m.backendSwapBlockers(), "; "),
-			req.Dir,
-		))
-		m.tabs.SetActive(0)
-		return nil
-	}
 	m.persistOfficeSession(true)
 	if m.sessionWriter != nil {
 		m.sessionWriter.mu.Lock()
@@ -156,12 +146,26 @@ func (m *Model) launchFloor(req FloorLaunch) tea.Cmd {
 	// truly leaves everything as it was: the session is already durably
 	// persisted above, but nothing has quit or exec'd yet, so returning nil
 	// here just keeps this same TUI running on this same floor.
-	// Only a BUSY opencode floor is worth a detached office. An idle one has
-	// no in-flight turn to rescue, and its conversation is already resumable
-	// from the session just persisted above, so it takes the cheap path.
-	if leavingBackend == config.BackendNameDefault && leavingBusy {
+	// Only a BUSY floor of ANY backend is worth a detached office. An idle
+	// one has no in-flight turn to rescue, and its conversation is already
+	// resumable from the session just persisted above, so it takes the
+	// cheap path.
+	if leavingBusy {
 		if !m.handoffCurrentFloor() {
 			return nil
+		}
+		// claude and codex cannot keep their in-flight turn alive across
+		// the switch (see the gate comment above) — the member must be
+		// told plainly what did and did not survive so nobody assumes the
+		// turn kept running in the background. Opencode's handoff carries
+		// the turn too (state.ServerAttachable + --server), so it has
+		// nothing to disclose and stays silent.
+		if leavingBackend != config.BackendNameDefault {
+			m.notice(fmt.Sprintf(
+				"%s floor moved to the background — its conversation keeps running there, but the turn in progress (%s) did not survive the switch and will need to be re-run.",
+				leavingBackend,
+				strings.Join(m.backendSwapBlockers(), "; "),
+			))
 		}
 	}
 	m.execFloor = &req

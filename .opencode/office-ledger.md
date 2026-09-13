@@ -7,6 +7,20 @@ recorded by the office app itself after each verified return. This file is
 append-only state: the charter pass seeds it when absent and never rewrites it.
 
 <!-- ledger:entries -->
+### 2026-09-13 · Claude and codex detach spike (@developer sub... — tekton-12 (developer) · `issues`
+- summary: ## VERDICT
+- files: All created under the pre-approved scratch dir; **zero repo files were created, edited, or deleted.*, `/var/folders/.../opencode/spike-cc/child.go`, `child`, `/var/folders/.../opencode/spike-cc/harness.go`, `harness`, `/var/folders/.../opencode/spike-cc/harness_claude.go`, `harness_claude`, `/var/folders/.../opencode/spike-cc/harness_codex.go`, `harness_codex`, `child.log`, `child2.log`, `claude_harness.log`, `codex_harness.log`, `harness.out`, `harness2.out`,, Repo git status (unchanged apart from concurrent office activity, ```, $ git status --short, M .opencode/office-ledger.md, M internal/app/floor_handoff.go, M internal/app/floor_handoff_test.go
+- verify: (The one 120s-timeout job was the bash tool's own job-wait on my backgrounded keeper/harness, not an orphan — both were confirmed already re
+- proof: | Backend | survives parent death (own process) | stdin-abandon kills turn? | resume recovers turn? | floor-only viable? | tested or inferre
+- ledgerId: led-1789307048813-e18ebd4c
+
+### 2026-09-13 · Floor-only handoff tier (@developer subagent) — tekton-13 (developer) · `issues`
+- summary: Removed the opencode-only gate in `launchFloor` (`internal/app/workspace.go`): a busy floor on **any** backend (opencode, claudecode, codex) is now handed off v
+- files: `internal/app/workspace.go`, `internal/app/floor_handoff.go`, `internal/app/floor_handoff_test.go`
+- verify: ```
+- proof: *Gate — before (workspace.go):**
+- ledgerId: led-1789306436177-48fd1233
+
 ### 2026-09-13 · Full release verification (@runner subagent) — hemerodromos-2 (runner) · `issues`
 - summary: ## VERDICT — `RELEASE-READY`
 - files: (none)
@@ -342,18 +356,4 @@ append-only state: the charter pass seeds it when absent and never rewrites it.
 - verify: ```
 - proof: ```text
 - ledgerId: led-1788796023957-05092dbf
-
-### 2026-09-07 · Paginate by user messages only (@explore suba... — skopos-2 (scout) · `issues`
-- summary: All modifications shown are pre-existing/concurrent-agent changes (present before I started and continuing to churn during my read-only recon); I made zero edit
-- files: | Path | Why read |, |---|---|, | `internal/app/control.go` | Page assembly function, limit clamp, `before`-cursor resolution |, | `internal/app/control_mutations.go` | Confirmed no pagination logic lives here, | `internal/app/model.go`, | `internal/state/state.go` | `ChatMsg`/`Event` wire shapes, `Kind` doc comment, `EvControlQuery`/`C, | `internal/control/control.go` | `TranscriptMessage`/`TranscriptResponse` wire types, route/query c, | `internal/controlsrv/server.go` | HTTP route dispatch + `transcriptParams` query parsing |, | `internal/controlsrv/server_test.go` | Existing limit/before validation tests |, | `cmd/floorgate/gateway.go` | Public gateway's `/transcript` param forwarding |, | `cmd/floorgate/gateway_test.go` | Existing gateway-level transcript test |, | `internal/panels/chat.go`
-- verify: (none)
-- proof: | Layer | file:line | Current limit semantics | What must change |
-- ledgerId: led-1788795998033-0c55ff4d
-
-### 2026-09-07 · Diagnose Android NDK build break (@explore su... — skopos-1 (scout) · `issues`
-- summary: Read-only investigation of the `:jni` Gradle-configuration NDK failure on `mobile/`'s Android debug build: traced the exact pub dependency chain, inspected the 
-- files: | Path | Why read |, |---|---|, | `mobile/pubspec.yaml` | Confirm `google_fonts: ^6.3.3` is the only new direct dep, and that all 4 , | `mobile/pubspec.lock` | Full resolved dependency graph, | `mobile/android/app/build.gradle.kts` | App-level `ndkVersion` pin, | `mobile/android/build.gradle.kts` | Root project config, `evaluationDependsOn` ordering |, | `mobile/android/settings.gradle.kts` | Confirms `dev.flutter.flutter-plugin-loader` is what auto-i, | `mobile/android/gradle.properties`, `local.properties` | SDK path, no other NDK overrides |, | `mobile/android/build/reports/problems/problems-report.html` | Corroborates a real Gradle 9 config, | `~/.pub-cache/hosted/pub.dev/jni-1.0.3/android/build.gradle` | **The actual Gradle file that requi, | `~/.pub-cache/hosted/pub.dev/jni-1.0.3/src/CMakeLists.txt` | Confirms native C sources exist and a, | `~/.pub-cache/hosted/pub.dev/jni_flutter-1.0.3/android/build.gradle` | Confirms `jni_flutter` itse
-- verify: ```
-- proof: ## 1. Dependency chain to `jni`/`jni_flutter`
-- ledgerId: led-1788795951627-97278451
 

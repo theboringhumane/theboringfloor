@@ -1,15 +1,23 @@
 // floor_handoff.go — hands the floor currently open in THIS process off to
 // a detached background office instead of killing it on a floor switch.
 //
-// Only the opencode backend is detach-safe today (see launchFloor's gate):
-// an `opencode serve` child is proven to survive its spawner's death when
+// EVERY backend is handed off when busy (see launchFloor's gate): an
+// `opencode serve` child is proven to survive its spawner's death when
 // nothing signals its process group (the whole point of
 // isolateHandoffProcessGroup below), and a headless theboringfloor boots
 // fine with no TTY, writes its discovery record, and answers its loopback
-// control API. claude and codex are NOT proven safe to detach — claude's
-// turn rides stdin/stdout pipes that die with this process, and codex's
-// send() blocks synchronously inside the dying process — so they keep
-// today's kill-on-switch behavior (launchFloor's other branch).
+// control API — for opencode the detached child can also ATTACH to that
+// same live serve (state.ServerAttachable, --server below), so its
+// in-flight turn survives the switch too. claude and codex cannot keep
+// their in-flight turn alive this way — claude's turn rides stdin/stdout
+// pipes that die with this process, and codex's send() blocks
+// synchronously inside the dying process — but both persist their
+// conversation OUTSIDE this process (Claude Code's own session store,
+// resumed with --resume; codex's own thread store, resumed with `codex
+// exec resume`), and the detached child is pinned to that same session
+// id below. So the floor and its conversation still come back for them
+// too; only the one turn in flight at the moment of the switch is lost —
+// launchFloor posts a notice saying so for those two backends only.
 //
 // handoffCurrentFloor is the entry point launchFloor calls, synchronously,
 // BEFORE ever returning tea.Quit — so an aborted handoff truly leaves this
@@ -25,6 +33,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/theboringhumane/theboringfloor/internal/config"
 	"github.com/theboringhumane/theboringfloor/internal/control"
 	"github.com/theboringhumane/theboringfloor/internal/state"
 )
@@ -67,22 +76,26 @@ var floorHandoffReady = waitForHandoffReady
 // (as isolateHandoffProcessGroup, floor_handoff_unix.go/
 // floor_handoff_other.go) because cmd/floorgate is `package main` and
 // cannot be imported.
-func spawnDetachedOffice(dir, session, serverURL string) (kill func(), err error) {
+func spawnDetachedOffice(dir, backendName, session, serverURL string) (kill func(), err error) {
 	binary, err := os.Executable()
 	if err != nil {
 		return nil, fmt.Errorf("resolve own binary: %w", err)
+	}
+	if !config.ValidBackendName(backendName) {
+		return nil, fmt.Errorf("handoff backend %q is not a valid backend name", backendName)
 	}
 	null, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %w", os.DevNull, err)
 	}
 	defer null.Close()
-	// --backend opencode is explicit, not inferred: handoffCurrentFloor is
-	// only ever called while THIS process's backend already IS opencode
-	// (launchFloor's gate), so there is no ambiguity to resolve — but a
-	// detached child must never silently pick up a stale/different
-	// brain.json default.
-	args := []string{"--backend", "opencode"}
+	// --backend is the DEPARTING floor's own backend, passed explicitly and
+	// never inferred. Every backend is handed off now (launchFloor's gate),
+	// and the session id pinned below is that backend's own primary — so
+	// respawning the child under a different backend would resume a claude
+	// or codex conversation as an opencode one. Explicit also stops the
+	// detached child silently picking up a stale brain.json default.
+	args := []string{"--backend", backendName}
 	if serverURL != "" {
 		// Attach to the departing floor's own live serve (see main.go's
 		// --server flag / backend.NewLive's resolution order) instead of
@@ -163,10 +176,13 @@ func probeOfficeHealth(dir string) bool {
 }
 
 // handoffCurrentFloor hands the CURRENTLY OPEN floor (m.sessDir, its
-// current opencode primary session) to a detached background office before
-// this process quits/execs into a different floor. It is the opencode-only
-// alternative to the busy-refusal in launchFloor: the departing floor
-// stays live and resumable instead of dying with this process.
+// current backend's own primary session id) to a detached background
+// office before this process quits/execs into a different floor. It runs
+// for a busy floor of ANY backend (launchFloor's gate): the departing
+// floor stays live and resumable instead of dying with this process. Only
+// opencode's serve can be attached to directly (state.ServerAttachable
+// below); claude and codex fall back to a fresh boot pinned to their own
+// resumable session, which loses only the in-flight turn.
 //
 // When the current backend implements state.ServerAttachable and its
 // ServerURL() is non-empty, the detached child ATTACHES to that same
@@ -209,7 +225,7 @@ func (m *Model) handoffCurrentFloor() bool {
 	if hadDiscovery {
 		_ = control.RemoveDiscovery(dir)
 	}
-	kill, spawnErr := floorHandoffSpawn(dir, session, serverURL)
+	kill, spawnErr := floorHandoffSpawn(dir, m.backendName(), session, serverURL)
 	ready := false
 	if spawnErr == nil {
 		ready = floorHandoffReady(dir, handoffReadyTimeout)
