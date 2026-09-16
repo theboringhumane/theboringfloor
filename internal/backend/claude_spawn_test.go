@@ -2,9 +2,9 @@
 // the floor IMMEDIATELY (there is NO system/init wait — `claude -p` emits
 // init only after the first stdin user message), init pins primaryID
 // WHENEVER it arrives, a child exit before init is the death watch's
-// report (never a Start error), and CLAUDE_CONFIG_DIR defaults to the
-// user's real ~/.claude unless THEFLOOR_CLAUDE_CONFIG explicitly
-// opts into a sandbox.
+// report (never a Start error), and CLAUDE_CONFIG_DIR is left UNSET (so
+// the user's default `claude` login carries over) unless
+// THEFLOOR_CLAUDE_CONFIG explicitly opts into a sandbox.
 package backend
 
 import (
@@ -436,18 +436,44 @@ func TestClaudeEmptyOverrideLetsInitPin(t *testing.T) {
 	})
 }
 
-// TestClaudeConfigDirDefaultsToRealHome — no explicit opt-in: the child
-// gets the user's REAL ~/.claude so an existing `claude` login carries
-// into office sessions. THEFLOOR_HOME still roots the default for
-// harness hermeticity; THEBORINGOFFICE_HOME is the legacy fallback
-// config.Env still honours, so it must be cleared too.
-func TestClaudeConfigDirDefaultsToRealHome(t *testing.T) {
+// TestClaudeConfigDirDefaultLeavesEnvUnset — no explicit opt-in: the child
+// env carries NO CLAUDE_CONFIG_DIR. Claude Code treats any explicit value,
+// even $HOME/.claude, as a separate profile (its own .claude.json and a
+// dir-hashed keychain entry), which hides an existing login behind
+// "Not logged in". THEFLOOR_HOME still roots a dir for harness
+// hermeticity; THEBORINGOFFICE_HOME is the legacy fallback config.Env
+// still honours, so it must be cleared too.
+func TestClaudeConfigDirDefaultLeavesEnvUnset(t *testing.T) {
 	t.Setenv("THEFLOOR_CLAUDE_CONFIG", "")
 	t.Setenv("THEFLOOR_HOME", "")
 	t.Setenv("THEBORINGOFFICE_HOME", "")
-	want := filepath.Join(os.Getenv("HOME"), ".claude")
-	if got := claudeConfigDir(t.TempDir()); got != want {
-		t.Fatalf("claudeConfigDir = %q, want the user's real config %q", got, want)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	if got := claudeConfigDir(t.TempDir()); got != "" {
+		t.Fatalf("claudeConfigDir = %q, want \"\" (inherit the CLI default)", got)
+	}
+	for _, kv := range claudeChildEnv(t.TempDir()) {
+		if strings.HasPrefix(kv, "CLAUDE_CONFIG_DIR=") {
+			t.Fatalf("child env must not set CLAUDE_CONFIG_DIR by default, got %q", kv)
+		}
+	}
+}
+
+// TestClaudeConfigDirInheritsMemberOverride — a CLAUDE_CONFIG_DIR the member
+// already exported (their own `claude` logs in against it) rides through
+// to the child; the explicit pin still wins over it.
+func TestClaudeConfigDirInheritsMemberOverride(t *testing.T) {
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", "")
+	t.Setenv("THEFLOOR_HOME", "")
+	t.Setenv("THEBORINGOFFICE_HOME", "")
+	member := filepath.Join(t.TempDir(), "member-claude")
+	t.Setenv("CLAUDE_CONFIG_DIR", member)
+	if got := claudeConfigDir(t.TempDir()); got != member {
+		t.Fatalf("claudeConfigDir = %q, want the member's own override %q", got, member)
+	}
+	pin := filepath.Join(t.TempDir(), "pin")
+	t.Setenv("THEFLOOR_CLAUDE_CONFIG", pin)
+	if got := claudeConfigDir(t.TempDir()); got != pin {
+		t.Fatalf("claudeConfigDir = %q, want the explicit pin %q to win", got, pin)
 	}
 }
 
