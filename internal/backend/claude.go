@@ -369,23 +369,28 @@ func claudeBin() (string, error) {
 	return p, nil
 }
 
-// claudeConfigDir resolves the child's CLAUDE_CONFIG_DIR: the harness pin
-// (THEFLOOR_CLAUDE_CONFIG) wins outright — an explicit sandbox
-// opt-in for tests and isolation-minded members; otherwise the user's REAL
-// ~/.claude, so an existing `claude` login (auth, settings, MCP roster)
-// carries straight into office sessions (a fresh sandbox makes `claude -p`
-// exit silently without one). Settings are NEVER passed via --settings
-// (the office owns no settings.json). directory is retained for seam
-// stability — the user's claude config is global, not per-project.
+// claudeConfigDir resolves the child's CLAUDE_CONFIG_DIR, or "" when the
+// child must inherit the CLI's own default. The harness pin
+// (THEFLOOR_CLAUDE_CONFIG) wins outright — an explicit sandbox opt-in for
+// tests and isolation-minded members; then the THEFLOOR_HOME scratch root
+// (harness hermeticity); then a CLAUDE_CONFIG_DIR the member already
+// exported. With none of those it returns "" and the variable is NOT set:
+// Claude Code treats ANY explicit CLAUDE_CONFIG_DIR — even one naming
+// ~/.claude — as a separate profile (global config read from
+// $CLAUDE_CONFIG_DIR/.claude.json instead of ~/.claude.json, and a
+// dir-hashed macOS keychain entry), so setting it would hide an existing
+// `claude` login and every send answers "Not logged in". Settings are
+// NEVER passed via --settings (the office owns no settings.json).
+// directory is retained for seam stability — the user's claude config is
+// global, not per-project.
 func claudeConfigDir(directory string) string {
 	if p := strings.TrimSpace(config.Env("CLAUDE_CONFIG")); p != "" {
 		return p
 	}
-	home := config.HomeOverride()
-	if home == "" {
-		home = os.Getenv("HOME")
+	if home := config.HomeOverride(); home != "" {
+		return filepath.Join(home, ".claude")
 	}
-	return filepath.Join(home, ".claude")
+	return strings.TrimSpace(os.Getenv("CLAUDE_CONFIG_DIR"))
 }
 
 // claudeChildEnv builds the child's environment EXPLICITLY (an allowlist):
@@ -414,12 +419,13 @@ func claudeChildEnv(directory string) []string {
 			env = append(env, "THEFLOOR_"+suffix+"="+value)
 		}
 	}
-	configDir := claudeConfigDir(directory)
-	env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
+	if configDir := claudeConfigDir(directory); configDir != "" {
+		env = append(env, "CLAUDE_CONFIG_DIR="+configDir)
+		// Best-effort ONLY: an unreadable/uncreatable path must never
+		// fail the spawn.
+		_ = os.MkdirAll(configDir, 0o755)
+	}
 	env = gitx.WithMajdoorAuthorEnv(env) // majdoor-authored commits when the office flag is on; no-op otherwise
-	// Best-effort ONLY: the dir usually exists already (~/.claude) and an
-	// unreadable/un creatable path must never fail the spawn.
-	_ = os.MkdirAll(configDir, 0o755)
 	return env
 }
 
@@ -979,7 +985,7 @@ func (b *liveClaudeBackend) watchProc(proc *exec.Cmd, exitCh <-chan error, wait 
 	// No init pin yet (init arrives after the first Send) — there is no
 	// session to resume; the death is reported plainly instead.
 	b.fl.emit(state.Event{Kind: state.EvStatus, Text: fmt.Sprintf(
-		"[theboringfloor] claude process died before system/init (exited: %v) — check `claude auth status` (CLAUDE_CONFIG_DIR defaults to ~/.claude so your login carries over)", err)})
+		"[theboringfloor] claude process died before system/init (exited: %v) — check `claude auth status` (the child inherits your default claude login unless THEFLOOR_CLAUDE_CONFIG pins a sandbox)", err)})
 }
 
 func (b *liveClaudeBackend) resumeIDOrEmpty() string {
